@@ -1,5 +1,6 @@
 {
   "name": "@forever-ledger/desktop",
+  "productName": "Forever Ledger",
   "version": "0.1.0",
   "private": true,
   "description": "Forever Ledger tray app: uploads SavedVariables and keeps the ForeverLedger addon up to date.",

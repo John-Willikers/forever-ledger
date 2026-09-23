@@ -32,6 +32,23 @@ export default tseslint.config(
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   {
+    // The uploader's root entry pulls in commander and reads package.json at load, which breaks the bundle.
+    files: ['apps/desktop/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@forever-ledger/uploader',
+              message: 'Import @forever-ledger/uploader/lib in the desktop app.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Electron renderer: runs in the browser sandbox
     files: ['apps/desktop/src/renderer/**'],
     languageOptions: { globals: { ...globals.browser } },

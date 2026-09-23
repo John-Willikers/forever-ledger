@@ -2,8 +2,13 @@ appId: dev.willikers.forever-ledger
 productName: Forever Ledger
 directories:
   output: release
+# Packaged package.json name: sets the updater cache folder (%LOCALAPPDATA%\forever-ledger-updater) instead of
+# one derived from "@forever-ledger/desktop". The window title, exe and userData folder use productName.
+extraMetadata:
+  name: forever-ledger
 files:
   - dist/**
+  - '!dist/**/*.map'
   - assets/**
   - package.json
 npmRebuild: false

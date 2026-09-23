@@ -1,5 +1,8 @@
-import { cp, mkdir } from 'node:fs/promises';
+import { cp, mkdir, readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
+
+// The app's own version (app.getVersion() reports Electron's when launched as `electron dist/main.mjs`).
+const pkg = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'));
 
 const node = {
   bundle: true,
@@ -16,6 +19,7 @@ await build({
   entryPoints: ['src/main/main.ts'],
   outfile: 'dist/main.mjs',
   format: 'esm',
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   // CommonJS dependencies inside an ESM bundle need a real require for node builtins. The import is aliased because
   // bundled ESM (fflate) imports `createRequire` too and esbuild doesn't rename around banner text.
   banner: {
