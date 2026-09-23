@@ -640,24 +640,51 @@ return function(H)
     H.ok(d.items[2770] and d.items[2770].byBuild[B], "node loot is scanned")
   end)
 
-  H.test("gathering: a node counts once per GUID; spots within 1 map unit are one spot", function()
+  H.test("gathering: a node counts once per harvest; spots within 1 map unit are one spot", function()
     local c = gatherer(H)
     mine(c, VEIN)
-    mine(c, VEIN) -- reopened
+    mine(c, VEIN) -- a vein holds 2-3 harvests: a new gather cast on the same GUID is a new open
+    lootNode(c, { { itemID = 2770, sourceGUID = VEIN, quantity = 2 } }) -- reopened without a new cast
+    c.advance(10)
+    lootNode(c, { { itemID = 2770, sourceGUID = VEIN, quantity = 2 } }) -- reopened later, still no cast
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.nodes[B][1731].opened, 2)
+    H.eq(d.nodeLoot[2770][B][1731].n, 2, "both harvests' loot counts")
+    H.eq(d.nodeLoot[2770][B][1731].qty, 4)
     c.world.zone.x, c.world.zone.y = 0.426, 0.662 -- 0.5 units away
     c.world.skillLines[#c.world.skillLines - 2].rank = 65 -- a lower rank (another character's level of skill)
     c.fire("SKILL_LINES_CHANGED")
     mine(c, VEIN2)
     c.world.zone.x, c.world.zone.y = 0.50, 0.70
     mine(c, "GameObject-0-1-0-1-1731-0000N03")
-    local d = c.env.ForeverLedgerDB
     local n = d.nodes[B][1731]
-    H.eq(n.opened, 3)
+    H.eq(n.opened, 4)
     H.eq(n.rankMin, 65)
     H.eq(#n.spots[1429], 2)
     H.eq(n.spots[1429][2], "50.0,70.0")
-    H.eq(d.nodeLoot[2770][B][1731].n, 3)
-    H.eq(d.nodeLoot[2770][B][1731].qty, 6)
+    H.eq(d.nodeLoot[2770][B][1731].n, 4)
+    H.eq(d.nodeLoot[2770][B][1731].qty, 8)
+  end)
+
+  H.test("gathering: a gather cast on one node does not make another node's reopen a new harvest", function()
+    local c = gatherer(H)
+    mine(c, VEIN)
+    mine(c, VEIN2)
+    lootNode(c, { { itemID = 2770, sourceGUID = VEIN, quantity = 2 } }) -- VEIN again, VEIN2's cast is recent
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.nodes[B][1731].opened, 2)
+    H.eq(d.nodeLoot[2770][B][1731].n, 2)
+  end)
+
+  H.test("gathering: chests and other non-gather objects count once per GUID", function()
+    local c = gatherer(H)
+    local chest = "GameObject-0-1-0-1-2843-0000C01"
+    lootNode(c, { { itemID = 2589, sourceGUID = chest } })
+    c.advance(10)
+    lootNode(c, { { itemID = 2589, sourceGUID = chest } })
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.nodes[B][2843].opened, 1)
+    H.eq(d.nodeLoot[2589][B][2843].n, 1)
   end)
 
   H.test("gathering: at most 50 spots per node and map", function()

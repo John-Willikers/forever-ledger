@@ -998,9 +998,11 @@ end
 ---------------------------------------------------------------- professions: gathering
 -- Loot from a GameObject (ore, herbs, chests, ...) or a fishing loot window (IsFishingLoot: pseudo object 0) goes to
 -- db.nodes / db.nodeLoot, no longer to drops of npc 0. Creatures, skinned ones included, stay drops of their npc.
--- A node counts once per GUID per session. Its skill line is the one of a gather spell that finished in the last
--- 5 s (fishing: always Fishing), and rankMin the lowest rank of that skill seen when opening it.
-local gather = { fishingOpens = 0 } -- last = { skillLineID =, at = }: the last gather cast
+-- A node counts once per harvest: a vein or herb can be gathered 2-3 times, each time with a new gather cast and new
+-- loot, so a GUID opened after a gather cast that no other node used yet is a new harvest. Objects opened without a
+-- gather cast (chests, ...) count once per GUID per session. Its skill line is the one of a gather spell that finished
+-- in the last 5 s (fishing: always Fishing), and rankMin the lowest rank of that skill seen when opening it.
+local gather = { fishingOpens = 0, seq = 0 } -- seq: bumped on every gather cast; last = { skillLineID =, at =, seq = }
 local gatherSkill, isFishingLoot, nodeObject, openNode, addNodeLoot
 do
   local FISHING_LINE = 356
@@ -1011,7 +1013,8 @@ do
   local GATHER_NAMES_ENUS = { mining = 186, ["herb gathering"] = 182, herbalism = 182, skinning = 393, fishing = 356 }
   local gatherCache = {} -- [spellID] = skillLineID or false
   local gatherNames      -- [lower-cased spell name] = skillLineID
-  local seenNode = {}    -- [guid or fishing-window key] = true once counted in db.nodes
+  local seenNode = {}    -- [guid or fishing-window key] = gather seq of its last counted harvest (0: no gather cast)
+  local seqNode = {}     -- [gather seq] = the key that harvest opened
 
   local function spellName(spellID)
     if C_Spell and C_Spell.GetSpellInfo then
@@ -1080,9 +1083,28 @@ do
     list[#list + 1] = format("%.1f,%.1f", loc.x, loc.y)
   end
 
+  local function recentGather()
+    local g = gather.last
+    if g and now() - g.at <= ATTRIBUTE_WINDOW then return g end
+  end
+
+  -- The harvest a loot window of `key` belongs to ("<key>#<gather seq>") and whether it is a new one.
+  local function harvestOf(key)
+    local g = recentGather()
+    local seq = g and (seqNode[g.seq] == nil or seqNode[g.seq] == key) and g.seq or nil
+    local prev = seenNode[key]
+    if prev ~= nil and (seq == nil or seq == prev) then return key .. "#" .. prev, false end
+    seq = seq or 0
+    seenNode[key] = seq
+    if seq > 0 then seqNode[seq] = key end
+    return key .. "#" .. seq, true
+  end
+
+  -- Counts the object's harvest if it is a new one; returns the harvest key its loot is deduplicated by.
   function openNode(key, objectID)
-    if not key or seenNode[key] then return end
-    seenNode[key] = true
+    if not key then return end
+    local harvest, new = harvestOf(key)
+    if not new then return harvest end
     local byObject = db.nodes[build] or {}
     db.nodes[build] = byObject
     local n = byObject[objectID]
@@ -1092,7 +1114,7 @@ do
     end
     n.opened = n.opened + 1
     added()
-    local g = gather.last and now() - gather.last.at <= ATTRIBUTE_WINDOW and gather.last or nil
+    local g = recentGather()
     local line = objectID == 0 and FISHING_LINE or (g and g.skillLineID)
     if line then
       n.skillLineID = line
@@ -1104,6 +1126,7 @@ do
       if ok then n.name = name end
     end
     addSpot(n, where())
+    return harvest
   end
 
   function addNodeLoot(itemID, objectID, qty)
@@ -1191,8 +1214,9 @@ local function addCopper(guid, copper)
   c.copper = c.copper + floor(copper)
 end
 
--- fishingKey stands in for the source GUID of a fishing window that has none.
-local function lootItem(i, sources, fishing, fishingKey)
+-- fishingKey stands in for the source GUID of a fishing window that has none; harvests maps an object's GUID to the
+-- harvest this window belongs to (openNode).
+local function lootItem(i, sources, fishing, fishingKey, harvests)
   local link = GetLootSlotLink(i)
   local id = idFromLink(link)
   if not id then return end
@@ -1200,14 +1224,15 @@ local function lootItem(i, sources, fishing, fishingKey)
   local slotQty = #sources == 1 and slotQuantity(i) or nil
   for _, src in ipairs(sources) do
     local object = nodeObject(src.guid, fishing)
-    local key = (src.guid or (object and fishingKey) or "?") .. ":" .. id
+    local harvest
+    if object then harvest = src.guid and harvests[src.guid] or (not src.guid and openNode(fishingKey, object)) end
+    local key = (harvest or src.guid or "?") .. ":" .. id
     if not seenLoot[key] then
       seenLoot[key] = true
       -- One source: the slot's own stack size. Several (AoE): each source's share.
       local qty = slotQty or ((src.qty and src.qty > 0) and src.qty) or 1
       local npc = 0
       if object then
-        if not src.guid then openNode(fishingKey, object) end
         addNodeLoot(id, object, qty)
       else
         npc = npcIDFromGUID(src.guid) or 0
@@ -1240,7 +1265,7 @@ end
 local function onLootOpened()
   pendingMoney = nil
   local fishing = isFishingLoot()
-  local fishingKey
+  local fishingKey, harvests = nil, {}
   if fishing then
     gather.fishingOpens = gather.fishingOpens + 1
     fishingKey = "fishing#" .. gather.fishingOpens
@@ -1250,9 +1275,13 @@ local function onLootOpened()
     for _, src in ipairs(sources) do
       countCorpse(src.guid)
       local object = nodeObject(src.guid, fishing)
-      if object then openNode(src.guid, object) end
+      if object and not harvests[src.guid] then harvests[src.guid] = openNode(src.guid, object) end
     end
-    if slotType(i) == MONEY_SLOT then lootMoney(sources) else lootItem(i, sources, fishing, fishingKey) end
+    if slotType(i) == MONEY_SLOT then
+      lootMoney(sources)
+    else
+      lootItem(i, sources, fishing, fishingKey, harvests)
+    end
   end
 end
 
@@ -1530,7 +1559,8 @@ do
     if not spellID then return end
     local line = gatherSkill(spellID)
     if line then
-      gather.last = { skillLineID = line, at = now() }
+      gather.seq = gather.seq + 1
+      gather.last = { skillLineID = line, at = now(), seq = gather.seq }
       return
     end
     if castGUID and castSeen[castGUID] then return end
