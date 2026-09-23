@@ -4,6 +4,8 @@ packages:
 
 allowBuilds:
   esbuild: true
+  electron: true
   cpu-features: false
   protobufjs: false
   ssh2: false
+  electron-winstaller: false

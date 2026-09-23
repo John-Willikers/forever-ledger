@@ -11,3 +11,4 @@ coverage/
 fixtures/real/*.lua
 !fixtures/real/.gitkeep
 deploy/.first-token
+apps/desktop/release/
