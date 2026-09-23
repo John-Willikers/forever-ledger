@@ -45,6 +45,8 @@ local function default_world()
     reloadBlocked = nil,   -- message: ReloadUI() throws it instead of "reloading"
     secureMacros = {},     -- macrotext run by clicked SecureActionButtonTemplate buttons
     rejectTemplates = {},  -- [template] = true to make CreateFrame throw for it
+    questRewardCalls = {}, -- index passed to every GetQuestReward call
+    questLoadRequests = {}, -- questID of every C_QuestLog.RequestLoadQuestByID call
   }
 end
 
@@ -84,6 +86,17 @@ function H.new(worldOverrides)
     world.printed[#world.printed + 1] = table.concat(parts, " ")
   end
   env.SlashCmdList = {}
+  -- hooksecurefunc([table,] name, hook): the hook runs after the original with the same arguments.
+  env.hooksecurefunc = function(a, b, c)
+    local tbl, name, hook = a, b, c
+    if type(a) == "string" then tbl, name, hook = env, a, b end
+    local orig = assert(tbl[name], "hooksecurefunc: no function " .. tostring(name))
+    tbl[name] = function(...)
+      local r = { orig(...) }
+      hook(...)
+      return unpack(r)
+    end
+  end
 
   -- frames
   env.WorldFrame, env.UIParent = {}, {}
@@ -235,6 +248,8 @@ function H.new(worldOverrides)
     local r = list and list[i]
     return r and world.items[r.id] and itemLink(r.id, world.items[r.id]) or (r and ("|Hitem:" .. r.id .. "|h[?]|h"))
   end
+  -- Clicking Complete in the reward window; the Blizzard quest frame passes the selected choice (0 if none).
+  env.GetQuestReward = function(index) world.questRewardCalls[#world.questRewardCalls + 1] = index end
   env.GetQuestItemInfo = function(kind, i)
     local list = kind == "choice" and qf().choices or qf().rewards
     local r = list and list[i]
@@ -307,6 +322,23 @@ function H.new(worldOverrides)
         for i, e in ipairs(world.questLog) do
           if e.questID == questID then selected = i end
         end
+      end,
+      GetQuestObjectives = function(questID)
+        for _, e in ipairs(world.questLog) do
+          if e.questID == questID and not e.isHeader then
+            local out = {}
+            for j, text in ipairs(e.objectives or {}) do
+              local have, need = text:match("(%d+)/(%d+)")
+              out[j] = { text = text, type = "item", finished = false, numFulfilled = tonumber(have) or 0,
+                         numRequired = tonumber(need) or 1 }
+            end
+            return out
+          end
+        end
+        return {}
+      end,
+      RequestLoadQuestByID = function(questID)
+        world.questLoadRequests[#world.questLoadRequests + 1] = questID
       end,
     }
     env.C_Item = { GetItemInfo = env.GetItemInfo, GetItemStats = env.GetItemStats }

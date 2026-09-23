@@ -1,7 +1,9 @@
--- Plays the scenario with the real v0.1.0 addon, then loads v0.2.0 on top of its SavedVariables.
+-- Plays the scenario with the real v0.1.0 addon, then loads the current addon on top of its SavedVariables.
+-- Also: schema 1 files written by the real 0.2.2 addon are stamped schema 2 and otherwise left alone.
 local S = require("scenario")
 
 local LEGACY = "legacy/ForeverLedger-0.1.0.lua"
+local ADDON_0_2_2 = "legacy/ForeverLedger-0.2.2.lua"
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
 local FIXTURES = "../../fixtures/synthetic/"
 local ME = "Thibodeaux-Bayou"
@@ -27,8 +29,8 @@ return function(H)
   local db = new.env.ForeverLedgerDB
   H.writeFile(FIXTURES .. "session-migrated.lua", H.serialize("ForeverLedgerDB", db))
 
-  H.test("migration: stamps schema 1 and flattens meta.build", function()
-    H.eq(db.meta.schemaVersion, 1)
+  H.test("migration: stamps the current schema (2) and flattens meta.build", function()
+    H.eq(db.meta.schemaVersion, 2)
     H.eq(db.meta.build, 61582)
   end)
 
@@ -73,5 +75,28 @@ return function(H)
     again.login("ForeverLedger")
     H.eq(#again.env.ForeverLedgerDB.turnIns, 1)
     H.eq(again.env.ForeverLedgerDB.drops[872][61582][644], 1)
+  end)
+
+  H.test("migration: schema 1 (0.2.2) data is stamped 2 and kept as is", function()
+    local old2 = H.new({ items = S.items(), questLog = S.questLog() })
+    old2.load(ADDON_0_2_2)
+    S.play(old2, "ForeverLedger")
+    local v1 = old2.env.ForeverLedgerDB
+    H.eq(v1.meta.schemaVersion, 1)
+    local before = H.copy(v1)
+
+    local up = H.new({ items = S.items(), questLog = S.questLog(), clock = old2.world.clock + 60 })
+    up.env.ForeverLedgerDB = H.copy(v1)
+    up.load(ADDON)
+    up.login("ForeverLedger")
+    local d = up.env.ForeverLedgerDB
+    H.eq(d.meta.schemaVersion, 2)
+    H.eq(d.meta.addonVersion, "0.2.3")
+    H.eq(#d.turnIns, 1)
+    H.eq(d.turnIns[1].id, before.turnIns[1].id)
+    H.eq(d.turnIns[1].choice, nil)
+    H.eq(H.count(d.quests[1234].obs), H.count(before.quests[1234].obs))
+    H.eq(#d.runs, #before.runs)
+    H.eq(d.drops[872][61582][644], 1)
   end)
 end

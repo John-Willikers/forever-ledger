@@ -80,6 +80,7 @@ function S.play(ctl, addonName)
   w.questFrame = { questID = 1234, title = "Red Silk Bandanas", xp = 850, money = 500,
                    choices = { { id = 5555, count = 1 }, { id = 5556, count = 1 } } }
   ctl.fire("QUEST_COMPLETE")
+  ctl.env.GetQuestReward(1) -- picks Swampwalker's Boots
   ctl.fire("QUEST_TURNED_IN", 1234, 850, 500)
   ctl.gainXP(850)
   w.questFrame, w.npc = nil, nil
