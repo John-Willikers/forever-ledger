@@ -74,6 +74,10 @@ User idea: use the client's `/api` docs to find out what Forever really supports
 - [x] Uploader gets `probe-dump <file>` → parses `ForeverLedgerProbe.lua` with our parser → `fixtures/real/api-<build>.json`; later: diff two dumps to see API changes between beta builds
 - **Done when:** probe passes luacheck + harness test; after the user runs it in-game once, open questions 2–4 are answered in `CLAUDE.md` and M2 adapts accordingly.
   - 🟡 2026-09-23 00:22 CDT — probe built + 6 harness tests pass; **waiting on the user to run `/flprobe` in-game.**
+  - ✅ 2026-09-23 00:49 CDT — real dump received (build 69913, 1.60.1, interface 16001) → `fixtures/real/api-69913.json`; answers recorded in `CLAUDE.md`.
+    - 🐛 Found: Forever has **no** `GetQuestLogTitle` / `SelectQuestLogEntry` / `GetQuestLogSelection`, so v0.2.0 threw a Lua error on every `QUEST_ACCEPTED` and on `/fl scanlog`. Fixed in **v0.2.1** (falls back to `C_QuestLog.GetInfo` / `Get/SetSelectedQuest`), `.toc` Interface → 16001, new harness profile `api = "forever"` + test (23 Lua tests).
+    - 📝 SavedVariables shape unchanged → no schema bump. Real `ForeverLedger.lua` (only a character so far) normalizes and validates with 0 problems.
+    - ⏳ Sniffer payloads still empty — confirm arg order from real play with `/flprobe sniff on`.
 
 ### 📜 M2 — Contracts + addon schema v1
 - [x] Addon changes per the findings table; migration of v0 data (quests' nested turnIns → `db.turnIns`, flat item fields → `byBuild[meta.build or 0]`, drops → `drops[item][0][npc]`); FIFO trim helper; bump to v0.2.0, `/fl` status prints schema + build

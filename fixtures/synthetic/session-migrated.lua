@@ -98,7 +98,7 @@ ForeverLedgerDB = {
 		},
 	},
 	["meta"] = {
-		["addonVersion"] = "0.2.0",
+		["addonVersion"] = "0.2.1",
 		["build"] = 61582,
 		["buildDate"] = "Sep 18 2026",
 		["interface"] = 11507,

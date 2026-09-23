@@ -1,16 +1,38 @@
--- Forever Ledger v0.2.0 (SavedVariables schema 1)
+-- Forever Ledger v0.2.1 (SavedVariables schema 1)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.2.0"
+local VERSION = "0.2.1"
 local SCHEMA_VERSION = 1
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local f = CreateFrame("Frame")
 
--- API compatibility (Classic-era vs newer namespaces)
+-- API compatibility (Classic-era globals vs newer namespaces; Forever 1.60 has only the namespaces)
 local GetItemInfo  = (C_Item and C_Item.GetItemInfo) or GetItemInfo
 local GetItemStats = (C_Item and C_Item.GetItemStats) or GetItemStats
-local NumLogEntries = GetNumQuestLogEntries or (C_QuestLog and C_QuestLog.GetNumQuestLogEntries)
+local QuestLog = C_QuestLog or {}
+local NumLogEntries = GetNumQuestLogEntries or QuestLog.GetNumQuestLogEntries
+
+-- title, level, suggestedGroup, isHeader, questID for quest log line i
+local function logEntry(i)
+  if GetQuestLogTitle then
+    local title, level, suggestedGroup, isHeader, _, _, _, qid = GetQuestLogTitle(i)
+    return title, level, suggestedGroup, isHeader, qid
+  end
+  local info = QuestLog.GetInfo and QuestLog.GetInfo(i)
+  if info then return info.title, info.level, info.suggestedGroup, info.isHeader, info.questID end
+end
+
+-- Classic selects by log index, newer clients by questID. Returns what selectLogEntry needs to restore it.
+local function logSelection()
+  if GetQuestLogSelection then return GetQuestLogSelection() end
+  return QuestLog.GetSelectedQuest and QuestLog.GetSelectedQuest()
+end
+
+local function selectLogEntry(i, questID)
+  if SelectQuestLogEntry then SelectQuestLogEntry(i)
+  elseif QuestLog.SetSelectedQuest then QuestLog.SetSelectedQuest(questID) end
+end
 
 local db
 local build = 0
@@ -149,7 +171,7 @@ local function captureFromLog(questID)
   if not NumLogEntries then return end
   local header
   for i = 1, NumLogEntries() do
-    local title, level, suggestedGroup, isHeader, _, _, _, qid = GetQuestLogTitle(i)
+    local title, level, suggestedGroup, isHeader, qid = logEntry(i)
     if isHeader then
       header = title
     elseif qid == questID or (not questID and qid) then
@@ -170,25 +192,26 @@ end
 local function scanWholeLog()
   if not NumLogEntries then return end
   captureFromLog(nil)
-  local prev = GetQuestLogSelection and GetQuestLogSelection()
+  local prev = logSelection()
   local n = 0
   for i = 1, NumLogEntries() do
-    local _, _, _, isHeader, _, _, _, qid = GetQuestLogTitle(i)
-    if not isHeader and qid then
-      SelectQuestLogEntry(i)
+    local _, _, _, isHeader, qid = logEntry(i)
+    if not isHeader and qid and qid > 0 then
+      selectLogEntry(i, qid)
       local o = questObs(qid, "log")
       local choices = {}
-      for c = 1, (GetNumQuestLogChoices() or 0) do
+      -- questID is ignored by Classic (uses the selection) and required by newer clients
+      for c = 1, (GetNumQuestLogChoices(qid) or 0) do
         local link = GetQuestLogItemLink("choice", c)
         choices[#choices + 1] = { itemID = idFromLink(link) }
         scanItem(idFromLink(link), link)
       end
       o.choices = #choices > 0 and choices or nil
-      if GetQuestLogRewardMoney then o.money = GetQuestLogRewardMoney() end
+      if GetQuestLogRewardMoney then o.money = GetQuestLogRewardMoney(qid) end
       n = n + 1
     end
   end
-  if prev and prev > 0 then SelectQuestLogEntry(prev) end
+  if prev and prev > 0 then selectLogEntry(prev, prev) end
   say("scanned " .. n .. " quests in your log.")
 end
 

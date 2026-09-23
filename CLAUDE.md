@@ -36,3 +36,17 @@ Plan and live progress: `project-plans/forever-ledger-m0-m5.md`.
 ## Open questions about the Forever client
 
 Tracked in the project plan; answer them from `ForeverLedgerProbe` dumps and record the answers here.
+Full dump: `fixtures/real/api-69913.json` (probe 0.1.0, 2026-09-23 00:41 CDT, enUS).
+
+| Question                  | Answer (build 69913)                                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client build / interface  | `GetBuildInfo()` = `1.60.1`, `69913`, `Sep 17 2026`, **16001**. Both `.toc` files use `## Interface: 16001`.                                                                       |
+| API docs (`/api`)         | Available: 408 systems, 1802 events, 5958 global functions, 269 `C_` namespaces. Modern (retail-style) API surface.                                                                |
+| Quest log API             | **No** `GetQuestLogTitle`, `GetNumQuestLogEntries`, `SelectQuestLogEntry`, `GetQuestLogSelection`, `GetQuestTagInfo`. Use `C_QuestLog.GetInfo(i)` (table), `Get/SetSelectedQuest`. |
+| Item API                  | **No** global `GetItemInfo` / `GetItemStats`; `C_Item.GetItemInfo` / `C_Item.GetItemStats` exist (same return order).                                                              |
+| `QUEST_ACCEPTED` payload  | `(questID)` only — not Classic's `(logIndex, questID)`.                                                                                                                            |
+| `QUEST_TURNED_IN` payload | `(questID, xpReward, moneyReward)`.                                                                                                                                                |
+| Encounter / loot events   | `ENCOUNTER_END(encounterID, name, difficultyID, groupSize, success, encounterUnitStatus)`, `BOSS_KILL`, `LOOT_OPENED(autoLoot, isFromItem)`, `GetLootSourceInfo` all present.      |
+| Combat log                | `CombatLogGetCurrentEventInfo` is **nil** and `C_CombatLog.IsCombatLogRestricted` exists: don't plan on CLEU.                                                                      |
+| All 37 candidate events   | Register fine. `LoadAddOn` is nil (use `C_AddOns.LoadAddOn`).                                                                                                                      |
+| Event arg order (sniffed) | Not sniffed yet — the payloads above come from the API docs. Confirm with `/flprobe sniff on` during real play.                                                                    |

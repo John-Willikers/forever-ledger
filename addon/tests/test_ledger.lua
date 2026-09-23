@@ -1,4 +1,4 @@
--- ForeverLedger v0.2.0 behaviour and fixture generation.
+-- ForeverLedger v0.2.1 behaviour and fixture generation.
 local S = require("scenario")
 
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
@@ -24,7 +24,7 @@ return function(H)
     H.eq(db.meta.schemaVersion, 1)
     H.eq(db.meta.build, 61582)
     H.eq(db.meta.interface, 11507)
-    H.eq(db.meta.addonVersion, "0.2.0")
+    H.eq(db.meta.addonVersion, "0.2.1")
     H.eq(db.chars[ME].class, "HUNTER")
   end)
 
@@ -127,6 +127,29 @@ return function(H)
     H.eq(#d.turnIns, 2000)
     H.eq(d.turnIns[1].questID, 9006)
     H.eq(d.turnIns[2000].questID, 11005)
+  end)
+
+  H.test("ledger: Forever 1.60 client (C_QuestLog only, QUEST_ACCEPTED(questID))", function()
+    local c = newSession(H, { api = "forever", buildInfo = { "1.60.1", "69913", "Sep 17 2026", 16001 } })
+    S.play(c, "ForeverLedger")
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.meta.interface, 16001)
+    local q = d.quests[1234]
+    H.eq(q.title, "Red Silk Bandanas")
+    H.eq(q.level, 17)
+    H.eq(q.category, "The Deadmines")
+    H.eq(q.suggestedGroup, 5)
+    H.eq(q.objectives[1], "Red Silk Bandana: 0/10")
+    H.ok(q.obs["69913:accept:" .. ME], "accept observation")
+    H.eq(d.items[5555].byBuild[69913].stats.ITEM_MOD_AGILITY_SHORT, 3)
+    H.eq(#d.turnIns, 1)
+
+    c.env.C_QuestLog.SetSelectedQuest(0)
+    c.slash("FOREVERLEDGER", "scanlog")
+    local log = q.obs["69913:log:" .. ME]
+    H.ok(log, "log observation")
+    H.eq(#log.choices, 2)
+    H.eq(log.money, 500)
   end)
 
   H.test("ledger: missing client APIs and events do not break loading", function()

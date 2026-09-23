@@ -34,6 +34,7 @@ end
 -- Runs the session against a harness controller whose addon is already loaded.
 function S.play(ctl, addonName)
   local w = ctl.world
+  local forever = w.api == "forever"
   ctl.login(addonName)
 
   -- Quest giver window (accept screen). 5556 is not cached yet.
@@ -43,7 +44,11 @@ function S.play(ctl, addonName)
   ctl.fire("QUEST_DETAIL")
   w.items[5556].cached = true
   ctl.fire("GET_ITEM_INFO_RECEIVED", 5556, true)
-  ctl.fire("QUEST_ACCEPTED", 2, 1234) -- Classic argument order (logIndex, questID)
+  if forever then
+    ctl.fire("QUEST_ACCEPTED", 1234) -- Forever 1.60 sends (questID)
+  else
+    ctl.fire("QUEST_ACCEPTED", 2, 1234) -- Classic argument order (logIndex, questID)
+  end
   w.questFrame, w.npc = nil, nil
 
   -- Deadmines

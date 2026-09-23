@@ -28,6 +28,7 @@ local function default_world()
     items = {},            -- [itemID] = { name=, quality=, ilvl=, reqLevel=, type=, subtype=, equipLoc=,
                            --              sellPrice=, stats={}, tooltip={ {l, r}, ... }, cached=true|false }
     loot = {},             -- { { itemID=, sourceGUID= } }
+    api = "classic",       -- "forever": swap Classic globals for the namespaces the Forever 1.60 client has
     missing = {},          -- [globalName] = true to simulate an API the client lacks
     rejectEvents = {},     -- [event] = true to make RegisterEvent throw for it
     addons = {},           -- [name] = function(env) run when LoadAddOn(name) is called
@@ -221,6 +222,31 @@ function H.new(worldOverrides)
     return true
   end
   env.C_AddOns = { LoadAddOn = env.LoadAddOn }
+
+  -- World of Warcraft: Forever 1.60 (probe dump of build 69913) has no Classic quest-log globals and no
+  -- global GetItemInfo/GetItemStats; it has the C_QuestLog / C_Item namespaces instead.
+  if world.api == "forever" then
+    env.C_QuestLog = {
+      GetNumQuestLogEntries = env.GetNumQuestLogEntries,
+      GetInfo = function(i)
+        local e = world.questLog[i]
+        if not e then return nil end
+        return { title = e.title, level = e.level or 0, suggestedGroup = e.suggestedGroup or 0,
+                 isHeader = e.isHeader or false, questID = e.questID or 0, questLogIndex = i }
+      end,
+      GetSelectedQuest = function() return (world.questLog[selected] or {}).questID or 0 end,
+      SetSelectedQuest = function(questID)
+        for i, e in ipairs(world.questLog) do
+          if e.questID == questID then selected = i end
+        end
+      end,
+    }
+    env.C_Item = { GetItemInfo = env.GetItemInfo, GetItemStats = env.GetItemStats }
+    for _, name in ipairs({ "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogSelection",
+                            "SelectQuestLogEntry", "GetItemInfo", "GetItemStats", "LoadAddOn" }) do
+      world.missing[name] = true
+    end
+  end
 
   -- Simulate an API the client lacks. The real Lua _G behind __index has no WoW names, so nil is enough.
   for name in pairs(world.missing) do env[name] = nil end

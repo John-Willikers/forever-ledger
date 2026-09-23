@@ -34,7 +34,7 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
   const { meta, records } = normalize(load('session-v1.lua'));
 
   it('reads meta from the newest build', () => {
-    expect(meta).toMatchObject({ build: 61600, addonVersion: '0.2.0', interface: 11508 });
+    expect(meta).toMatchObject({ build: 61600, addonVersion: '0.2.1', interface: 11508 });
   });
 
   it('keeps one item snapshot per build', () => {
