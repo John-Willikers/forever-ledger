@@ -16,7 +16,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start": "node dist/main.js",
+    "dev": "node --conditions=development --import tsx src/main.ts",
+    "db:generate": "drizzle-kit generate",
+    "token:mint": "node dist/tokens-cli.js mint",
+    "token:list": "node dist/tokens-cli.js list",
+    "token:revoke": "node dist/tokens-cli.js revoke"
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.2.0",
@@ -27,6 +33,7 @@
     "pino": "^10.3.1"
   },
   "devDependencies": {
+    "@forever-ledger/lua-sv-parser": "workspace:*",
     "@testcontainers/postgresql": "^12.1.0",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",

@@ -60,6 +60,9 @@ importers:
         specifier: ^10.3.1
         version: 10.3.1
     devDependencies:
+      '@forever-ledger/lua-sv-parser':
+        specifier: workspace:*
+        version: link:../../packages/lua-sv-parser
       '@testcontainers/postgresql':
         specifier: ^12.1.0
         version: 12.1.0

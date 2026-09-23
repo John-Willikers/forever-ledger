@@ -10,3 +10,4 @@ coverage/
 .DS_Store
 fixtures/real/*.lua
 !fixtures/real/.gitkeep
+deploy/.first-token
