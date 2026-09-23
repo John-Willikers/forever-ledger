@@ -6,9 +6,29 @@ export class AddonZipError extends Error {
   override name = 'AddonZipError';
 }
 
+/** Path segments allowed in the addon zip: portable, no traversal, nothing Windows treats specially. */
+const SEGMENT_RE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
+const RESERVED_RE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+const STORED = 0;
+const DEFLATE = 8;
+
+/** Splits an entry name into its path inside the addon folder; throws unless every segment is safe. */
+function addonPath(name: string, isDir: boolean): string {
+  const parts = (isDir ? name.slice(0, -1) : name).split('/');
+  const safe = parts.every((p) => SEGMENT_RE.test(p) && !p.endsWith('.') && !RESERVED_RE.test(p));
+  if (!safe || parts[0] !== ADDON_NAME || (!isDir && parts.length < 2)) {
+    throw new AddonZipError(`unexpected entry in addon zip: ${name}`);
+  }
+  return parts.slice(1).join('/');
+}
+
+/** Case- and normalization-insensitive key, the way Windows and macOS compare file names. */
+const fold = (path: string) => path.normalize('NFC').toLowerCase();
+
 /**
  * Checks a downloaded addon zip before anything touches disk: sha256, entry paths (all under ForeverLedger/, no
- * traversal), unpacked size and the .toc version. Returns file contents keyed by path inside the addon folder.
+ * traversal, no collisions), compression, unpacked size and the .toc version. Returns file contents keyed by path
+ * inside the addon folder. Per-entry CRCs are not checked: the whole-zip sha256 already pins the bytes.
  */
 export function verifyAddonZip(
   zip: Uint8Array,
@@ -20,28 +40,63 @@ export function verifyAddonZip(
     throw new AddonZipError(`sha256 mismatch: expected ${expected.sha256}, got ${actual}`);
   }
 
-  let total = 0;
-  const entries = unzipSync(zip, {
-    filter: (f) => {
-      total += f.originalSize;
-      if (total > MAX_ADDON_BYTES) throw new AddonZipError('addon is too large when unpacked');
-      return true;
-    },
-  });
+  // Every central-directory entry passes through the filter before fflate copies or inflates anything.
+  const declared = new Map<string, number>(); // file entry name -> declared unpacked size
+  const dirs = new Set<string>(); // folded paths of every directory, explicit or implied
+  const seen = new Set<string>();
+  let unpacked = 0;
+  let packed = 0;
+  const filter = (f: { name: string; size: number; originalSize: number; compression: number }) => {
+    if (seen.has(f.name)) throw new AddonZipError(`duplicate entry in addon zip: ${f.name}`);
+    seen.add(f.name);
+    const isDir = f.name.endsWith('/');
+    const path = addonPath(f.name, isDir);
+    const segments = path === '' ? [] : path.split('/');
+    for (let i = 1; i < segments.length + (isDir ? 1 : 0); i++) {
+      dirs.add(fold(segments.slice(0, i).join('/')));
+    }
+    if (isDir) return false;
+
+    if (f.compression !== STORED && f.compression !== DEFLATE) {
+      throw new AddonZipError(`unsupported compression method ${f.compression} in ${f.name}`);
+    }
+    // fflate copies `size` bytes for a stored entry whatever `originalSize` claims.
+    if (f.compression === STORED && f.size !== f.originalSize) {
+      throw new AddonZipError(`stored entry ${f.name} has mismatched sizes`);
+    }
+    unpacked += Math.max(f.size, f.originalSize);
+    if (unpacked > MAX_ADDON_BYTES) throw new AddonZipError('addon is too large when unpacked');
+    // Entries whose data adds up to more than the zip itself must share bytes.
+    packed += f.size;
+    if (packed > zip.byteLength) throw new AddonZipError('addon zip has overlapping entries');
+    declared.set(f.name, f.originalSize);
+    return true;
+  };
+
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(zip, { filter });
+  } catch (e) {
+    if (e instanceof AddonZipError) throw e;
+    throw new AddonZipError(`malformed addon zip: ${e instanceof Error ? e.message : String(e)}`, {
+      cause: e,
+    });
+  }
 
   const files = new Map<string, Uint8Array>();
+  const folded = new Set<string>();
   for (const [name, data] of Object.entries(entries)) {
-    if (name.endsWith('/')) continue; // directory entry
-    const parts = name.split('/');
-    const unsafe =
-      name.includes('\\') ||
-      name.startsWith('/') ||
-      /^[A-Za-z]:/.test(name) ||
-      parts.some((p) => p === '' || p === '.' || p === '..');
-    if (unsafe || parts[0] !== ADDON_NAME || parts.length < 2) {
-      throw new AddonZipError(`unexpected entry in addon zip: ${name}`);
+    const size = declared.get(name);
+    if (data.length !== size) {
+      throw new AddonZipError(`${name} unpacked to ${data.length} bytes, expected ${size}`);
     }
-    files.set(parts.slice(1).join('/'), data);
+    const path = addonPath(name, false);
+    const key = fold(path);
+    if (folded.has(key))
+      throw new AddonZipError(`entries collide on case-insensitive disks: ${name}`);
+    if (dirs.has(key)) throw new AddonZipError(`${name} is both a file and a directory`);
+    folded.add(key);
+    files.set(path, data);
   }
 
   const toc = files.get(`${ADDON_NAME}.toc`);

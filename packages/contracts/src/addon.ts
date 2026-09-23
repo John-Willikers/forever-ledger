@@ -11,9 +11,13 @@ const VERSION_RE = /^\d+\.\d+\.\d+$/;
 export const isAddonVersion = (v: string) => VERSION_RE.test(v);
 export const addonTag = (version: string) => `addon-v${version}`;
 export const addonAssetName = (version: string) => `${ADDON_NAME}-${version}.zip`;
+/** The only url a manifest may point at for `version`. */
+export const addonDownloadUrl = (version: string) =>
+  `${ADDON_DOWNLOAD_PREFIX}${addonTag(version)}/${addonAssetName(version)}`;
 
-/** Compares dotted numeric versions ("0.2.10" > "0.2.9"); missing parts count as 0. */
+/** Compares x.y.z versions numerically ("0.2.10" > "0.2.9"). Throws on anything else. */
 export function compareVersions(a: string, b: string): number {
+  for (const v of [a, b]) if (!isAddonVersion(v)) throw new Error(`not an x.y.z version: ${v}`);
   const pa = a.split('.').map(Number);
   const pb = b.split('.').map(Number);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
@@ -23,17 +27,23 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** Reads `## Version: x.y.z` from a .toc file's text. */
+/** Reads `## Version: x.y.z` from a .toc file's text; undefined when missing or declared more than once. */
 export function tocVersion(toc: string): string | undefined {
-  return /^##\s*Version:\s*(\S+)\s*$/m.exec(toc)?.[1];
+  const found = [...toc.matchAll(/^##[ \t]*Version:[ \t]*(\S+)[ \t]*\r?$/gm)];
+  return found.length === 1 ? found[0]?.[1] : undefined;
 }
 
 /** GET /v1/addon/manifest response: the addon version this client build should run. */
-export const AddonManifest = z.object({
-  addon: z.literal(ADDON_NAME),
-  version: z.string().regex(VERSION_RE),
-  url: z.string().startsWith(ADDON_DOWNLOAD_PREFIX),
-  sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  size: z.number().int().positive().max(MAX_ADDON_BYTES),
-});
+export const AddonManifest = z
+  .object({
+    addon: z.literal(ADDON_NAME),
+    version: z.string().regex(VERSION_RE),
+    url: z.string(),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    size: z.number().int().positive().max(MAX_ADDON_BYTES),
+  })
+  .refine((m) => m.url === addonDownloadUrl(m.version), {
+    message: 'url must be the release asset for this version',
+    path: ['url'],
+  });
 export type AddonManifest = z.infer<typeof AddonManifest>;
