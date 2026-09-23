@@ -124,6 +124,7 @@ describe('cli', () => {
     expect(probe.code).toBe(0);
     expect(probe.stdout).toMatch(/API docs available: yes/);
     expect(probe.stdout).toMatch(/ENCOUNTER_END/);
+    expect(probe.stdout).toMatch(/io \(logging channels, reload, SavedVariables load check\)/);
   });
 
   it('missing config → helpful error', { timeout: 30_000 }, async () => {

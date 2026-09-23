@@ -102,53 +102,62 @@ ForeverLedgerProbeDB = {
 			["globalFunctions"] = {
 				"CreateFrame", -- [1]
 				"GetBuildInfo", -- [2]
-				"GetInstanceInfo", -- [3]
-				"GetItemInfo", -- [4]
-				"GetItemStats", -- [5]
-				"GetLootSlotLink", -- [6]
-				"GetLootSourceInfo", -- [7]
-				"GetNumLootItems", -- [8]
-				"GetNumQuestChoices", -- [9]
-				"GetNumQuestLeaderBoards", -- [10]
-				"GetNumQuestLogChoices", -- [11]
-				"GetNumQuestLogEntries", -- [12]
-				"GetNumQuestRewards", -- [13]
-				"GetQuestID", -- [14]
-				"GetQuestItemInfo", -- [15]
-				"GetQuestItemLink", -- [16]
-				"GetQuestLogItemLink", -- [17]
-				"GetQuestLogLeaderBoard", -- [18]
-				"GetQuestLogRewardMoney", -- [19]
-				"GetQuestLogSelection", -- [20]
-				"GetQuestLogTitle", -- [21]
-				"GetRealZoneText", -- [22]
-				"GetRealmName", -- [23]
-				"GetRewardMoney", -- [24]
-				"GetSubZoneText", -- [25]
-				"GetTitleText", -- [26]
-				"IsInInstance", -- [27]
-				"LoadAddOn", -- [28]
-				"SelectQuestLogEntry", -- [29]
-				"UnitClass", -- [30]
-				"UnitExists", -- [31]
-				"UnitFactionGroup", -- [32]
-				"UnitGUID", -- [33]
-				"UnitLevel", -- [34]
-				"UnitName", -- [35]
-				"UnitRace", -- [36]
-				"UnitXP", -- [37]
-				"UnitXPMax", -- [38]
-				"date", -- [39]
-				"floor", -- [40]
-				"format", -- [41]
-				"print", -- [42]
-				"strsplit", -- [43]
-				"time", -- [44]
-				"wipe", -- [45]
+				"GetCVar", -- [3]
+				"GetInstanceInfo", -- [4]
+				"GetItemInfo", -- [5]
+				"GetItemStats", -- [6]
+				"GetLootSlotLink", -- [7]
+				"GetLootSourceInfo", -- [8]
+				"GetNumLootItems", -- [9]
+				"GetNumQuestChoices", -- [10]
+				"GetNumQuestLeaderBoards", -- [11]
+				"GetNumQuestLogChoices", -- [12]
+				"GetNumQuestLogEntries", -- [13]
+				"GetNumQuestRewards", -- [14]
+				"GetQuestID", -- [15]
+				"GetQuestItemInfo", -- [16]
+				"GetQuestItemLink", -- [17]
+				"GetQuestLogItemLink", -- [18]
+				"GetQuestLogLeaderBoard", -- [19]
+				"GetQuestLogRewardMoney", -- [20]
+				"GetQuestLogSelection", -- [21]
+				"GetQuestLogTitle", -- [22]
+				"GetRealZoneText", -- [23]
+				"GetRealmName", -- [24]
+				"GetRewardMoney", -- [25]
+				"GetSubZoneText", -- [26]
+				"GetTitleText", -- [27]
+				"InCombatLockdown", -- [28]
+				"IsInInstance", -- [29]
+				"LoadAddOn", -- [30]
+				"LoggingChat", -- [31]
+				"LoggingCombat", -- [32]
+				"ReloadUI", -- [33]
+				"SelectQuestLogEntry", -- [34]
+				"UnitAffectingCombat", -- [35]
+				"UnitClass", -- [36]
+				"UnitExists", -- [37]
+				"UnitFactionGroup", -- [38]
+				"UnitGUID", -- [39]
+				"UnitLevel", -- [40]
+				"UnitName", -- [41]
+				"UnitRace", -- [42]
+				"UnitXP", -- [43]
+				"UnitXPMax", -- [44]
+				"date", -- [45]
+				"floor", -- [46]
+				"format", -- [47]
+				"print", -- [48]
+				"strsplit", -- [49]
+				"time", -- [50]
+				"wipe", -- [51]
 			},
 			["globals"] = {
 				["C_AddOns"] = "table",
 				["C_AddOns.LoadAddOn"] = "function",
+				["C_ChatInfo.IsLoggingChat"] = "function",
+				["C_ChatInfo.IsLoggingCombat"] = "function",
+				["C_CombatLog.IsCombatLogRestricted"] = "function",
 				["C_Container"] = "nil",
 				["C_EncounterJournal"] = "nil",
 				["C_Item"] = "nil",
@@ -166,9 +175,11 @@ ForeverLedgerProbeDB = {
 				["C_QuestLog.GetTitleForQuestID"] = "nil",
 				["C_TooltipInfo"] = "nil",
 				["C_TooltipInfo.GetHyperlink"] = "nil",
+				["C_UI.Reload"] = "nil",
 				["CombatLogGetCurrentEventInfo"] = "nil",
 				["EJ_GetEncounterInfo"] = "nil",
 				["GetBuildInfo"] = "function",
+				["GetCVar"] = "function",
 				["GetDifficultyInfo"] = "nil",
 				["GetInstanceInfo"] = "function",
 				["GetItemInfo"] = "function",
@@ -199,8 +210,12 @@ ForeverLedgerProbeDB = {
 				["GetRewardXP"] = "nil",
 				["GetServerTime"] = "nil",
 				["GetTitleText"] = "function",
+				["InCombatLockdown"] = "function",
 				["IsInInstance"] = "function",
 				["LoadAddOn"] = "function",
+				["LoggingChat"] = "function",
+				["LoggingCombat"] = "function",
+				["ReloadUI"] = "function",
 				["SelectQuestLogEntry"] = "function",
 				["UnitClass"] = "function",
 				["UnitFactionGroup"] = "function",
@@ -212,7 +227,15 @@ ForeverLedgerProbeDB = {
 			},
 			["namespaces"] = {
 				["C_AddOns"] = {
-					"LoadAddOn", -- [1]
+					"IsAddOnLoaded", -- [1]
+					"LoadAddOn", -- [2]
+				},
+				["C_ChatInfo"] = {
+					"IsLoggingChat", -- [1]
+					"IsLoggingCombat", -- [2]
+				},
+				["C_CombatLog"] = {
+					"IsCombatLogRestricted", -- [1]
 				},
 				["C_Map"] = {
 					"GetBestMapForUnit", -- [1]
@@ -223,12 +246,375 @@ ForeverLedgerProbeDB = {
 					"GetNumQuestLogEntries", -- [2]
 				},
 			},
-			["probeVersion"] = "0.1.0",
+			["probeVersion"] = "0.2.0",
 		},
 	},
-	["probeVersion"] = "0.1.0",
+	["io"] = {
+		[61582] = {
+			{
+				["action"] = "state",
+				["at"] = 1790000000,
+				["state"] = {
+					["C_ChatInfo.IsLoggingChat"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+					["C_ChatInfo.IsLoggingCombat"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+					["C_CombatLog.IsCombatLogRestricted"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["GetCVar(advancedCombatLogging)"] = {
+						["ok"] = true,
+						["values"] = {
+							"1", -- [1]
+						},
+					},
+					["LoggingChat"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+					["LoggingCombat"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+				},
+			}, -- [1]
+			{
+				["action"] = "on",
+				["addMessage"] = {
+					["ok"] = true,
+					["values"] = {
+					},
+				},
+				["after"] = {
+					["C_ChatInfo.IsLoggingChat"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["C_ChatInfo.IsLoggingCombat"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["C_CombatLog.IsCombatLogRestricted"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["GetCVar(advancedCombatLogging)"] = {
+						["ok"] = true,
+						["values"] = {
+							"1", -- [1]
+						},
+					},
+				},
+				["at"] = 1790000000,
+				["calls"] = {
+					{
+						["call"] = "LoggingChat(true)",
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					}, -- [1]
+					{
+						["call"] = "LoggingCombat(true)",
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					}, -- [2]
+				},
+				["marker"] = 1790000000,
+			}, -- [2]
+			{
+				["action"] = "toggle",
+				["after"] = {
+					["C_ChatInfo.IsLoggingChat"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["C_ChatInfo.IsLoggingCombat"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["C_CombatLog.IsCombatLogRestricted"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["GetCVar(advancedCombatLogging)"] = {
+						["ok"] = true,
+						["values"] = {
+							"1", -- [1]
+						},
+					},
+				},
+				["at"] = 1790000020,
+				["calls"] = {
+					{
+						["call"] = "LoggingCombat(false)",
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					}, -- [1]
+					{
+						["call"] = "LoggingCombat(true)",
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					}, -- [2]
+					{
+						["call"] = "LoggingChat(false)",
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					}, -- [3]
+					{
+						["call"] = "LoggingChat(true)",
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					}, -- [4]
+				},
+				["marker"] = 1790000020,
+			}, -- [3]
+			{
+				["action"] = "toggle",
+				["after"] = {
+					["C_ChatInfo.IsLoggingChat"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["C_ChatInfo.IsLoggingCombat"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["C_CombatLog.IsCombatLogRestricted"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["GetCVar(advancedCombatLogging)"] = {
+						["ok"] = true,
+						["values"] = {
+							"1", -- [1]
+						},
+					},
+				},
+				["at"] = 1790000030,
+				["calls"] = {
+					{
+						["call"] = "LoggingCombat(false)",
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					}, -- [1]
+					{
+						["call"] = "LoggingCombat(true)",
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					}, -- [2]
+					{
+						["call"] = "LoggingChat(false)",
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					}, -- [3]
+					{
+						["call"] = "LoggingChat(true)",
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					}, -- [4]
+				},
+				["marker"] = 1790000030,
+			}, -- [4]
+			{
+				["action"] = "off",
+				["after"] = {
+					["C_ChatInfo.IsLoggingChat"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+					["C_ChatInfo.IsLoggingCombat"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+					["C_CombatLog.IsCombatLogRestricted"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["GetCVar(advancedCombatLogging)"] = {
+						["ok"] = true,
+						["values"] = {
+							"1", -- [1]
+						},
+					},
+				},
+				["at"] = 1790000050,
+				["calls"] = {
+					{
+						["call"] = "LoggingChat(false)",
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					}, -- [1]
+					{
+						["call"] = "LoggingCombat(false)",
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					}, -- [2]
+				},
+			}, -- [5]
+			{
+				["action"] = "reloadbtn",
+				["at"] = 1790000050,
+				["plain"] = {
+					["ok"] = true,
+					["values"] = {
+						"created", -- [1]
+					},
+				},
+				["secure"] = {
+					["ok"] = true,
+					["values"] = {
+						"created", -- [1]
+					},
+				},
+			}, -- [6]
+			{
+				["action"] = "secure-click",
+				["at"] = 1790000050,
+			}, -- [7]
+			{
+				["action"] = "reloadui-click",
+				["at"] = 1790000050,
+				["fn"] = "ReloadUI",
+			}, -- [8]
+			{
+				["action"] = "reloadui-result",
+				["at"] = 1790000050,
+				["result"] = {
+					["err"] = "./harness.lua:158: Interface action failed because of an AddOn",
+					["ok"] = false,
+				},
+			}, -- [9]
+			{
+				["action"] = "blocked",
+				["at"] = 1790000050,
+				["event"] = "ADDON_ACTION_BLOCKED",
+				["func"] = "ReloadUI()",
+			}, -- [10]
+		},
+	},
+	["ledgerCheck"] = {
+		["addonLoaded"] = true,
+		["at"] = 1790000000,
+		["counts"] = {
+			["chars"] = 1,
+			["drops"] = 0,
+			["items"] = 1,
+			["quests"] = 0,
+			["runs"] = 0,
+			["turnIns"] = 0,
+		},
+		["empty"] = false,
+		["keys"] = 7,
+		["records"] = 1,
+		["type"] = "table",
+	},
+	["loadCheck"] = {
+		["arrivedEmpty"] = false,
+		["arrivedKeys"] = 9,
+		["arrivedNil"] = false,
+		["arrivedType"] = "table",
+		["at"] = 1790000000,
+		["build"] = 61582,
+		["loadCount"] = 2,
+		["previousLoadAt"] = 1790000000,
+		["probeVersion"] = "0.2.0",
+	},
+	["loadCount"] = 2,
+	["loadHistory"] = {
+		{
+			["arrivedKeys"] = 0,
+			["at"] = 1790000000,
+			["build"] = 61582,
+			["loadCount"] = 1,
+		}, -- [1]
+		{
+			["arrivedKeys"] = 9,
+			["at"] = 1790000000,
+			["build"] = 61582,
+			["loadCount"] = 2,
+		}, -- [2]
+	},
+	["probeVersion"] = "0.2.0",
 	["sniff"] = {
 		[61582] = {
+			["ADDON_ACTION_BLOCKED"] = {
+				["count"] = 2,
+				["firstAt"] = 1790000050,
+				["samples"] = {
+					{
+						[1] = "SomeOtherAddon",
+						[2] = "CastSpellByName()",
+						["n"] = 2,
+					}, -- [1]
+					{
+						[1] = "ForeverLedgerProbe",
+						[2] = "ReloadUI()",
+						["n"] = 2,
+					}, -- [2]
+				},
+			},
 			["ENCOUNTER_END"] = {
 				["count"] = 1,
 				["firstAt"] = 1790000000,
@@ -255,6 +641,15 @@ ForeverLedgerProbeDB = {
 				},
 			},
 			["PLAYER_DEAD"] = {
+				["count"] = 1,
+				["firstAt"] = 1790000000,
+				["samples"] = {
+					{
+						["n"] = 0,
+					}, -- [1]
+				},
+			},
+			["PLAYER_LOGIN"] = {
 				["count"] = 1,
 				["firstAt"] = 1790000000,
 				["samples"] = {
@@ -296,6 +691,6 @@ ForeverLedgerProbeDB = {
 			},
 		},
 	},
-	["sniffEventCount"] = 4,
+	["sniffEventCount"] = 6,
 	["sniffing"] = false,
 }
