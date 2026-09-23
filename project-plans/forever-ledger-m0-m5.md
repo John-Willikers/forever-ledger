@@ -58,12 +58,12 @@ Tooling present: Node 22.22 (LTS), pnpm 11, Docker 28 + compose v2, PM2 6, Nginx
 - **Done when:** `pnpm check` passes. ✅ Done 2026-09-23 00:12 CDT (note: `pnpm ci` is a pnpm built-in, so the script is `pnpm check`; TypeScript pinned ~6.0 for typescript-eslint).
 
 ### 🧩 M1 — `lua-sv-parser`
-- [ ] `parseSavedVariables(text): Record<string, unknown>` — `luaparse.parse(text, { luaVersion: '5.1', comments: false, encodingMode: 'pseudo-latin1' })`, then decode string bytes → UTF-8 via `Buffer.from(v, 'latin1').toString('utf8')`
-- [ ] Walker accepts only: top-level `AssignmentStatement` to plain identifiers; `TableConstructorExpression` (keyed `[k]=`, `name=`, positional); String/Numeric/Boolean/Nil literals; unary `-` on numerics. Anything else → `SavedVariablesParseError` with line/col. **Never evaluate.**
-- [ ] Table → JS: pure 1..n sequential integer keys → array, otherwise object (numeric keys stringified). `nil` values dropped.
-- [ ] Preserve WoW color codes `|cff…|r` and `|Hitem:…|h[…]|h` verbatim; export helpers `stripColorCodes()`, `parseItemLink()`
-- [ ] Fixtures: hand-written WoW-format sample, escapes (`\"`, `\\`, `\n`, `\ddd`), UTF-8 names, color codes/links, empty tables, sparse arrays, large (5k+ records) perf test, **`truncated.lua` must throw cleanly**, a file with a function call must be rejected
-- **Done when:** all fixture tests pass.
+- [x] `parseSavedVariables(text): Record<string, unknown>` — `luaparse.parse(text, { luaVersion: '5.1', comments: false, encodingMode: 'pseudo-latin1' })`, then decode string bytes → UTF-8 via `Buffer.from(v, 'latin1').toString('utf8')`
+- [x] Walker accepts only: top-level `AssignmentStatement` to plain identifiers; `TableConstructorExpression` (keyed `[k]=`, `name=`, positional); String/Numeric/Boolean/Nil literals; unary `-` on numerics. Anything else → `SavedVariablesParseError` with line/col. **Never evaluate.**
+- [x] Table → JS: pure 1..n sequential integer keys → array, otherwise object (numeric keys stringified). `nil` values dropped.
+- [x] Preserve WoW color codes `|cff…|r` and `|Hitem:…|h[…]|h` verbatim; export helpers `stripColorCodes()`, `parseItemLink()`
+- [x] Fixtures: hand-written WoW-format sample, escapes (`\"`, `\\`, `\n`, `\ddd`), UTF-8 names, color codes/links, empty tables, sparse arrays, large (5k+ records) perf test, **`truncated.lua` must throw cleanly**, a file with a function call must be rejected
+- **Done when:** all fixture tests pass. ✅ Done 2026-09-23 00:16 CDT — 25 tests; truncation detected by error index at end of input (covers cut mid-string and mid-table).
 
 ### 🔬 M1.5 — Client API probe (answers open questions before we lock schema v1)
 User idea: use the client's `/api` docs to find out what Forever really supports. Build a tiny **separate addon `ForeverLedgerProbe`** (own SavedVariables `ForeverLedgerProbeDB`, so the ledger file stays small). Read-only, runs on `/flprobe`:

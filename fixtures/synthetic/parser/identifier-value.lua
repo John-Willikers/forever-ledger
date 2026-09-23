@@ -1,0 +1,3 @@
+ForeverLedgerDB = {
+	["y"] = SomeGlobal,
+}
