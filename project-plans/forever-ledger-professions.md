@@ -25,13 +25,13 @@ shape change ⇒ schema bump (4), and the rollout order is server → tray app �
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/Chicago.
 
 - ✅ 0 Prerequisite — addon 0.2.4 published 17:12 CDT, drop repair run (Linen Cloth back to 6, no legacy rows)
-- 🟡 1 📦 Contracts + server + uploader (schema 4)
+- ✅ 1 📦 Contracts + server + uploader (schema 4) — 17:29 CDT (f940169; 13 tables, migration 0004 dry-run clean on live copy)
 - 🟡 2 🧪 Addon: skills, recipes, learned, API samples
 - 🟡 3 ⚒️ Addon: crafts + gathering
 - 🟡 4 🏪 Addon: trainers + vendors
 - ⬜ 5 🔖 Addon release plumbing (legacy 0.2.4 copy, fixtures, version 0.3.0)
-- 🟡 6 📊 Server routes (`/v1/professions/*`)
-- ⬜ 7 🖥️ Tray v0.1.3
+- ✅ 6 📊 Server routes (`/v1/professions/*`) — 17:29 CDT (f17b8d4)
+- ✅ 7 🖥️ Tray v0.1.3 — 17:29 CDT (3109503, not released yet)
 - ⬜ 8 🚀 Rollout (server → tray → addon 0.3.0)
 - ⬜ 9 🔍 Live verification (api_samples, then data)
 
