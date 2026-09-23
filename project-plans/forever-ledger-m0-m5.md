@@ -98,7 +98,8 @@ User idea: use the client's `/api` docs to find out what Forever really supports
 - [x] Integration tests (Vitest + testcontainers Postgres): same batch twice → no duplicate rows; changed run → updated; bad token 401; revoked token 401; oversized 413; malformed 400; unknown schema 409
 - **Done when:** idempotency tests pass and `https://ledger.willikers.dev/v1/health` returns ok.
   - 🟡 2026-09-23 00:30 CDT — 16 integration tests pass on real Postgres 18 (testcontainers). Deployed: Postgres `forever-ledger-postgres` on 127.0.0.1:5440, PM2 `forever-ledger-api` on 127.0.0.1:3410, Nginx site enabled (routes correctly via the public IP). Token #1 minted (plaintext in gitignored `deploy/.first-token`).
-  - ⏳ **Waiting on DNS** A record `ledger.willikers.dev → 135.148.136.99`, then `sudo certbot --nginx -d ledger.willikers.dev`.
+  - ✅ 2026-09-23 01:03 CDT — DNS live; TLS cert issued (expires 2026-12-22), HTTP → HTTPS redirect, `https://ledger.willikers.dev/v1/health` ok. `pm2 save` done with the user's OK (old 17-app dump kept at `~/.pm2/dump.pm2.pre-ledger-2026-09-23`).
+    - ⚠️ `certbot --nginx` left a stray nginx outside systemd (nginx.service crash-looped); handed back to systemd. Renewal set to `standalone` to fit the box's global stop/start-nginx hooks. ⏳ Renewal dry run blocked by Let's Encrypt staging "Service busy" — re-run `sudo certbot renew --cert-name ledger.willikers.dev --dry-run --no-random-sleep-on-renew` later.
   - ⚠️ Did **not** run `pm2 save`: the saved dump holds 17 other apps (freshy-*, ticket-bot, …) that aren't running now, and saving would erase them from it. The ledger API won't come back after a reboot until the user decides.
   - 📝 Read routes (analysis/export) also need a token, since the data includes contributors' character names.
 
@@ -129,7 +130,7 @@ User idea: use the client's `/api` docs to find out what Forever really supports
 - Update the progress checks in `project-plans/forever-ledger-m0-m5.md` as each item lands; ntfy to `m0kuNjxWbhNSGY4c` at end of each prompt.
 
 ## 🧑‍🔧 Needs the user
-1. **DNS:** `ledger.willikers.dev` does not resolve yet — add an A record → `135.148.136.99` before certbot in M3.
+1. ~~**DNS:** A record `ledger.willikers.dev` → `135.148.136.99`~~ ✅ done 2026-09-23.
 2. Install `ForeverLedgerProbe`, run `/flprobe` (+ a short session with `sniff on`), `/reload`, and send back `ForeverLedgerProbe.lua`.
 3. Real SavedVariables from a Forever install (answers open questions 1–6) → dropped in `fixtures/real/` (anonymized by a small `scripts/anonymize-sv` tool we'll include).
 4. In-game manual checklist (doc §9) once v0.2.0 addon is installed.
