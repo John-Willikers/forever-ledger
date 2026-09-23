@@ -238,6 +238,19 @@ return function(H)
     H.eq(c.env.ForeverLedgerDB.recipeSeen[B][ME][LINEN_BOLT].rank, 44)
   end)
 
+  H.test("professions: the window's rank is only used for recipes of the window's own line", function()
+    local c = session(H, { skillLines = {} })
+    local window = tailoringWindow(44)
+    window.recipes[LINEN_SHIRT].profession = P.profInfo(2540, "Classic Tailoring", 60)
+    openTrade(c, window)
+    local seen = c.env.ForeverLedgerDB.recipeSeen[B][ME]
+    H.eq(seen[LINEN_BOLT].byDifficulty.trivial.minRank, 44)
+    H.eq(c.env.ForeverLedgerDB.recipes[LINEN_SHIRT].skillLineID, 2540)
+    H.eq(seen[LINEN_SHIRT].difficulty, "optimal")
+    H.eq(seen[LINEN_SHIRT].rank, nil, "another line's rank is unknown")
+    H.eq(next(seen[LINEN_SHIRT].byDifficulty), nil, "no threshold from another line's rank")
+  end)
+
   H.test("professions: a schematic is read once per recipe per build", function()
     local c = session(H)
     openTrade(c)
@@ -618,6 +631,72 @@ return function(H)
     c.fire("SKILL_LINES_CHANGED")
     H.eq(d.skillUps[2].recipeID, nil, "too late")
     H.eq(crafts(c, LINEN_BOLT).skillUps, 2)
+  end)
+
+  H.test("crafts: a skill-up of another profession is not the craft's", function()
+    local c = crafting(H)
+    cast(c, "Cast-1", LINEN_BOLT, true)
+    result(c, 2996, 1)
+    c.advance(1)
+    c.world.skillLines[4].rank = 2 -- First Aid rises (a bandage made elsewhere, a trainer, ...)
+    c.fire("SKILL_LINES_CHANGED")
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.skillUps[1].skillLineID, FIRST_AID)
+    H.eq(d.skillUps[1].recipeID, nil)
+    H.eq(crafts(c, LINEN_BOLT).skillUps, 0)
+  end)
+
+  H.test("crafts: base and child lines rising together credit the craft once", function()
+    local CLASSIC = 2540 -- Classic Tailoring, a child line of Tailoring
+    local lines = skillLines()
+    table.insert(lines, 3, line(CLASSIC, "Classic Tailoring", 50, 75, 11, { parentSkillLineID = TAILORING }))
+    local c = session(H, { skillLines = lines })
+    local window = tailoringWindow()
+    window.child = P.profInfo(CLASSIC, "Classic Tailoring", 50)
+    window.child.parentProfessionID = TAILORING
+    for _, r in pairs(window.recipes) do r.profession = window.child end
+    openTrade(c, window)
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.recipes[LINEN_BOLT].skillLineID, CLASSIC)
+    c.advance(10)
+    cast(c, "Cast-1", LINEN_BOLT, true)
+    result(c, 2996, 1)
+    c.advance(1)
+    lines[2].rank, lines[3].rank = 51, 51
+    c.fire("SKILL_LINES_CHANGED")
+    H.eq(#d.skillUps, 2)
+    H.eq(d.skillUps[1].recipeID, LINEN_BOLT)
+    H.eq(d.skillUps[2].recipeID, LINEN_BOLT)
+    H.eq(crafts(c, LINEN_BOLT).skillUps, 1, "one craft, one skill point")
+    c.advance(1)
+    lines[3].rank = 52 -- the same line rises again: not this craft's
+    c.fire("SKILL_LINES_CHANGED")
+    H.eq(d.skillUps[3].recipeID, nil)
+    H.eq(crafts(c, LINEN_BOLT).skillUps, 1)
+  end)
+
+  H.test("crafts: a skill-up after a craft of a recipe whose line is unknown is not credited", function()
+    local c = session(H) -- no profession window: the recipe's line is unknown
+    c.env.C_TradeSkillUI.GetProfessionInfoByRecipeID = function() return nil end
+    c.fire("TRADE_SKILL_CRAFT_BEGIN", BANDAGE)
+    result(c, 1251, 1)
+    c.advance(1)
+    c.world.skillLines[4].rank = 2
+    c.fire("SKILL_LINES_CHANGED")
+    H.eq(c.env.ForeverLedgerDB.skillUps[1].recipeID, nil)
+    H.eq(crafts(c, BANDAGE).skillUps, 0)
+  end)
+
+  H.test("crafts: the recipe's line is looked up when the window never listed it", function()
+    local c = session(H)
+    c.env.C_TradeSkillUI.GetProfessionInfoByRecipeID = function() return P.profInfo(FIRST_AID, "First Aid", 1) end
+    c.fire("TRADE_SKILL_CRAFT_BEGIN", BANDAGE)
+    result(c, 1251, 1)
+    c.advance(1)
+    c.world.skillLines[4].rank = 2
+    c.fire("SKILL_LINES_CHANGED")
+    H.eq(c.env.ForeverLedgerDB.skillUps[1].recipeID, BANDAGE)
+    H.eq(crafts(c, BANDAGE).skillUps, 1)
   end)
 
   ---------------------------------------------------------------- gathering

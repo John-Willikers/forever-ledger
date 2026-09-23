@@ -302,6 +302,7 @@ end
 local PROFESSION_CATEGORIES = { [9] = true, [11] = true }
 local NOT_PROFESSION_HEADERS = { "weapon", "armor", "language", "class" }
 local sessionRank = {} -- ["char:skillLineID"] = rank seen this load; skill-ups only count against these
+local lineParent = {}  -- [child skillLineID] = parent line, from ProfessionInfo tables (db.skills has parentID too)
 local onSkillUp        -- set by the crafts section: function(entry), attributes the skill-up to a recent craft
 
 local function charSkills()
@@ -313,6 +314,16 @@ end
 local function skillRank(skillLineID)
   local s = skillLineID and db.skills[charKey()] and db.skills[charKey()][skillLineID]
   return s and s.rank
+end
+
+-- The same profession: equal lines, or one is the other's parent (base Tailoring and its Classic Tailoring child).
+local function relatedLines(a, b)
+  if not a or not b then return false end
+  if a == b then return true end
+  local skills = db.skills[charKey()] or {}
+  local pa = (skills[a] and skills[a].parentID) or lineParent[a]
+  local pb = (skills[b] and skills[b].parentID) or lineParent[b]
+  return pa == b or pb == a
 end
 
 local function isProfessionLine(category, maxRank, header)
@@ -411,6 +422,9 @@ local function professionInfo(T, fn, ...)
   local ok, info = pcall(T[fn], ...)
   if not ok or type(info) ~= "table" then return nil end
   sample("C_TradeSkillUI." .. fn, info)
+  local id = tonumber(field(info, "professionID", "skillLineID"))
+  local parent = tonumber(field(info, "parentProfessionID", "parentSkillLineID"))
+  if id and parent and parent > 0 and parent ~= id then lineParent[id] = parent end
   return info
 end
 
@@ -541,7 +555,10 @@ local function scanTrade()
           more = true
         end
       end
-      noteRecipeSeen(byRecipe, recipeID, info, skillRank(rec.skillLineID) or windowRank)
+      -- The window's rank only stands in for its own line: another line's thresholds would be wrong for good.
+      local rank = skillRank(rec.skillLineID)
+      if rank == nil and (rec.skillLineID == nil or rec.skillLineID == windowLine) then rank = windowRank end
+      noteRecipeSeen(byRecipe, recipeID, info, rank)
     end
   end
   return more
@@ -1650,12 +1667,28 @@ do
     end
   end
 
-  -- A skill-up within 5 s of a craft (and not after a gather) belongs to that craft's recipe.
+  -- The skill line of a crafted recipe: from the profession window's scan, else asked for by recipe.
+  local function recipeLine(recipeID)
+    local rec = db.recipes[recipeID]
+    if rec and rec.skillLineID then return rec.skillLineID end
+    local T = C_TradeSkillUI
+    local p = T and professionInfo(T, "GetProfessionInfoByRecipeID", recipeID)
+    return tonumber(field(p, "professionID", "skillLineID"))
+  end
+
+  -- A skill-up within 5 s of a craft (and not after a gather) belongs to that craft's recipe when it is the recipe's
+  -- profession (its line or that line's parent/child). A craft is credited one skill-up: base and child lines rising
+  -- together both name the recipe but count once, and the same line rising again is not this craft's.
   onSkillUp = function(e)
     local k = lastCraft
     if not k or now() - k.at > ATTRIBUTE_WINDOW then return end
     if gather.last and gather.last.at > k.at then return end
+    k.lines = k.lines or {}
+    if k.lines[e.skillLineID] or not relatedLines(recipeLine(k.recipeID), e.skillLineID) then return end
+    k.lines[e.skillLineID] = true
     e.recipeID = k.recipeID
+    if k.credited then return end
+    k.credited = true
     local c = craftRec(k.recipeID)
     c.skillUps = c.skillUps + (e.to - e.from)
   end
