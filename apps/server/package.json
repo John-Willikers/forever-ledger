@@ -22,7 +22,8 @@
     "db:generate": "drizzle-kit generate",
     "token:mint": "node dist/tokens-cli.js mint",
     "token:list": "node dist/tokens-cli.js list",
-    "token:revoke": "node dist/tokens-cli.js revoke"
+    "token:revoke": "node dist/tokens-cli.js revoke",
+    "addon": "node dist/addon-cli.js"
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.2.0",
@@ -37,6 +38,7 @@
     "@testcontainers/postgresql": "^12.1.0",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
+    "fflate": "^0.8.3",
     "testcontainers": "^12.1.0"
   }
 }

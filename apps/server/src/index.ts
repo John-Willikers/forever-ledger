@@ -1,4 +1,12 @@
-export { resolveManifest } from './addon.js';
+export {
+  listAddon,
+  pinVersion,
+  publishRelease,
+  resolveManifest,
+  unpin,
+  yankVersion,
+} from './addon.js';
+export type { PublishOptions } from './addon.js';
 export { buildApp, DEFAULT_BODY_LIMIT, loggerOptions } from './app.js';
 export type { AppOptions } from './app.js';
 export { hashToken, listTokens, mintToken, revokeToken, verifyBearer } from './auth.js';

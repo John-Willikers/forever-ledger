@@ -75,6 +75,9 @@ importers:
       drizzle-kit:
         specifier: ^0.31.11
         version: 0.31.11
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       testcontainers:
         specifier: ^12.1.0
         version: 12.1.0

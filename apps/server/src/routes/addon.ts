@@ -1,10 +1,8 @@
 import { NO_ADDON_RELEASE } from '@forever-ledger/contracts';
 import type { FastifyInstance } from 'fastify';
-import { resolveManifest } from '../addon.js';
+import { INT4_MAX, resolveManifest } from '../addon.js';
 import type { Db } from '../db/client.js';
 import { buildFilter, requireToken } from './analysis.js';
-
-const INT4_MAX = 2_147_483_647;
 
 export function registerAddonRoutes(app: FastifyInstance, db: Db) {
   /** Which addon version the caller's client build should run. */
