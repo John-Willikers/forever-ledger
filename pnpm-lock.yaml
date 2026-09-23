@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.11.0)
+      '@forever-ledger/lua-sv-parser':
+        specifier: workspace:*
+        version: link:packages/lua-sv-parser
       '@types/node':
         specifier: ^22.20.4
         version: 22.20.4
