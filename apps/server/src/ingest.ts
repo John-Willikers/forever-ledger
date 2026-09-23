@@ -25,13 +25,22 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 const CHUNK = 500;
 
-/** `SET col = excluded.col` for every column except the conflict target; bumps updated_at when present. */
-function excludedSet(table: PgTable, target: PgColumn[]): Record<string, SQL> {
+/**
+ * `SET col = excluded.col` for every column except the conflict target; bumps updated_at when present. With `keepKnown`
+ * a null in the new row keeps the stored value (`coalesce(excluded.col, col)`).
+ */
+function excludedSet(table: PgTable, target: PgColumn[], keepKnown = false): Record<string, SQL> {
   const skip = new Set(target.map((c) => c.name));
   const set: Record<string, SQL> = {};
   for (const [prop, col] of Object.entries(getTableColumns(table))) {
     if (skip.has(col.name)) continue;
-    set[prop] = col.name === 'updated_at' ? sql`now()` : sql.raw(`excluded."${col.name}"`);
+    const incoming = sql.raw(`excluded."${col.name}"`);
+    set[prop] =
+      col.name === 'updated_at'
+        ? sql`now()`
+        : keepKnown
+          ? sql`coalesce(${incoming}, ${col})`
+          : incoming;
   }
   return set;
 }
@@ -41,9 +50,10 @@ async function upsert<T extends PgTable>(
   table: T,
   rows: T['$inferInsert'][],
   target: PgColumn[],
+  opts: { keepKnown?: boolean } = {},
 ) {
   if (rows.length === 0) return;
-  const set = excludedSet(table, target);
+  const set = excludedSet(table, target, opts.keepKnown);
   for (let i = 0; i < rows.length; i += CHUNK) {
     await tx
       .insert(table)
@@ -127,7 +137,9 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       [characters.key],
     );
 
-    await upsert(tx, quests, r.quests, [quests.questId]);
+    // Static facts: Forever doesn't load SavedVariables back, so a quest rebuilt after /reload from the turn-in window
+    // alone has no level/category. Keep what an earlier upload knew.
+    await upsert(tx, quests, r.quests, [quests.questId], { keepKnown: true });
 
     await upsert(
       tx,
@@ -194,7 +206,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       [turnIns.id],
     );
 
-    await upsert(tx, items, r.items, [items.itemId]);
+    await upsert(tx, items, r.items, [items.itemId], { keepKnown: true });
     await upsert(
       tx,
       itemSnapshots,

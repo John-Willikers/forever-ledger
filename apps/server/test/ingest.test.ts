@@ -119,6 +119,35 @@ describe('ingest API (real Postgres)', () => {
     expect(rows).toEqual([{ xp: 999 }]);
   });
 
+  it('keeps known quest and item fields when a later upload leaves them blank', async () => {
+    // Forever doesn't load SavedVariables back, so after a /reload the addon rebuilds a quest from the turn-in
+    // window alone (no level/category). Blanks must not erase what we knew.
+    const base = batchFromFixture('session-v1.lua', 'ACCOUNT-KEEP');
+    const quest = base.records.quests[0]!;
+    const item = base.records.items[0]!;
+    expect(quest.level).toBeDefined();
+    expect(item.quality).toBeDefined();
+    expect((await post({ ...base })).statusCode).toBe(200);
+
+    const blank = structuredClone(base);
+    blank.records = {
+      ...blank.records,
+      quests: [{ questId: quest.questId, title: quest.title }],
+      items: [{ itemId: item.itemId, name: item.name }],
+    };
+    expect((await post(blank)).statusCode).toBe(200);
+
+    const q = await s.database.pool.query(
+      'select title, level, category from quests where quest_id = $1',
+      [quest.questId],
+    );
+    expect(q.rows[0]).toMatchObject({ title: quest.title, level: quest.level });
+    const i = await s.database.pool.query('select name, quality from items where item_id = $1', [
+      item.itemId,
+    ]);
+    expect(i.rows[0]).toMatchObject({ name: item.name, quality: item.quality });
+  });
+
   it('rejects unknown schema versions with 409 and malformed batches with 400', async () => {
     const batch = batchFromFixture('session-v1.lua');
     expect((await post({ ...batch, schemaVersion: 2 })).statusCode).toBe(409);
