@@ -24,4 +24,4 @@ publish:
   provider: github
   owner: John-Willikers
   repo: forever-ledger
-  releaseType: release
+  releaseType: draft # the app-release workflow creates the draft first and publishes it after the upload
