@@ -37,29 +37,29 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Timestam
 - ✅ 1.3 uploader: `fetchManifest` client — 2026-09-23 01:56 CDT (6968487)
 - ✅ 1.4 uploader: `installAddon` / `rollbackAddon` / `readInstalledVersion` — 2026-09-23 01:56 CDT (a2d4d82; crash-safe after review: a23687d, 0af5c43 — swap marker, recoverAddon, Windows-patient renames)
 - ✅ 1.5 uploader: `syncAddon` orchestrator + pause-after-rollback state — 2026-09-23 01:56 CDT (0ceeb0f, da6a5a1; mutex, build from upload state; 218 tests)
-- 🟡 1.6 uploader: `addon-sync` CLI command
-- 🟡 1.7 uploader: `startWatch` `onEvent` hook + `trigger()`
+- ✅ 1.6 uploader: `addon-sync` CLI command — 2026-09-23 02:05 CDT (ef2e4d7)
+- ✅ 1.7 uploader: `startWatch` `onEvent` hook + `trigger()` — 2026-09-23 02:05 CDT (5634e4f)
 
 ### 🗄️ Phase 2 — Server
 
-- ⬜ 2.1 `addon_releases` + `addon_pins` tables, migration 0001
-- ⬜ 2.2 `resolveManifest` + `GET /v1/addon/manifest`
-- ⬜ 2.3 `publishRelease` (GitHub) + admin CLI `addon publish|pin|unpin|yank|list`
+- 🟡 2.1 `addon_releases` + `addon_pins` tables, migration 0001
+- 🟡 2.2 `resolveManifest` + `GET /v1/addon/manifest`
+- 🟡 2.3 `publishRelease` (GitHub) + admin CLI `addon publish|pin|unpin|yank|list`
 - ⬜ 2.4 Deploy to VPS (build, PM2 restart, curl manifest → 404 "none published")
 
 ### 🏷️ Phase 3 — Addon release automation
 
-- ⬜ 3.1 `scripts/check-addon-version.ts` + tests
-- ⬜ 3.2 `.github/workflows/addon-release.yml`
+- 🟡 3.1 `scripts/check-addon-version.ts` + tests
+- 🟡 3.2 `.github/workflows/addon-release.yml`
 - ⬜ 3.3 First release `addon-v0.2.1` → `addon publish 0.2.1` → manifest returns it
 
 ### 🖥️ Phase 4 — Desktop app
 
-- ⬜ 4.1 Scaffold `apps/desktop` (esbuild, electron-builder, icons)
-- ⬜ 4.2 `deriveTrayState` + tests
-- ⬜ 4.3 `LedgerController` (no Electron imports) + tests
-- ⬜ 4.4 Electron main: single instance, tray, window, IPC, login item, updater, toasts
-- ⬜ 4.5 Preload + renderer (setup view + four cards)
+- ✅ 4.1 Scaffold `apps/desktop` (esbuild, electron-builder, icons) — 2026-09-23 02:05 CDT (198fd11; Electron 44, `./lib` export, 962 KB bundle)
+- ✅ 4.2 `deriveTrayState` + tests — 2026-09-23 02:05 CDT (cc2a467)
+- 🟡 4.3 `LedgerController` (no Electron imports) + tests
+- 🟡 4.4 Electron main: single instance, tray, window, IPC, login item, updater, toasts
+- 🟡 4.5 Preload + renderer (setup view + four cards)
 - ⬜ 4.6 Playwright Electron smoke test
 - ⬜ 4.7 `app-release.yml` + Windows smoke job in CI
 - ⬜ 4.8 First app release `v0.1.0`
