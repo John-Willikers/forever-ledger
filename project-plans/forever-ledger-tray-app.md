@@ -62,13 +62,13 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Timestam
 - ✅ 4.5 Preload + renderer (setup view + four cards) — 2026-09-23 02:22 CDT (68b08ee; + Activity log list)
 - ✅ 4.6 Playwright Electron smoke test — 2026-09-23 02:33 CDT (passes on windows-latest after fixing a trailing-backslash quoting bug in the test's app path)
 - ✅ 4.7 `app-release.yml` + Windows smoke job in CI — 2026-09-23 02:33 CDT (CI builds `Forever Ledger Setup 0.1.0.exe` on every push)
-- ⬜ 4.8 First app release `v0.1.0`
+- ✅ 4.8 First app release `v0.1.0` — 2026-09-23 02:50 CDT (run 35833622624: `Forever-Ledger-Setup-0.1.0.exe` + `latest.yml`; GitHub latest = v0.1.0)
 
 ### 🎁 Phase 5 — Wrap up
 
 - ✅ 5.1 README + CLAUDE.md updated, `pnpm check` green — 2026-09-23 02:45 CDT (c36123d)
-- 🟡 5.2 PR `feat/tray-app` → `master`, merged — PR #1 open, final review fixes in (42a4ef6..7e19ceb), waiting on checks
-- ⬜ 5.3 Manual checklist on the gaming PC (user)
+- ✅ 5.2 PR `feat/tray-app` → `master`, merged — 2026-09-23 02:50 CDT (PR #1 merged as de6eceb; Linux + Windows checks green)
+- 🟡 5.3 Manual checklist on the gaming PC (user) — waiting on the user (morning of 2026-09-23)
 
 ---
 
@@ -1219,6 +1219,11 @@ gh pr merge --merge --delete-branch
 (Phases 0–3 may merge earlier in their own PR so 3.3 can tag from `master`; then this PR carries Phase 4–5.)
 
 ### Task 5.3: Manual checklist (gaming PC, user)
+
+> ☀️ **Morning notes (2026-09-23):** addon 0.2.1 is live on the server; addon 0.2.2 (checkpoint `/reload` nudges) is
+> merged but **not tagged yet** — tag + publish it while the tray app is running to watch an auto-update. Your tray token
+> is in `deploy/.gaming-pc-token` on the VPS (`cat` it; token #2, label `gaming-pc-tray`). The live DB holds 3 fake
+> smoke-test records (account `ACC1`, character `SmokeTest-Local`, build 61600) from the headless runs.
 
 - [ ] Install `Forever-Ledger-Setup-0.1.0.exe` (SmartScreen → Run anyway)
 - [ ] Setup: pick the WoW: Forever folder, accounts listed, paste token, Save
