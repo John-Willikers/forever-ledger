@@ -8,13 +8,17 @@ export interface Snapshot {
   paused: boolean;
   uploading: boolean;
   accounts: AccountStatus[];
+  /** Uploads stopped until the user fixes something (bad token, unreadable config…). */
   fatal?: string;
+  /** Something that has been going wrong for a while but may fix itself (another uploader holds the lock). */
+  warning?: string;
   addon?: AddonSyncResult;
   addonPausedFor?: string;
   appVersion: string;
   appUpdateReady?: string;
   settings: {
     wowPath?: string;
+    serverUrl?: string;
     tokenSet: boolean;
     startWithWindows: boolean;
     autoUpdateAddon: boolean;
@@ -23,7 +27,7 @@ export interface Snapshot {
 
 /** Tray icon state; priority error > uploading > queued > idle. */
 export function deriveTrayState(s: Snapshot): TrayState {
-  if (s.fatal || s.addon?.status === 'error') return 'error';
+  if (s.fatal || s.warning || s.addon?.status === 'error') return 'error';
   if (s.uploading) return 'uploading';
   if (s.accounts.some((a) => a.queuedBatches > 0)) return 'queued';
   return 'idle';

@@ -16,10 +16,14 @@ import type { FlushResult, PassResult } from './pass.js';
 import type { ReadOptions } from './reader.js';
 import { formatChicago } from './time.js';
 
-/** What a watch reports to `onEvent`: each upload or retry pass, and the error that stopped watching. */
+/**
+ * What a watch reports to `onEvent`: each upload or retry pass, a pass that threw (e.g. LockedError while another
+ * uploader holds the state folder; retried with backoff), and the error that stopped watching.
+ */
 export type WatchEvent =
   | { type: 'pass-start' }
   | { type: 'pass-end'; result: PassResult }
+  | { type: 'pass-error'; error: Error }
   | { type: 'fatal'; error: FatalUploadError };
 
 export interface WatchOptions {
@@ -38,8 +42,8 @@ export interface WatchOptions {
   backoff?: BackoffOptions;
   /**
    * Called around every pass (initial, file change, queue retry, trigger) and when a fatal error stops watching.
-   * A pass that throws (e.g. the state folder is locked) gets no pass-end; the loop retries it. Listener exceptions
-   * are logged at debug and ignored.
+   * A pass that throws (e.g. the state folder is locked) ends with pass-error instead of pass-end; the loop retries
+   * it. Listener exceptions are logged at debug and ignored.
    */
   onEvent?: (e: WatchEvent) => void;
 }
@@ -174,6 +178,7 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
         if (err instanceof FatalUploadError) return stop(err);
         if (err instanceof LockedError) logger.warn(err.message);
         else logger.error({ err }, `upload pass failed: ${errorMessage(err)}`);
+        emit({ type: 'pass-error', error: err instanceof Error ? err : new Error(String(err)) });
         // Try again later, including the files we did not get to.
         if (all) pendingAll = true;
         for (const f of files) pendingFiles.add(f);

@@ -54,8 +54,9 @@ describe('deriveTrayState', () => {
     expect(deriveTrayState(snapshot({ accounts: queued }))).toBe('queued');
   });
 
-  it('is error on a fatal error or a failed addon sync', () => {
+  it('is error on a fatal error, a lasting warning or a failed addon sync', () => {
     expect(deriveTrayState(snapshot({ fatal: 'locked' }))).toBe('error');
+    expect(deriveTrayState(snapshot({ warning: 'another uploader is running' }))).toBe('error');
     expect(deriveTrayState(snapshot({ addon: addonError }))).toBe('error');
   });
 

@@ -34,6 +34,7 @@ export type { FetchLike, PostResult } from './client.js';
 export {
   defaultConfigPath,
   loadConfig,
+  newUploaderId,
   readConfigFile,
   resolveConfig,
   resolveConfigPath,

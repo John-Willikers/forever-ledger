@@ -1,5 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { acquireLock, LockedError } from '../src/lock.js';
 import { startWatch } from '../src/watch.js';
 import type { WatchEvent, WatchHandle } from '../src/watch.js';
 import { FAST_READ, readFixture, tempEnv } from './helpers/fixtures.js';
@@ -142,6 +143,22 @@ describe('watch', () => {
       const fatal = await handle.done;
       expect(rec.types()).toEqual(['pass-start', 'pass-end', 'fatal']);
       expect(rec.events[2]).toEqual({ type: 'fatal', error: fatal });
+    });
+
+    it('emits pass-error when the state folder is locked, then uploads once it is free', async () => {
+      await env.writeSv(await readFixture('session-v1.lua'));
+      server = await startMockServer();
+      const config = env.config({ serverUrl: server.url });
+      const release = await acquireLock(config.stateDir);
+      const rec = recorder();
+      handle = await startWatch({ config, ...fast, onEvent: rec.onEvent });
+      await handle.idle();
+      expect(rec.types()).toEqual(['pass-start', 'pass-error']);
+      const err = rec.events[1];
+      expect(err?.type === 'pass-error' && err.error).toBeInstanceOf(LockedError);
+      await release();
+      await vi.waitFor(() => expect(rec.types()).toContain('pass-end'), { timeout: 5_000 });
+      expect(server.receivedKeys.length).toBeGreaterThan(0);
     });
 
     it('a listener that throws does not stop watching', async () => {
