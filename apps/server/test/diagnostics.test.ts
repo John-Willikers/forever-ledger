@@ -210,6 +210,15 @@ describe('diagnostics API limits', () => {
     await s?.stop();
   });
 
+  it('rate-limits reading the list per token too', async () => {
+    const codes: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const res = await s.app.inject({ method: 'GET', url: '/v1/diagnostics', headers: s.auth });
+      codes.push(res.statusCode);
+    }
+    expect(codes).toEqual([200, 200, 200, 429, 429]);
+  });
+
   it('rate-limits reports per token, separately from ingest', async () => {
     const codes: number[] = [];
     for (let i = 0; i < 5; i++) {

@@ -58,7 +58,12 @@ export async function recordIngestError(
       typeof sv === 'number' && Number.isInteger(sv) && Math.abs(sv) <= INT4_MAX ? sv : null,
     status: entry.status,
     error: entry.error.slice(0, 1000),
-    issues: entry.issues ?? null,
+    // Validation messages are static zod templates today; cap them anyway so a future change can't bloat the table.
+    issues:
+      entry.issues?.slice(0, 20).map((i) => ({
+        path: i.path.slice(0, 200),
+        message: i.message.slice(0, 300),
+      })) ?? null,
   });
 }
 
@@ -166,16 +171,28 @@ export function registerDiagnosticsRoutes(
   );
 
   /** Recent error reports and refused ingests, newest first (`?since=` epoch secs or ISO, default 7 days). */
-  app.get('/v1/diagnostics', { preHandler: requireToken(db) }, async (req, reply) => {
-    const q = req.query as Record<string, unknown>;
-    const parsedSince = parseSince(q.since);
-    if (parsedSince === null || (parsedSince && Number.isNaN(parsedSince.getTime())))
-      return reply.status(400).send({ error: 'since must be epoch seconds or an ISO date' });
-    const since = parsedSince ?? new Date(Date.now() - DEFAULT_LIST_DAYS * 86_400_000);
-    const n = Number(q.limit);
-    const limit = Number.isInteger(n) && n > 0 ? Math.min(n, MAX_LIST_LIMIT) : DEFAULT_LIST_LIMIT;
+  app.get(
+    '/v1/diagnostics',
+    {
+      preHandler: requireToken(db),
+      config: {
+        rateLimit: {
+          max: opts.perMinute ?? 30,
+          timeWindow: '1 minute',
+          keyGenerator: (req) => req.headers.authorization ?? req.ip,
+        },
+      },
+    },
+    async (req, reply) => {
+      const q = req.query as Record<string, unknown>;
+      const parsedSince = parseSince(q.since);
+      if (parsedSince === null || (parsedSince && Number.isNaN(parsedSince.getTime())))
+        return reply.status(400).send({ error: 'since must be epoch seconds or an ISO date' });
+      const since = parsedSince ?? new Date(Date.now() - DEFAULT_LIST_DAYS * 86_400_000);
+      const n = Number(q.limit);
+      const limit = Number.isInteger(n) && n > 0 ? Math.min(n, MAX_LIST_LIMIT) : DEFAULT_LIST_LIMIT;
 
-    const res = await db.execute(sql`
+      const res = await db.execute(sql`
       select * from (
         select 'diagnostic' as type, id, received_at, occurred_at, token_id, uploader_id, app_version, platform,
                level, source, message, detail,
@@ -190,6 +207,7 @@ export function registerDiagnosticsRoutes(
       ) x
       order by received_at desc, occurred_at desc, id desc
       limit ${limit}`);
-    return { since: chicagoIso(since), items: (res.rows as unknown as ListRow[]).map(listItem) };
-  });
+      return { since: chicagoIso(since), items: (res.rows as unknown as ListRow[]).map(listItem) };
+    },
+  );
 }
