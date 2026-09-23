@@ -512,6 +512,344 @@ return function(H)
     H.eq(#d.learned, 1)
   end)
 
+  ---------------------------------------------------------------- crafts
+  local function cast(c, guid, spellID, tradeskill)
+    c.world.casting = { "Craft", "", 132149, 0, 1000, tradeskill and true or false, guid, false, spellID, 0, 0 }
+    c.fire("UNIT_SPELLCAST_START", "player", guid, spellID)
+    c.world.casting = nil
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", guid, spellID)
+  end
+  local function result(c, itemID, qty, multicraft)
+    c.fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = itemID, quantity = qty, multicraft = multicraft or 0,
+      isCrit = false, operationID = 1, hasIngenuityProc = false, craftingQuality = nil,
+      hyperlink = require("harness").itemLink(itemID, c.world.items[itemID]) })
+  end
+  local function created(c, itemID, qty)
+    local link = require("harness").itemLink(itemID, c.world.items[itemID])
+    if qty and qty > 1 then
+      c.lootLine("LOOT_ITEM_CREATED_SELF_MULTIPLE", c.world.player.name, link, qty)
+    else
+      c.lootLine("LOOT_ITEM_CREATED_SELF", c.world.player.name, link)
+    end
+  end
+  -- A session whose recipes are known from the profession window.
+  local function crafting(H_, overrides)
+    local c = session(H_, overrides)
+    openTrade(c)
+    c.advance(10)
+    return c
+  end
+  local function crafts(c, recipeID) return c.env.ForeverLedgerDB.crafts[B][recipeID] end
+
+  H.test("crafts: cast, result event and chat line of one craft count once, in any order", function()
+    local orders = {
+      { "cast", "result", "chat" }, { "chat", "result", "cast" }, { "result", "cast", "chat" },
+      { "chat", "cast", "result" },
+    }
+    for _, order in ipairs(orders) do
+      local c = crafting(H)
+      for _, sig in ipairs(order) do
+        if sig == "cast" then cast(c, "Cast-A", LINEN_BOLT, true)
+        elseif sig == "result" then result(c, 2996, 1)
+        else created(c, 2996, 1) end
+      end
+      local k = crafts(c, LINEN_BOLT)
+      local what = table.concat(order, ",")
+      H.eq(k.casts, 1, what)
+      H.eq(k.qty, 1, what)
+      H.eq(k.procs, 0, what)
+      H.eq(k.skillUps, 0, what)
+    end
+  end)
+
+  H.test("crafts: repeated crafts are separate crafts", function()
+    local c = crafting(H)
+    for i = 1, 3 do
+      cast(c, "Cast-" .. i, LINEN_BOLT, true)
+      created(c, 2996, 1)
+      result(c, 2996, 1)
+      c.advance(2)
+    end
+    local k = crafts(c, LINEN_BOLT)
+    H.eq(k.casts, 3)
+    H.eq(k.qty, 3)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-2", LINEN_BOLT) -- a repeated castGUID is ignored
+    H.eq(k.casts, 3)
+  end)
+
+  H.test("crafts: result events without casts, one right after the other, are two crafts", function()
+    local c = crafting(H)
+    c.fire("TRADE_SKILL_CRAFT_BEGIN", LINEN_SHIRT)
+    result(c, 2568, 1)
+    result(c, 2568, 1)
+    local k = crafts(c, LINEN_SHIRT)
+    H.eq(k.casts, 2, "the recipe comes from TRADE_SKILL_CRAFT_BEGIN")
+    H.eq(k.qty, 2)
+    H.eq(c.env.ForeverLedgerDB.apiSamples.TRADE_SKILL_CRAFT_BEGIN.sample[1], LINEN_SHIRT)
+    H.eq(c.env.ForeverLedgerDB.apiSamples.TRADE_SKILL_ITEM_CRAFTED_RESULT.sample.quantity, 1)
+  end)
+
+  H.test("crafts: multicraft and extra quantity are procs; the result event overrides the chat line", function()
+    local c = crafting(H)
+    cast(c, "Cast-1", LINEN_BOLT, true)
+    result(c, 2996, 3, 2)
+    c.advance(5)
+    cast(c, "Cast-2", LINEN_BOLT, true)
+    created(c, 2996, 2) -- more than quantityMax (1): a proc by the chat line alone
+    c.advance(5)
+    cast(c, "Cast-3", LINEN_BOLT, true)
+    created(c, 2996, 2)
+    result(c, 2996, 1, 0) -- the result says 1, no multicraft: not a proc after all
+    local k = crafts(c, LINEN_BOLT)
+    H.eq(k.casts, 3)
+    H.eq(k.qty, 3 + 2 + 1)
+    H.eq(k.procs, 2)
+  end)
+
+  H.test("crafts: without the result event, a tradeskill cast and the chat line are the fallback", function()
+    local c = session(H) -- no profession window: no known recipes
+    cast(c, "Cast-1", BANDAGE, true)
+    created(c, 1251, 2)
+    local k = crafts(c, BANDAGE)
+    H.eq(k.casts, 1)
+    H.eq(k.qty, 2)
+    H.eq(c.env.ForeverLedgerDB.apiSamples.UnitCastingInfo.sample[6], true)
+    H.eq(c.env.ForeverLedgerDB.apiSamples.UnitCastingInfo.sample[9], BANDAGE)
+    cast(c, "Cast-2", 133, false) -- a Fireball is no craft
+    H.eq(c.env.ForeverLedgerDB.crafts[B][133], nil)
+  end)
+
+  H.test("crafts: a known recipe cast counts without UnitCastingInfo; lone chat lines need a known output", function()
+    local c = crafting(H, { missing = { UnitCastingInfo = true } })
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", LINEN_SHIRT)
+    H.eq(crafts(c, LINEN_SHIRT).casts, 1)
+    c.advance(10)
+    created(c, 2572, 1) -- Red Linen Robe: the output of a known recipe
+    H.eq(crafts(c, RED_ROBE).casts, 1)
+    H.eq(crafts(c, RED_ROBE).qty, 1)
+    c.advance(10)
+    created(c, 5555, 1) -- not a known output (conjured, quest, ...)
+    local n = 0
+    for _, k in pairs(c.env.ForeverLedgerDB.crafts[B]) do n = n + k.casts end
+    H.eq(n, 2)
+  end)
+
+  H.test("crafts: a chat line for another item is not the recent craft's", function()
+    local c = crafting(H)
+    cast(c, "Cast-1", LINEN_BOLT, true)
+    created(c, 2572, 1) -- Red Linen Robe within the window of a Bolt of Linen Cloth craft
+    H.eq(crafts(c, LINEN_BOLT).qty, 0)
+    H.eq(crafts(c, RED_ROBE).casts, 1)
+    H.eq(crafts(c, RED_ROBE).qty, 1)
+  end)
+
+  H.test("crafts: \"You create\" comes from the client's GlobalStrings", function()
+    local c = crafting(H, { globalStrings = { LOOT_ITEM_CREATED_SELF = "Ihr stellt her: %s.",
+                                              LOOT_ITEM_CREATED_SELF_MULTIPLE = "Ihr stellt her: %sx%d." } })
+    local link = require("harness").itemLink(2996, c.world.items[2996])
+    c.fire("CHAT_MSG_LOOT", "Ihr stellt her: " .. link .. "x2.", c.world.player.name)
+    H.eq(crafts(c, LINEN_BOLT).qty, 2)
+    c.advance(10)
+    c.fire("CHAT_MSG_LOOT", "You create: " .. link .. ".", c.world.player.name) -- not this client's text
+    H.eq(crafts(c, LINEN_BOLT).casts, 1)
+  end)
+
+  H.test("crafts: a skill-up within 5 s of a craft is that recipe's", function()
+    local c = crafting(H)
+    cast(c, "Cast-1", LINEN_BOLT, true)
+    result(c, 2996, 1)
+    c.advance(1)
+    c.world.skillLines = skillLines(52)
+    c.fire("SKILL_LINES_CHANGED")
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.skillUps[1].recipeID, LINEN_BOLT)
+    H.eq(crafts(c, LINEN_BOLT).skillUps, 2)
+    c.advance(6)
+    c.world.skillLines = skillLines(53)
+    c.fire("SKILL_LINES_CHANGED")
+    H.eq(d.skillUps[2].recipeID, nil, "too late")
+    H.eq(crafts(c, LINEN_BOLT).skillUps, 2)
+  end)
+
+  ---------------------------------------------------------------- gathering
+  local MINING, HERBALISM = 186, 182
+  local VEIN = "GameObject-0-1-0-1-1731-0000N01"   -- Copper Vein (object 1731)
+  local VEIN2 = "GameObject-0-1-0-1-1731-0000N02"
+  local BOBBER = "GameObject-0-1-0-1-35591-0000F01"
+  local function gatherLines()
+    local lines = skillLines()
+    lines[#lines + 1] = header("Professions", 11)
+    lines[#lines + 1] = line(MINING, "Mining", 70, 75, 11)
+    lines[#lines + 1] = line(HERBALISM, "Herbalism", 40, 75, 11)
+    lines[#lines + 1] = line(356, "Fishing", 25, 75, 9)
+    return lines
+  end
+  local function gatherer(H_, overrides)
+    local o = { skillLines = gatherLines(), tooltip = { shown = true, owner = "UIParent", text = "Copper Vein" } }
+    for k, v in pairs(overrides or {}) do o[k] = v end
+    return session(H_, o)
+  end
+  local function lootNode(c, slots)
+    c.world.loot = slots
+    c.fire("LOOT_OPENED")
+    c.fire("LOOT_CLOSED")
+    c.world.loot = {}
+  end
+  local function mine(c, guid, spell)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-" .. guid, spell or 2575)
+    lootNode(c, { { itemID = 2770, sourceGUID = guid, quantity = 2 } })
+  end
+
+  H.test("gathering: a mined vein is a node with its skill, rank, name, spot and loot; not a drop", function()
+    local c = gatherer(H)
+    mine(c, VEIN)
+    local d = c.env.ForeverLedgerDB
+    local n = d.nodes[B][1731]
+    H.eq(n.opened, 1)
+    H.eq(n.skillLineID, MINING)
+    H.eq(n.rankMin, 70)
+    H.eq(n.name, "Copper Vein")
+    H.eq(#n.spots[1429], 1)
+    H.eq(n.spots[1429][1], "42.1,65.9")
+    H.eq(d.nodeLoot[2770][B][1731].n, 1)
+    H.eq(d.nodeLoot[2770][B][1731].qty, 2)
+    H.eq(d.drops[2770], nil)
+    H.eq(next(d.corpses), nil)
+    H.ok(d.items[2770] and d.items[2770].byBuild[B], "node loot is scanned")
+  end)
+
+  H.test("gathering: a node counts once per GUID; spots within 1 map unit are one spot", function()
+    local c = gatherer(H)
+    mine(c, VEIN)
+    mine(c, VEIN) -- reopened
+    c.world.zone.x, c.world.zone.y = 0.426, 0.662 -- 0.5 units away
+    c.world.skillLines[#c.world.skillLines - 2].rank = 65 -- a lower rank (another character's level of skill)
+    c.fire("SKILL_LINES_CHANGED")
+    mine(c, VEIN2)
+    c.world.zone.x, c.world.zone.y = 0.50, 0.70
+    mine(c, "GameObject-0-1-0-1-1731-0000N03")
+    local d = c.env.ForeverLedgerDB
+    local n = d.nodes[B][1731]
+    H.eq(n.opened, 3)
+    H.eq(n.rankMin, 65)
+    H.eq(#n.spots[1429], 2)
+    H.eq(n.spots[1429][2], "50.0,70.0")
+    H.eq(d.nodeLoot[2770][B][1731].n, 3)
+    H.eq(d.nodeLoot[2770][B][1731].qty, 6)
+  end)
+
+  H.test("gathering: at most 50 spots per node and map", function()
+    local c = gatherer(H)
+    for i = 1, 60 do
+      c.world.zone.x, c.world.zone.y = (i * 1.5) / 100, 0.5
+      mine(c, "GameObject-0-1-0-1-1731-00" .. i)
+    end
+    local n = c.env.ForeverLedgerDB.nodes[B][1731]
+    H.eq(n.opened, 60)
+    H.eq(#n.spots[1429], 50)
+  end)
+
+  H.test("gathering: other gather spells match by name; no gather spell, no skill", function()
+    local c = gatherer(H, { spells = { [2366] = { name = "Herb Gathering" }, [265819] = { name = "Herb Gathering" },
+                                       [2575] = { name = "Mining" } } })
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-H", 265819)
+    lootNode(c, { { itemID = 2447, sourceGUID = "GameObject-0-1-0-1-1618-0000H01" } })
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.nodes[B][1618].skillLineID, HERBALISM)
+    H.eq(d.nodes[B][1618].rankMin, 40)
+    c.advance(10)
+    lootNode(c, { { itemID = 2589, sourceGUID = "GameObject-0-1-0-1-2843-0000C01" } }) -- a chest, 10 s later
+    H.eq(d.nodes[B][2843].opened, 1)
+    H.eq(d.nodes[B][2843].skillLineID, nil)
+    H.eq(d.nodes[B][2843].rankMin, nil)
+  end)
+
+  H.test("gathering: localized gather spell names come from the client", function()
+    local c = gatherer(H, { spells = { [2575] = { name = "Bergbau" }, [999001] = { name = "Bergbau" } } })
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", 999001)
+    lootNode(c, { { itemID = 2770, sourceGUID = VEIN } })
+    H.eq(c.env.ForeverLedgerDB.nodes[B][1731].skillLineID, MINING)
+  end)
+
+  H.test("gathering: fishing loot is object 0 with the Fishing skill, once per window", function()
+    local c = gatherer(H, { fishing = true })
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-F", 7620)
+    lootNode(c, { { itemID = 6303, sourceGUID = BOBBER } })
+    c.env.GetLootSourceInfo = function() return nil end -- a client that names no source
+    lootNode(c, { { itemID = 6303 } })
+    lootNode(c, { { itemID = 6303 } })
+    local d = c.env.ForeverLedgerDB
+    local n = d.nodes[B][0]
+    H.eq(n.opened, 3)
+    H.eq(n.skillLineID, 356)
+    H.eq(n.rankMin, 25)
+    H.eq(n.name, nil)
+    H.eq(d.nodeLoot[6303][B][0].n, 3)
+    H.eq(d.nodes[B][35591], nil, "the bobber is not a node")
+    H.eq(d.drops[6303], nil)
+  end)
+
+  H.test("gathering: the tooltip names a node only when it shows a world object", function()
+    for _, tt in ipairs({ { shown = false, owner = "UIParent", text = "X" },
+                          { shown = true, owner = "SomeButton", text = "Backpack" },
+                          { shown = true, owner = "UIParent", text = "Kobold", unit = "mouseover" } }) do
+      local c = gatherer(H, { tooltip = tt })
+      mine(c, VEIN)
+      H.eq(c.env.ForeverLedgerDB.nodes[B][1731].name, nil, tt.text)
+    end
+    local c = gatherer(H, { missing = { GameTooltip = true } })
+    mine(c, VEIN)
+    H.eq(c.env.ForeverLedgerDB.nodes[B][1731].opened, 1)
+  end)
+
+  H.test("gathering: skinning a creature stays drops of that npc; its corpse is not counted twice", function()
+    local c = gatherer(H)
+    local mob = "Creature-0-1-0-1-1234-0000A01"
+    lootNode(c, { { itemID = 2589, sourceGUID = mob }, { money = 12, sourceGUID = mob } })
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-S", 8613)
+    lootNode(c, { { itemID = 2318, sourceGUID = mob } }) -- Light Leather: not in world.items, no link, skipped
+    c.world.items[2318] = { name = "Light Leather", quality = 1, ilvl = 5, type = "Trade Goods", subtype = "Leather" }
+    lootNode(c, { { itemID = 2318, sourceGUID = mob } })
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.corpses[B][1234].n, 1)
+    H.eq(d.corpses[B][1234].copper, 12)
+    H.eq(d.drops[2318][B][1234], 1)
+    H.eq(d.drops[2589][B][1234], 1)
+    H.eq(next(d.nodes), nil)
+    H.eq(next(d.nodeLoot), nil)
+  end)
+
+  H.test("gathering: an AoE window with a corpse and a chest splits into a drop and node loot", function()
+    local c = gatherer(H)
+    lootNode(c, { { itemID = 2589, quantity = 3,
+                    sources = { "Creature-0-1-0-1-99-0000B01", 1, "GameObject-0-1-0-1-2843-0000C01", 2 } } })
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.drops[2589][B][99], 1)
+    H.eq(d.dropQty[2589][B][99], 1)
+    H.eq(d.drops[2589][B][0], nil)
+    H.eq(d.nodeLoot[2589][B][2843].qty, 2)
+    H.eq(d.corpses[B][99].n, 1)
+  end)
+
+  H.test("gathering: creature drops, corpses and runs are exactly what 0.2.4 recorded", function()
+    local function play(addon)
+      local c = H.new({ items = S.items(), questLog = S.questLog(), professionAPI = true })
+      c.load(addon)
+      S.play(c, "ForeverLedger")
+      local more = { { itemID = 2589, sourceGUID = "Creature-0-1-0-1-99-0000B01", quantity = 2 },
+                     { money = 30, sourceGUID = "Creature-0-1-0-1-99-0000B01" } }
+      c.world.loot = more
+      c.fire("LOOT_OPENED")
+      c.world.loot = {}
+      return c.env.ForeverLedgerDB
+    end
+    local old, new = play("legacy/ForeverLedger-0.2.4.lua"), play(ADDON)
+    local ser = require("harness").serialize
+    for _, k in ipairs({ "drops", "dropQty", "corpses", "runs", "turnIns", "items", "quests" }) do
+      H.eq(ser(k, new[k]), ser(k, old[k]), k)
+    end
+  end)
+
   ---------------------------------------------------------------- status, reset, nudge
   H.test("professions: /fl shows profession counts and reset wipes the new tables", function()
     local c = session(H)
@@ -538,5 +876,14 @@ return function(H)
     c.fire("SKILL_LINES_CHANGED")
     c.fire("NEW_RECIPE_LEARNED", BANDAGE)
     H.eq(statusCount(c), 12)
+    c.advance(10)
+    cast(c, "Cast-N", LINEN_BOLT, true)
+    result(c, 2996, 1)
+    created(c, 2996, 1)
+    H.eq(statusCount(c), 13, "one craft, however many signals")
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-M", 2575)
+    lootNode(c, { { itemID = 2770, sourceGUID = VEIN, quantity = 2 } })
+    lootNode(c, { { itemID = 2770, sourceGUID = VEIN, quantity = 2 } })
+    H.eq(statusCount(c), 16, "node, node loot and the Copper Ore snapshot; the reopened vein adds nothing")
   end)
 end

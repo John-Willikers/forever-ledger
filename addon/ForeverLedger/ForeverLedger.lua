@@ -83,10 +83,18 @@ end
 local function idFromLink(link) return link and tonumber(link:match("item:(%d+)")) end
 local function charKey() return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?") end
 
+-- What a GUID is, for loot and NPC windows: "npc" for Creature/Vehicle-0-server-instance-zoneUID-npcID-spawnUID,
+-- "object" for GameObject-0-server-instance-zoneUID-objectID-spawnUID (the id is the 6th field in both).
+local function guidSource(guid)
+  if type(guid) ~= "string" then return nil end
+  local unitType, _, _, _, _, id = strsplit("-", guid)
+  if unitType == "Creature" or unitType == "Vehicle" then return "npc", tonumber(id) end
+  if unitType == "GameObject" then return "object", tonumber(id) end
+end
+
 local function npcIDFromGUID(guid)
-  if not guid then return nil end
-  local unitType, _, _, _, _, npcID = strsplit("-", guid)
-  if unitType == "Creature" or unitType == "Vehicle" then return tonumber(npcID) end
+  local kind, id = guidSource(guid)
+  if kind == "npc" then return id end
 end
 
 local function where()
@@ -291,6 +299,7 @@ end
 local PROFESSION_CATEGORIES = { [9] = true, [11] = true }
 local NOT_PROFESSION_HEADERS = { "weapon", "armor", "language", "class" }
 local sessionRank = {} -- ["char:skillLineID"] = rank seen this load; skill-ups only count against these
+local onSkillUp        -- set by the crafts section: function(entry), attributes the skill-up to a recent craft
 
 local function charSkills()
   local byChar = db.skills[charKey()] or {}
@@ -330,6 +339,7 @@ local function noteSkill(id, name, rank, maxRank, modifier, parentID)
   if rank then sessionRank[key] = rank end
   if before and rank and rank > before then
     local e = { char = charKey(), skillLineID = id, from = before, to = rank, build = build, time = now() }
+    if onSkillUp then onSkillUp(e) end
     db.skillUps[#db.skillUps + 1] = e
     trim(db.skillUps, HISTORY_CAP)
     added()
@@ -900,6 +910,129 @@ local function onXP()
   lastXP, lastMax, lastLevel = cur, max, lvl
 end
 
+---------------------------------------------------------------- professions: gathering
+-- Loot from a GameObject (ore, herbs, chests, ...) or a fishing loot window (IsFishingLoot: pseudo object 0) goes to
+-- db.nodes / db.nodeLoot, no longer to drops of npc 0. Creatures, skinned ones included, stay drops of their npc.
+-- A node counts once per GUID per session. Its skill line is the one of a gather spell that finished in the last
+-- 5 s (fishing: always Fishing), and rankMin the lowest rank of that skill seen when opening it.
+local FISHING_LINE = 356
+local SPOT_CAP = 50 -- spots kept per node per map
+-- The gather spells GatherMate-style addons use (Mining, Herb Gathering, Skinning, Fishing); other spells match by
+-- the client's (localized) name of these or the enUS name.
+local GATHER_SPELLS = { [2575] = 186, [2366] = 182, [8613] = 393, [7620] = FISHING_LINE }
+local GATHER_NAMES_ENUS = { mining = 186, ["herb gathering"] = 182, herbalism = 182, skinning = 393, fishing = 356 }
+local gatherCache = {} -- [spellID] = skillLineID or false
+local gatherNames      -- [lower-cased spell name] = skillLineID
+local seenNode = {}    -- [guid or fishing-window key] = true once counted in db.nodes
+local lastGather       -- { skillLineID =, at = }
+local fishingOpens = 0
+
+local function spellName(spellID)
+  if C_Spell and C_Spell.GetSpellInfo then
+    local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
+    if ok and type(info) == "table" then return field(info, "name") end
+  end
+  if GetSpellInfo then
+    local ok, name = pcall(GetSpellInfo, spellID)
+    if ok then return name end
+  end
+end
+
+-- The skill line a finished player spell gathers with, or nil.
+local function gatherSkill(spellID)
+  spellID = tonumber(spellID)
+  if not spellID then return nil end
+  if gatherCache[spellID] == nil then
+    if not gatherNames then
+      gatherNames = {}
+      for name, line in pairs(GATHER_NAMES_ENUS) do gatherNames[name] = line end
+      for id, line in pairs(GATHER_SPELLS) do
+        local name = spellName(id)
+        if type(name) == "string" then gatherNames[name:lower()] = line end
+      end
+    end
+    local name = GATHER_SPELLS[spellID] == nil and spellName(spellID) or nil
+    gatherCache[spellID] = GATHER_SPELLS[spellID] or (type(name) == "string" and gatherNames[name:lower()]) or false
+  end
+  return gatherCache[spellID] or nil
+end
+
+local function isFishingLoot()
+  if not IsFishingLoot then return false end
+  local ok, yes = pcall(IsFishingLoot)
+  return ok and yes and true or false
+end
+
+-- The object a loot source counts for: 0 in a fishing window, the GameObject id otherwise, nil for anything else.
+local function nodeObject(guid, fishing)
+  if fishing then return 0 end
+  local kind, id = guidSource(guid)
+  if kind == "object" then return id end
+end
+
+-- The world tooltip's first line, when it shows a world object (owned by UIParent, not a unit, item or spell).
+local function tooltipObjectName()
+  local tt = GameTooltip
+  if not tt or not tt:IsShown() or tt:GetOwner() ~= UIParent then return nil end
+  if (tt.GetUnit and tt:GetUnit()) or (tt.GetItem and tt:GetItem()) or (tt.GetSpell and tt:GetSpell()) then
+    return nil
+  end
+  local text = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
+  if type(text) == "string" and text ~= "" then return text:sub(1, 100) end
+end
+
+local function addSpot(n, loc)
+  if not loc.mapID or not loc.x or not loc.y then return end
+  local list = n.spots[loc.mapID] or {}
+  n.spots[loc.mapID] = list
+  if #list >= SPOT_CAP then return end
+  for _, spot in ipairs(list) do
+    local x, y = spot:match("^([%d.]+),([%d.]+)$")
+    x, y = tonumber(x), tonumber(y)
+    if x and y and (x - loc.x) ^ 2 + (y - loc.y) ^ 2 <= 1 then return end -- within 1 map unit: the same spot
+  end
+  list[#list + 1] = format("%.1f,%.1f", loc.x, loc.y)
+end
+
+local function openNode(key, objectID)
+  if not key or seenNode[key] then return end
+  seenNode[key] = true
+  local byObject = db.nodes[build] or {}
+  db.nodes[build] = byObject
+  local n = byObject[objectID]
+  if not n then
+    n = { opened = 0, spots = {} }
+    byObject[objectID] = n
+  end
+  n.opened = n.opened + 1
+  added()
+  local g = lastGather and now() - lastGather.at <= ATTRIBUTE_WINDOW and lastGather or nil
+  local line = objectID == 0 and FISHING_LINE or (g and g.skillLineID)
+  if line then
+    n.skillLineID = line
+    local rank = skillRank(line)
+    if rank and (not n.rankMin or rank < n.rankMin) then n.rankMin = rank end
+  end
+  if not n.name and objectID ~= 0 then
+    local ok, name = pcall(tooltipObjectName)
+    if ok then n.name = name end
+  end
+  addSpot(n, where())
+end
+
+local function addNodeLoot(itemID, objectID, qty)
+  local byBuild = db.nodeLoot[itemID] or {}
+  db.nodeLoot[itemID] = byBuild
+  local byObject = byBuild[build] or {}
+  byBuild[build] = byObject
+  local e = byObject[objectID]
+  if not e then
+    e = { n = 0, qty = 0 }
+    byObject[objectID] = e
+  end
+  e.n, e.qty = e.n + 1, e.qty + qty
+end
+
 ---------------------------------------------------------------- loot
 -- Every counter here is a total for this SavedVariables session (db.meta.session). A loot slot can come from several
 -- sources (AoE loot): GetLootSourceInfo(slot) returns guid1, qty1, guid2, qty2, ... where qty is the stack size, or
@@ -971,21 +1104,29 @@ local function addCopper(guid, copper)
   c.copper = c.copper + floor(copper)
 end
 
-local function lootItem(i, sources)
+-- fishingKey stands in for the source GUID of a fishing window that has none.
+local function lootItem(i, sources, fishing, fishingKey)
   local link = GetLootSlotLink(i)
   local id = idFromLink(link)
   if not id then return end
   if #sources == 0 then sources = { {} } end
   local slotQty = #sources == 1 and slotQuantity(i) or nil
   for _, src in ipairs(sources) do
-    local key = (src.guid or "?") .. ":" .. id
+    local object = nodeObject(src.guid, fishing)
+    local key = (src.guid or (object and fishingKey) or "?") .. ":" .. id
     if not seenLoot[key] then
       seenLoot[key] = true
-      local npc = npcIDFromGUID(src.guid) or 0
       -- One source: the slot's own stack size. Several (AoE): each source's share.
       local qty = slotQty or ((src.qty and src.qty > 0) and src.qty) or 1
-      addTo(db.drops, id, build, npc, 1)
-      addTo(db.dropQty, id, build, npc, qty)
+      local npc = 0
+      if object then
+        if not src.guid then openNode(fishingKey, object) end
+        addNodeLoot(id, object, qty)
+      else
+        npc = npcIDFromGUID(src.guid) or 0
+        addTo(db.drops, id, build, npc, 1)
+        addTo(db.dropQty, id, build, npc, qty)
+      end
       added()
       scanItem(id, link)
       if run then run.loot[#run.loot + 1] = { itemID = id, npcID = npc } end
@@ -1011,10 +1152,20 @@ end
 
 local function onLootOpened()
   pendingMoney = nil
+  local fishing = isFishingLoot()
+  local fishingKey
+  if fishing then
+    fishingOpens = fishingOpens + 1
+    fishingKey = "fishing#" .. fishingOpens
+  end
   for i = 1, (GetNumLootItems() or 0) do
     local sources = lootSources(i)
-    for _, src in ipairs(sources) do countCorpse(src.guid) end
-    if slotType(i) == MONEY_SLOT then lootMoney(sources) else lootItem(i, sources) end
+    for _, src in ipairs(sources) do
+      countCorpse(src.guid)
+      local object = nodeObject(src.guid, fishing)
+      if object then openNode(src.guid, object) end
+    end
+    if slotType(i) == MONEY_SLOT then lootMoney(sources) else lootItem(i, sources, fishing, fishingKey) end
   end
 end
 
@@ -1197,6 +1348,179 @@ local function refreshLootMethod()
   if run then run.lootMethod = lootMethod() or run.lootMethod end
 end
 
+---------------------------------------------------------------- professions: crafts
+-- One craft can show up as up to three signals: UNIT_SPELLCAST_SUCCEEDED (castGUID), TRADE_SKILL_ITEM_CRAFTED_RESULT
+-- and a "You create" loot line (LOOT_ITEM_CREATED_SELF*, same template matching as the loot lines). Signals less than
+-- CRAFT_WINDOW seconds apart are one craft: a cast joins a craft that has no cast yet, a quantity replaces one from
+-- a less trusted source (result event over chat line). A cast counts as a craft when UnitCastingInfo called it a
+-- tradeskill cast, the spell is a known recipe, or TRADE_SKILL_CRAFT_BEGIN named it. Totals are per session.
+local CRAFT_WINDOW = 3
+local BEGIN_TTL = 60   -- seconds a TRADE_SKILL_CRAFT_BEGIN recipe stays the current one
+local CAST_MEMORY = 200 -- castGUIDs remembered before the lists are cleared
+local craftBegin       -- { recipeID =, at = }
+local lastCraft        -- { recipeID =, at =, castGUID =, qty =, qtyRank =, proc =, chat = }
+local tradeCasts, castSeen, castCount = {}, {}, 0
+
+local function craftRec(recipeID)
+  local byRecipe = db.crafts[build] or {}
+  db.crafts[build] = byRecipe
+  local c = byRecipe[recipeID]
+  if not c then
+    c = { casts = 0, qty = 0, procs = 0, skillUps = 0 }
+    byRecipe[recipeID] = c
+  end
+  return c
+end
+
+local function newCraft(recipeID)
+  local c = craftRec(recipeID)
+  c.casts = c.casts + 1
+  added()
+  lastCraft = { recipeID = recipeID, at = now() }
+  if craftBegin and craftBegin.recipeID == recipeID then craftBegin.at = now() end
+  return lastCraft
+end
+
+local function recentCraft()
+  local k = lastCraft
+  if k and now() - k.at <= CRAFT_WINDOW then return k end
+end
+
+local function beganRecipe()
+  local b = craftBegin
+  if b and now() - b.at <= BEGIN_TTL then return b.recipeID end
+end
+
+local function recipeSnap(recipeID)
+  local r = db.recipes[recipeID]
+  return r and r.byBuild and r.byBuild[build]
+end
+
+local function recipeByOutput(itemID)
+  for id, r in pairs(db.recipes) do
+    local snap = r.byBuild and r.byBuild[build]
+    if snap and snap.outputItemID == itemID then return id end
+  end
+end
+
+-- rank: 2 crafted-result event, 1 chat line. A proc is multicraft, or more than the recipe's quantityMax.
+local function setCraftQty(k, qty, rank, proc)
+  if (k.qtyRank or 0) >= rank then return end
+  local c = craftRec(k.recipeID)
+  c.qty = c.qty + qty - (k.qty or 0)
+  k.qty, k.qtyRank = qty, rank
+  local snap = recipeSnap(k.recipeID)
+  proc = (proc or (snap and snap.qtyMax and qty > snap.qtyMax)) and true or false
+  if proc ~= (k.proc or false) then
+    c.procs = c.procs + (proc and 1 or -1)
+    k.proc = proc
+  end
+end
+
+local function rememberCast(list, castGUID, value)
+  castCount = castCount + 1
+  if castCount > CAST_MEMORY then
+    wipe(tradeCasts); wipe(castSeen)
+    castCount = 0
+  end
+  list[castGUID] = value
+end
+
+local function onPlayerCastStart(castGUID, spellID)
+  if not UnitCastingInfo then return end
+  local n, r = packed(UnitCastingInfo("player"))
+  if n == 0 then return end
+  sampleReturns("UnitCastingInfo", unpack(r, 1, n))
+  -- name, displayName, texture, startTimeMs, endTimeMs, isTradeskill, castID, notInterruptible, castingSpellID
+  local id = castGUID or r[7]
+  if r[6] and id then rememberCast(tradeCasts, id, tonumber(r[9]) or spellID) end
+end
+
+local function onPlayerCastSucceeded(castGUID, spellID)
+  spellID = tonumber(spellID)
+  if not spellID then return end
+  local line = gatherSkill(spellID)
+  if line then
+    lastGather = { skillLineID = line, at = now() }
+    return
+  end
+  if castGUID and castSeen[castGUID] then return end
+  if not ((castGUID and tradeCasts[castGUID]) or db.recipes[spellID] or beganRecipe() == spellID) then return end
+  if castGUID then rememberCast(castSeen, castGUID, true) end
+  local k = recentCraft()
+  if k and not k.castGUID and k.recipeID == spellID then
+    k.castGUID = castGUID or true
+    return
+  end
+  newCraft(spellID).castGUID = castGUID or true
+end
+
+local function onCraftBegin(recipeSpellID)
+  sampleReturns("TRADE_SKILL_CRAFT_BEGIN", recipeSpellID)
+  local id = tonumber(recipeSpellID)
+  if id then craftBegin = { recipeID = id, at = now() } end
+end
+
+local function onCraftedResult(data)
+  if type(data) ~= "table" then return end
+  local api = "TRADE_SKILL_ITEM_CRAFTED_RESULT"
+  sample(api, data)
+  local k = recentCraft()
+  local itemID = tonumber(field(data, "itemID"))
+  local recipeID = tonumber(field(data, "recipeID", "recipeSpellID")) or (k and k.recipeID) or beganRecipe()
+    or (itemID and recipeByOutput(itemID))
+  if not recipeID then return end
+  if not k or k.recipeID ~= recipeID or (k.qtyRank or 0) >= 2 then k = newCraft(recipeID) end
+  local extra = tonumber(field(data, "multicraft", "multicraftQuantity")) or 0
+  setCraftQty(k, tonumber(need(api, data, "quantity", "count")) or 1, 2, extra > 0)
+  if itemID then scanItemOnce(itemID) end
+end
+
+local CREATE_LINES = {
+  { "LOOT_ITEM_CREATED_SELF_MULTIPLE", "You create: %sx%d." },
+  { "LOOT_ITEM_CREATED_SELF", "You create: %s." },
+}
+local createPatterns
+
+local function onCreateLine(text)
+  if type(text) ~= "string" then return end
+  if not createPatterns then
+    createPatterns = {}
+    for _, l in ipairs(CREATE_LINES) do
+      local g = _G[l[1]]
+      createPatterns[#createPatterns + 1] = formatPattern(type(g) == "string" and g or l[2])
+    end
+  end
+  for _, p in ipairs(createPatterns) do
+    local args = matchLine(p, text)
+    if args then
+      local itemID = idFromLink(args[1])
+      if not itemID then return end
+      local k = recentCraft()
+      local snap = k and recipeSnap(k.recipeID)
+      if snap and snap.outputItemID and snap.outputItemID ~= itemID then k = nil end
+      if not k or k.chat then
+        local recipeID = recipeByOutput(itemID)
+        if not recipeID then return end -- not a known recipe's output (conjured food, ...)
+        k = newCraft(recipeID)
+      end
+      k.chat = true
+      setCraftQty(k, tonumber(args[2]) or 1, 1, false)
+      return
+    end
+  end
+end
+
+-- A skill-up within 5 s of a craft (and not after a gather) belongs to that craft's recipe.
+onSkillUp = function(e)
+  local k = lastCraft
+  if not k or now() - k.at > ATTRIBUTE_WINDOW then return end
+  if lastGather and lastGather.at > k.at then return end
+  e.recipeID = k.recipeID
+  local c = craftRec(k.recipeID)
+  c.skillUps = c.skillUps + (e.to - e.from)
+end
+
 ---------------------------------------------------------------- schema
 -- v0.1.0 files have no schemaVersion. Move their data into the v1 shape under the build they recorded.
 local function migrateV0()
@@ -1321,7 +1645,10 @@ function handlers.LOOT_OPENED() onLootOpened() end
 function handlers.LOOT_CLOSED() if pendingMoney then pendingMoney.untilAt = now() + MONEY_WAIT end end
 function handlers.PLAYER_MONEY() pcall(onPlayerMoney) end
 -- pcall: loot bookkeeping reads client tables whose shape we only know from API docs; it must never error in play
-function handlers.CHAT_MSG_LOOT(text, playerName) pcall(onChatLoot, text, playerName) end
+function handlers.CHAT_MSG_LOOT(text, playerName)
+  pcall(onChatLoot, text, playerName)
+  pcall(onCreateLine, text)
+end
 function handlers.LOOT_HISTORY_UPDATE_ENCOUNTER(encounterID) pcall(readEncounterLoot, encounterID) end
 function handlers.LOOT_HISTORY_UPDATE_DROP(encounterID, lootListKey) pcall(readDropLoot, encounterID, lootListKey) end
 function handlers.PARTY_LOOT_METHOD_CHANGED() refreshLootMethod() end
@@ -1389,10 +1716,16 @@ function handlers.TRADE_SKILL_CLOSE() tradeOpen = false end
 function handlers.NEW_RECIPE_LEARNED(...) pcall(onRecipeLearned, ...) end
 function handlers.TRAINER_SHOW() trainerNpc = npcIDFromGUID(UnitGUID("npc")) end
 function handlers.TRAINER_CLOSED() trainerNpc = nil end
-function handlers.UNIT_SPELLCAST_SUCCEEDED(unit)
+function handlers.UNIT_SPELLCAST_START(unit, castGUID, spellID)
+  if unit == "player" then pcall(onPlayerCastStart, castGUID, spellID) end
+end
+function handlers.UNIT_SPELLCAST_SUCCEEDED(unit, castGUID, spellID)
   if unit ~= "player" then return end
   pcall(onPlayerSpellForRecipeItem)
+  pcall(onPlayerCastSucceeded, castGUID, spellID)
 end
+function handlers.TRADE_SKILL_CRAFT_BEGIN(recipeSpellID) pcall(onCraftBegin, recipeSpellID) end
+function handlers.TRADE_SKILL_ITEM_CRAFTED_RESULT(data) pcall(onCraftedResult, data) end
 
 for event in pairs(handlers) do pcall(f.RegisterEvent, f, event) end -- pcall: skip events a client lacks
 f:SetScript("OnEvent", function(_, event, ...) handlers[event](...) end)

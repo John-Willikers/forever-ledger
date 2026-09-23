@@ -122,7 +122,7 @@ return function(H)
     H.eq(c.env.ForeverLedgerDB.corpses[B][1234].copper, 17)
   end)
 
-  H.test("loot: chests and unknown sources are drops without corpses", function()
+  H.test("loot: unknown sources are drops of npc 0 without corpses; chests are node loot (schema 4)", function()
     local c = session(H, { missing = { GetLootSourceInfo = true } })
     loot(c, { { itemID = 2589, sourceGUID = MOB_A, quantity = 4 } })
     local d = c.env.ForeverLedgerDB
@@ -131,7 +131,8 @@ return function(H)
     H.eq(next(d.corpses), nil)
     local chest = session(H)
     loot(chest, { { itemID = 2589, sourceGUID = "GameObject-0-1-0-1-2843-0000C01" } })
-    H.eq(chest.env.ForeverLedgerDB.drops[2589][B][0], 1)
+    H.eq(chest.env.ForeverLedgerDB.drops[2589], nil)
+    H.eq(chest.env.ForeverLedgerDB.nodeLoot[2589][B][2843].n, 1)
     H.eq(next(chest.env.ForeverLedgerDB.corpses), nil)
   end)
 
