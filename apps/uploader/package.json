@@ -20,5 +20,12 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@forever-ledger/contracts": "workspace:*",
+    "@forever-ledger/lua-sv-parser": "workspace:*",
+    "chokidar": "^5.0.0",
+    "commander": "^15.0.0",
+    "pino": "^10.3.1"
   }
 }

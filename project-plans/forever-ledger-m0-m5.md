@@ -73,7 +73,7 @@ User idea: use the client's `/api` docs to find out what Forever really supports
 - [x] Live event sniffer toggle (`/flprobe sniff on|off`): records the first N payloads per event (`QUEST_ACCEPTED` arg order, `QUEST_TURNED_IN` xp/money, `ENCOUNTER_END`) to answer arg-order questions from real play
 - [ ] ⏳ (M4) Uploader gets `probe-dump <file>` → parses `ForeverLedgerProbe.lua` with our parser → `fixtures/real/api-<build>.json`; later: diff two dumps to see API changes between beta builds
 - **Done when:** probe passes luacheck + harness test; after the user runs it in-game once, open questions 2–4 are answered in `CLAUDE.md` and M2 adapts accordingly.
-  - 🟡 2026-09-23 00:40 CDT — probe built + 6 harness tests pass; **waiting on the user to run `/flprobe` in-game.**
+  - 🟡 2026-09-23 00:22 CDT — probe built + 6 harness tests pass; **waiting on the user to run `/flprobe` in-game.**
 
 ### 📜 M2 — Contracts + addon schema v1
 - [x] Addon changes per the findings table; migration of v0 data (quests' nested turnIns → `db.turnIns`, flat item fields → `byBuild[meta.build or 0]`, drops → `drops[item][0][npc]`); FIFO trim helper; bump to v0.2.0, `/fl` status prints schema + build
@@ -82,7 +82,7 @@ User idea: use the client's `/api` docs to find out what Forever really supports
 - [x] `packages/contracts`: zod `Meta`, `Quest`, `QuestObservation`, `QuestRewardOption`, `TurnIn`, `Item`, `ItemBuildSnapshot`, `Drop`, `Run`, `RunBoss`, `RunLoot`, `RunPartyMember`, `UploadBatch` (`{ uploaderId, schemaVersion, clientBuild, character, records: { quests, questObservations, turnIns, items, itemSnapshots, drops, runs } }`)
 - [x] `normalize(svObject) → records` (SavedVariables shape → flat record lists with natural keys) lives in contracts so uploader and server share it; `recordKey()` + stable `contentHash()` (sorted-key JSON → sha256)
 - [x] `rules/classRules.ts`: armor type per class, primary stat per spec, weapon types — versioned, used at query time only
-- **Done when:** every synthetic fixture parses → normalizes → validates; luacheck clean. ✅ Done 2026-09-23 00:45 CDT — 22 Lua tests (incl. migration tested against the real v0.1.0 addon) + 16 contract tests.
+- **Done when:** every synthetic fixture parses → normalizes → validates; luacheck clean. ✅ Done 2026-09-23 00:22 CDT — 22 Lua tests (incl. migration tested against the real v0.1.0 addon) + 16 contract tests.
   - 📝 Change vs doc: `UploadBatch` carries `account` (SavedVariables file = one WoW account, many characters) instead of one `character`; each record names its own `char`. Drop counts keyed item+build+npc+uploader+account.
 
 ### 🗄️ M3 — Server ingest + DB + deploy
