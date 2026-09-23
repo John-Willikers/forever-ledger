@@ -1,5 +1,7 @@
 export const PACKAGE = 'uploader';
 
+export { AddonSyncError, fetchManifest } from './addonManifest.js';
+export type { ManifestOptions } from './addonManifest.js';
 export { backoffDelay } from './backoff.js';
 export type { BackoffOptions } from './backoff.js';
 export {

@@ -24,7 +24,8 @@ export interface ClientOptions {
   timeoutMs?: number;
 }
 
-async function errorText(res: Response): Promise<string> {
+/** `<status> <server message>` for an error response. */
+export async function errorText(res: Response): Promise<string> {
   const text = await res.text().catch(() => '');
   try {
     const body = JSON.parse(text) as { message?: unknown; error?: unknown };
