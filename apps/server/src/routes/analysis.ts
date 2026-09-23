@@ -108,7 +108,9 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
   /**
    * Drop rates per build, npc and item from schema 3 sessions: corpses looted, sources that dropped the item,
    * rate = dropped / corpses, stack quantity and average copper per corpse. Summed over sessions, uploaders and
-   * accounts; only drops from sessions that recorded corpses count, so npcs without corpse data are left out.
+   * accounts; only drops from sessions that recorded corpses count, so npcs without corpse data are left out. The
+   * legacy '' session (running totals from before schema 3) never counts. Known skew: a rate is per corpse *looted*
+   * (empty corpses aren't counted), and pick-pocketing or skinning a mob attributes those items to it.
    */
   app.get('/v1/drops/rates', { preHandler }, async (req) => {
     const build = buildFilter(req.query);
@@ -118,13 +120,13 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
       with c as (
         select build, npc_id, sum(count)::int as corpses, sum(copper)::bigint as copper
         from corpses
-        where ${build}::int is null or build = ${build}::int
+        where session <> '' and (${build}::int is null or build = ${build}::int)
         group by build, npc_id
       ), d as (
         select d.build, d.npc_id, d.item_id, sum(d.count)::int as dropped, sum(d.quantity)::int as quantity
         from drops d
         join corpses k on k.npc_id = d.npc_id and k.build = d.build and k.uploader_id = d.uploader_id
-          and k.account = d.account and k.session = d.session
+          and k.account = d.account and k.session = d.session and k.session <> ''
         where ${build}::int is null or d.build = ${build}::int
         group by d.build, d.npc_id, d.item_id
       )
@@ -136,7 +138,7 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
       from d
       join c on c.build = d.build and c.npc_id = d.npc_id
       left join items i on i.item_id = d.item_id
-      order by d.build desc, "npcId", rate desc, "itemId"`,
+      order by d.build desc, "npcId", rate desc nulls last, "itemId"`,
     );
   });
 

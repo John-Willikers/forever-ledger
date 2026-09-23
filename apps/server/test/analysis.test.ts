@@ -103,6 +103,13 @@ describe('analysis and export routes', () => {
     );
     // Legacy running totals (session '') have no corpses and must not inflate the rate.
     await post('', 'RATES3', [drop('', 2589, 1234, 50, 50)], []);
+    // Nor when a legacy-session table also recorded corpses (a table from before 0.2.4 that Forever did load back).
+    await post(
+      '',
+      'RATES4',
+      [drop('', 2589, 1234, 55, 55)],
+      [{ npcId: 1234, build, session: '', count: 19, copper: 5 }],
+    );
 
     const res = await get(`/v1/drops/rates?build=${build}`);
     expect(res.statusCode).toBe(200);
