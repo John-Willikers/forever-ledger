@@ -26,10 +26,10 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 
 - ✅ 0 Prerequisite — addon 0.2.4 published 17:12 CDT, drop repair run (Linen Cloth back to 6, no legacy rows)
 - ✅ 1 📦 Contracts + server + uploader (schema 4) — 17:29 CDT (f940169; 13 tables, migration 0004 dry-run clean on live copy)
-- 🟡 2 🧪 Addon: skills, recipes, learned, API samples
-- 🟡 3 ⚒️ Addon: crafts + gathering
-- 🟡 4 🏪 Addon: trainers + vendors
-- ⬜ 5 🔖 Addon release plumbing (legacy 0.2.4 copy, fixtures, version 0.3.0)
+- ✅ 2 🧪 Addon: skills, recipes, learned, API samples — 17:38 CDT (cfc5f6e)
+- ✅ 3 ⚒️ Addon: crafts + gathering — 17:38 CDT (e20fa8a)
+- ✅ 4 🏪 Addon: trainers + vendors — 17:38 CDT (c08d433; 140 Lua tests, old creature data byte-identical)
+- ✅ 5 🔖 Addon release plumbing — 17:44 CDT (75c65b1, 2001717; real addon output validates with zero problems across all 13 kinds)
 - ✅ 6 📊 Server routes (`/v1/professions/*`) — 17:29 CDT (f17b8d4)
 - ✅ 7 🖥️ Tray v0.1.3 — 17:29 CDT (3109503, not released yet)
 - ⬜ 8 🚀 Rollout (server → tray → addon 0.3.0)
