@@ -24,6 +24,26 @@ jobs:
       # Electron 44 downloads its binary on first use; do it here, not inside the smoke test's timeout.
       - run: pnpm --filter @forever-ledger/desktop exec node -e "require('electron')"
       - run: pnpm --filter @forever-ledger/desktop test:smoke
+      # Create the release ourselves (as a draft): electron-builder uploads its files in parallel and, when the release
+      # doesn't exist yet, each upload creates its own, which split v0.1.0 and v0.1.1 into two releases each.
+      - name: create draft release
+        shell: bash
+        run: gh release create "$GITHUB_REF_NAME" --draft --title "Forever Ledger ${GITHUB_REF_NAME#v}" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: pnpm --filter @forever-ledger/desktop exec electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: publish the release once all three files are there
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          names="$(gh release view "$GITHUB_REF_NAME" --json assets -q '.assets[].name')"
+          echo "assets: $names"
+          for want in "Forever-Ledger-Setup-$v.exe" "Forever-Ledger-Setup-$v.exe.blockmap" latest.yml; do
+            grep -qxF -- "$want" <<<"$names" || { echo "missing $want"; exit 1; }
+          done
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases" -q "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | length")" = 1
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
         env:
           GH_TOKEN: ${{ github.token }}
