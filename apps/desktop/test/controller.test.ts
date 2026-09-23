@@ -216,6 +216,8 @@ describe('LedgerController', () => {
       t.uploader.collectStatus.mockResolvedValue([account({ acked: 9 })]);
 
       w.emit({ type: 'pass-start' });
+      expect(t.controller.snapshot().uploading).toBe(false);
+      await vi.advanceTimersByTimeAsync(750);
       expect(t.controller.snapshot().uploading).toBe(true);
       expect(t.changes.at(-1)?.uploading).toBe(true);
 
@@ -225,12 +227,37 @@ describe('LedgerController', () => {
       expect(t.controller.snapshot().accounts[0]?.acked).toBe(9);
     });
 
-    it('a pass that throws clears uploading', async () => {
+    it('a quick pass never shows as uploading (no tray flicker)', async () => {
       const t = setup();
       await t.controller.start();
       const w = t.watches[0] as FakeWatch;
       w.emit({ type: 'pass-start' });
-      w.emit({ type: 'pass-error', error: new Error('disk full') });
+      await vi.advanceTimersByTimeAsync(100);
+      w.emit({ type: 'pass-end', result: passResult });
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(t.changes.some((c) => c.uploading)).toBe(false);
+    });
+
+    it('a pass that throws clears uploading and shows the error until a pass works', async () => {
+      const t = setup();
+      await t.controller.start();
+      const w = t.watches[0] as FakeWatch;
+      w.emit({ type: 'pass-start' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      w.emit({ type: 'pass-error', error: new Error('state.json is corrupt') });
+      expect(t.controller.snapshot().uploading).toBe(false);
+      expect(t.controller.snapshot().warning).toMatch(/state\.json is corrupt/);
+      w.emit({ type: 'pass-end', result: passResult });
+      expect(t.controller.snapshot().warning).toBeUndefined();
+    });
+
+    it('a fatal error during a pass clears uploading', async () => {
+      const t = setup();
+      await t.controller.start();
+      const w = t.watches[0] as FakeWatch;
+      w.emit({ type: 'pass-start' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      w.emit({ type: 'fatal', error: new FatalUploadError('unauthorized', 'nope') });
       expect(t.controller.snapshot().uploading).toBe(false);
     });
 
@@ -285,6 +312,7 @@ describe('LedgerController', () => {
       await t.controller.setPaused(true);
       await t.controller.setPaused(false);
       old.emit({ type: 'pass-start' });
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(t.controller.snapshot().uploading).toBe(false);
     });
   });

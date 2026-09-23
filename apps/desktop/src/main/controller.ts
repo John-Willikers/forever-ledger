@@ -55,6 +55,8 @@ export interface ControllerDeps {
   ownLockRetryMs?: number;
   /** This process's pid: a LockedError with it is our own watch, not another uploader. */
   pid?: number;
+  /** A pass shows as "uploading" only once it has run this long (default 750 ms; no tray flicker while offline). */
+  uploadingDelayMs?: number;
 }
 
 export interface SettingsInput {
@@ -118,6 +120,8 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
   private ops: Promise<unknown> = Promise.resolve();
   private stopped = false;
 
+  private uploadingTimer?: ReturnType<typeof setTimeout>;
+  private passError?: string;
   private uploadLocked?: { since: number; pid: number };
   private addonLocked?: { since: number; pid: number };
   private addonErrorSince?: number;
@@ -209,6 +213,12 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       else await this.startWatching();
       this.changed();
     });
+  }
+
+  /** Checks for an addon update now (a rollback pause still applies). */
+  async addonCheckNow(): Promise<void> {
+    if (this.addonRun) await this.addonRun;
+    await this.runAddonSync(false, true);
   }
 
   /** Installs the recommended addon now, even while paused after a rollback. */
@@ -338,6 +348,7 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       l !== undefined && now - l.since >= this.lockWarnAfterMs;
     if (lasting(this.uploadLocked))
       return `Another Forever Ledger uploader (pid ${this.uploadLocked?.pid}) is using the same state folder, so uploads are waiting. Close it (for example \`forever-ledger watch\`).`;
+    if (this.passError) return `Uploads are failing and will be retried: ${this.passError}`;
     if (lasting(this.addonLocked))
       return `Another Forever Ledger uploader (pid ${this.addonLocked?.pid}) keeps the state folder locked, so the addon can't be updated. Close it (for example \`forever-ledger watch\`).`;
     return undefined;
@@ -400,29 +411,51 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
     this.watchGen++;
     const handle = this.watch;
     this.watch = undefined;
-    this.uploading = false;
+    this.setUploading(false);
+    this.passError = undefined;
     await handle?.close();
+  }
+
+  /** `uploading` turns on only after uploadingDelayMs, so quick retry passes don't flash the tray. */
+  private setUploading(on: boolean) {
+    if (this.uploadingTimer) clearTimeout(this.uploadingTimer);
+    this.uploadingTimer = undefined;
+    if (!on) {
+      this.uploading = false;
+      return;
+    }
+    this.uploadingTimer = setTimeout(() => {
+      this.uploadingTimer = undefined;
+      this.uploading = true;
+      this.changed();
+    }, this.deps.uploadingDelayMs ?? 750);
   }
 
   private onWatchEvent(e: WatchEvent) {
     switch (e.type) {
       case 'pass-start':
-        this.uploading = true;
-        break;
+        this.setUploading(true);
+        return;
       case 'pass-end':
-        this.uploading = false;
+        this.setUploading(false);
         this.uploadLocked = undefined;
+        this.passError = undefined;
         this.log.info(passSummary(e.result), 'upload pass finished');
         void this.refreshAccounts();
         break;
       case 'pass-error':
-        this.uploading = false;
-        if (e.error instanceof LockedError && e.error.pid !== this.pid)
-          this.uploadLocked ??= { since: this.now(), pid: e.error.pid };
+        this.setUploading(false);
+        if (e.error instanceof LockedError) {
+          this.passError = undefined;
+          if (e.error.pid !== this.pid)
+            this.uploadLocked ??= { since: this.now(), pid: e.error.pid };
+        } else {
+          this.passError = e.error.message;
+        }
         void this.refreshAccounts();
         break;
       case 'fatal':
-        this.uploading = false;
+        this.setUploading(false);
         this.watch = undefined;
         this.fatal = e.error.message;
         this.toast(`Uploads stopped: ${e.error.message}`);
