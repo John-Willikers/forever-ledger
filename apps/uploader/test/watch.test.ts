@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acquireLock, LockedError } from '../src/lock.js';
+import { createLogger } from '../src/log.js';
 import { startWatch } from '../src/watch.js';
 import type { WatchEvent, WatchHandle } from '../src/watch.js';
 import { FAST_READ, readFixture, tempEnv } from './helpers/fixtures.js';
@@ -75,6 +76,22 @@ describe('watch', () => {
     handle = await startWatch({ config: env.config({ serverUrl: server.url }), ...fast });
     const fatal = await handle.done;
     expect(fatal?.code).toBe('unauthorized');
+  });
+
+  it('says "no ForeverLedger.lua found yet" once, not on every rediscovery', async () => {
+    await mkdir(join(env.wowPath, '_classic_era_', 'WTF', 'Account'), { recursive: true });
+    server = await startMockServer();
+    const lines: string[] = [];
+    handle = await startWatch({
+      config: env.config({ serverUrl: server.url }),
+      ...fast,
+      rediscoverMs: 10,
+      logger: createLogger({ write: (l) => lines.push(l) }),
+    });
+    await new Promise((r) => setTimeout(r, 200));
+    const waiting = lines.filter((l) => l.includes('no ForeverLedger.lua found yet'));
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toMatch(/ INFO /);
   });
 
   describe('events', () => {

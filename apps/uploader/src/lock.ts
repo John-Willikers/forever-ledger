@@ -1,4 +1,5 @@
-import { mkdir, open, readFile, rm } from 'node:fs/promises';
+import { mkdir, open, readFile, rm, stat } from 'node:fs/promises';
+import { uptime } from 'node:os';
 import { join } from 'node:path';
 
 function alive(pid: number): boolean {
@@ -21,11 +22,34 @@ export class LockedError extends Error {
   }
 }
 
+export interface LockOptions {
+  now?: () => number;
+  /** Seconds since the OS booted (os.uptime). */
+  uptimeSec?: () => number;
+}
+
+/** A lock file this much older than the boot-time estimate is from before the last boot. */
+const BOOT_SLACK_MS = 30_000;
+
+/** Written before the last boot: its pid may have been reused by an unrelated process since (Windows). */
+async function fromBeforeBoot(path: string, opts: LockOptions): Promise<boolean> {
+  const mtimeMs = await stat(path).then(
+    (st) => st.mtimeMs,
+    () => undefined,
+  );
+  if (mtimeMs === undefined) return false;
+  const bootMs = (opts.now ?? Date.now)() - (opts.uptimeSec ?? uptime)() * 1000;
+  return mtimeMs < bootMs - BOOT_SLACK_MS;
+}
+
 /**
  * Exclusive lock on the state folder so `watch` and `upload-once` never flush the same queue at once.
- * A lock left behind by a dead process is taken over.
+ * A lock left behind by a dead process, or written before the last boot, is taken over.
  */
-export async function acquireLock(stateDir: string): Promise<() => Promise<void>> {
+export async function acquireLock(
+  stateDir: string,
+  opts: LockOptions = {},
+): Promise<() => Promise<void>> {
   await mkdir(stateDir, { recursive: true });
   const path = join(stateDir, 'uploader.lock');
   if (held.has(path)) throw new LockedError(process.pid);
@@ -42,7 +66,7 @@ export async function acquireLock(stateDir: string): Promise<() => Promise<void>
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
       const pid = Number((await readFile(path, 'utf8').catch(() => '')).trim());
-      if (pid === process.pid || !alive(pid)) {
+      if (pid === process.pid || !alive(pid) || (await fromBeforeBoot(path, opts))) {
         await rm(path, { force: true });
         continue;
       }

@@ -90,6 +90,7 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
   let nextRetryAt = 0;
   let queueNonEmpty = false;
   let lastDiscover = Date.now();
+  let reportedEmpty = false;
   let resolveDone!: (v: FatalUploadError | undefined) => void;
   const done = new Promise<FatalUploadError | undefined>((r) => (resolveDone = r));
 
@@ -131,7 +132,10 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
           kick();
         }
       }
-      if (watched.size === 0) logger.warn({ wowPath }, 'no ForeverLedger.lua found yet; waiting');
+      // Said once (discovery repeats every minute), and again only after files appeared and went away.
+      if (watched.size === 0 && !reportedEmpty)
+        logger.info({ wowPath }, 'no ForeverLedger.lua found yet; waiting');
+      reportedEmpty = watched.size === 0;
     } catch (err) {
       logger.error({ err }, 'discovery failed');
     }
@@ -178,8 +182,12 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
         emit({ type: 'pass-end', result });
         afterFlush(result.flush);
       } catch (err) {
-        if (err instanceof LockedError) logger.warn(err.message);
-        else if (!(err instanceof FatalUploadError))
+        if (err instanceof LockedError) {
+          // Our own process holding it (the tray app's addon sync) is routine; another uploader is worth a warning.
+          if (err.pid === process.pid)
+            logger.debug('state folder busy (addon sync); retrying shortly');
+          else logger.warn(err.message);
+        } else if (!(err instanceof FatalUploadError))
           logger.error({ err }, `upload pass failed: ${errorMessage(err)}`);
         // Every pass-start gets exactly one pass-end or pass-error (a fatal error follows it).
         emit({ type: 'pass-error', error: err instanceof Error ? err : new Error(String(err)) });

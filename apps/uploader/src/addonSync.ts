@@ -323,7 +323,8 @@ async function runSync(
   } catch (err) {
     result.status = 'error';
     result.error = errorMessage(err);
-    logger.warn({ err: result.error }, 'addon sync failed');
+    // Callers report the result (CLI prints it, the tray app logs it); don't log it twice.
+    logger.debug({ err: result.error }, 'addon sync failed');
   }
 
   const first = result.addonsDirs[0];
