@@ -7,6 +7,7 @@ import type { Db } from './db/client.js';
 import {
   builds,
   characters,
+  corpses,
   drops,
   items,
   itemSnapshots,
@@ -108,6 +109,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       'turnIns',
       'itemSnapshots',
       'drops',
+      'corpses',
       'runs',
     ] as const) {
       for (const rec of r[kind]) buildIds.add(rec.build);
@@ -223,7 +225,14 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       tx,
       drops,
       r.drops.map((d) => ({ ...d, uploaderId: batch.uploaderId, account: batch.account })),
-      [drops.itemId, drops.build, drops.npcId, drops.uploaderId, drops.account],
+      [drops.itemId, drops.build, drops.npcId, drops.uploaderId, drops.account, drops.session],
+    );
+    // Per-session totals: setting them is safe, a later upload of the same session only grows them.
+    await upsert(
+      tx,
+      corpses,
+      r.corpses.map((c) => ({ ...c, uploaderId: batch.uploaderId, account: batch.account })),
+      [corpses.npcId, corpses.build, corpses.uploaderId, corpses.account, corpses.session],
     );
 
     await upsert(
@@ -248,6 +257,9 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         mobXp: run.mobXP,
         deaths: run.deaths,
         loot: run.loot,
+        lootMethod: run.lootMethod,
+        bossLoot: run.bossLoot,
+        groupLoot: run.groupLoot,
       })),
       [runs.id],
     );

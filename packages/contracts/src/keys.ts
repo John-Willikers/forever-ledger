@@ -3,6 +3,9 @@ import type { Records, RecordKind } from './schemas.js';
 
 type RecordOf<K extends RecordKind> = Records[K][number];
 
+const sessionSuffix = (session: unknown) =>
+  typeof session === 'string' && session !== '' ? `:${session}` : '';
+
 /** Natural key for every record kind. Uploader state and server acks are keyed by these strings. */
 export function recordKey<K extends RecordKind>(kind: K, record: RecordOf<K>): string {
   const r = record as Record<string, unknown>;
@@ -19,8 +22,11 @@ export function recordKey<K extends RecordKind>(kind: K, record: RecordOf<K>): s
       return `item:${r.itemId}`;
     case 'itemSnapshots':
       return `isnap:${r.itemId}:${r.build}`;
+    // Schema 1/2 drops (session '') keep their old key, so acks from older uploaders stay valid.
     case 'drops':
-      return `drop:${r.itemId}:${r.build}:${r.npcId}`;
+      return `drop:${r.itemId}:${r.build}:${r.npcId}${sessionSuffix(r.session)}`;
+    case 'corpses':
+      return `corpse:${r.npcId}:${r.build}${sessionSuffix(r.session)}`;
     case 'runs':
       return `run:${r.id}`;
     default:

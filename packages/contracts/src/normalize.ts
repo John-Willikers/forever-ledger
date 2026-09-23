@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import {
   Character,
+  Corpse,
   Drop,
   Item,
   ItemBuildSnapshot,
@@ -68,10 +69,29 @@ function list(v: unknown): unknown[] {
   return [];
 }
 
+/** `t[k]` for a Lua table read back as an object or (keys 1..n) an array. */
+function child(t: unknown, k: string): unknown {
+  if (Array.isArray(t)) return /^\d+$/.test(k) ? t[Number(k) - 1] : undefined;
+  return isObj(t) ? t[k] : undefined;
+}
+
 const num = (k: string) => {
   const n = Number(k);
   return Number.isFinite(n) ? n : undefined;
 };
+
+/** Addon spells ids `itemID` / `encounterID`; records use `itemId` / `encounterId`. */
+function toBossLoot(v: unknown) {
+  if (!isObj(v)) return v;
+  const { encounterID, itemID, rolls, ...rest } = v;
+  return { ...rest, encounterId: encounterID, itemId: itemID, rolls: list(rolls) };
+}
+
+function toGroupLoot(v: unknown) {
+  if (!isObj(v)) return v;
+  const { itemID, ...rest } = v;
+  return { ...rest, itemId: itemID };
+}
 
 function splitCharKey(key: string) {
   const i = key.indexOf('-');
@@ -98,8 +118,11 @@ export function normalize(db: unknown): Normalized {
     items: [],
     itemSnapshots: [],
     drops: [],
+    corpses: [],
     runs: [],
   };
+  // Schema 3 sessions; schema 1/2 files are one running total per file, keyed by session ''.
+  const session = meta.session ?? '';
   const problems: NormalizeProblem[] = [];
 
   function add<K extends RecordKind>(
@@ -175,19 +198,37 @@ export function normalize(db: unknown): Normalized {
           itemId: num(iid),
           build: num(b),
           npcId: num(npc),
+          session,
           count,
+          quantity: child(child(child(db.dropQty, iid), b), npc),
         });
       }
     }
   }
 
+  for (const [b, byNpc] of entries(db.corpses)) {
+    for (const [npc, c] of entries(byNpc)) {
+      if (!isObj(c)) continue;
+      add('corpses', Corpse, `corpses.${b}.${npc}`, {
+        npcId: num(npc),
+        build: num(b),
+        session,
+        count: c.n,
+        copper: c.copper ?? 0,
+      });
+    }
+  }
+
   list(db.runs).forEach((r, i) => {
     if (!isObj(r)) return;
+    const { bossLoot, groupLoot, ...rest } = r;
     add('runs', Run, `runs.${i + 1}`, {
-      ...r,
+      ...rest,
       bosses: list(r.bosses),
       loot: list(r.loot),
       party: list(r.party),
+      bossLoot: bossLoot === undefined ? undefined : list(bossLoot).map(toBossLoot),
+      groupLoot: groupLoot === undefined ? undefined : list(groupLoot).map(toGroupLoot),
     });
   });
 

@@ -102,6 +102,7 @@ describe('chunkEntries', () => {
       itemId: i,
       build: 61600,
       npcId: 644,
+      session: '',
       count: 1,
     }));
     return toEntries({
@@ -112,6 +113,7 @@ describe('chunkEntries', () => {
       items: [],
       itemSnapshots: [],
       drops,
+      corpses: [],
       runs: [],
     });
   }

@@ -21,6 +21,7 @@ export const emptyRecords = (): Records => ({
   items: [],
   itemSnapshots: [],
   drops: [],
+  corpses: [],
   runs: [],
 });
 
