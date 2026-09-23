@@ -89,6 +89,25 @@ server recommends, and updates itself.
 Logs: `%APPDATA%\Forever Ledger\logs\forever-ledger.log` (tray menu → **Open logs folder**); the window's Activity
 list shows the latest lines. The app and the CLI share `%APPDATA%\forever-ledger\config.json`.
 
+### 🩺 Error reports
+
+So problems on your PC can be fixed without asking for log files, the app sends short error reports to the server
+(`POST /v1/diagnostics`, with your upload token), every 5 minutes when something new went wrong and about 10 s after
+something serious.
+
+- **What's sent:** warnings and errors from the log, failed uploads, SavedVariables that don't parse, addon update
+  failures, app update failures, crashes, and a summary of records the server refused (why, the validation issues,
+  record kind and key — never the record itself). Plus your uploader id, the app version and Windows version.
+  Repeats are sent once with a count; at most 50 events per report.
+- **What's stripped:** upload tokens (`flt_…` becomes `flt_***`, `Bearer …` becomes `Bearer ***`) and your user
+  folder (`C:\Users\<you>` becomes `~`). Messages are capped at 500 characters, details at 4 KB. No game data, no
+  SavedVariables contents.
+- **Turn it off:** Settings → uncheck **Send error reports** (stored in `prefs.json`; pending reports are dropped).
+  The App card shows when the last report went out and how many are waiting.
+
+Separately, the server keeps a note of every upload it refuses (invalid batch or unsupported schema), without the
+token. Both show up in `GET /v1/diagnostics`.
+
 ## 📤 Uploader CLI (gaming PC)
 
 A Node CLI (Node 22+) that watches `WTF/Account/*/SavedVariables/ForeverLedger.lua`, uploads only new or changed
@@ -144,6 +163,8 @@ API (all but health need `Authorization: Bearer <token>`):
 | `GET /v1/professions/sources?itemId=\|recipeId=` | Trainers (cost, rank), vendors (price, stock), Recipe-class item drops           |
 | `GET /v1/professions/gathering?build=`           | Per node (0 = fishing): opens, min rank, zones, top loot per open                |
 | `GET /v1/export?format=json\|csv&table=`         | Full dump for offline analysis (times in America/Chicago)                        |
+| `POST /v1/diagnostics`                           | Tray app error report (30/min per token, 256 KB)                                 |
+| `GET /v1/diagnostics?since=&limit=`              | Error reports and refused uploads, newest first (`since`: epoch secs or ISO)     |
 
 ## 🏷️ Releasing
 

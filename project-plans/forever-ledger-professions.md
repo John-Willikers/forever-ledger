@@ -35,7 +35,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 7b 🧹 Review fixes — 18:20 CDT (6698173…aeec82c: per-harvest nodes, node names from UNIT_SPELLCAST_SENT, skill-up
   and difficulty attribution, trainer `complete` + merge, newer-wins trainers/vendors, errors sample, scan spreading;
   166 Lua / 393 vitest)
-- ⬜ 8 🚀 Rollout (server → tray → addon 0.3.0)
+- ✅ 7c 🩺 Diagnostics (tray + server) — 18:33 CDT (bcf05e2 contracts, 80f0b2b server + migration 0006, 09f4ac7
+  uploader, 282a34b tray: error reports every 5 min / 10 s after a fatal, sanitized, "Send error reports" toggle;
+  refused ingests kept in `ingest_errors`; `GET /v1/diagnostics`; 166 Lua / 444 vitest, smoke green)
+- ⬜ 8 🚀 Rollout (server → tray → addon 0.3.0) — migration **0006_diagnostics** ships with 0004/0005 (all additive;
+  include it in the dry run)
 - ⬜ 9 🔍 Live verification (api_samples, then data)
 
 > Execution note: two parallel lanes in separate worktrees — lane A = phases 1, 6, 7 (TypeScript), lane B = phases
@@ -68,14 +72,14 @@ Nudge counts new records; `/fl` status shows professions/recipes/nodes counts; `
 5. **🔖 Addon release plumbing:** copy 0.2.4 to `addon/tests/legacy/ForeverLedger-0.2.4.lua`, generate `session-v3.lua` from it and `session-v4.lua` from 0.3.0, update test_ledger/test_migration/test_nudge asserts (top-level keys, record counts, schema 4), VERSION 0.3.0 in `.lua`/`.toc`, README addon section.
 6. **📊 Server routes** in `apps/server/src/routes/analysis.ts`: `GET /v1/professions/recipes?skillLine=&build=` (reagents, output, observed difficulty thresholds, how learned), `GET /v1/professions/sources?itemId=|recipeId=` (trainers with cost/rank, vendors with price/stock, drop sources via `items.class_id = 9`), `GET /v1/professions/gathering?build=` (node types: opens, yield per open, min rank seen, zones). Tests in `apps/server/test/analysis.test.ts`.
 7. **🖥️ Tray v0.1.3:** bump `apps/desktop/package.json` (bundles the schema-4 contracts).
-8. **🚀 Rollout:** deploy server (migration 0004 runs at startup; pg_dump backup first) → tag `v0.1.3` → user updates tray (check the v0.1.3 installer download count before continuing) → tag `addon-v0.3.0` → `addon-cli publish 0.3.0`.
+8. **🚀 Rollout:** deploy server (migrations 0004, 0005 and 0006 run at startup; pg_dump backup first) → tag `v0.1.3` → user updates tray (check the v0.1.3 installer download count before continuing) → tag `addon-v0.3.0` → `addon-cli publish 0.3.0`.
 
 Each addon phase ends with a reviewer pass (spec + quality); the schema/server phase gets a migration dry run on a restored copy of the live DB, as for 0.2.4.
 
 ## ✅ Verification
 
 - `pnpm check` (luacheck, Lua harness incl. new `test_professions.lua`, vitest incl. real-Postgres ingest/analysis tests) on every PR; CI Linux + Windows smoke green before each merge.
-- Migration 0004 dry run: restore the latest `~/backups/forever-ledger/*.sql.gz` into a throwaway `postgres:18-alpine`, run `runMigrations`, check tables and that old rows are untouched.
+- Migration 0004–0006 dry run: restore the latest `~/backups/forever-ledger/*.sql.gz` into a throwaway `postgres:18-alpine`, run `runMigrations`, check tables and that old rows are untouched.
 - Live, after publish: user opens a profession window, a trainer and a vendor, crafts a few items, gathers a few nodes, `/reload`. On the server: `api_samples` rows show the real field names (fix readers if any are nil), then `skills`, `recipes`/`recipe_snapshots`, `crafts`, `nodes`/`node_loot`, `trainers`, `vendors` have rows; `/v1/professions/*` routes return sensible data.
 - Progress checks updated live in `project-plans/forever-ledger-professions.md`; ntfy at milestones.
 
