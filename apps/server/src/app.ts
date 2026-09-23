@@ -12,6 +12,7 @@ import type { Database } from './db/client.js';
 import { ingestBatch } from './ingest.js';
 import { registerAddonRoutes } from './routes/addon.js';
 import { registerAnalysisRoutes } from './routes/analysis.js';
+import { recordIngestError, registerDiagnosticsRoutes } from './routes/diagnostics.js';
 import { registerExportRoutes } from './routes/export.js';
 import { chicagoIso } from './time.js';
 
@@ -22,6 +23,10 @@ export interface AppOptions {
   bodyLimit?: number;
   /** Ingest requests per minute per token (default 120). */
   ingestPerMinute?: number;
+  /** Error reports per minute per token (default 30). */
+  diagnosticsPerMinute?: number;
+  /** Max error report body in bytes (default 256 KB). */
+  diagnosticsBodyLimit?: number;
 }
 
 export const DEFAULT_BODY_LIMIT = 5 * 1024 * 1024;
@@ -80,23 +85,40 @@ export async function buildApp(opts: AppOptions) {
       const tokenId = await verifyBearer(db, req.headers.authorization);
       if (tokenId === null) return reply.status(401).send({ error: 'invalid or revoked token' });
 
+      // Refused batches are kept (without the token) so problems on users' PCs show up in GET /v1/diagnostics.
+      const refuse = async (
+        status: 400 | 409,
+        error: string,
+        issues?: { path: string; message: string }[],
+      ) => {
+        try {
+          await recordIngestError(db, { tokenId, body: req.body, status, error, issues });
+        } catch (err) {
+          req.log.error({ err }, 'cannot record the ingest error');
+        }
+        req.log.warn({ status, error }, 'ingest refused');
+        return reply.status(status).send(issues ? { error, issues } : { error });
+      };
+
       const body = req.body as { schemaVersion?: unknown } | null;
       if (typeof body !== 'object' || body === null) {
-        return reply.status(400).send({ error: 'expected a JSON UploadBatch' });
+        return refuse(400, 'expected a JSON UploadBatch');
       }
       if (!isSupportedSchemaVersion(body.schemaVersion)) {
-        return reply.status(409).send({
-          error: `unsupported schemaVersion ${String(body.schemaVersion)}; this server accepts ${SUPPORTED_SCHEMA_VERSIONS.join(', ')}`,
-        });
+        return refuse(
+          409,
+          `unsupported schemaVersion ${String(body.schemaVersion)}; this server accepts ${SUPPORTED_SCHEMA_VERSIONS.join(', ')}`,
+        );
       }
       const parsed = UploadBatch.safeParse(body);
       if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'invalid UploadBatch',
-          issues: parsed.error.issues
+        return refuse(
+          400,
+          'invalid UploadBatch',
+          parsed.error.issues
             .slice(0, 20)
             .map((i) => ({ path: i.path.join('.'), message: i.message })),
-        });
+        );
       }
       const result = await ingestBatch(db, parsed.data, { tokenId });
       req.log.info(
@@ -114,6 +136,10 @@ export async function buildApp(opts: AppOptions) {
   registerAnalysisRoutes(app, db);
   registerExportRoutes(app, db);
   registerAddonRoutes(app, db);
+  registerDiagnosticsRoutes(app, db, {
+    perMinute: opts.diagnosticsPerMinute,
+    bodyLimit: opts.diagnosticsBodyLimit,
+  });
 
   return app;
 }

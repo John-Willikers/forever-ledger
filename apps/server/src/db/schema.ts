@@ -507,3 +507,40 @@ export const addonPins = pgTable('addon_pins', {
     .references(() => addonReleases.version),
   createdAt: tz('created_at').notNull().defaultNow(),
 });
+
+/** Error reports from the tray app (POST /v1/diagnostics), one row per event. Never holds a token. */
+export const diagnostics = pgTable(
+  'diagnostics',
+  {
+    id: serial('id').primaryKey(),
+    tokenId: integer('token_id').references(() => apiTokens.id),
+    uploaderId: text('uploader_id').notNull(),
+    appVersion: text('app_version').notNull(),
+    platform: text('platform').notNull(),
+    level: text('level').notNull(),
+    source: text('source').notNull(),
+    message: text('message').notNull(),
+    detail: jsonb('detail'),
+    /** When it happened on the reporting PC. */
+    occurredAt: tz('occurred_at').notNull(),
+    receivedAt: tz('received_at').notNull().defaultNow(),
+  },
+  (t) => [index('diagnostics_received_idx').on(t.receivedAt)],
+);
+
+/** Ingest requests the server refused (400 invalid batch, 409 unsupported schema). Never holds a token. */
+export const ingestErrors = pgTable(
+  'ingest_errors',
+  {
+    id: serial('id').primaryKey(),
+    tokenId: integer('token_id').references(() => apiTokens.id),
+    uploaderId: text('uploader_id'),
+    account: text('account'),
+    schemaVersion: integer('schema_version'),
+    status: integer('status').notNull(),
+    error: text('error').notNull(),
+    issues: jsonb('issues'),
+    receivedAt: tz('received_at').notNull().defaultNow(),
+  },
+  (t) => [index('ingest_errors_received_idx').on(t.receivedAt)],
+);
