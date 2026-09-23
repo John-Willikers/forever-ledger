@@ -1,8 +1,9 @@
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { acquireLock, LockedError } from '../src/lock.js';
+import { acquireLock, LockedError, releaseHeldLocksSync } from '../src/lock.js';
 
 let dir: string;
 beforeEach(async () => {
@@ -53,6 +54,15 @@ describe('acquireLock', () => {
 
   it('takes over a lock whose pid is dead', async () => {
     await writeLock(2 ** 22 + 12_345, Date.now());
+    const release = await acquireLock(dir);
+    await release();
+  });
+
+  it('releaseHeldLocksSync deletes the locks this process holds', async () => {
+    await acquireLock(dir);
+    expect(existsSync(join(dir, 'uploader.lock'))).toBe(true);
+    releaseHeldLocksSync();
+    expect(existsSync(join(dir, 'uploader.lock'))).toBe(false);
     const release = await acquireLock(dir);
     await release();
   });

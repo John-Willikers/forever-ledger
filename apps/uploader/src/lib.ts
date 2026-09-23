@@ -47,7 +47,7 @@ export type { Discovery, SavedVariablesFile } from './discover.js';
 export { ConfigError, FatalUploadError } from './errors.js';
 export { exportRecords, writeExport } from './export.js';
 export type { ExportDocument } from './export.js';
-export { acquireLock, LockedError, withLock } from './lock.js';
+export { acquireLock, LockedError, releaseHeldLocksSync, withLock } from './lock.js';
 export { createLogger, silentLogger } from './log.js';
 export type { Logger } from './log.js';
 export { flushQueue, prepareFile, runFlush, runUploadPass } from './pass.js';

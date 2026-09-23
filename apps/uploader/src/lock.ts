@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs';
 import { mkdir, open, readFile, rm, stat } from 'node:fs/promises';
 import { uptime } from 'node:os';
 import { join } from 'node:path';
@@ -83,4 +84,13 @@ export async function withLock<T>(stateDir: string, fn: () => Promise<T>): Promi
   } finally {
     await release();
   }
+}
+
+/**
+ * Deletes every lock this process holds, synchronously. For an app that is exiting while a pass still runs (quit
+ * timeout, OS shutdown): the next start then finds no lock instead of one whose pid may be reused.
+ */
+export function releaseHeldLocksSync(): void {
+  for (const path of held) rmSync(path, { force: true });
+  held.clear();
 }
