@@ -162,7 +162,7 @@ ForeverLedgerDB = {
 				"Tailoring", -- [1]
 				"", -- [2]
 				"header", -- [3]
-				false, -- [4]
+				true, -- [4]
 			},
 			["time"] = 1790001170,
 		},
@@ -958,6 +958,7 @@ ForeverLedgerDB = {
 	["trainers"] = {
 		[61582] = {
 			[1103] = {
+				["complete"] = true,
 				["loc"] = {
 					["mapID"] = 1429,
 					["subzone"] = "Goldshire",

@@ -258,6 +258,7 @@ ForeverLedgerDB = {
 				},
 				["skillLineID"] = 197,
 				["seenAt"] = 1790100150,
+				["complete"] = true,
 				["services"] = {
 					{
 						["name"] = "Bolt of Linen Cloth",

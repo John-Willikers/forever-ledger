@@ -495,6 +495,7 @@ describe('normalize — schema 4 professions (hand-written professions-v4.lua)',
         loc: { ...loc, x: 43.4, y: 73.8 },
         skillLineId: 197,
         seenAt: 1790100150,
+        complete: true,
         services: [
           {
             name: 'Bolt of Linen Cloth',
@@ -700,7 +701,7 @@ describe('normalize — schema 4 from the real addon (session-v4.lua)', () => {
     });
     // NEW_RECIPE_LEARNED(recipeID, nil, baseRecipeID): the nil gap makes it a keyed table, not a list
     expect({ ...(byApi.get('NEW_RECIPE_LEARNED') as object) }).toEqual({ 1: 2393, 3: 2393 });
-    expect(byApi.get('GetTrainerServiceInfo')).toEqual(['Tailoring', '', 'header', false]);
+    expect(byApi.get('GetTrainerServiceInfo')).toEqual(['Tailoring', '', 'header', true]);
     expect(byApi.get('C_TradeSkillUI.GetRecipeSchematic:reagentSlot')).toMatchObject({
       quantityRequired: 2,
     });

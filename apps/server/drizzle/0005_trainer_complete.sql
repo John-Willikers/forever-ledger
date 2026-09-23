@@ -1,0 +1,1 @@
+ALTER TABLE "trainers" ADD COLUMN "complete" boolean DEFAULT false NOT NULL;

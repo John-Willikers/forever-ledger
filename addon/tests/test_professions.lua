@@ -965,6 +965,55 @@ return function(H)
     H.eq(H.count(c.env.ForeverLedgerDB.trainers[B]), 1)
   end)
 
+  H.test("trainers: a scan is complete only with every type filter on and every header expanded", function()
+    local c = session(H)
+    atTrainer(c)
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.trainers[B][1103].complete, true)
+    for _, case in ipairs({ { filters = { unavailable = false } }, { filters = { used = false } },
+                            { filters = { available = false } }, { collapsed = true } }) do
+      local c2 = session(H)
+      local services = tailorServices()
+      if case.collapsed then services[1].expanded = false end
+      c2.world.npc = { name = "Eldrin", guid = TRAINER }
+      c2.world.trainer = { tradeskill = true, services = services, filters = case.filters }
+      c2.fire("TRAINER_SHOW")
+      H.eq(c2.env.ForeverLedgerDB.trainers[B][1103].complete, false, next(case.filters or case))
+    end
+    local c3 = session(H, { missing = { GetTrainerServiceTypeFilter = true } })
+    atTrainer(c3)
+    H.eq(c3.env.ForeverLedgerDB.trainers[B][1103].complete, true, "a client without filters shows everything")
+  end)
+
+  H.test("trainers: an incomplete scan merges services by name; a complete one replaces the list", function()
+    local c = session(H)
+    atTrainer(c)
+    local d = c.env.ForeverLedgerDB
+    H.eq(#d.trainers[B][1103].services, 3)
+    -- "unavailable" hidden: the robe is not listed, the vest was bought
+    c.world.trainer.filters = { unavailable = false }
+    c.world.trainer.services = { { name = "Tailoring", type = "header" },
+      { name = "Brown Linen Vest", type = "used", cost = 100, skill = "Tailoring", skillRank = 10, level = 5,
+        itemID = 2568, skillLine = "Tailoring" },
+      { name = "Linen Belt", type = "available", cost = 80, skillLine = "Tailoring" } }
+    c.advance(5)
+    c.fire("TRAINER_UPDATE")
+    local t = d.trainers[B][1103]
+    H.eq(t.complete, false)
+    H.eq(#t.services, 4)
+    H.eq(t.services[1].name, "Brown Linen Vest")
+    H.eq(t.services[1].type, "used", "updated in place")
+    H.eq(t.services[2].name, "Red Linen Robe", "kept: only hidden by the filter")
+    H.eq(t.services[4].name, "Linen Belt", "new services are appended")
+    c.world.trainer.filters = nil
+    c.world.trainer.services = { { name = "Linen Belt", type = "available", cost = 80 } }
+    c.advance(5)
+    c.fire("TRAINER_UPDATE")
+    t = d.trainers[B][1103]
+    H.eq(t.complete, true)
+    H.eq(#t.services, 1, "a complete scan is the whole list")
+  end)
+
   H.test("trainers: the skill line comes from the skill requirement when the service has no skill line", function()
     local c = session(H)
     local services = tailorServices()

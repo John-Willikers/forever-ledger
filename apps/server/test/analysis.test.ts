@@ -185,7 +185,7 @@ describe('analysis and export routes', () => {
       'recipeId,build,uploaderId,account,session,casts,qty,procs,skillUps,updatedAt',
     );
     expect((await get('/v1/export?format=csv&table=trainers')).body.split('\n')[0]).toBe(
-      'npcId,build,name,loc,skillLineId,seenAt,services,updatedAt',
+      'npcId,build,name,loc,skillLineId,seenAt,complete,services,updatedAt',
     );
     expect((await get('/v1/export?format=csv&table=recipe_difficulty')).statusCode).toBe(200);
     expect(json.tables).toHaveProperty('api_samples');

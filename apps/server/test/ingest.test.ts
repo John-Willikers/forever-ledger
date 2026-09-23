@@ -583,6 +583,43 @@ describe('ingest API (real Postgres)', () => {
         { name: null, items: [{ itemId: 2320 }] },
       ]);
     });
+
+    it('merges an incomplete trainer scan by name; never lets an older scan overwrite a trainer or vendor', async () => {
+      const b = schema4Batch('1790300000-0003', acct);
+      const [bolt, shirt] = b.records.trainers[0]!.services;
+      const trainer = (seenAt: number, complete: boolean | undefined, services: unknown[]) => ({
+        ...b.records,
+        trainers: [{ ...b.records.trainers[0]!, seenAt, complete, services }],
+      });
+      const send = (records: unknown) => post({ ...b, records });
+      // Full list first, then a filtered scan: the shirt was bought, a belt is new, the bolt is only hidden.
+      expect((await send(trainer(1790300000, true, [bolt, shirt]))).statusCode).toBe(200);
+      const belt = { name: 'Linen Belt', type: 'available', cost: 80 };
+      expect(
+        (await send(trainer(1790300100, false, [{ ...shirt, type: 'used' }, belt]))).statusCode,
+      ).toBe(200);
+      expect(await q(`select complete, services from trainers`)).toEqual([
+        { complete: true, services: [bolt, { ...shirt, type: 'used' }, belt] },
+      ]);
+      // A scan without the flag (older addon data) merges too.
+      expect((await send(trainer(1790300200, undefined, [belt]))).statusCode).toBe(200);
+      expect((await q(`select services from trainers`))[0]!.services).toHaveLength(3);
+      // An older upload arriving late changes nothing; a newer complete scan replaces the list.
+      expect((await send(trainer(1790200000, true, [belt]))).statusCode).toBe(200);
+      expect((await q(`select services from trainers`))[0]!.services).toHaveLength(3);
+      expect((await send(trainer(1790300300, true, [belt]))).statusCode).toBe(200);
+      expect(await q(`select complete, services from trainers`)).toEqual([
+        { complete: true, services: [belt] },
+      ]);
+
+      const vendor = (seenAt: number, items: unknown[]) => ({
+        ...b.records,
+        vendors: [{ ...b.records.vendors[0]!, seenAt, items }],
+      });
+      expect((await send(vendor(1790300000, [{ itemId: 2321 }]))).statusCode).toBe(200);
+      expect((await send(vendor(1790100000, [{ itemId: 9999 }]))).statusCode).toBe(200);
+      expect(await q(`select items from vendors`)).toEqual([{ items: [{ itemId: 2321 }] }]);
+    });
   });
 
   it('rejects unknown schema versions with 409 and malformed batches with 400', async () => {

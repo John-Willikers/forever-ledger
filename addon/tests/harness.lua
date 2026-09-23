@@ -386,8 +386,8 @@ function H.new(worldOverrides)
       spells = {},           -- [spellID] = { name= } for C_Spell.GetSpellInfo
       fishing = false,       -- IsFishingLoot()
       tooltip = { shown = false }, -- GameTooltip: { shown=, owner="UIParent"|<other>, text=, unit=, item=, spell= }
-      -- trainer = nil:      { tradeskill=true, services={ { name=, sub=, type=, cost=, skill=, skillRank=, level=,
-      --                     itemID=, skillLine= } } }
+      -- trainer = nil:      { tradeskill=true, filters={ available=, unavailable=, used= }, services={ { name=,
+      --                     sub=, type=, cost=, skill=, skillRank=, level=, itemID=, skillLine=, expanded= } } }
       -- merchant = nil:     { items={ { itemID=, info=MerchantItemInfo } } }
     }
     for k, v in pairs(defaults) do
@@ -470,7 +470,12 @@ function H.new(worldOverrides)
     end
     env.GetTrainerServiceInfo = function(i)
       local s = service(i)
-      if s then return s.name, s.sub or "", s.type or "available", false end
+      if s then return s.name, s.sub or "", s.type or "available", s.type == "header" and s.expanded ~= false end
+    end
+    -- world.trainer.filters = { available=, unavailable=, used= }: false hides that type (default: all shown)
+    env.GetTrainerServiceTypeFilter = function(kind)
+      called("GetTrainerServiceTypeFilter")
+      return ((world.trainer or {}).filters or {})[kind] ~= false
     end
     env.GetTrainerServiceCost = function(i) local s = service(i); return s and s.cost or 0, false end
     env.GetTrainerServiceSkillReq = function(i)

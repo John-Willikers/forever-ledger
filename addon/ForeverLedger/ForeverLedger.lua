@@ -658,9 +658,11 @@ local function onPlayerSpellForRecipeItem()
 end
 
 ---------------------------------------------------------------- professions: trainers and vendors
--- Profession trainers (IsTradeskillTrainer) and every vendor with an NPC GUID. Each scan (throttled like the
--- profession window) replaces the whole list for that NPC and build. The lists are what the window shows, so the
--- trainer's available/unavailable/used filters and the vendor's item filter narrow them. At most LIST_CAP entries.
+-- Profession trainers (IsTradeskillTrainer) and every vendor with an NPC GUID, scanned like the profession window
+-- (throttled). The lists are what the window shows. A trainer scan is `complete` when the available/unavailable/used
+-- filters are all on (GetTrainerServiceTypeFilter, only read) and no header is collapsed: it replaces the list for
+-- that NPC and build; any other scan merges its services into the list by name. A vendor scan replaces the list (its
+-- item filter can narrow it). At most LIST_CAP entries.
 local merchantNpc -- npcID while a merchant window is open
 
 local function skillLineByName(name)
@@ -670,11 +672,13 @@ local function skillLineByName(name)
   end
 end
 
+-- The service at index i, or nil and whether it is a collapsed header.
 local function trainerService(i)
   local n, r = packed(GetTrainerServiceInfo(i))
   sampleReturns("GetTrainerServiceInfo", unpack(r, 1, n))
   local name, serviceType = r[1], r[3] -- name, subText, serviceType, isExpanded
-  if type(name) ~= "string" or serviceType == "header" then return nil end
+  if serviceType == "header" then return nil, not r[4] end
+  if type(name) ~= "string" then return nil end
   local s = { name = name, type = serviceType ~= nil and tostring(serviceType) or nil }
   if GetTrainerServiceCost then s.cost = tonumber((GetTrainerServiceCost(i))) end
   if GetTrainerServiceSkillReq then
@@ -690,6 +694,33 @@ local function trainerService(i)
   return s
 end
 
+local function trainerFiltersOn()
+  if not GetTrainerServiceTypeFilter then return true end -- no filters: the window shows everything
+  for _, kind in ipairs({ "available", "unavailable", "used" }) do
+    local ok, on = pcall(GetTrainerServiceTypeFilter, kind)
+    if not ok or not on then return false end
+  end
+  return true
+end
+
+-- `services` merged into `old` by name: known names updated in place, new ones appended.
+local function mergeServices(old, services)
+  local out, at = {}, {}
+  for i, s in ipairs(old) do
+    out[i] = s
+    if type(s) == "table" and s.name then at[s.name] = i end
+  end
+  for _, s in ipairs(services) do
+    if at[s.name] then
+      out[at[s.name]] = s
+    elseif #out < LIST_CAP then
+      out[#out + 1] = s
+      at[s.name] = #out
+    end
+  end
+  return out
+end
+
 local function scanTrainer()
   if not trainerNpc or not IsTradeskillTrainer or not GetNumTrainerServices or not GetTrainerServiceInfo then
     return
@@ -697,8 +728,11 @@ local function scanTrainer()
   local ok, isTradeskill = pcall(IsTradeskillTrainer)
   if not ok or not isTradeskill then return end
   local services, skillLineID = {}, nil
-  for i = 1, math.min(GetNumTrainerServices() or 0, LIST_CAP) do
-    local s = trainerService(i)
+  local total = GetNumTrainerServices() or 0
+  local complete = total <= LIST_CAP and trainerFiltersOn()
+  for i = 1, math.min(total, LIST_CAP) do
+    local s, collapsed = trainerService(i)
+    if collapsed then complete = false end
     if s then
       services[#services + 1] = s
       skillLineID = skillLineID or skillLineByName(GetTrainerServiceSkillLine and GetTrainerServiceSkillLine(i))
@@ -707,9 +741,14 @@ local function scanTrainer()
   end
   local byNpc = db.trainers[build] or {}
   db.trainers[build] = byNpc
-  if not byNpc[trainerNpc] then added() end
+  local prev = byNpc[trainerNpc]
+  if not prev then added() end
+  if not complete and prev and type(prev.services) == "table" then
+    services = mergeServices(prev.services, services)
+    skillLineID = skillLineID or prev.skillLineID
+  end
   byNpc[trainerNpc] = { name = UnitName("npc"), loc = where(), skillLineID = skillLineID, seenAt = now(),
-                        services = services }
+                        complete = complete, services = services }
 end
 
 local function scanVendor()

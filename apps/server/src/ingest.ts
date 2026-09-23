@@ -366,18 +366,46 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       ],
     );
 
-    // Trainer and vendor lists: the latest upload replaces the whole row.
+    // Trainer and vendor lists: a newer scan wins, an older SavedVariables session uploaded late changes nothing. A
+    // trainer scan that saw only part of the list (a type filter off, a collapsed header) merges its services into the
+    // stored list by name: known names are updated in place, new ones appended.
+    const mergedServices = sql`(
+      select coalesce(jsonb_agg(coalesce(n.svc, o.svc) order by o.ord), '[]'::jsonb)
+      from jsonb_array_elements(${trainers.services}) with ordinality as o(svc, ord)
+      left join lateral (
+        select x as svc from jsonb_array_elements(excluded.services) as x
+        where x->>'name' = o.svc->>'name' limit 1
+      ) n on true
+    ) || coalesce((
+      select jsonb_agg(x order by ord)
+      from jsonb_array_elements(excluded.services) with ordinality as e(x, ord)
+      where not exists (
+        select 1 from jsonb_array_elements(${trainers.services}) as y where y->>'name' = x->>'name')
+    ), '[]'::jsonb)`;
     await upsert(
       tx,
       trainers,
-      r.trainers.map((t) => ({ ...t, seenAt: fromEpoch(t.seenAt)! })),
+      r.trainers.map((t) => ({
+        ...t,
+        complete: t.complete ?? false,
+        seenAt: fromEpoch(t.seenAt)!,
+      })),
       [trainers.npcId, trainers.build],
+      {
+        setWhere: notOlder(trainers.seenAt),
+        set: {
+          services: sql`case when excluded.complete then excluded.services else ${mergedServices} end`,
+          complete: sql`excluded.complete or ${trainers.complete}`,
+          skillLineId: sql`coalesce(excluded.skill_line_id, ${trainers.skillLineId})`,
+        },
+      },
     );
     await upsert(
       tx,
       vendors,
       r.vendors.map((v) => ({ ...v, seenAt: fromEpoch(v.seenAt)! })),
       [vendors.npcId, vendors.build],
+      { setWhere: notOlder(vendors.seenAt) },
     );
     await upsert(
       tx,

@@ -377,7 +377,10 @@ export const nodeLoot = pgTable(
   ],
 );
 
-/** A trainer's services (TrainerService[]) in one build; the latest upload replaces the row. */
+/**
+ * A trainer's services (TrainerService[]) in one build. A complete scan replaces the list, any other merges into it by
+ * service name; `complete` says some scan saw the whole list. An older scan never overwrites a newer one.
+ */
 export const trainers = pgTable(
   'trainers',
   {
@@ -387,13 +390,14 @@ export const trainers = pgTable(
     loc: jsonb('loc'),
     skillLineId: integer('skill_line_id'),
     seenAt: tz('seen_at').notNull(),
+    complete: boolean('complete').notNull().default(false),
     services: jsonb('services').notNull(),
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.npcId, t.build] })],
 );
 
-/** A vendor's items (VendorItem[]) in one build; the latest upload replaces the row. */
+/** A vendor's items (VendorItem[]) in one build; the newest scan replaces the row. */
 export const vendors = pgTable(
   'vendors',
   {

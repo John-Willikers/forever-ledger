@@ -49,8 +49,8 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 | `learned[] = {char, recipeID, build, time, via = "trainer:<npcID>" / "item:<itemID>" / "unknown"}` | `NEW_RECIPE_LEARNED` (+ trainer window open, or a Recipe-class item used in the last 5 s) | `recipeLearned` |
 | `crafts[build][recipeID] = {casts, qty, procs, skillUps}` (per session) | `TRADE_SKILL_CRAFT_BEGIN` + `TRADE_SKILL_ITEM_CRAFTED_RESULT` (quantity, multicraft/crit); fallback `UNIT_SPELLCAST_SUCCEEDED` with `UnitCastingInfo(...).isTradeskill` and "You create" lines (`LOOT_ITEM_CREATED_SELF*` templates, same pattern builder as 0.2.4) | `craft` → `crafts` (recipe+build+uploader+account+session) |
 | `nodes[build][objectID] = {opened, name?, rankMin, mapIDs{}, spots[] (cap 50/zone, 1-unit dedupe)}` + `nodeLoot[item][build][objectID] = {n, qty}` (per session) | loot windows whose source GUID is `GameObject-…` (today `npcIDFromGUID` drops these to npc 0); `IsFishingLoot()` → pseudo object 0 keyed by mapID; player position + gathering skill rank at loot time | `node` + `nodeLoot` (per session, like `corpses`/`drops`) |
-| `trainers[build][npcID] = {name, loc, profession, services[] = {name, type, cost, skill, skillRank, level}}` | `TRAINER_SHOW`/`TRAINER_UPDATE` when `IsTradeskillTrainer()`; `GetNumTrainerServices` + `GetTrainerService{Info,Cost,SkillReq,LevelReq,ItemLink}` | `trainer` (npc+build, replaced whole) |
-| `vendors[build][npcID] = {name, loc, items[] = {itemID, price, stack, numAvailable, currency?}}` | `MERCHANT_SHOW`/`UPDATE`: `GetMerchantNumItems` + `C_MerchantFrame.GetItemInfo` + `GetMerchantItemID`; every item → `scanItem` (tooltip already captures "Teaches you how to…") | `vendor` (npc+build, replaced whole) |
+| `trainers[build][npcID] = {name, loc, profession, complete, services[] = {name, type, cost, skill, skillRank, level}}` | `TRAINER_SHOW`/`TRAINER_UPDATE` when `IsTradeskillTrainer()`; `GetNumTrainerServices` + `GetTrainerService{Info,Cost,SkillReq,LevelReq,ItemLink}`; `complete` = every `GetTrainerServiceTypeFilter` on and no collapsed header | `trainer` (npc+build; a complete scan replaces the list, others merge by service name; newer `seenAt` wins) |
+| `vendors[build][npcID] = {name, loc, items[] = {itemID, price, stack, numAvailable, currency?}}` | `MERCHANT_SHOW`/`UPDATE`: `GetMerchantNumItems` + `C_MerchantFrame.GetItemInfo` + `GetMerchantItemID`; every item → `scanItem` (tooltip already captures "Teaches you how to…") | `vendor` (npc+build, replaced whole unless the stored scan is newer) |
 | `items[id].classID/subclassID` (new optional fields) | `C_Item.GetItemInfo` returns 12/13 | `items.class_id/subclass_id` (keepKnown) — lets the server find Recipe-class drops |
 | `apiSamples[api] = {build, time, sample}` (1 per API per build, strings trimmed) | first successful call of each profession API / event payload above | `apiSample` → `api_samples` — so we can check real field names on the server without asking the user for files |
 
@@ -101,8 +101,10 @@ db.learned = { { char=, recipeID=, build=, time=, via= }, ... }   -- via "traine
 db.crafts[build][recipeID] = { casts=, qty=, procs=, skillUps= }                                 -- per session
 db.nodes[build][objectID] = { opened=, name=, rankMin=, skillLineID=, spots = { [mapID] = { "x,y", ... } } }  -- per session; fishing = objectID 0; ≤50 spots per map
 db.nodeLoot[itemID][build][objectID] = { n=, qty= }                                             -- per session
-db.trainers[build][npcID] = { name=, loc=, skillLineID=, seenAt=,
+db.trainers[build][npcID] = { name=, loc=, skillLineID=, seenAt=, complete=,
   services = { { name=, type=, cost=, skill=, skillRank=, level=, itemID= }, ... } }
+  -- complete = true when the scan saw every service (all type filters on, headers expanded); an incomplete scan merges
+  -- its services into the stored list by name instead of replacing it
 db.vendors[build][npcID] = { name=, loc=, seenAt=,
   items = { { itemID=, price=, stack=, numAvailable=, currencyID=, extendedCost= }, ... } }
 db.items[itemID].classID / .subclassID                                                           -- new optional fields
@@ -126,7 +128,7 @@ db.apiSamples[api] = { build=, time=, sample= }   -- api e.g. "C_TradeSkillUI.Ge
 | `crafts` | recipeId, build, session, casts, qty, procs, skillUps | `craft:recipeId:build` + session suffix |
 | `nodes` | objectId, build, session, opened, name?, rankMin?, skillLineId?, spots[{mapId, points[[x,y]]}] | `node:objectId:build` + session suffix |
 | `nodeLoot` | itemId, objectId, build, session, count, quantity | `nloot:itemId:objectId:build` + session suffix |
-| `trainers` | npcId, build, name?, loc?, skillLineId?, seenAt, services[{name, type?, cost?, skill?, skillRank?, level?, itemId?}] | `trainer:npcId:build` |
+| `trainers` | npcId, build, name?, loc?, skillLineId?, seenAt, complete?, services[{name, type?, cost?, skill?, skillRank?, level?, itemId?}] | `trainer:npcId:build` |
 | `vendors` | npcId, build, name?, loc?, seenAt, items[{itemId, price?, stack?, numAvailable?, currencyId?, extendedCost?}] | `vendor:npcId:build` |
 | `apiSamples` | api, build, time, sample (json) | `api:api:build` |
 | `items` (existing) | + classId?, subclassId? | unchanged |
@@ -134,4 +136,5 @@ db.apiSamples[api] = { build=, time=, sample= }   -- api e.g. "C_TradeSkillUI.Ge
 Server tables (snake_case): `skills`, `skill_ups`, `recipes` (keepKnown), `recipe_snapshots` (reagents jsonb),
 `recipe_status`, `recipe_difficulty`, `recipes_learned`, `crafts` / `nodes` / `node_loot` (PK includes uploader_id,
 account, session like `drops`/`corpses`; nodes.spots jsonb), `trainers` / `vendors` (services/items/loc jsonb, row
-replaced), `api_samples` (sample jsonb), `items.class_id/subclass_id`.
+replaced by a newer scan; `trainers.complete` boolean — an incomplete scan merges services by name, migration 0005),
+`api_samples` (sample jsonb), `items.class_id/subclass_id`.

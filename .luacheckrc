@@ -41,6 +41,7 @@ read_globals = {
   "GameTooltipTextLeft1", "LOOT_ITEM_CREATED_SELF", "LOOT_ITEM_CREATED_SELF_MULTIPLE",
   "IsTradeskillTrainer", "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost",
   "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq", "GetTrainerServiceItemLink", "GetTrainerServiceSkillLine",
+  "GetTrainerServiceTypeFilter",
   "GetMerchantNumItems", "GetMerchantItemID", "GetMerchantItemLink",
 }
 

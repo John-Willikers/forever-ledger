@@ -338,7 +338,10 @@ export const TrainerService = z.object({
 });
 export type TrainerService = z.infer<typeof TrainerService>;
 
-/** A profession trainer's services in one build; the latest scan replaces the row. */
+/**
+ * A profession trainer's services in one build. `complete`: the scan saw every service (all type filters on, no
+ * collapsed header) and replaces the stored list; otherwise its services are merged into it by name. A newer scan wins.
+ */
 export const Trainer = z.object({
   npcId: nonNegInt,
   build,
@@ -346,6 +349,7 @@ export const Trainer = z.object({
   loc: Location.optional(),
   skillLineId: nonNegInt.optional(),
   seenAt: epochSecs,
+  complete: z.boolean().optional(),
   services: z.array(TrainerService).max(1000),
 });
 export type Trainer = z.infer<typeof Trainer>;
@@ -362,7 +366,7 @@ export const VendorItem = z.object({
 });
 export type VendorItem = z.infer<typeof VendorItem>;
 
-/** A vendor's items in one build; the latest scan replaces the row. */
+/** A vendor's items in one build; a scan replaces the row unless the stored one is newer. */
 export const Vendor = z.object({
   npcId: nonNegInt,
   build,

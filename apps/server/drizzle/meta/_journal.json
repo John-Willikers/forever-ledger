@@ -36,6 +36,13 @@
       "when": 1790202021609,
       "tag": "0004_professions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790204780060,
+      "tag": "0005_trainer_complete",
+      "breakpoints": true
     }
   ]
 }
