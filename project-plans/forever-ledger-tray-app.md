@@ -42,15 +42,15 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Timestam
 
 ### 🗄️ Phase 2 — Server
 
-- 🟡 2.1 `addon_releases` + `addon_pins` tables, migration 0001
-- 🟡 2.2 `resolveManifest` + `GET /v1/addon/manifest`
-- 🟡 2.3 `publishRelease` (GitHub) + admin CLI `addon publish|pin|unpin|yank|list`
-- ⬜ 2.4 Deploy to VPS (build, PM2 restart, curl manifest → 404 "none published")
+- ✅ 2.1 `addon_releases` + `addon_pins` tables, migration 0001 — 2026-09-23 02:07 CDT (930ff82)
+- ✅ 2.2 `resolveManifest` + `GET /v1/addon/manifest` — 2026-09-23 02:07 CDT (f47da1e)
+- ✅ 2.3 `publishRelease` (GitHub) + admin CLI `addon publish|pin|unpin|yank|list` — 2026-09-23 02:07 CDT (2900de2; a version's zip can never be swapped)
+- ✅ 2.4 Deploy to VPS (build, PM2 restart, curl manifest → 404 "none published") — 2026-09-23 02:07 CDT (live: 401 without token, 404 `no addon release published` with)
 
 ### 🏷️ Phase 3 — Addon release automation
 
-- 🟡 3.1 `scripts/check-addon-version.ts` + tests
-- 🟡 3.2 `.github/workflows/addon-release.yml`
+- ✅ 3.1 `scripts/check-addon-version.ts` + tests — 2026-09-23 02:07 CDT (024f317; also `--zip` verifies the release zip)
+- ✅ 3.2 `.github/workflows/addon-release.yml` — 2026-09-23 02:07 CDT (2b9b67d; tag via env)
 - ⬜ 3.3 First release `addon-v0.2.1` → `addon publish 0.2.1` → manifest returns it
 
 ### 🖥️ Phase 4 — Desktop app
