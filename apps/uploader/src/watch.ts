@@ -12,9 +12,19 @@ import { LockedError } from './lock.js';
 import { silentLogger } from './log.js';
 import type { Logger } from './log.js';
 import { runFlush, runUploadPass } from './pass.js';
-import type { FlushResult } from './pass.js';
+import type { FlushResult, PassResult } from './pass.js';
 import type { ReadOptions } from './reader.js';
 import { formatChicago } from './time.js';
+
+/**
+ * What a watch reports to `onEvent`: each upload or retry pass, a pass that threw (e.g. LockedError while another
+ * uploader holds the state folder; retried with backoff), and the error that stopped watching.
+ */
+export type WatchEvent =
+  | { type: 'pass-start' }
+  | { type: 'pass-end'; result: PassResult }
+  | { type: 'pass-error'; error: Error }
+  | { type: 'fatal'; error: FatalUploadError };
 
 export interface WatchOptions {
   config: Config;
@@ -30,6 +40,14 @@ export interface WatchOptions {
   awaitWriteFinish?: { stabilityThreshold: number; pollInterval: number };
   usePolling?: boolean;
   backoff?: BackoffOptions;
+  /** Retry delay after a pass found the state folder locked (default 5 s; doesn't grow the backoff). */
+  lockRetryMs?: number;
+  /**
+   * Called around every pass (initial, file change, queue retry, trigger) and when a fatal error stops watching.
+   * A pass that throws (e.g. the state folder is locked) ends with pass-error instead of pass-end; the loop retries
+   * it. Listener exceptions are logged at debug and ignored.
+   */
+  onEvent?: (e: WatchEvent) => void;
 }
 
 export interface WatchHandle {
@@ -39,6 +57,14 @@ export interface WatchHandle {
   /** Resolves once no pass is running (tests). */
   idle(): Promise<void>;
   watchedFiles(): string[];
+  /** Uploads every watched file now (as on start), without waiting for a change or a retry. */
+  trigger(): void;
+}
+
+/** A queue-only pass as a PassResult (no files read). */
+function flushPass(flush: FlushResult): PassResult {
+  const ok = !flush.fatal && flush.errors.length === 0 && flush.pendingBatches === 0;
+  return { ok, files: [], flush, fatal: flush.fatal, notes: [] };
 }
 
 /**
@@ -50,6 +76,7 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
   const logger = opts.logger ?? silentLogger();
   const tickMs = opts.tickMs ?? 5_000;
   const rediscoverMs = opts.rediscoverMs ?? 60_000;
+  const lockRetryMs = opts.lockRetryMs ?? 5_000;
   const wowPath = config.wowPath;
   if (!wowPath) throw new Error('wowPath is not set');
 
@@ -63,6 +90,7 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
   let nextRetryAt = 0;
   let queueNonEmpty = false;
   let lastDiscover = Date.now();
+  let reportedEmpty = false;
   let resolveDone!: (v: FatalUploadError | undefined) => void;
   const done = new Promise<FatalUploadError | undefined>((r) => (resolveDone = r));
 
@@ -81,6 +109,14 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
   watcher.on('change', onFileEvent);
   watcher.on('error', (err) => logger.error({ err }, 'file watcher error'));
 
+  function emit(e: WatchEvent) {
+    try {
+      opts.onEvent?.(e);
+    } catch (err) {
+      logger.debug({ err, event: e.type }, 'watch event listener threw');
+    }
+  }
+
   async function discover() {
     lastDiscover = Date.now();
     try {
@@ -96,7 +132,10 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
           kick();
         }
       }
-      if (watched.size === 0) logger.warn({ wowPath }, 'no ForeverLedger.lua found yet; waiting');
+      // Said once (discovery repeats every minute), and again only after files appeared and went away.
+      if (watched.size === 0 && !reportedEmpty)
+        logger.info({ wowPath }, 'no ForeverLedger.lua found yet; waiting');
+      reportedEmpty = watched.size === 0;
     } catch (err) {
       logger.error({ err }, 'discovery failed');
     }
@@ -127,29 +166,42 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
       pendingAll = false;
       pendingFiles.clear();
       flushDue = false;
+      emit({ type: 'pass-start' });
       try {
-        if (all || files.length) {
-          const res = await runUploadPass({
-            config,
-            logger,
-            fetchImpl: opts.fetchImpl,
-            read: opts.read,
-            chunk: opts.chunk,
-            files: all ? undefined : files,
-          });
-          afterFlush(res.flush);
-        } else {
-          afterFlush(await runFlush({ config, logger, fetchImpl: opts.fetchImpl }));
-        }
+        const result =
+          all || files.length
+            ? await runUploadPass({
+                config,
+                logger,
+                fetchImpl: opts.fetchImpl,
+                read: opts.read,
+                chunk: opts.chunk,
+                files: all ? undefined : files,
+              })
+            : flushPass(await runFlush({ config, logger, fetchImpl: opts.fetchImpl }));
+        emit({ type: 'pass-end', result });
+        afterFlush(result.flush);
       } catch (err) {
+        if (err instanceof LockedError) {
+          // Our own process holding it (the tray app's addon sync) is routine; another uploader is worth a warning.
+          if (err.pid === process.pid)
+            logger.debug('state folder busy (addon sync); retrying shortly');
+          else logger.warn(err.message);
+        } else if (!(err instanceof FatalUploadError))
+          logger.error({ err }, `upload pass failed: ${errorMessage(err)}`);
+        // Every pass-start gets exactly one pass-end or pass-error (a fatal error follows it).
+        emit({ type: 'pass-error', error: err instanceof Error ? err : new Error(String(err)) });
         if (err instanceof FatalUploadError) return stop(err);
-        if (err instanceof LockedError) logger.warn(err.message);
-        else logger.error({ err }, `upload pass failed: ${errorMessage(err)}`);
         // Try again later, including the files we did not get to.
         if (all) pendingAll = true;
         for (const f of files) pendingFiles.add(f);
-        failures++;
-        nextRetryAt = Date.now() + backoffDelay(failures, opts.backoff);
+        if (err instanceof LockedError) {
+          // Another uploader is mid-pass: not a server problem, so no growing backoff.
+          nextRetryAt = Date.now() + lockRetryMs;
+        } else {
+          failures++;
+          nextRetryAt = Date.now() + backoffDelay(failures, opts.backoff);
+        }
         queueNonEmpty = true;
         return;
       }
@@ -160,6 +212,9 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
     if (closed || running) return;
     running = loop().finally(() => {
       running = null;
+      // Work that arrived after the loop's last check (e.g. trigger()) would otherwise wait for the next tick.
+      if (!closed && Date.now() >= nextRetryAt && (pendingAll || pendingFiles.size > 0 || flushDue))
+        kick();
     });
   }
 
@@ -187,6 +242,7 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
   function stop(fatal: FatalUploadError) {
     logger.fatal(fatal.message);
     closed = true;
+    emit({ type: 'fatal', error: fatal });
     clearInterval(timer);
     void watcher.close().finally(() => resolveDone(fatal));
   }
@@ -201,5 +257,11 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
       while (running) await running;
     },
     watchedFiles: () => [...watched],
+    trigger: () => {
+      if (closed) return;
+      pendingAll = true;
+      nextRetryAt = 0; // the user asked: don't wait out the backoff
+      kick();
+    },
   };
 }

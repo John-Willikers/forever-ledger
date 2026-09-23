@@ -1,0 +1,33 @@
+name: addon-release
+on:
+  push:
+    tags: ['addon-v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: sudo apt-get update && sudo apt-get install -y lua-check lua5.1
+      - run: pnpm install --frozen-lockfile
+      # The tag reaches the shell only through env vars, never ${{ }} interpolation. check-addon-version rejects
+      # anything that isn't x.y.z before the version is used in a file name.
+      - name: version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#addon-v}" >> "$GITHUB_ENV"
+      - run: node --conditions=development --import tsx scripts/check-addon-version.ts "$VERSION"
+      - run: pnpm run check
+      - run: cd addon && zip -r "../ForeverLedger-$VERSION.zip" ForeverLedger -x '*/.luacheckrc'
+      # Never ship a zip our own uploader would refuse: same checks as verifyAddonZip before install.
+      - run: node --conditions=development --import tsx scripts/check-addon-version.ts "$VERSION" --zip "ForeverLedger-$VERSION.zip"
+      # --latest=false: electron-updater reads GitHub's "latest release", which must stay an app release.
+      - run: >
+          gh release create "$GITHUB_REF_NAME" "ForeverLedger-$VERSION.zip"
+          --title "ForeverLedger addon $VERSION" --generate-notes --latest=false
+        env:
+          GH_TOKEN: ${{ github.token }}

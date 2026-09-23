@@ -87,7 +87,7 @@ export async function prepareFile(
   };
   const log = logger.child({ account: sv.account });
   try {
-    const { value } = await readSavedVariable(sv.file, { ...opts.read, logger: log });
+    const { value, read } = await readSavedVariable(sv.file, { ...opts.read, logger: log });
     const normalized = normalize(value);
     const total = toEntries(normalized.records).length;
     result.records = total;
@@ -105,6 +105,7 @@ export async function prepareFile(
     }
 
     await state.setFile(sv.account, sv.file);
+    await state.setBuild(sv.account, normalized.meta.build, read.mtimeMs);
     const acked = state.account(sv.account).acked;
     const queued = await queue.pendingHashes(sv.account);
     const rejected = state.account(sv.account).rejected;

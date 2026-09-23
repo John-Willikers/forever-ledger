@@ -11,6 +11,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./lib": {
+      "development": "./src/lib.ts",
+      "types": "./dist/lib.d.ts",
+      "default": "./dist/lib.js"
     }
   },
   "bin": {
@@ -27,5 +32,8 @@
     "chokidar": "^5.0.0",
     "commander": "^15.0.0",
     "pino": "^10.3.1"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3"
   }
 }

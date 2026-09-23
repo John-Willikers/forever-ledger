@@ -1,4 +1,4 @@
--- ForeverLedger v0.2.1 behaviour and fixture generation.
+-- ForeverLedger v0.2.2 behaviour and fixture generation.
 local S = require("scenario")
 
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
@@ -24,7 +24,7 @@ return function(H)
     H.eq(db.meta.schemaVersion, 1)
     H.eq(db.meta.build, 61582)
     H.eq(db.meta.interface, 11507)
-    H.eq(db.meta.addonVersion, "0.2.1")
+    H.eq(db.meta.addonVersion, "0.2.2")
     H.eq(db.chars[ME].class, "HUNTER")
   end)
 

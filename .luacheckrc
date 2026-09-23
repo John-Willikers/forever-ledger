@@ -15,14 +15,16 @@ read_globals = {
   "wipe", "floor", "format", "strsplit", "strjoin", "strtrim", "tinsert", "tremove", "time", "date",
   "debugprofilestop", "GetTime", "GetServerTime", "select", "hooksecurefunc",
   -- frames / UI
-  "CreateFrame", "WorldFrame", "UIParent",
+  "CreateFrame", "WorldFrame", "UIParent", "DEFAULT_CHAT_FRAME",
   -- namespaces
   "C_Item", "C_Map", "C_QuestLog", "C_AddOns", "C_Container", "C_Timer", "APIDocumentation",
+  "C_ChatInfo", "C_CombatLog", "C_UI",
   -- client / addon
-  "GetBuildInfo", "LoadAddOn", "IsAddOnLoaded", "GetLocale",
+  "GetBuildInfo", "LoadAddOn", "IsAddOnLoaded", "GetLocale", "GetCVar", "ReloadUI", "InCombatLockdown",
+  "LoggingChat", "LoggingCombat",
   -- units
   "UnitLevel", "UnitName", "UnitXP", "UnitXPMax", "UnitClass", "UnitRace", "UnitGUID", "UnitFactionGroup",
-  "UnitExists", "GetRealmName",
+  "UnitExists", "GetRealmName", "UnitAffectingCombat",
   -- zone / instance
   "GetRealZoneText", "GetSubZoneText", "IsInInstance", "GetInstanceInfo",
   -- quests

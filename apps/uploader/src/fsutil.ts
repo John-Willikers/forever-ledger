@@ -21,6 +21,34 @@ export async function renameWithRetry(from: string, to: string, attempts = 5): P
   }
 }
 
+/** A folder rename also fails while anything inside it is open, and Windows can report that as ENOTEMPTY. */
+const DIR_TRANSIENT = new Set([...TRANSIENT, 'ENOTEMPTY']);
+
+/**
+ * rename() for folders: retries sharing violations with growing delays for up to `budgetMs` (default 10 s), since a
+ * virus scan of a whole addon folder takes longer than one file's.
+ */
+export async function renameDirWithRetry(
+  from: string,
+  to: string,
+  opts: { budgetMs?: number } = {},
+): Promise<void> {
+  const deadline = Date.now() + (opts.budgetMs ?? 10_000);
+  for (let delay = 50; ; delay = Math.min(delay * 2, 2_000)) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (err) {
+      const left = deadline - Date.now();
+      if (left <= 0 || !DIR_TRANSIENT.has(code(err) ?? '')) throw err;
+      await sleep(Math.min(delay, left));
+    }
+  }
+}
+
+/** Options for rm() of whole folders: retries Windows' transient EBUSY/EPERM itself. */
+export const RM_DIR = { recursive: true, force: true, maxRetries: 5, retryDelay: 100 } as const;
+
 /** Writes via a temp file in the same directory + rename, so readers never see a half-written file. */
 export async function writeFileAtomic(
   path: string,

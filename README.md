@@ -18,20 +18,63 @@ Plan and live progress: [`project-plans/forever-ledger-m0-m5.md`](project-plans/
 
 Copy both folders from `addon/` into the Forever client's `Interface/AddOns/` folder:
 
-| Addon                | What it does                                                                                                              | Commands                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, drops and dungeon runs.                   | `/fl` status · `/fl scanlog` · `/fl done` · `/fl reset confirm`   |
-| `ForeverLedgerProbe` | Development only: dumps what the client supports (same API docs as `/api`, globals, events) and can sniff event payloads. | `/flprobe` dump · `/flprobe sniff on` / `off` · `/flprobe status` |
+| Addon                | What it does                                                                                                              | Commands                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, drops and dungeon runs.                   | `/fl` status · `/fl scanlog` · `/fl done` · `/fl nudge off` / `on` · `/fl reset confirm` |
+| `ForeverLedgerProbe` | Development only: dumps what the client supports (same API docs as `/api`, globals, events) and can sniff event payloads. | `/flprobe` dump · `/flprobe sniff on` / `off` · `/flprobe io …` · `/flprobe status`      |
 
 Data reaches disk only on `/reload`, logout or a clean exit, so `/reload` after each dungeon. Upgrading from
 v0.1.0 migrates your existing data the first time you log in.
+
+Since 0.2.2 the addon reminds you at natural checkpoints (a boss kill, a dungeon run closing, a quest turn-in, a
+dungeon finder reward): `Forever Ledger: N new records since your last /reload — type /reload to save them`. It
+prints at most once every 5 minutes, waits until you leave combat, and only prints; the tray app uploads within
+seconds of the `/reload`. `/fl` shows the unsaved count. `/fl nudge off` silences it until your next `/reload` or
+logout (the switch isn't saved, so the SavedVariables shape is unchanged).
 
 **First thing to do on a real Forever install:** enable `ForeverLedgerProbe`, run `/flprobe`, then
 `/flprobe sniff on`, accept and turn in a quest, run a dungeon, `/reload`, and send back
 `WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedgerProbe.lua`. It answers the open questions in the plan
 (interface number, which events exist, `QUEST_ACCEPTED` argument order, …).
 
-## 📤 Uploader (gaming PC)
+**Live-data checks (probe 0.2.0, see [`docs/plans/2026-09-23-live-data-research.md`](docs/plans/2026-09-23-live-data-research.md)).**
+Every step runs only when you type it or click a probe button; results go to `ForeverLedgerProbeDB.io`:
+
+| Command                 | What it does                                                                                                                                                                                                                                  |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/flprobe io`           | Records and prints the chat/combat logging state (`LoggingChat()`, `LoggingCombat()`, `C_ChatInfo.IsLogging*`, `advancedCombatLogging`, `C_CombatLog.IsCombatLogRestricted`) and the SavedVariables load check.                               |
+| `/flprobe io on`        | Turns chat and combat logging on and prints `FLPROBE-PRINT-<epoch>` / `FLPROBE-ADDMSG-<epoch>`. Then loot, kill a mob, turn in a quest and search `<WoW>\_classic_beta_\Logs\WoWChatLog.txt` and `WoWCombatLog*.txt` for `FLPROBE`.           |
+| `/flprobe io toggle`    | Prints `FLPROBE-TOGGLE-<epoch>`, then turns each log off and on again, to see whether that flushes the files. At most once per 10 s (the client allows 5 combat-log calls per 10 s).                                                          |
+| `/flprobe io off`       | Turns both logs off.                                                                                                                                                                                                                          |
+| `/flprobe io reloadbtn` | Out of combat only: shows a secure `/reload` macro button and a plain button that calls `ReloadUI()` (right-drag to move). Each records its click before acting, so you can tell which one reloaded. `/flprobe io reloadbtn hide` hides them. |
+
+The load check counts loads in `ForeverLedgerProbeDB.loadCount`. If it stays at 1 after a `/reload`, Forever didn't
+load the file back (bug #34) and each write replaces the last, so copy `ForeverLedgerProbe.lua` after every `/reload`.
+`forever-ledger probe-dump` prints an `io` section with the load check, the logging state and the last 10 entries.
+
+## 🖥️ Tray app (gaming PC, recommended)
+
+**Forever Ledger** for Windows does everything the uploader CLI does, keeps the `ForeverLedger` addon at the version the
+server recommends, and updates itself.
+
+1. Download `Forever-Ledger-Setup-<version>.exe` from the
+   [latest release](https://github.com/John-Willikers/forever-ledger/releases/latest). The build is unsigned, so
+   SmartScreen asks once: **More info → Run anyway**.
+2. Setup: pick the game folder (the one that contains `WTF`, e.g. `…\World of Warcraft\_classic_beta_`), paste your
+   token, **Save**. It installs the addon right away if it's missing.
+3. It lives in the tray and starts with Windows (hidden). Tray colours: 🟢 up to date · 🔵 uploading · 🟡 batches
+   queued (server unreachable, retrying) · 🔴 needs attention.
+4. Play. Every `/reload`, logout or exit writes SavedVariables and the app uploads within seconds. **Keep it running
+   whenever WoW runs**: the Forever client doesn't load SavedVariables back, so each write replaces the last one
+   ([details](docs/plans/2026-09-23-live-data-research.md)).
+5. When a new addon version goes live the app installs it (within 30 min, or **Update now**) and shows a toast:
+   type `/reload` in game to use it. **Roll back** restores the previous version and pauses auto-update until the
+   server recommends a different one.
+
+Logs: `%APPDATA%\Forever Ledger\logs\forever-ledger.log` (tray menu → **Open logs folder**); the window's Activity
+list shows the latest lines. The app and the CLI share `%APPDATA%\forever-ledger\config.json`.
+
+## 📤 Uploader CLI (gaming PC)
 
 A Node CLI (Node 22+) that watches `WTF/Account/*/SavedVariables/ForeverLedger.lua`, uploads only new or changed
 records, and keeps an on-disk queue while the server is unreachable.
@@ -45,6 +88,7 @@ node apps/uploader/dist/cli.js upload-once    # one pass (exit code 1 if anythin
 node apps/uploader/dist/cli.js status         # acked records, queued batches, last upload per account
 node apps/uploader/dist/cli.js export out.json            # normalized records, no server needed
 node apps/uploader/dist/cli.js probe-dump ForeverLedgerProbe.lua probe.json
+node apps/uploader/dist/cli.js addon-sync     # install/update the addon now (--force, --rollback)
 ```
 
 `--wow-path` can be the install folder, the game flavor folder or the `WTF` folder. Config lives in
@@ -81,6 +125,24 @@ API (all but health need `Authorization: Bearer <token>`):
 | `GET /v1/quests/xp?build=`               | Offered vs paid XP per quest                                                     |
 | `GET /v1/items/:id`                      | Item snapshots per build, drop sources, quest rewards, class/spec fit            |
 | `GET /v1/export?format=json\|csv&table=` | Full dump for offline analysis (times in America/Chicago)                        |
+
+## 🏷️ Releasing
+
+Addon (goes live only when published on the server):
+
+```bash
+# bump `## Version` in addon/ForeverLedger/ForeverLedger.toc and VERSION in ForeverLedger.lua, merge to master
+git tag addon-v0.2.2 && git push origin addon-v0.2.2     # Action: checks, zips, GitHub release (not "latest")
+set -a; . deploy/.env; set +a
+node apps/server/dist/addon-cli.js publish 0.2.2         # downloads, verifies, makes it live
+node apps/server/dist/addon-cli.js pin 69913-69999 0.2.1 # these client builds stay on 0.2.1
+node apps/server/dist/addon-cli.js yank 0.2.2            # pull a bad version (clients fall back to the newest active)
+node apps/server/dist/addon-cli.js list
+```
+
+Tray app: bump `apps/desktop/package.json` `version`, merge to master, `git tag v0.1.1 && git push origin v0.1.1`.
+The Action builds the installer and publishes it as the latest release; installed apps update themselves.
+Addon releases must stay `--latest=false` so GitHub's "latest release" is always the app.
 
 ## 🛠️ Development
 

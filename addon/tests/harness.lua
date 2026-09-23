@@ -32,7 +32,19 @@ local function default_world()
     missing = {},          -- [globalName] = true to simulate an API the client lacks
     rejectEvents = {},     -- [event] = true to make RegisterEvent throw for it
     addons = {},           -- [name] = function(env) run when LoadAddOn(name) is called
+    loadedAddons = {},     -- [name] = true for C_AddOns.IsAddOnLoaded
     printed = {},
+    chatFrame = {},        -- lines sent to DEFAULT_CHAT_FRAME:AddMessage
+    inCombat = false,      -- InCombatLockdown() / UnitAffectingCombat("player")
+    logging = { chat = false, combat = false },
+    loggingCalls = {},     -- { { name=, arg= } } every LoggingChat/LoggingCombat call
+    loggingErrors = {},    -- [name] = message to make LoggingChat/LoggingCombat throw
+    cvars = { advancedCombatLogging = "0" },
+    combatLogRestricted = true,
+    reloads = 0,           -- ReloadUI() calls
+    reloadBlocked = nil,   -- message: ReloadUI() throws it instead of "reloading"
+    secureMacros = {},     -- macrotext run by clicked SecureActionButtonTemplate buttons
+    rejectTemplates = {},  -- [template] = true to make CreateFrame throw for it
   }
 end
 
@@ -75,8 +87,11 @@ function H.new(worldOverrides)
 
   -- frames
   env.WorldFrame, env.UIParent = {}, {}
-  env.CreateFrame = function(kind, name)
-    local f = { kind = kind, events = {}, scripts = {}, lines = {} }
+  env.CreateFrame = function(kind, name, _, template)
+    for t in pairs(world.rejectTemplates) do
+      if template and template:find(t, 1, true) then error("Couldn't find inherited node \"" .. t .. "\"") end
+    end
+    local f = { kind = kind, template = template, events = {}, scripts = {}, lines = {} }
     function f:RegisterEvent(ev)
       if world.rejectEvents[ev] then error("Attempt to register unknown event \"" .. ev .. "\"") end
       self.events[ev] = true
@@ -99,6 +114,33 @@ function H.new(worldOverrides)
       end
       function f:NumLines() return #self.lines end
     end
+    if kind == "Button" then
+      f.attributes, f.shown = {}, true
+      function f:SetAttribute(k, v) self.attributes[k] = v end
+      function f:GetAttribute(k) return self.attributes[k] end
+      function f:SetText(t) self.text = t end
+      function f:SetSize(w, h) self.size = { w, h } end
+      function f:SetPoint() end
+      function f:SetMovable(v) self.movable = v end
+      function f:SetClampedToScreen() end
+      function f:EnableMouse() end
+      function f:RegisterForDrag(...) self.dragButtons = { ... } end
+      function f:RegisterForClicks(...) self.clickButtons = { ... } end
+      function f:StartMoving() end
+      function f:StopMovingOrSizing() end
+      function f:Show() self.shown = true end
+      function f:Hide() self.shown = false end
+      function f:IsShown() return self.shown end
+      -- A user click: PreClick, then the secure action for secure macro buttons, then OnClick.
+      function f:Click(button)
+        button = button or "LeftButton"
+        if self.scripts.PreClick then self.scripts.PreClick(self, button, false) end
+        if (self.template or ""):find("SecureActionButtonTemplate", 1, true) and self.attributes.type == "macro" then
+          world.secureMacros[#world.secureMacros + 1] = self.attributes.macrotext
+        end
+        if self.scripts.OnClick then self.scripts.OnClick(self, button, false) end
+      end
+    end
     if name then env[name] = f end
     frames[#frames + 1] = f
     return f
@@ -107,6 +149,31 @@ function H.new(worldOverrides)
   -- client
   env.GetBuildInfo = function() return unpack(world.buildInfo) end
   env.GetRealmName = function() return world.player.realm end
+  env.GetCVar = function(name) return world.cvars[name] end
+  env.InCombatLockdown = function() return world.inCombat end
+  env.UnitAffectingCombat = function(u) return u == "player" and world.inCombat or false end
+  env.DEFAULT_CHAT_FRAME = { AddMessage = function(_, text) world.chatFrame[#world.chatFrame + 1] = text end }
+  env.ReloadUI = function()
+    world.reloads = world.reloads + 1
+    if world.reloadBlocked then error(world.reloadBlocked) end
+  end
+
+  -- chat / combat log files: LoggingX(nil) queries, LoggingX(bool) sets; both return the current state
+  local function loggingFn(name, key)
+    return function(newState)
+      world.loggingCalls[#world.loggingCalls + 1] = { name = name, arg = newState }
+      if world.loggingErrors[name] then error(world.loggingErrors[name]) end
+      if newState ~= nil then world.logging[key] = newState and true or false end
+      return world.logging[key]
+    end
+  end
+  env.LoggingChat = loggingFn("LoggingChat", "chat")
+  env.LoggingCombat = loggingFn("LoggingCombat", "combat")
+  env.C_ChatInfo = {
+    IsLoggingChat = function() return world.logging.chat end,
+    IsLoggingCombat = function() return world.logging.combat end,
+  }
+  env.C_CombatLog = { IsCombatLogRestricted = function() return world.combatLogRestricted end }
 
   -- units
   env.UnitName = function(u)
@@ -221,7 +288,8 @@ function H.new(worldOverrides)
     fn(env)
     return true
   end
-  env.C_AddOns = { LoadAddOn = env.LoadAddOn }
+  env.C_AddOns = { LoadAddOn = env.LoadAddOn,
+                   IsAddOnLoaded = function(name) return world.loadedAddons[name] or false end }
 
   -- World of Warcraft: Forever 1.60 (probe dump of build 69913) has no Classic quest-log globals and no
   -- global GetItemInfo/GetItemStats; it has the C_QuestLog / C_Item namespaces instead.

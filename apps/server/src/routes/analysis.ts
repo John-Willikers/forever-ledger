@@ -13,7 +13,8 @@ export function requireToken(db: Db) {
   };
 }
 
-const buildFilter = (q: unknown) => {
+/** `?build=` as a positive integer, else null (no filter). */
+export const buildFilter = (q: unknown) => {
   const b = Number((q as { build?: string }).build);
   return Number.isInteger(b) && b > 0 ? b : null;
 };

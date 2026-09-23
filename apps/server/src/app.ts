@@ -6,6 +6,7 @@ import type { FastifyServerOptions } from 'fastify';
 import { verifyBearer } from './auth.js';
 import type { Database } from './db/client.js';
 import { ingestBatch } from './ingest.js';
+import { registerAddonRoutes } from './routes/addon.js';
 import { registerAnalysisRoutes } from './routes/analysis.js';
 import { registerExportRoutes } from './routes/export.js';
 import { chicagoIso } from './time.js';
@@ -108,6 +109,7 @@ export async function buildApp(opts: AppOptions) {
 
   registerAnalysisRoutes(app, db);
   registerExportRoutes(app, db);
+  registerAddonRoutes(app, db);
 
   return app;
 }

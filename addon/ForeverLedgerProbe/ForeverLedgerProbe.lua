@@ -1,14 +1,20 @@
--- Forever Ledger Probe v0.1.0
+-- Forever Ledger Probe v0.2.0
 -- Read-only: records what this client supports so Forever Ledger can be built against the real API.
 -- Nothing is automated. Output lands in WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedgerProbe.lua on /reload.
 --
 --   /flprobe             dump build info, API docs (same data as /api), globals and event support
 --   /flprobe sniff on    record the first few payloads of every event while you play (off after /reload unless on)
 --   /flprobe sniff off
+--   /flprobe io          record chat/combat logging state (plus the SavedVariables load check)
+--   /flprobe io on       turn chat and combat logging on and print marker lines to find in the log files
+--   /flprobe io toggle   logging off then on again (does that flush the files?)
+--   /flprobe io off      turn chat and combat logging off
+--   /flprobe io reloadbtn        show two buttons that /reload only when you click them
+--   /flprobe io reloadbtn hide
 --   /flprobe status
 --   /flprobe reset confirm
 
-local VERSION = "0.1.0"
+local VERSION = "0.2.0"
 local SAMPLE_LIMIT = 5     -- payloads kept per event
 local MAX_EVENTS = 1500    -- distinct events tracked per build while sniffing
 local MAX_STRING = 200
@@ -42,6 +48,8 @@ local CANDIDATE_GLOBALS = {
   "UnitXP", "UnitXPMax", "UnitLevel", "UnitGUID", "UnitClass", "UnitRace", "UnitFactionGroup",
   "C_Map", "C_Map.GetBestMapForUnit", "C_Map.GetPlayerMapPosition",
   "C_AddOns", "C_AddOns.LoadAddOn", "LoadAddOn", "CombatLogGetCurrentEventInfo", "C_Container",
+  "LoggingChat", "LoggingCombat", "C_ChatInfo.IsLoggingChat", "C_ChatInfo.IsLoggingCombat",
+  "C_CombatLog.IsCombatLogRestricted", "GetCVar", "ReloadUI", "C_UI.Reload", "InCombatLockdown",
 }
 
 local db, build = nil, 0
@@ -205,22 +213,311 @@ local function setSniff(on)
   end
 end
 
+---------------------------------------------------------------- io: logging channels, reload, load bug
+-- Everything here runs only when the player types a command or clicks a probe button. Every client call is pcall'd
+-- and its outcome recorded in db.io[build] (append-only, newest last).
+local IO_CAP = 200       -- io entries kept per build
+local HISTORY_CAP = 50   -- load checks kept
+local TOGGLE_GAP = 10    -- seconds between /flprobe io toggle runs
+local COMBAT_BUDGET = 5  -- the client allows 5 LoggingCombat calls per 10 s; a 6th returns nil
+local LOG_DIR = "<WoW>\\_classic_beta_\\Logs\\"
+local STATE_ORDER = { "LoggingChat", "LoggingCombat", "C_ChatInfo.IsLoggingChat", "C_ChatInfo.IsLoggingCombat",
+                      "GetCVar(advancedCombatLogging)", "C_CombatLog.IsCombatLogRestricted" }
+
+local lastToggleAt
+local combatCalls = {}   -- times of our own LoggingCombat calls this session
+local reloadButtons
+
+local function packResult(ok, ...)
+  if not ok then return { ok = false, err = clip(tostring((...))) } end
+  local values = {}
+  for i = 1, select("#", ...) do values[i] = clip((select(i, ...))) end
+  return { ok = true, values = values }
+end
+
+-- Calls fn in pcall: { ok = true, values = {...} }, { ok = false, err } or { ok = false, missing = true }.
+local function try(fn, ...)
+  if type(fn) ~= "function" then return { ok = false, missing = true, err = "missing" } end
+  return packResult(pcall(fn, ...))
+end
+
+local function show(r)
+  if not r then return "?" end
+  if r.missing then return "missing" end
+  if not r.ok then return "error: " .. tostring(r.err) end
+  local parts = {}
+  for i, v in ipairs(r.values or {}) do parts[i] = tostring(v) end
+  return #parts > 0 and table.concat(parts, ", ") or "(no value)"
+end
+
+local function inCombat()
+  local ok, locked = pcall(InCombatLockdown)
+  return ok and locked and true or false
+end
+
+local function addIo(entry)
+  entry.at = entry.at or time()
+  db.io[build] = db.io[build] or {}
+  local list = db.io[build]
+  list[#list + 1] = entry
+  local extra = #list - IO_CAP
+  if extra > 0 then
+    for i = 1, #list do list[i] = list[i + extra] end
+  end
+  return entry
+end
+
+-- Refuses (and says why) when `n` more LoggingCombat calls would pass the client's 5-per-10-s limit.
+local function combatBudget(n)
+  local now, recent = time(), {}
+  for _, t in ipairs(combatCalls) do
+    if now - t < 10 then recent[#recent + 1] = t end
+  end
+  combatCalls = recent
+  if #recent + n <= COMBAT_BUDGET then return true end
+  say(format("refused: %d combat-log calls in the last 10 s; the client allows %d per 10 s. Wait %d s.",
+    #recent, COMBAT_BUDGET, 10 - (now - recent[1])))
+  return false
+end
+
+local function callLogging(name, arg)
+  if name == "LoggingCombat" then combatCalls[#combatCalls + 1] = time() end
+  local r = try(_G[name], arg)
+  r.call = name .. "(" .. tostring(arg) .. ")"
+  return r
+end
+
+-- withSetters: also ask LoggingChat()/LoggingCombat() (no argument = query). Without it only the pure getters run,
+-- so on/off/toggle don't spend the combat-log call budget on a read-back.
+local function loggingState(withSetters)
+  local chat, cl = C_ChatInfo or {}, C_CombatLog or {}
+  local s = {
+    ["C_ChatInfo.IsLoggingChat"] = try(chat.IsLoggingChat),
+    ["C_ChatInfo.IsLoggingCombat"] = try(chat.IsLoggingCombat),
+    ["GetCVar(advancedCombatLogging)"] = try(GetCVar, "advancedCombatLogging"),
+    ["C_CombatLog.IsCombatLogRestricted"] = try(cl.IsCombatLogRestricted),
+  }
+  if withSetters then
+    s.LoggingChat = callLogging("LoggingChat")
+    s.LoggingCombat = callLogging("LoggingCombat")
+    s.LoggingChat.call, s.LoggingCombat.call = nil, nil
+  end
+  return s
+end
+
+local function sayCalls(calls)
+  local parts = {}
+  for i, r in ipairs(calls) do parts[i] = r.call .. " -> " .. show(r) end
+  say(table.concat(parts, ", "))
+end
+
+local function ioStatus()
+  if not combatBudget(1) then return end
+  local e = addIo({ action = "state", state = loggingState(true) })
+  for _, k in ipairs(STATE_ORDER) do say(k .. ": " .. show(e.state[k])) end
+  local lc = db.loadCheck or {}
+  say(format("load check: loadCount %d, ForeverLedgerProbeDB arrived %s with %d key(s).", lc.loadCount or 0,
+    lc.arrivedNil and "nil" or "as a table", lc.arrivedKeys or 0))
+  if (lc.loadCount or 0) <= 1 then
+    say("loadCount 1 after a /reload means Forever did not load SavedVariables back: copy ForeverLedgerProbe.lua "
+      .. "after every /reload, the next write replaces it.")
+  end
+  local l = db.ledgerCheck
+  if l then
+    say(format("ForeverLedgerDB at login: %s, %s data record(s).", l.type, tostring(l.records or 0)))
+  end
+  say("/flprobe io on | toggle | off | reloadbtn [hide]  -  /reload to save the results.")
+end
+
+local function ioOn()
+  if not combatBudget(1) then return end
+  local marker = time()
+  local e = addIo({ action = "on", marker = marker,
+                    calls = { callLogging("LoggingChat", true), callLogging("LoggingCombat", true) } })
+  e.after = loggingState(false)
+  print("FLPROBE-PRINT-" .. marker)
+  e.addMessage = try(function() DEFAULT_CHAT_FRAME:AddMessage("FLPROBE-ADDMSG-" .. marker) end)
+  sayCalls(e.calls)
+  say("Now loot something, kill a mob and turn in a quest. Then open " .. LOG_DIR .. " and search WoWChatLog.txt "
+    .. "and WoWCombatLog*.txt for FLPROBE (marker " .. marker .. "); note how long lines take to show up.")
+  say("/flprobe io toggle tests whether off/on flushes the files; /flprobe io off when done; /reload to save.")
+end
+
+local function ioToggle()
+  local now = time()
+  if lastToggleAt and now - lastToggleAt < TOGGLE_GAP then
+    say(format("toggle refused: the last one was %d s ago and the client allows only %d logging calls per 10 s. "
+      .. "Try again in %d s.", now - lastToggleAt, COMBAT_BUDGET, TOGGLE_GAP - (now - lastToggleAt)))
+    return
+  end
+  if not combatBudget(2) then return end
+  lastToggleAt = now
+  print("FLPROBE-TOGGLE-" .. now)
+  local e = addIo({ action = "toggle", marker = now, calls = {
+    callLogging("LoggingCombat", false), callLogging("LoggingCombat", true),
+    callLogging("LoggingChat", false), callLogging("LoggingChat", true),
+  } })
+  e.after = loggingState(false)
+  sayCalls(e.calls)
+  say("Printed FLPROBE-TOGGLE-" .. now .. " first: if it and earlier lines now appear in the files, toggling "
+    .. "flushes them. Did a new WoWCombatLog file start?")
+end
+
+local function ioOff()
+  if not combatBudget(1) then return end
+  local e = addIo({ action = "off",
+                    calls = { callLogging("LoggingChat", false), callLogging("LoggingCombat", false) } })
+  e.after = loggingState(false)
+  sayCalls(e.calls)
+  say("logging off. /reload to save the results.")
+end
+
+---------------------------------------------------------------- reload buttons (user clicks only)
+local function makeButton(name, template, label, y)
+  local b = CreateFrame("Button", name, UIParent, template)
+  b:SetSize(170, 26)
+  b:SetPoint("CENTER", UIParent, "CENTER", 0, y)
+  b:SetText(label)
+  b:SetMovable(true)
+  b:SetClampedToScreen(true)
+  b:EnableMouse(true)
+  b:RegisterForDrag("RightButton")
+  b:SetScript("OnDragStart", b.StartMoving)
+  b:SetScript("OnDragStop", b.StopMovingOrSizing)
+  return b
+end
+
+local function makeSecureButton()
+  local b = makeButton("ForeverLedgerProbeReloadSecure", "SecureActionButtonTemplate,UIPanelButtonTemplate",
+    "Reload (probe)", 40)
+  -- Newer clients act on down or up depending on ActionButtonUseKeyDown; registering both is the usual fix.
+  b:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
+  b:SetAttribute("type", "macro")
+  b:SetAttribute("macrotext", "/reload")
+  -- Recorded before the secure macro runs, so it lands in the file the reload writes.
+  b:SetScript("PreClick", function() addIo({ action = "secure-click" }) end)
+  return b
+end
+
+local function makePlainButton()
+  local b = makeButton("ForeverLedgerProbeReloadUI", "UIPanelButtonTemplate", "ReloadUI() (probe)", 0)
+  b:RegisterForClicks("LeftButtonUp")
+  b:SetScript("OnClick", function()
+    local fn = ReloadUI or (C_UI and C_UI.Reload)
+    -- Recorded first: if the call works the UI reloads and nothing after it runs.
+    addIo({ action = "reloadui-click", fn = ReloadUI and "ReloadUI" or (fn and "C_UI.Reload") or "missing" })
+    local r = try(fn)
+    addIo({ action = "reloadui-result", result = r })
+    say("ReloadUI() returned without reloading: " .. show(r) .. " (recorded; /reload to save).")
+  end)
+  return b
+end
+
+local function ioReloadButtons(hide)
+  if inCombat() then
+    say("reload buttons can't be created, shown or hidden in combat. Try again after the fight.")
+    return
+  end
+  if hide then
+    if reloadButtons then
+      for _, b in pairs(reloadButtons) do pcall(b.Hide, b) end
+    end
+    say("reload buttons hidden.")
+    return
+  end
+  if not reloadButtons then
+    local okS, secure = pcall(makeSecureButton)
+    local okP, plain = pcall(makePlainButton)
+    reloadButtons = {}
+    if okS then reloadButtons.secure = secure end
+    if okP then reloadButtons.plain = plain end
+    addIo({ action = "reloadbtn", secure = packResult(okS, okS and "created" or secure),
+            plain = packResult(okP, okP and "created" or plain) })
+    if not okS then say("secure button failed: " .. tostring(secure)) end
+    if not okP then say("plain button failed: " .. tostring(plain)) end
+  end
+  for _, b in pairs(reloadButtons) do pcall(b.Show, b) end
+  say("'Reload (probe)' runs /reload as a secure macro; 'ReloadUI() (probe)' calls ReloadUI() from addon code. "
+    .. "Right-drag to move. Nothing happens unless you click one. After the reload, /flprobe io shows the load check.")
+end
+
+---------------------------------------------------------------- load checks
+local function countKeys(t)
+  local n = 0
+  if type(t) == "table" then
+    for _ in pairs(t) do n = n + 1 end
+  end
+  return n
+end
+
+-- Forever bug #34: the client may start addons with an empty table even though the file on disk has data. Record
+-- what arrived before touching it, and a counter that only grows if the table is loaded back.
+local function loadCheck(arrived)
+  db.loadCount = (tonumber(db.loadCount) or 0) + 1
+  local prev = db.loadCheck
+  local keys = countKeys(arrived)
+  db.loadCheck = { at = time(), build = build, probeVersion = VERSION, arrivedType = type(arrived),
+                   arrivedNil = arrived == nil, arrivedKeys = keys, arrivedEmpty = keys == 0,
+                   loadCount = db.loadCount, previousLoadAt = type(prev) == "table" and prev.at or nil }
+  db.loadHistory = type(db.loadHistory) == "table" and db.loadHistory or {}
+  local h = db.loadHistory
+  h[#h + 1] = { at = db.loadCheck.at, build = build, arrivedKeys = keys, loadCount = db.loadCount }
+  local extra = #h - HISTORY_CAP
+  if extra > 0 then
+    for i = 1, #h do h[i] = h[i + extra] end
+  end
+end
+
+-- Read-only look at the ledger's table at PLAYER_LOGIN. The ledger has already created its empty sub-tables by then,
+-- so "empty" means no data records (quests, items, drops, runs, turn-ins), not no keys.
+local function ledgerCheck()
+  local isLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+  local okL, loaded = pcall(isLoaded, "ForeverLedger")
+  local l = ForeverLedgerDB
+  local c = { at = time(), addonLoaded = okL and loaded and true or false, type = type(l) }
+  if c.addonLoaded and type(l) == "table" then
+    c.keys = countKeys(l)
+    c.counts = {}
+    local records = 0
+    for _, k in ipairs({ "quests", "items", "drops", "runs", "turnIns", "chars" }) do
+      c.counts[k] = countKeys(l[k])
+      if k ~= "chars" then records = records + c.counts[k] end
+    end
+    c.records, c.empty = records, records == 0
+  end
+  db.ledgerCheck = c
+end
+
 ---------------------------------------------------------------- lifecycle
-probeFrame:RegisterEvent("ADDON_LOADED")
-probeFrame:SetScript("OnEvent", function(_, event, name)
-  if event ~= "ADDON_LOADED" or name ~= "ForeverLedgerProbe" then return end
-  ForeverLedgerProbeDB = ForeverLedgerProbeDB or {}
-  db = ForeverLedgerProbeDB
-  db.dumps, db.sniff = db.dumps or {}, db.sniff or {}
-  db.probeVersion = VERSION
-  local _, buildStr = GetBuildInfo()
-  build = tonumber(buildStr) or 0
-  if db.sniffing then setSniff(true) end
+local lifecycle = CreateFrame("Frame")
+lifecycle:RegisterEvent("ADDON_LOADED")
+lifecycle:RegisterEvent("PLAYER_LOGIN")
+pcall(lifecycle.RegisterEvent, lifecycle, "ADDON_ACTION_BLOCKED")
+pcall(lifecycle.RegisterEvent, lifecycle, "ADDON_ACTION_FORBIDDEN")
+lifecycle:SetScript("OnEvent", function(_, event, name, func)
+  if event == "ADDON_LOADED" then
+    if name ~= "ForeverLedgerProbe" then return end
+    local arrived = ForeverLedgerProbeDB
+    ForeverLedgerProbeDB = type(arrived) == "table" and arrived or {}
+    db = ForeverLedgerProbeDB
+    db.dumps, db.sniff, db.io = db.dumps or {}, db.sniff or {}, db.io or {}
+    db.probeVersion = VERSION
+    local _, buildStr = GetBuildInfo()
+    build = tonumber(buildStr) or 0
+    loadCheck(arrived)
+    if db.sniffing then setSniff(true) end
+  elseif not db then
+    return
+  elseif event == "PLAYER_LOGIN" then
+    ledgerCheck()
+  elseif name == "ForeverLedgerProbe" then -- ADDON_ACTION_BLOCKED / _FORBIDDEN naming us
+    addIo({ action = "blocked", event = event, func = clip(func) })
+  end
 end)
 
 SLASH_FOREVERLEDGERPROBE1 = "/flprobe"
 SlashCmdList.FOREVERLEDGERPROBE = function(msg)
-  msg = (msg or ""):lower()
+  msg = ((msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", ""))
   if msg == "" or msg == "dump" then
     dump()
   elseif msg == "sniff on" then
@@ -229,16 +526,26 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
   elseif msg == "sniff off" then
     setSniff(false)
     say("sniffer off.")
+  elseif msg == "io" or msg == "io status" then
+    ioStatus()
+  elseif msg == "io on" then
+    ioOn()
+  elseif msg == "io toggle" then
+    ioToggle()
+  elseif msg == "io off" then
+    ioOff()
+  elseif msg == "io reloadbtn" or msg == "io reloadbtn hide" then
+    ioReloadButtons(msg == "io reloadbtn hide")
   elseif msg == "reset confirm" then
-    wipe(db.dumps); wipe(db.sniff); db.sniffEventCount = 0
+    wipe(db.dumps); wipe(db.sniff); wipe(db.io); db.sniffEventCount = 0
     say("probe data wiped.")
   else
     local ndumps = 0
     for _ in pairs(db.dumps) do ndumps = ndumps + 1 end
     local nev = 0
     for _ in pairs(db.sniff[build] or {}) do nev = nev + 1 end
-    say(format("build %d: %d dump(s) stored, sniffer %s, %d events seen this build.",
-      build, ndumps, db.sniffing and "ON" or "off", nev))
-    say("/flprobe  |  /flprobe sniff on|off  |  /flprobe reset confirm")
+    say(format("build %d: %d dump(s), sniffer %s, %d events seen this build, %d io entries, load #%d.",
+      build, ndumps, db.sniffing and "ON" or "off", nev, #(db.io[build] or {}), db.loadCount or 0))
+    say("/flprobe  |  /flprobe sniff on|off  |  /flprobe io [on|toggle|off|reloadbtn]  |  /flprobe reset confirm")
   end
 end

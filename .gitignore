@@ -11,3 +11,8 @@ coverage/
 fixtures/real/*.lua
 !fixtures/real/.gitkeep
 deploy/.first-token
+deploy/.*-token
+.claude/worktrees/
+apps/desktop/release/
+apps/desktop/test-results/
+apps/desktop/playwright-report/

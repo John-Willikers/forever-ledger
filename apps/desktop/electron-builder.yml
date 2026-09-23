@@ -1,0 +1,27 @@
+appId: dev.willikers.forever-ledger
+productName: Forever Ledger
+directories:
+  output: release
+# Packaged package.json name: sets the updater cache folder (%LOCALAPPDATA%\forever-ledger-updater) instead of
+# one derived from "@forever-ledger/desktop". The window title, exe and userData folder use productName.
+extraMetadata:
+  name: forever-ledger
+files:
+  - dist/**
+  - '!dist/**/*.map'
+  - assets/**
+  - package.json
+npmRebuild: false
+# latest.yml format that electron-updater 2.16+ reads (with sha512).
+electronUpdaterCompatibility: '>=2.16'
+win:
+  target: nsis
+  icon: assets/icon.png
+nsis:
+  oneClick: true
+  perMachine: false
+publish:
+  provider: github
+  owner: John-Willikers
+  repo: forever-ledger
+  releaseType: release
