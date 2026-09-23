@@ -222,3 +222,26 @@ export const runParty = pgTable(
   },
   (t) => [primaryKey({ columns: [t.runId, t.slot] })],
 );
+
+/** Addon releases the manifest route can hand out; `url` is always the GitHub release asset. */
+export const addonReleases = pgTable('addon_releases', {
+  version: text('version').primaryKey(),
+  url: text('url').notNull(),
+  sha256: text('sha256').notNull(),
+  size: integer('size').notNull(),
+  status: text('status', { enum: ['active', 'yanked'] })
+    .notNull()
+    .default('active'),
+  publishedAt: tz('published_at').notNull().defaultNow(),
+});
+
+/** Client builds [buildMin, buildMax] (buildMax null = open-ended) that must run a given addon version. */
+export const addonPins = pgTable('addon_pins', {
+  id: serial('id').primaryKey(),
+  buildMin: integer('build_min').notNull(),
+  buildMax: integer('build_max'),
+  version: text('version')
+    .notNull()
+    .references(() => addonReleases.version),
+  createdAt: tz('created_at').notNull().defaultNow(),
+});
