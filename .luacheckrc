@@ -35,4 +35,4 @@ read_globals = {
 }
 
 -- The test harness defines WoW stubs as globals on purpose.
-files["addon/tests"] = { ignore = { "111", "112", "113", "121", "122", "131", "142", "143" } }
+files["addon/tests"] = { ignore = { "111", "112", "113", "121", "122", "131", "142", "143", "212" } }
