@@ -57,5 +57,5 @@ export { StateStore } from './state.js';
 export { collectStatus, formatStatus } from './status.js';
 export { formatChicago } from './time.js';
 export { startWatch } from './watch.js';
-export type { WatchHandle, WatchOptions } from './watch.js';
+export type { WatchEvent, WatchHandle, WatchOptions } from './watch.js';
 export { buildProgram } from './program.js';

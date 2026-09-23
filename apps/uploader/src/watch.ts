@@ -12,9 +12,15 @@ import { LockedError } from './lock.js';
 import { silentLogger } from './log.js';
 import type { Logger } from './log.js';
 import { runFlush, runUploadPass } from './pass.js';
-import type { FlushResult } from './pass.js';
+import type { FlushResult, PassResult } from './pass.js';
 import type { ReadOptions } from './reader.js';
 import { formatChicago } from './time.js';
+
+/** What a watch reports to `onEvent`: each upload or retry pass, and the error that stopped watching. */
+export type WatchEvent =
+  | { type: 'pass-start' }
+  | { type: 'pass-end'; result: PassResult }
+  | { type: 'fatal'; error: FatalUploadError };
 
 export interface WatchOptions {
   config: Config;
@@ -30,6 +36,12 @@ export interface WatchOptions {
   awaitWriteFinish?: { stabilityThreshold: number; pollInterval: number };
   usePolling?: boolean;
   backoff?: BackoffOptions;
+  /**
+   * Called around every pass (initial, file change, queue retry, trigger) and when a fatal error stops watching.
+   * A pass that throws (e.g. the state folder is locked) gets no pass-end; the loop retries it. Listener exceptions
+   * are logged at debug and ignored.
+   */
+  onEvent?: (e: WatchEvent) => void;
 }
 
 export interface WatchHandle {
@@ -39,6 +51,14 @@ export interface WatchHandle {
   /** Resolves once no pass is running (tests). */
   idle(): Promise<void>;
   watchedFiles(): string[];
+  /** Uploads every watched file now (as on start), without waiting for a change or a retry. */
+  trigger(): void;
+}
+
+/** A queue-only pass as a PassResult (no files read). */
+function flushPass(flush: FlushResult): PassResult {
+  const ok = !flush.fatal && flush.errors.length === 0 && flush.pendingBatches === 0;
+  return { ok, files: [], flush, fatal: flush.fatal, notes: [] };
 }
 
 /**
@@ -80,6 +100,14 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
   watcher.on('add', onFileEvent);
   watcher.on('change', onFileEvent);
   watcher.on('error', (err) => logger.error({ err }, 'file watcher error'));
+
+  function emit(e: WatchEvent) {
+    try {
+      opts.onEvent?.(e);
+    } catch (err) {
+      logger.debug({ err, event: e.type }, 'watch event listener threw');
+    }
+  }
 
   async function discover() {
     lastDiscover = Date.now();
@@ -127,20 +155,21 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
       pendingAll = false;
       pendingFiles.clear();
       flushDue = false;
+      emit({ type: 'pass-start' });
       try {
-        if (all || files.length) {
-          const res = await runUploadPass({
-            config,
-            logger,
-            fetchImpl: opts.fetchImpl,
-            read: opts.read,
-            chunk: opts.chunk,
-            files: all ? undefined : files,
-          });
-          afterFlush(res.flush);
-        } else {
-          afterFlush(await runFlush({ config, logger, fetchImpl: opts.fetchImpl }));
-        }
+        const result =
+          all || files.length
+            ? await runUploadPass({
+                config,
+                logger,
+                fetchImpl: opts.fetchImpl,
+                read: opts.read,
+                chunk: opts.chunk,
+                files: all ? undefined : files,
+              })
+            : flushPass(await runFlush({ config, logger, fetchImpl: opts.fetchImpl }));
+        emit({ type: 'pass-end', result });
+        afterFlush(result.flush);
       } catch (err) {
         if (err instanceof FatalUploadError) return stop(err);
         if (err instanceof LockedError) logger.warn(err.message);
@@ -187,6 +216,7 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
   function stop(fatal: FatalUploadError) {
     logger.fatal(fatal.message);
     closed = true;
+    emit({ type: 'fatal', error: fatal });
     clearInterval(timer);
     void watcher.close().finally(() => resolveDone(fatal));
   }
@@ -201,5 +231,10 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
       while (running) await running;
     },
     watchedFiles: () => [...watched],
+    trigger: () => {
+      if (closed) return;
+      pendingAll = true;
+      kick();
+    },
   };
 }
