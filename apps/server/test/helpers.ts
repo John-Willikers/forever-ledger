@@ -39,5 +39,6 @@ export function batchFromFixture(
     fileURLToPath(new URL(`../../../fixtures/synthetic/${name}`, import.meta.url)),
   );
   const { meta, records } = normalize(parseSavedVariables(file).ForeverLedgerDB);
-  return structuredClone({ schemaVersion: 1, uploaderId, account, meta, records });
+  // The batch carries the file's own schema major, as the uploader sends it.
+  return structuredClone({ schemaVersion: meta.schemaVersion, uploaderId, account, meta, records });
 }

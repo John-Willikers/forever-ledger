@@ -8,7 +8,8 @@ import {
   Quest,
   QuestObservation,
   Run,
-  SCHEMA_VERSION,
+  isSupportedSchemaVersion,
+  SUPPORTED_SCHEMA_VERSIONS,
   TurnIn,
 } from './schemas.js';
 import type { Records, RecordKind } from './schemas.js';
@@ -22,7 +23,7 @@ export class UnsupportedSchemaError extends Error {
     super(
       found === undefined
         ? 'SavedVariables has no schemaVersion (addon v0.1.0 data): log in once with Forever Ledger v0.2.0+ to migrate it'
-        : `SavedVariables schemaVersion ${String(found)} is not supported (expected ${SCHEMA_VERSION})`,
+        : `SavedVariables schemaVersion ${String(found)} is not supported (expected ${SUPPORTED_SCHEMA_VERSIONS.join(' or ')})`,
     );
     this.name = 'UnsupportedSchemaError';
     this.found = found;
@@ -85,7 +86,7 @@ function splitCharKey(key: string) {
 export function normalize(db: unknown): Normalized {
   if (!isObj(db)) throw new TypeError('ForeverLedgerDB is not a table');
   const rawMeta = isObj(db.meta) ? db.meta : {};
-  if (rawMeta.schemaVersion !== SCHEMA_VERSION)
+  if (!isSupportedSchemaVersion(rawMeta.schemaVersion))
     throw new UnsupportedSchemaError(rawMeta.schemaVersion);
   const meta = Meta.parse(rawMeta);
 
@@ -140,8 +141,14 @@ export function normalize(db: unknown): Normalized {
 
   list(db.turnIns).forEach((t, i) => {
     if (!isObj(t)) return;
-    const { questID, runID, ...rest } = t;
-    add('turnIns', TurnIn, `turnIns.${i + 1}`, { ...rest, questId: questID, runId: runID });
+    const { questID, runID, choice, ...rest } = t;
+    add('turnIns', TurnIn, `turnIns.${i + 1}`, {
+      ...rest,
+      questId: questID,
+      runId: runID,
+      // SV spells it itemID like every other addon field; records use itemId.
+      choice: isObj(choice) ? { index: choice.index, itemId: choice.itemID } : undefined,
+    });
   });
 
   for (const [iid, it] of entries(db.items)) {

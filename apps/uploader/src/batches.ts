@@ -1,4 +1,4 @@
-import { contentHash, RECORD_KINDS, recordKey, SCHEMA_VERSION } from '@forever-ledger/contracts';
+import { contentHash, RECORD_KINDS, recordKey } from '@forever-ledger/contracts';
 import type { Meta, RecordKind, Records, UploadBatch } from '@forever-ledger/contracts';
 
 /** One record plus its natural key and content hash. */
@@ -89,7 +89,8 @@ export interface BatchHeader {
 
 export function buildBatch(header: BatchHeader, entries: Entry[]): UploadBatch {
   return {
-    schemaVersion: SCHEMA_VERSION,
+    // The file's own schema major: the server accepts older majors, and queued batches keep theirs.
+    schemaVersion: header.meta.schemaVersion,
     uploaderId: header.uploaderId,
     account: header.account,
     meta: header.meta,

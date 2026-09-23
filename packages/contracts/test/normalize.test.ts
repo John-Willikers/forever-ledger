@@ -17,11 +17,14 @@ const load = (name: string) =>
   ).ForeverLedgerDB;
 
 describe('normalize — synthetic fixtures from the Lua harness', () => {
-  for (const name of ['session-v1.lua', 'session-migrated.lua']) {
+  for (const [name, schemaVersion] of [
+    ['session-v1.lua', 1],
+    ['session-migrated.lua', 1],
+  ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
       expect(problems).toEqual([]);
-      expect(meta.schemaVersion).toBe(1);
+      expect(meta.schemaVersion).toBe(schemaVersion);
       expect(records.quests).toHaveLength(1);
       expect(records.questObservations.length).toBeGreaterThanOrEqual(3);
       expect(records.turnIns).toHaveLength(1);
@@ -93,9 +96,44 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 2, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 2/,
+    expect(() => normalize({ meta: { schemaVersion: 3, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 3 is not supported \(expected 1 or 2\)/,
     );
+  });
+
+  it('maps a schema 2 turn-in choice (itemID) to choice.itemId', () => {
+    const { records, problems } = normalize({
+      meta: { schemaVersion: 2, addonVersion: '0.2.3', build: 5 },
+      turnIns: [
+        {
+          id: 'a-1-1',
+          questID: 1,
+          build: 5,
+          char: 'A-R',
+          time: 10,
+          choice: { index: 2, itemID: 99 },
+        },
+        {
+          id: 'a-2-1',
+          questID: 2,
+          build: 5,
+          char: 'A-R',
+          time: 11,
+          choice: { index: 0, itemID: 9 },
+        },
+      ],
+    });
+    expect(records.turnIns).toEqual([
+      {
+        id: 'a-1-1',
+        questId: 1,
+        build: 5,
+        char: 'A-R',
+        time: 10,
+        choice: { index: 2, itemId: 99 },
+      },
+    ]);
+    expect(problems[0]).toMatchObject({ kind: 'turnIns', path: 'turnIns.2' });
   });
 
   it('reads id-keyed tables that the parser turned into arrays', () => {

@@ -150,7 +150,9 @@ describe('ingest API (real Postgres)', () => {
 
   it('rejects unknown schema versions with 409 and malformed batches with 400', async () => {
     const batch = batchFromFixture('session-v1.lua');
-    expect((await post({ ...batch, schemaVersion: 2 })).statusCode).toBe(409);
+    const res409 = await post({ ...batch, schemaVersion: 3 });
+    expect(res409.statusCode).toBe(409);
+    expect(res409.json().error).toMatch(/accepts 1, 2/);
     const bad = structuredClone(batch) as unknown as { records: { runs: { start: unknown }[] } };
     bad.records.runs[0]!.start = 'yesterday';
     const res = await post(bad);

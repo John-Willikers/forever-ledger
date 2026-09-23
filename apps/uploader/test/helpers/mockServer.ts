@@ -3,10 +3,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
   contentHash,
+  isSupportedSchemaVersion,
   NO_ADDON_RELEASE,
   RECORD_KINDS,
   recordKey,
-  SCHEMA_VERSION,
   UploadBatch,
 } from '@forever-ledger/contracts';
 import type { Acknowledged } from '@forever-ledger/contracts';
@@ -96,7 +96,7 @@ export async function startMockServer(opts: MockServerOptions = {}): Promise<Moc
       const override = opts.override?.(json, state.ingestRequests);
       if (override) return send(res, override.status, override.body ?? {});
       const version = (json as { schemaVersion?: unknown }).schemaVersion;
-      if (version !== SCHEMA_VERSION)
+      if (!isSupportedSchemaVersion(version))
         return send(res, 409, { error: `unsupported schemaVersion ${String(version)}` });
       const parsed = UploadBatch.safeParse(json);
       if (!parsed.success) return send(res, 400, { error: parsed.error.message });

@@ -1,5 +1,9 @@
 import rateLimit from '@fastify/rate-limit';
-import { SCHEMA_VERSION, UploadBatch } from '@forever-ledger/contracts';
+import {
+  isSupportedSchemaVersion,
+  SUPPORTED_SCHEMA_VERSIONS,
+  UploadBatch,
+} from '@forever-ledger/contracts';
 import { sql } from 'drizzle-orm';
 import Fastify from 'fastify';
 import type { FastifyServerOptions } from 'fastify';
@@ -80,9 +84,9 @@ export async function buildApp(opts: AppOptions) {
       if (typeof body !== 'object' || body === null) {
         return reply.status(400).send({ error: 'expected a JSON UploadBatch' });
       }
-      if (body.schemaVersion !== SCHEMA_VERSION) {
+      if (!isSupportedSchemaVersion(body.schemaVersion)) {
         return reply.status(409).send({
-          error: `unsupported schemaVersion ${String(body.schemaVersion)}; this server accepts ${SCHEMA_VERSION}`,
+          error: `unsupported schemaVersion ${String(body.schemaVersion)}; this server accepts ${SUPPORTED_SCHEMA_VERSIONS.join(', ')}`,
         });
       }
       const parsed = UploadBatch.safeParse(body);
