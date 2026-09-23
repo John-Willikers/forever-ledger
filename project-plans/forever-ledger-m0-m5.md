@@ -67,21 +67,23 @@ Tooling present: Node 22.22 (LTS), pnpm 11, Docker 28 + compose v2, PM2 6, Nginx
 
 ### 🔬 M1.5 — Client API probe (answers open questions before we lock schema v1)
 User idea: use the client's `/api` docs to find out what Forever really supports. Build a tiny **separate addon `ForeverLedgerProbe`** (own SavedVariables `ForeverLedgerProbeDB`, so the ledger file stays small). Read-only, runs on `/flprobe`:
-- [ ] Dump `GetBuildInfo()` (version, build, date, interface number) → open questions 2
-- [ ] `LoadAddOn("Blizzard_APIDocumentation")` (C_AddOns fallback) and walk `APIDocumentation.systems` → every namespace, function (args/returns) and event (payload fields) — same data `/api` shows → questions 3, 4
-- [ ] Presence check for globals we depend on (`GetRewardXP`, `GetLootSourceInfo`, `GetQuestID`, `C_Item.*`, `C_QuestLog.*`, `C_Map.*`, …) and `pcall(RegisterEvent)` result for each candidate event (`QUEST_TURNED_IN`, `ENCOUNTER_END`, `GET_ITEM_INFO_RECEIVED`, `QUEST_ACCEPTED`, …)
-- [ ] Live event sniffer toggle (`/flprobe sniff on|off`): records the first N payloads per event (`QUEST_ACCEPTED` arg order, `QUEST_TURNED_IN` xp/money, `ENCOUNTER_END`) to answer arg-order questions from real play
-- [ ] Uploader gets `probe-dump <file>` → parses `ForeverLedgerProbe.lua` with our parser → `fixtures/real/api-<build>.json`; later: diff two dumps to see API changes between beta builds
+- [x] Dump `GetBuildInfo()` (version, build, date, interface number) → open questions 2
+- [x] `LoadAddOn("Blizzard_APIDocumentation")` (C_AddOns fallback) and walk `APIDocumentation.systems` → every namespace, function (args/returns) and event (payload fields) — same data `/api` shows → questions 3, 4
+- [x] Presence check for globals we depend on (`GetRewardXP`, `GetLootSourceInfo`, `GetQuestID`, `C_Item.*`, `C_QuestLog.*`, `C_Map.*`, …) and `pcall(RegisterEvent)` result for each candidate event (`QUEST_TURNED_IN`, `ENCOUNTER_END`, `GET_ITEM_INFO_RECEIVED`, `QUEST_ACCEPTED`, …)
+- [x] Live event sniffer toggle (`/flprobe sniff on|off`): records the first N payloads per event (`QUEST_ACCEPTED` arg order, `QUEST_TURNED_IN` xp/money, `ENCOUNTER_END`) to answer arg-order questions from real play
+- [ ] ⏳ (M4) Uploader gets `probe-dump <file>` → parses `ForeverLedgerProbe.lua` with our parser → `fixtures/real/api-<build>.json`; later: diff two dumps to see API changes between beta builds
 - **Done when:** probe passes luacheck + harness test; after the user runs it in-game once, open questions 2–4 are answered in `CLAUDE.md` and M2 adapts accordingly.
+  - 🟡 2026-09-23 00:40 CDT — probe built + 6 harness tests pass; **waiting on the user to run `/flprobe` in-game.**
 
 ### 📜 M2 — Contracts + addon schema v1
-- [ ] Addon changes per the findings table; migration of v0 data (quests' nested turnIns → `db.turnIns`, flat item fields → `byBuild[meta.build or 0]`, drops → `drops[item][0][npc]`); FIFO trim helper; bump to v0.2.0, `/fl` status prints schema + build
-- [ ] Keep `pcall`-guarded event registration; keep `QUEST_ACCEPTED (a, b)` handling (open question #4)
-- [ ] `addon/tests/`: Lua 5.1 harness with stubbed WoW globals drives a scripted session (login, accept, turn in, enter dungeon, loot, boss kill, die, leave, re-enter within 15 min) and writes `fixtures/synthetic/session-*.lua` using a WoW-style serializer. Asserts ids, build stamps, byBuild, caps.
-- [ ] `packages/contracts`: zod `Meta`, `Quest`, `QuestObservation`, `QuestRewardOption`, `TurnIn`, `Item`, `ItemBuildSnapshot`, `Drop`, `Run`, `RunBoss`, `RunLoot`, `RunPartyMember`, `UploadBatch` (`{ uploaderId, schemaVersion, clientBuild, character, records: { quests, questObservations, turnIns, items, itemSnapshots, drops, runs } }`)
-- [ ] `normalize(svObject) → records` (SavedVariables shape → flat record lists with natural keys) lives in contracts so uploader and server share it; `recordKey()` + stable `contentHash()` (sorted-key JSON → sha256)
-- [ ] `rules/classRules.ts`: armor type per class, primary stat per spec, weapon types — versioned, used at query time only
-- **Done when:** every synthetic fixture parses → normalizes → validates; luacheck clean.
+- [x] Addon changes per the findings table; migration of v0 data (quests' nested turnIns → `db.turnIns`, flat item fields → `byBuild[meta.build or 0]`, drops → `drops[item][0][npc]`); FIFO trim helper; bump to v0.2.0, `/fl` status prints schema + build
+- [x] Keep `pcall`-guarded event registration; keep `QUEST_ACCEPTED (a, b)` handling (open question #4)
+- [x] `addon/tests/`: Lua 5.1 harness with stubbed WoW globals drives a scripted session (login, accept, turn in, enter dungeon, loot, boss kill, die, leave, re-enter within 15 min) and writes `fixtures/synthetic/session-*.lua` using a WoW-style serializer. Asserts ids, build stamps, byBuild, caps.
+- [x] `packages/contracts`: zod `Meta`, `Quest`, `QuestObservation`, `QuestRewardOption`, `TurnIn`, `Item`, `ItemBuildSnapshot`, `Drop`, `Run`, `RunBoss`, `RunLoot`, `RunPartyMember`, `UploadBatch` (`{ uploaderId, schemaVersion, clientBuild, character, records: { quests, questObservations, turnIns, items, itemSnapshots, drops, runs } }`)
+- [x] `normalize(svObject) → records` (SavedVariables shape → flat record lists with natural keys) lives in contracts so uploader and server share it; `recordKey()` + stable `contentHash()` (sorted-key JSON → sha256)
+- [x] `rules/classRules.ts`: armor type per class, primary stat per spec, weapon types — versioned, used at query time only
+- **Done when:** every synthetic fixture parses → normalizes → validates; luacheck clean. ✅ Done 2026-09-23 00:45 CDT — 22 Lua tests (incl. migration tested against the real v0.1.0 addon) + 16 contract tests.
+  - 📝 Change vs doc: `UploadBatch` carries `account` (SavedVariables file = one WoW account, many characters) instead of one `character`; each record names its own `char`. Drop counts keyed item+build+npc+uploader+account.
 
 ### 🗄️ M3 — Server ingest + DB + deploy
 - [ ] Drizzle schema for all 13 tables in the doc, with deltas: `drops` PK = item+npc+build+character; `quest_observations` PK = quest+build+stage+character; `api_tokens` (sha256 hash, label, created/revoked) table; `raw_uploads` JSONB
