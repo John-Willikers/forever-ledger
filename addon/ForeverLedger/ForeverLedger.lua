@@ -308,11 +308,17 @@ do
   -- pcall that notes a failure under `place`.
   function safely(place, fn, ...) return captured(place, pcall(fn, ...)) end
 
-  -- A window scan at most every SCAN_GAP seconds. A request inside the gap runs once when it ends (C_Timer), so the
-  -- last state of the window is still read; `fn` returning true asks for another pass (work left over).
-  local lastScan, scanQueued = {}, {}
-  function throttled(key, fn)
-    local wait = SCAN_GAP - (now() - (lastScan[key] or -SCAN_GAP))
+  -- A window scan at most every SCAN_GAP seconds (GetTime, else time()). A request inside the gap runs once when it
+  -- ends (C_Timer), so the last state of the window is still read. `fn(continued)` returning true has work left over
+  -- (a pass does a bounded amount): the next pass runs CONTINUE_GAP later, and `fn` itself stops once its window is
+  -- closed. Without C_Timer the next throttled scan picks the work up.
+  local CONTINUE_GAP = 0.2
+  local lastScan, scanQueued, continuing = {}, {}, {}
+  local function clock() return GetTime and GetTime() or time() end
+
+  function throttled(key, fn, continued)
+    local t = clock()
+    local wait = SCAN_GAP - (t - (lastScan[key] or t - SCAN_GAP))
     if wait > 0 then
       if not scanQueued[key] and C_Timer and C_Timer.After then
         scanQueued[key] = true
@@ -320,9 +326,15 @@ do
       end
       return
     end
-    lastScan[key] = now()
-    local ok, more = safely("scan:" .. key, fn)
-    if ok and more then throttled(key, fn) end
+    lastScan[key] = t
+    local ok, more = safely("scan:" .. key, fn, continued)
+    if ok and more and not continuing[key] and C_Timer and C_Timer.After then
+      continuing[key] = true
+      C_Timer.After(CONTINUE_GAP, function()
+        continuing[key], lastScan[key] = nil, nil
+        throttled(key, fn, true)
+      end)
+    end
   end
 end
 
@@ -435,9 +447,12 @@ end
 
 ---------------------------------------------------------------- professions: recipes
 -- Read only from your own profession window (never a linked, guild or NPC crafter window, nor while the data source
--- is switching). The schematic is read once per recipe per build, at most SCHEMATIC_BUDGET new ones per scan.
-local SCHEMATIC_BUDGET = 60
-local tradeOpen = false
+-- is switching). The schematic is read once per recipe per build, at most SCHEMATIC_BUDGET new ones per pass; the
+-- next pass follows 0.2 s later while the window is open. The window counts as closed after TRADE_SKILL_CLOSE,
+-- TRADE_SKILL_DATA_SOURCE_CHANGING (until the matching _CHANGED, or a _CHANGED within 5 s of TRADE_SKILL_SHOW) or a
+-- failed GetBaseProfessionInfo, so a missed close event does not keep it being read.
+local SCHEMATIC_BUDGET = 20
+local tradeOpen, tradeSwitching, tradeShownAt = false, false, nil
 
 local function tradeGuardsOK(T)
   for _, guard in ipairs({ "IsTradeSkillLinked", "IsTradeSkillGuild", "IsNPCCrafting", "IsDataSourceChanging" }) do
@@ -556,9 +571,15 @@ local function noteRecipeSeen(byRecipe, recipeID, info, rank)
   end
 end
 
-local function scanTrade()
+-- continued: a follow-up pass, which only reads recipes still missing this build's schematic.
+local function scanTrade(continued)
   local T = C_TradeSkillUI
-  if not tradeOpen or not T or not T.GetAllRecipeIDs or not T.GetRecipeInfo or not tradeGuardsOK(T) then return end
+  if not tradeOpen or not T or not T.GetAllRecipeIDs or not T.GetRecipeInfo then return end
+  if T.GetBaseProfessionInfo then
+    local ok, base = pcall(T.GetBaseProfessionInfo)
+    if not ok or type(base) ~= "table" then tradeOpen = false; return end
+  end
+  if not tradeGuardsOK(T) then return end
   local ids = T.GetAllRecipeIDs()
   if type(ids) ~= "table" then return end
   sample("C_TradeSkillUI.GetAllRecipeIDs", ids)
@@ -570,7 +591,11 @@ local function scanTrade()
   local budget, more = SCHEMATIC_BUDGET, false
   for _, rid in ipairs(ids) do
     local recipeID = tonumber(rid)
-    local ok, info = pcall(T.GetRecipeInfo, recipeID)
+    local known = recipeID and db.recipes[recipeID]
+    local skip = continued and known and known.byBuild and known.byBuild[build]
+    if continued and budget == 0 and not skip then return true end
+    local ok, info = false, nil
+    if not skip then ok, info = pcall(T.GetRecipeInfo, recipeID) end
     if recipeID and ok and type(info) == "table" then
       sample("C_TradeSkillUI.GetRecipeInfo", info)
       local rec = db.recipes[recipeID] or { id = recipeID, byBuild = {} }
@@ -751,11 +776,15 @@ local function scanTrainer()
                         complete = complete, services = services }
 end
 
+-- The whole list every pass, but at most VENDOR_SCAN_BUDGET items new to this build are scanned per pass (big stocks);
+-- the next pass follows 0.2 s later while the window is open. Items the client has not sent yet wait for
+-- GET_ITEM_INFO_RECEIVED instead.
+local VENDOR_SCAN_BUDGET = 20
 local function scanVendor()
   if not merchantNpc or not GetMerchantNumItems then return end
   local MF = C_MerchantFrame
   local api = "C_MerchantFrame.GetItemInfo"
-  local list = {}
+  local list, budget, more = {}, VENDOR_SCAN_BUDGET, false
   for i = 1, math.min(GetMerchantNumItems() or 0, LIST_CAP) do
     local info = MF and MF.GetItemInfo and MF.GetItemInfo(i)
     sample(api, info)
@@ -769,13 +798,22 @@ local function scanVendor()
       local ext = field(info, "hasExtendedCost", "extendedCost")
       if ext ~= nil then e.extendedCost = ext and true or false end
       list[#list + 1] = e
-      scanItemOnce(itemID, link)
+      local rec = db.items[itemID]
+      if not (rec and rec.byBuild and rec.byBuild[build]) and not pendingItems[itemID] then
+        if budget > 0 then
+          budget = budget - 1
+          scanItem(itemID, link)
+        else
+          more = true
+        end
+      end
     end
   end
   local byNpc = db.vendors[build] or {}
   db.vendors[build] = byNpc
   if not byNpc[merchantNpc] then added() end
   byNpc[merchantNpc] = { name = UnitName("npc"), loc = where(), seenAt = now(), items = list }
+  return more
 end
 
 ---------------------------------------------------------------- quests
@@ -1975,12 +2013,22 @@ end
 -- professions: everything below reads client tables whose field names are unverified, so all of it runs `safely`
 function handlers.SKILL_LINES_CHANGED() safely("scanSkills", scanSkills) end
 function handlers.TRADE_SKILL_SHOW()
-  tradeOpen = true
+  tradeOpen, tradeShownAt = true, now()
   throttled("trade", scanTrade)
 end
 function handlers.TRADE_SKILL_LIST_UPDATE() if tradeOpen then throttled("trade", scanTrade) end end
-function handlers.TRADE_SKILL_DATA_SOURCE_CHANGED() if tradeOpen then throttled("trade", scanTrade) end end
-function handlers.TRADE_SKILL_CLOSE() tradeOpen = false end
+-- CHANGING closes the window until the matching CHANGED (another profession in the open window); a closed window
+-- stays closed.
+function handlers.TRADE_SKILL_DATA_SOURCE_CHANGING()
+  tradeSwitching = tradeOpen or tradeSwitching
+  tradeOpen = false
+end
+function handlers.TRADE_SKILL_DATA_SOURCE_CHANGED()
+  if tradeSwitching or (tradeShownAt and now() - tradeShownAt <= ATTRIBUTE_WINDOW) then tradeOpen = true end
+  tradeSwitching = false
+  if tradeOpen then throttled("trade", scanTrade) end
+end
+function handlers.TRADE_SKILL_CLOSE() tradeOpen, tradeSwitching, tradeShownAt = false, false, nil end
 function handlers.NEW_RECIPE_LEARNED(...) safely("onRecipeLearned", onRecipeLearned, ...) end
 function handlers.TRAINER_SHOW()
   trainerNpc = npcIDFromGUID(UnitGUID("npc"))

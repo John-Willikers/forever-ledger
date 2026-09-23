@@ -84,7 +84,7 @@ function H.new(worldOverrides)
     for part in (s .. sep):gmatch("(.-)" .. sep:gsub("%p", "%%%0")) do out[i] = part; i = i + 1 end
     return unpack(out)
   end
-  env.time = function() return world.clock end
+  env.time = function() return math.floor(world.clock) end -- whole seconds, like the client
   env.date = os.date
   env.print = function(...)
     local parts = {}
@@ -404,6 +404,7 @@ function H.new(worldOverrides)
     env.C_Timer = {
       After = function(secs, fn) world.timers[#world.timers + 1] = { at = world.clock + secs, fn = fn } end,
     }
+    env.GetTime = function() return world.clock end -- fractional seconds
     env.C_SkillInfo = {
       GetNumSkillLines = function() return #world.skillLines end,
       GetSkillLineInfo = function(i) return copy(world.skillLines[i]) end,
@@ -433,7 +434,10 @@ function H.new(worldOverrides)
         return recipe(id) and copy(recipe(id).schematic)
       end,
       GetRecipeSourceText = function(id) return recipe(id) and recipe(id).sourceText end,
-      GetBaseProfessionInfo = function() return copy(trade().base) end,
+      GetBaseProfessionInfo = function()
+        called("GetBaseProfessionInfo")
+        return copy(trade().base)
+      end,
       GetChildProfessionInfo = function() return copy(trade().child) end,
       GetProfessionInfoByRecipeID = function(id)
         called("GetProfessionInfoByRecipeID")

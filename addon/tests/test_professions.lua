@@ -305,37 +305,115 @@ return function(H)
     H.eq(c.world.calls.GetAllRecipeIDs, 2, "closed windows are not read")
   end)
 
-  H.test("professions: at most 60 new schematics per scan, the rest on the next passes", function()
-    local c = session(H)
+  local function bigWindow(n)
     local w = tailoringWindow()
     w.ids = {}
-    for i = 1, 130 do
+    for i = 1, n do
       local id = 90000 + i
       w.ids[i] = id
       w.recipes[id] = recipe(id, "Recipe " .. i, true, 0, 2996, { { 2589, 1 } })
     end
-    openTrade(c, w)
-    H.eq(c.world.calls.GetRecipeSchematic, 60)
+    return w
+  end
+
+  H.test("professions: at most 20 new schematics per pass, the next pass 0.2 s later while open", function()
+    local c = session(H)
+    openTrade(c, bigWindow(130))
+    H.eq(c.world.calls.GetRecipeSchematic, 20)
     local d = c.env.ForeverLedgerDB
     H.eq(H.count(d.recipes), 130, "every recipe is listed")
+    H.eq(H.count(d.recipeSeen[B][ME]), 130, "and seen")
     H.eq(d.recipes[90100].byBuild[B], nil)
-    c.advance(2)
-    H.eq(c.world.calls.GetRecipeSchematic, 120)
-    c.advance(2)
+    local infos = c.world.calls.GetRecipeInfo
+    c.advance(0.2)
+    H.eq(c.world.calls.GetRecipeSchematic, 40)
+    H.ok(c.world.calls.GetRecipeInfo - infos <= 21, "a continuation only reads recipes still missing a schematic")
+    for _ = 1, 5 do c.advance(0.2) end
     H.eq(c.world.calls.GetRecipeSchematic, 130)
     H.ok(d.recipes[90130].byBuild[B], "the last one is read")
     c.advance(10)
     H.eq(#c.world.timers, 0, "nothing left queued")
   end)
 
-  H.test("professions: without C_Timer a scan inside the gap is skipped", function()
-    local c = session(H, { missing = { C_Timer = true } })
+  H.test("professions: closing the window stops the schematic passes", function()
+    local c = session(H)
+    openTrade(c, bigWindow(130))
+    c.advance(0.2)
+    H.eq(c.world.calls.GetRecipeSchematic, 40)
+    c.fire("TRADE_SKILL_CLOSE")
+    c.advance(5)
+    H.eq(c.world.calls.GetRecipeSchematic, 40)
+    H.eq(#c.world.timers, 0)
+  end)
+
+  H.test("professions: throttling follows GetTime, not the whole-second time()", function()
+    local c = session(H)
+    c.env.time = function() return 1790000000 end -- time() stands still; GetTime moves
     openTrade(c)
+    c.advance(2.5)
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    H.eq(c.world.calls.GetAllRecipeIDs, 2)
+  end)
+
+  H.test("professions: a window that closed without TRADE_SKILL_CLOSE is not read again", function()
+    local c = session(H)
+    openTrade(c)
+    c.world.tradeSkill = nil -- the window is gone, TRADE_SKILL_CLOSE never came
+    c.advance(5)
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    local base = c.world.calls.GetBaseProfessionInfo
+    c.advance(5)
     c.fire("TRADE_SKILL_LIST_UPDATE")
     H.eq(c.world.calls.GetAllRecipeIDs, 1)
+    H.eq(c.world.calls.GetBaseProfessionInfo, base, "treated as closed: not even checked again")
+    openTrade(c)
+    H.eq(c.world.calls.GetAllRecipeIDs, 2, "TRADE_SKILL_SHOW opens it again")
+    c.env.C_TradeSkillUI.GetBaseProfessionInfo = function() error("no data source") end
+    c.advance(5)
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    c.advance(5)
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    H.eq(c.world.calls.GetAllRecipeIDs, 2, "an erroring GetBaseProfessionInfo is closed too")
+  end)
+
+  H.test("professions: TRADE_SKILL_DATA_SOURCE_CHANGING closes the window until the source is back", function()
+    local c = session(H)
+    openTrade(c)
+    c.advance(5)
+    c.fire("TRADE_SKILL_DATA_SOURCE_CHANGING")
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    H.eq(c.world.calls.GetAllRecipeIDs, 1)
+    c.fire("TRADE_SKILL_DATA_SOURCE_CHANGED") -- switched to another profession in the open window
+    H.eq(c.world.calls.GetAllRecipeIDs, 2)
+    c.fire("TRADE_SKILL_CLOSE")
+    c.advance(5)
+    c.fire("TRADE_SKILL_DATA_SOURCE_CHANGING")
+    c.fire("TRADE_SKILL_DATA_SOURCE_CHANGED")
+    H.eq(c.world.calls.GetAllRecipeIDs, 2, "a closed window stays closed")
+  end)
+
+  H.test("professions: a window shown before its data source is ready is read once the source is there", function()
+    local c = session(H)
+    c.fire("TRADE_SKILL_SHOW") -- no data yet: GetBaseProfessionInfo returns nothing
+    c.fire("TRADE_SKILL_DATA_SOURCE_CHANGING")
+    c.world.tradeSkill = tailoringWindow()
+    c.advance(1)
+    c.fire("TRADE_SKILL_DATA_SOURCE_CHANGED")
+    c.advance(2)
+    H.eq(c.world.calls.GetAllRecipeIDs, 1)
+    H.eq(H.count(c.env.ForeverLedgerDB.recipes), 3)
+  end)
+
+  H.test("professions: without C_Timer or GetTime a scan inside the gap is skipped; the next scan continues", function()
+    local c = session(H, { missing = { C_Timer = true, GetTime = true } })
+    openTrade(c, bigWindow(30))
+    c.fire("TRADE_SKILL_LIST_UPDATE")
+    H.eq(c.world.calls.GetAllRecipeIDs, 1)
+    H.eq(c.world.calls.GetRecipeSchematic, 20)
     c.advance(2)
     c.fire("TRADE_SKILL_LIST_UPDATE")
     H.eq(c.world.calls.GetAllRecipeIDs, 2)
+    H.eq(c.world.calls.GetRecipeSchematic, 30)
   end)
 
   ---------------------------------------------------------------- learned
@@ -1097,6 +1175,35 @@ return function(H)
     atVendor(c, nil, "GameObject-0-1-0-1-9999-0000X01")
     H.eq(c.world.calls.GetMerchantNumItems, 2)
     H.eq(H.count(c.env.ForeverLedgerDB.vendors[B]), 1)
+  end)
+
+  H.test("vendors: at most 20 new items are scanned per pass, the rest 0.2 s later", function()
+    local c = session(H)
+    local stock = {}
+    for i = 1, 50 do
+      local id = 50000 + i
+      c.world.items[id] = { name = "Ware " .. i, quality = 1, ilvl = 1, type = "Trade Goods", subtype = "Cloth",
+                            tooltip = { { "Ware " .. i } } }
+      stock[i] = merchantItem(id, i)
+    end
+    stock[51] = merchantItem(5556, 5) -- Bayou Staff: not cached, waits for GET_ITEM_INFO_RECEIVED
+    c.world.items[5556].cached = false
+    atVendor(c, stock)
+    local d = c.env.ForeverLedgerDB
+    local function scanned()
+      local n = 0
+      for i = 1, 50 do if d.items[50000 + i] then n = n + 1 end end
+      return n
+    end
+    H.eq(#d.vendors[B][1347].items, 51, "the whole list every pass")
+    H.eq(scanned(), 20)
+    c.advance(0.2)
+    H.eq(scanned(), 40)
+    c.advance(0.2)
+    H.eq(scanned(), 50)
+    c.advance(0.2)
+    c.advance(10)
+    H.eq(#c.world.timers, 0, "an item the client has not sent does not keep the passes going")
   end)
 
   H.test("vendors: item info that has not loaded yet still lists the item", function()
