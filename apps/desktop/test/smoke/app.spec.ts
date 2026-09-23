@@ -30,6 +30,7 @@ test('starts, shows the four cards and writes its log', async () => {
   // Launch the app folder (not dist/main.mjs) so app.getVersion() and productName come from package.json.
   const app = await electron.launch({
     args: [appDir],
+    timeout: 30_000,
     env: { ...process.env, FOREVER_LEDGER_CONFIG: config, FL_SMOKE: '1' },
   });
   const output: string[] = [];
