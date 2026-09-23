@@ -18,13 +18,13 @@ read_globals = {
   "CreateFrame", "WorldFrame", "UIParent", "DEFAULT_CHAT_FRAME",
   -- namespaces
   "C_Item", "C_Map", "C_QuestLog", "C_AddOns", "C_Container", "C_Timer", "APIDocumentation",
-  "C_ChatInfo", "C_CombatLog", "C_UI",
+  "C_ChatInfo", "C_CombatLog", "C_UI", "C_LootHistory", "C_PartyInfo", "Enum",
   -- client / addon
   "GetBuildInfo", "LoadAddOn", "IsAddOnLoaded", "GetLocale", "GetCVar", "ReloadUI", "InCombatLockdown",
   "LoggingChat", "LoggingCombat",
   -- units
   "UnitLevel", "UnitName", "UnitXP", "UnitXPMax", "UnitClass", "UnitRace", "UnitGUID", "UnitFactionGroup",
-  "UnitExists", "GetRealmName", "UnitAffectingCombat",
+  "UnitExists", "GetRealmName", "UnitAffectingCombat", "IsInGroup", "GetNumGroupMembers", "GetLootMethod",
   -- zone / instance
   "GetRealZoneText", "GetSubZoneText", "IsInInstance", "GetInstanceInfo",
   -- quests
@@ -33,7 +33,8 @@ read_globals = {
   "SelectQuestLogEntry", "GetNumQuestLogChoices", "GetQuestLogItemLink", "GetQuestLogRewardMoney",
   "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard", "GetQuestReward",
   -- items / loot
-  "GetItemInfo", "GetItemStats", "GetNumLootItems", "GetLootSlotLink", "GetLootSourceInfo",
+  "GetItemInfo", "GetItemStats", "GetNumLootItems", "GetLootSlotLink", "GetLootSourceInfo", "GetLootSlotType",
+  "GetLootSlotInfo", "GetMoney", "LOOT_SLOT_MONEY", "random",
 }
 
 -- The test harness defines WoW stubs as globals on purpose.

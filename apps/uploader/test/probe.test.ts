@@ -30,8 +30,8 @@ describe('probe-dump', () => {
       interface: 11507,
       apiDocsAvailable: true,
       systems: 1,
-      globalFunctions: 53,
-      namespaces: 5,
+      globalFunctions: 58,
+      namespaces: 7,
       rejectedEvents: ['ENCOUNTER_END'],
     });
     expect(b.nilGlobals).toContain('GetRewardXP');

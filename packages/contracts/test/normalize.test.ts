@@ -20,7 +20,8 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
   for (const [name, schemaVersion] of [
     ['session-v1.lua', 1],
     ['session-v2.lua', 2],
-    ['session-migrated.lua', 2],
+    ['session-v3.lua', 3],
+    ['session-migrated.lua', 3],
   ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
@@ -51,8 +52,10 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
   });
 
   it('flattens drops to item + build + npc running totals', () => {
-    expect(records.drops).toContainEqual({ itemId: 872, build: 61582, npcId: 644, count: 1 });
-    expect(records.drops).toContainEqual({ itemId: 872, build: 61600, npcId: 644, count: 1 });
+    const d = { itemId: 872, npcId: 644, session: '', count: 1 };
+    expect(records.drops).toContainEqual({ ...d, build: 61582 });
+    expect(records.drops).toContainEqual({ ...d, build: 61600 });
+    expect(records.corpses).toEqual([]);
   });
 
   it('maps addon field names to contract names', () => {
@@ -97,8 +100,8 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 3, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 3 is not supported \(expected 1 or 2\)/,
+    expect(() => normalize({ meta: { schemaVersion: 4, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 4 is not supported \(expected 1 or 2 or 3\)/,
     );
   });
 
@@ -148,7 +151,7 @@ describe('normalize — edge cases', () => {
     };
     const { records } = normalize(db);
     expect(records.quests.map((q) => q.questId)).toEqual([1, 2]);
-    expect(records.drops).toEqual([{ itemId: 1, build: 5, npcId: 1, count: 7 }]);
+    expect(records.drops).toEqual([{ itemId: 1, build: 5, npcId: 1, session: '', count: 7 }]);
   });
 
   it('reports bad records as problems without dropping good ones', () => {
@@ -191,14 +194,170 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(t2).toEqual(v1.records.turnIns[0]);
   });
 
-  it('accepts schema 1 and 2 upload batches, not 3', () => {
+  it('accepts schema 1 and 2 upload batches, not 4', () => {
     const batch = { uploaderId: 'pc-1', account: 'A', meta: v2.meta, records: v2.records };
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 2 }).success).toBe(true);
     expect(
       UploadBatch.safeParse({ ...batch, schemaVersion: 1, meta: v1.meta, records: v1.records })
         .success,
     ).toBe(true);
-    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 3 }).success).toBe(false);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 4 }).success).toBe(false);
+  });
+});
+
+describe('normalize — schema 3 fixture from the 0.2.4 addon', () => {
+  const { meta, records } = normalize(load('session-v3.lua'));
+  const session = meta.session!;
+
+  it('has a session id and stamps it on drops and corpses', () => {
+    expect(meta).toMatchObject({ schemaVersion: 3, addonVersion: '0.2.4' });
+    expect(session).toMatch(/^\d+-[0-9a-f]{4}$/);
+    expect(records.drops).toContainEqual({
+      itemId: 872,
+      build: 61582,
+      npcId: 644,
+      session,
+      count: 1,
+      quantity: 1,
+    });
+    expect(records.corpses).toContainEqual({
+      npcId: 644,
+      build: 61582,
+      session,
+      count: 1,
+      copper: 245,
+    });
+  });
+
+  it('carries loot method, boss loot and group loot on the run, by class only', () => {
+    const run = records.runs[0]!;
+    expect(run.lootMethod).toBe('group');
+    expect(run.bossLoot).toEqual([
+      {
+        encounterId: 1,
+        lootListKey: 1,
+        itemId: 872,
+        winnerClass: 'WARRIOR',
+        winnerIsSelf: false,
+        rolls: [
+          { class: 'WARRIOR', roll: 91, state: 'needmainspec' },
+          { class: 'HUNTER', roll: 45, state: 'greed' },
+        ],
+      },
+    ]);
+    expect(run.groupLoot).toEqual([
+      { itemId: 872, qty: 1, by: 'party', class: 'WARRIOR', won: true },
+      { itemId: 2589, qty: 2, by: 'party', class: 'PRIEST' },
+      { itemId: 2589, qty: 3, by: 'self' },
+    ]);
+    expect(JSON.stringify(records)).not.toMatch(/Boudreaux|Fontenot/);
+  });
+
+  it('the migrated v0 file keeps session "" (its drops are running totals)', () => {
+    const migrated = normalize(load('session-migrated.lua'));
+    expect(migrated.meta.session).toBe('');
+    expect(migrated.records.drops.every((d) => d.session === '')).toBe(true);
+  });
+});
+
+describe('normalize — schema 3 (addon 0.2.4)', () => {
+  const S = '1790000000-beef';
+  const db = {
+    meta: { schemaVersion: 3, addonVersion: '0.2.4', build: 69977, session: S },
+    drops: { 2589: { 69977: { 1234: 3, 0: 1 } } },
+    dropQty: { 2589: { 69977: { 1234: 5 } } },
+    corpses: { 69977: { 1234: { n: 4, copper: 57 }, 99: { n: 1 } } },
+    runs: [
+      {
+        id: 'A-R-36-10',
+        build: 69977,
+        char: 'A-R',
+        instanceID: 36,
+        start: 10,
+        awaySecs: 0,
+        xpTotal: 0,
+        questXP: 0,
+        deaths: 0,
+        bosses: {},
+        loot: {},
+        party: {},
+        lootMethod: 'group',
+        bossLoot: [
+          {
+            encounterID: 1,
+            lootListKey: 2,
+            itemID: 872,
+            winnerClass: 'WARRIOR',
+            winnerIsSelf: false,
+            rolls: [{ class: 'WARRIOR', roll: 88, state: 'needmainspec' }, { class: 'HUNTER' }],
+          },
+        ],
+        groupLoot: [
+          { itemID: 2589, qty: 2, by: 'party', class: 'PRIEST' },
+          { itemID: 872, qty: 1, by: 'party', class: 'WARRIOR', won: true },
+          { itemID: 5, qty: 1, by: 'someone' },
+        ],
+      },
+    ],
+  };
+  const { meta, records, problems } = normalize(db);
+
+  it('keeps the session in meta and on every drop and corpse', () => {
+    expect(meta.session).toBe(S);
+    expect(records.drops).toEqual([
+      { itemId: 2589, build: 69977, npcId: 0, session: S, count: 1 },
+      { itemId: 2589, build: 69977, npcId: 1234, session: S, count: 3, quantity: 5 },
+    ]);
+    expect(records.corpses).toEqual([
+      { npcId: 99, build: 69977, session: S, count: 1, copper: 0 },
+      { npcId: 1234, build: 69977, session: S, count: 4, copper: 57 },
+    ]);
+  });
+
+  it('keys drops and corpses by session; schema 1/2 drops keep their old key', () => {
+    expect(recordKey('drops', records.drops[1]!)).toBe(`drop:2589:69977:1234:${S}`);
+    expect(recordKey('corpses', records.corpses[1]!)).toBe(`corpse:1234:69977:${S}`);
+    const old = { itemId: 2589, build: 69977, npcId: 1234, session: '', count: 3 };
+    expect(recordKey('drops', old)).toBe('drop:2589:69977:1234');
+    // Two sessions with identical counts are two records, so neither hides behind the other's hash.
+    const other = { ...records.drops[1]!, session: '1790000500-0001' };
+    expect(recordKey('drops', other)).not.toBe(recordKey('drops', records.drops[1]!));
+  });
+
+  it('maps run loot to itemId / encounterId and rejects a bad group loot entry', () => {
+    expect(records.runs).toHaveLength(0);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]!.issues.join()).toMatch(/groupLoot\.2\.by/);
+    const fixed = structuredClone(db);
+    fixed.runs[0]!.groupLoot.pop();
+    const run = normalize(fixed).records.runs[0]!;
+    expect(run.lootMethod).toBe('group');
+    expect(run.bossLoot).toEqual([
+      {
+        encounterId: 1,
+        lootListKey: 2,
+        itemId: 872,
+        winnerClass: 'WARRIOR',
+        winnerIsSelf: false,
+        rolls: [{ class: 'WARRIOR', roll: 88, state: 'needmainspec' }, { class: 'HUNTER' }],
+      },
+    ]);
+    expect(run.groupLoot).toEqual([
+      { itemId: 2589, qty: 2, by: 'party', class: 'PRIEST' },
+      { itemId: 872, qty: 1, by: 'party', class: 'WARRIOR', won: true },
+    ]);
+  });
+
+  it('accepts schema 3 upload batches and defaults a missing drop session to empty', () => {
+    const batch = UploadBatch.parse({
+      schemaVersion: 3,
+      uploaderId: 'pc-1',
+      account: 'A',
+      meta,
+      records: { drops: [{ itemId: 1, build: 2, npcId: 3, count: 4 }] },
+    });
+    expect(batch.records.drops[0]!.session).toBe('');
+    expect(batch.records.corpses).toEqual([]);
   });
 });
 

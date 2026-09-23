@@ -4,6 +4,7 @@ import type { Db } from '../db/client.js';
 import {
   builds,
   characters,
+  corpses,
   drops,
   items,
   itemSnapshots,
@@ -29,6 +30,7 @@ export const EXPORT_TABLES = {
   items,
   item_snapshots: itemSnapshots,
   drops,
+  corpses,
   runs,
   run_bosses: runBosses,
   run_party: runParty,

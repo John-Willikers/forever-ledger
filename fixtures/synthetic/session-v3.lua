@@ -4,7 +4,7 @@ ForeverLedgerDB = {
 		["Thibodeaux-Bayou"] = {
 			["class"] = "HUNTER",
 			["faction"] = "Alliance",
-			["lastSeen"] = 1790001170,
+			["lastSeen"] = 1790087510,
 			["level"] = 10,
 			["name"] = "Thibodeaux",
 			["race"] = "Human",
@@ -12,12 +12,35 @@ ForeverLedgerDB = {
 		},
 	},
 	["corpses"] = {
+		[61582] = {
+			[644] = {
+				["copper"] = 245,
+				["n"] = 1,
+			},
+		},
+		[61600] = {
+			[644] = {
+				["copper"] = 0,
+				["n"] = 1,
+			},
+		},
 	},
 	["dropQty"] = {
+		[872] = {
+			[61582] = {
+				[644] = 1,
+			},
+			[61600] = {
+				[644] = 1,
+			},
+		},
 	},
 	["drops"] = {
 		[872] = {
 			[61582] = {
+				[644] = 1,
+			},
+			[61600] = {
 				[644] = 1,
 			},
 		},
@@ -36,7 +59,23 @@ ForeverLedgerDB = {
 					},
 					["tooltip"] = {
 						"Rockslicer", -- [1]
-						"Two-Hand || Axe", -- [2]
+						"Two-Hand	Axe", -- [2]
+						"|cff1eff00Equip: +7 Strength.|r", -- [3]
+					},
+				},
+				[61600] = {
+					["firstSeen"] = 1790087510,
+					["ilvl"] = 22,
+					["link"] = "|cff0070dd|Hitem:872::::::::|h[Rockslicer]|h|r",
+					["reqLevel"] = 16,
+					["sellPrice"] = 2600,
+					["stats"] = {
+						["ITEM_MOD_STAMINA_SHORT"] = 2,
+						["ITEM_MOD_STRENGTH_SHORT"] = 8,
+					},
+					["tooltip"] = {
+						"Rockslicer", -- [1]
+						"Two-Hand	Axe", -- [2]
 						"|cff1eff00Equip: +7 Strength.|r", -- [3]
 					},
 				},
@@ -48,10 +87,33 @@ ForeverLedgerDB = {
 			["subtype"] = "Two-Handed Axes",
 			["type"] = "Weapon",
 		},
+		[2589] = {
+			["byBuild"] = {
+				[61582] = {
+					["firstSeen"] = 1790000360,
+					["ilvl"] = 5,
+					["link"] = "|cffffffff|Hitem:2589::::::::|h[Linen Cloth]|h|r",
+					["reqLevel"] = 0,
+					["sellPrice"] = 13,
+					["stats"] = {
+					},
+					["tooltip"] = {
+						"Linen Cloth", -- [1]
+						"Max Stack: 20", -- [2]
+					},
+				},
+			},
+			["equipLoc"] = "",
+			["id"] = 2589,
+			["name"] = "Linen Cloth",
+			["quality"] = 1,
+			["subtype"] = "Cloth",
+			["type"] = "Trade Goods",
+		},
 		[5555] = {
 			["byBuild"] = {
 				[61582] = {
-					["firstSeen"] = 1790001080,
+					["firstSeen"] = 1790000000,
 					["ilvl"] = 18,
 					["link"] = "|cff1eff00|Hitem:5555::::::::|h[Swampwalker's Boots]|h|r",
 					["reqLevel"] = 13,
@@ -62,7 +124,7 @@ ForeverLedgerDB = {
 					},
 					["tooltip"] = {
 						"Swampwalker's Boots", -- [1]
-						"Feet || Leather", -- [2]
+						"Feet	Leather", -- [2]
 						"45 Armor", -- [3]
 						"+3 Agility", -- [4]
 						"|cffffd100Requires Level 13|r", -- [5]
@@ -79,7 +141,7 @@ ForeverLedgerDB = {
 		[5556] = {
 			["byBuild"] = {
 				[61582] = {
-					["firstSeen"] = 1790001080,
+					["firstSeen"] = 1790000000,
 					["ilvl"] = 18,
 					["link"] = "|cff1eff00|Hitem:5556::::::::|h[Bayou Staff]|h|r",
 					["reqLevel"] = 13,
@@ -89,7 +151,7 @@ ForeverLedgerDB = {
 					},
 					["tooltip"] = {
 						"Bayou Staff", -- [1]
-						"Two-Hand || Staff", -- [2]
+						"Two-Hand	Staff", -- [2]
 					},
 				},
 			},
@@ -103,21 +165,21 @@ ForeverLedgerDB = {
 	},
 	["meta"] = {
 		["addonVersion"] = "0.2.4",
-		["build"] = 61582,
-		["buildDate"] = "Sep 18 2026",
-		["interface"] = 11507,
+		["build"] = 61600,
+		["buildDate"] = "Oct 01 2026",
+		["interface"] = 11508,
 		["lastChar"] = {
 			["class"] = "HUNTER",
 			["faction"] = "Alliance",
-			["lastSeen"] = 1790001170,
+			["lastSeen"] = 1790087510,
 			["level"] = 10,
 			["name"] = "Thibodeaux",
 			["race"] = "Human",
 			["realm"] = "Bayou",
 		},
 		["schemaVersion"] = 3,
-		["session"] = "",
-		["version"] = "1.15.7",
+		["session"] = "1790000000-9e37",
+		["version"] = "1.15.8",
 	},
 	["quests"] = {
 		[1234] = {
@@ -132,14 +194,12 @@ ForeverLedgerDB = {
 					["build"] = 61582,
 					["char"] = "Thibodeaux-Bayou",
 					["level"] = 10,
-					["npc"] = {
-						["loc"] = {
-							["mapID"] = 1429,
-							["subzone"] = "Goldshire",
-							["x"] = 42.1,
-							["y"] = 65.9,
-							["zone"] = "Elwynn Forest",
-						},
+					["loc"] = {
+						["mapID"] = 1429,
+						["subzone"] = "Goldshire",
+						["x"] = 42.1,
+						["y"] = 65.9,
+						["zone"] = "Elwynn Forest",
 					},
 					["stage"] = "accept",
 					["time"] = 1790000000,
@@ -171,12 +231,24 @@ ForeverLedgerDB = {
 						["name"] = "Marshal Dughan",
 					},
 					["stage"] = "complete",
+					["time"] = 1790001080,
 					["xp"] = 850,
 				},
 				["61582:detail:Thibodeaux-Bayou"] = {
 					["build"] = 61582,
 					["char"] = "Thibodeaux-Bayou",
+					["choices"] = {
+						{
+							["count"] = 1,
+							["itemID"] = 5555,
+						}, -- [1]
+						{
+							["count"] = 1,
+							["itemID"] = 5556,
+						}, -- [2]
+					},
 					["level"] = 10,
+					["money"] = 500,
 					["npc"] = {
 						["id"] = 240,
 						["loc"] = {
@@ -189,6 +261,8 @@ ForeverLedgerDB = {
 						["name"] = "Marshal Dughan",
 					},
 					["stage"] = "detail",
+					["time"] = 1790000000,
+					["xp"] = 850,
 				},
 			},
 			["suggestedGroup"] = 5,
@@ -199,6 +273,27 @@ ForeverLedgerDB = {
 		{
 			["activeSecs"] = 930,
 			["awaySecs"] = 120,
+			["bossLoot"] = {
+				{
+					["encounterID"] = 1,
+					["itemID"] = 872,
+					["lootListKey"] = 1,
+					["rolls"] = {
+						{
+							["class"] = "WARRIOR",
+							["roll"] = 91,
+							["state"] = "needmainspec",
+						}, -- [1]
+						{
+							["class"] = "HUNTER",
+							["roll"] = 45,
+							["state"] = "greed",
+						}, -- [2]
+					},
+					["winnerClass"] = "WARRIOR",
+					["winnerIsSelf"] = false,
+				}, -- [1]
+			},
 			["bosses"] = {
 				{
 					["atSecs"] = 300,
@@ -220,6 +315,26 @@ ForeverLedgerDB = {
 			["difficulty"] = 1,
 			["endReason"] = "left",
 			["finish"] = 1790001110,
+			["groupLoot"] = {
+				{
+					["by"] = "party",
+					["class"] = "WARRIOR",
+					["itemID"] = 872,
+					["qty"] = 1,
+					["won"] = true,
+				}, -- [1]
+				{
+					["by"] = "party",
+					["class"] = "PRIEST",
+					["itemID"] = 2589,
+					["qty"] = 2,
+				}, -- [2]
+				{
+					["by"] = "self",
+					["itemID"] = 2589,
+					["qty"] = 3,
+				}, -- [3]
+			},
 			["id"] = "Thibodeaux-Bayou-36-1790000060",
 			["instance"] = "The Deadmines",
 			["instanceID"] = 36,
@@ -229,6 +344,7 @@ ForeverLedgerDB = {
 					["npcID"] = 644,
 				}, -- [1]
 			},
+			["lootMethod"] = "group",
 			["maxPlayers"] = 5,
 			["mobXP"] = 3500,
 			["party"] = {
@@ -245,15 +361,53 @@ ForeverLedgerDB = {
 			["start"] = 1790000060,
 			["xpTotal"] = 4350,
 		}, -- [1]
+		{
+			["activeSecs"] = 1200,
+			["awaySecs"] = 0,
+			["bossLoot"] = {
+			},
+			["bosses"] = {
+			},
+			["build"] = 61600,
+			["char"] = "Thibodeaux-Bayou",
+			["charLevel"] = 10,
+			["deaths"] = 0,
+			["difficulty"] = 1,
+			["endReason"] = "left",
+			["finish"] = 1790088710,
+			["groupLoot"] = {
+			},
+			["id"] = "Thibodeaux-Bayou-36-1790087510",
+			["instance"] = "The Deadmines",
+			["instanceID"] = 36,
+			["loot"] = {
+				{
+					["itemID"] = 872,
+					["npcID"] = 644,
+				}, -- [1]
+			},
+			["maxPlayers"] = 5,
+			["mobXP"] = 0,
+			["party"] = {
+			},
+			["questXP"] = 0,
+			["start"] = 1790087510,
+			["xpTotal"] = 0,
+		}, -- [2]
 	},
 	["turnIns"] = {
 		{
 			["build"] = 61582,
 			["char"] = "Thibodeaux-Bayou",
+			["choice"] = {
+				["index"] = 1,
+				["itemID"] = 5555,
+			},
 			["id"] = "Thibodeaux-Bayou-1234-1790001080",
 			["level"] = 10,
 			["money"] = 500,
 			["questID"] = 1234,
+			["runID"] = "Thibodeaux-Bayou-36-1790000060",
 			["time"] = 1790001080,
 			["xp"] = 850,
 		}, -- [1]

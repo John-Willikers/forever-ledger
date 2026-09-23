@@ -5,6 +5,45 @@ import { batchFromFixture, startServer } from './helpers.js';
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 
+/** A schema 3 batch: the schema 2 fixture plus one session's drops, corpses and run loot. */
+function schema3Batch(session: string, account: string) {
+  const b = batchFromFixture('session-v2.lua', account);
+  const build = 69977;
+  return {
+    ...b,
+    schemaVersion: 3 as const,
+    meta: { ...b.meta, schemaVersion: 3 as const, session },
+    records: {
+      ...b.records,
+      drops: [
+        { itemId: 2589, build, npcId: 1234, session, count: 3, quantity: 7 },
+        { itemId: 872, build, npcId: 1234, session, count: 1, quantity: 1 },
+        { itemId: 2589, build, npcId: 0, session, count: 1, quantity: 1 },
+      ],
+      corpses: [{ npcId: 1234, build, session, count: 4, copper: 120 }],
+      runs: b.records.runs.map((r, i) =>
+        i === 0
+          ? {
+              ...r,
+              lootMethod: 'group',
+              bossLoot: [
+                {
+                  encounterId: 1,
+                  lootListKey: 1,
+                  itemId: 872,
+                  winnerClass: 'WARRIOR',
+                  winnerIsSelf: false,
+                  rolls: [{ class: 'WARRIOR', roll: 91, state: 'needmainspec' }],
+                },
+              ],
+              groupLoot: [{ itemId: 2589, qty: 2, by: 'party' as const, class: 'PRIEST' }],
+            }
+          : r,
+      ),
+    },
+  };
+}
+
 const TABLES = [
   'builds',
   'characters',
@@ -15,6 +54,7 @@ const TABLES = [
   'items',
   'item_snapshots',
   'drops',
+  'corpses',
   'runs',
   'run_bosses',
   'run_party',
@@ -175,11 +215,87 @@ describe('ingest API (real Postgres)', () => {
     expect(await s.count('turn_ins')).toBe(1);
   });
 
+  it('stores schema 3 sessions, corpses and run loot; equal counts from two sessions both count', async () => {
+    const acct = 'ACCOUNT-S3';
+    const s1 = schema3Batch('1790000000-aaaa', acct);
+    const s2 = schema3Batch('1790000900-bbbb', acct);
+    // Identical content apart from the session: the old per-file key would have hidden the second one.
+    expect(s2.records.drops).toEqual(
+      s1.records.drops.map((d) => ({ ...d, session: s2.meta.session })),
+    );
+    for (const b of [s1, s2, s1]) expect((await post(b)).statusCode).toBe(200);
+
+    const q = (sql: string) => s.database.pool.query(sql, [acct]).then((r) => r.rows);
+    expect(
+      await q(
+        `select session, count, quantity from drops where account = $1 and item_id = 2589 and npc_id = 1234 order by session`,
+      ),
+    ).toEqual([
+      { session: '1790000000-aaaa', count: 3, quantity: 7 },
+      { session: '1790000900-bbbb', count: 3, quantity: 7 },
+    ]);
+    expect(
+      await q(
+        `select sum(count)::int as n from drops where account = $1 and item_id = 2589 and npc_id = 1234`,
+      ),
+    ).toEqual([{ n: 6 }]);
+    expect(
+      await q(
+        `select npc_id, session, count, copper from corpses where account = $1 order by session`,
+      ),
+    ).toEqual([
+      { npc_id: 1234, session: '1790000000-aaaa', count: 4, copper: 120 },
+      { npc_id: 1234, session: '1790000900-bbbb', count: 4, copper: 120 },
+    ]);
+    const run = s1.records.runs[0]!;
+    const { rows } = await s.database.pool.query(
+      'select loot_method, boss_loot, group_loot from runs where id = $1',
+      [run.id],
+    );
+    expect(rows[0]).toEqual({
+      loot_method: 'group',
+      boss_loot: run.bossLoot,
+      group_loot: run.groupLoot,
+    });
+  });
+
+  it('ingests the schema 3 fixture written by the 0.2.4 addon', async () => {
+    const batch = batchFromFixture('session-v3.lua', 'ACCOUNT-V3');
+    expect(batch.schemaVersion).toBe(3);
+    const res = await post(batch);
+    expect(res.statusCode).toBe(200);
+    const { rows } = await s.database.pool.query(
+      `select npc_id, build, count, copper from corpses where account = 'ACCOUNT-V3' order by build`,
+    );
+    expect(rows).toEqual([
+      { npc_id: 644, build: 61582, count: 1, copper: 245 },
+      { npc_id: 644, build: 61600, count: 1, copper: 0 },
+    ]);
+    const run = await s.database.pool.query('select loot_method from runs where id = $1', [
+      batch.records.runs[0]!.id,
+    ]);
+    expect(run.rows[0].loot_method).toBe('group');
+  });
+
+  it('schema 1/2 drops keep session "" next to schema 3 sessions of the same file', async () => {
+    const acct = 'ACCOUNT-MIX';
+    expect((await post(batchFromFixture('session-v2.lua', acct))).statusCode).toBe(200);
+    expect((await post(schema3Batch('1790000000-cccc', acct))).statusCode).toBe(200);
+    const { rows } = await s.database.pool.query(
+      `select session, count(*)::int as n from drops where account = $1 group by session order by session`,
+      [acct],
+    );
+    expect(rows).toEqual([
+      { session: '', n: 2 },
+      { session: '1790000000-cccc', n: 3 },
+    ]);
+  });
+
   it('rejects unknown schema versions with 409 and malformed batches with 400', async () => {
     const batch = batchFromFixture('session-v1.lua');
-    const res409 = await post({ ...batch, schemaVersion: 3 });
+    const res409 = await post({ ...batch, schemaVersion: 4 });
     expect(res409.statusCode).toBe(409);
-    expect(res409.json().error).toMatch(/accepts 1, 2/);
+    expect(res409.json().error).toMatch(/accepts 1, 2, 3/);
     const bad = structuredClone(batch) as unknown as { records: { runs: { start: unknown }[] } };
     bad.records.runs[0]!.start = 'yesterday';
     const res = await post(bad);

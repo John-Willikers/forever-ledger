@@ -154,7 +154,10 @@ export const itemSnapshots = pgTable(
   (t) => [primaryKey({ columns: [t.itemId, t.build] })],
 );
 
-/** Running totals per SavedVariables file (uploader + WoW account): upserts set the count, never add. */
+/**
+ * Totals per SavedVariables session (uploader + WoW account + session): upserts set the count, never add.
+ * Schema 1/2 files have session '' (one running total per file).
+ */
 export const drops = pgTable(
   'drops',
   {
@@ -163,12 +166,34 @@ export const drops = pgTable(
     npcId: integer('npc_id').notNull(),
     uploaderId: text('uploader_id').notNull(),
     account: text('account').notNull(),
+    session: text('session').notNull().default(''),
     count: integer('count').notNull(),
+    /** Schema 3: total stack quantity. Null for older files. */
+    quantity: integer('quantity'),
     updatedAt: updatedAt(),
   },
   (t) => [
-    primaryKey({ columns: [t.itemId, t.build, t.npcId, t.uploaderId, t.account] }),
+    primaryKey({ columns: [t.itemId, t.build, t.npcId, t.uploaderId, t.account, t.session] }),
     index('drops_npc_idx').on(t.npcId),
+  ],
+);
+
+/** Schema 3: loot sources looted per npc and session, with the copper their money slots held. Set, never added. */
+export const corpses = pgTable(
+  'corpses',
+  {
+    npcId: integer('npc_id').notNull(),
+    build: integer('build').notNull(),
+    uploaderId: text('uploader_id').notNull(),
+    account: text('account').notNull(),
+    session: text('session').notNull(),
+    count: integer('count').notNull(),
+    copper: integer('copper').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.npcId, t.build, t.uploaderId, t.account, t.session] }),
+    index('corpses_build_idx').on(t.build),
   ],
 );
 
@@ -193,6 +218,12 @@ export const runs = pgTable(
     mobXp: integer('mob_xp'),
     deaths: integer('deaths').notNull(),
     loot: jsonb('loot').$type<{ itemID: number; npcID: number }[]>().notNull(),
+    /** Schema 3: lower-cased Enum.LootMethod key (or the raw value) from C_PartyInfo.GetLootMethod. */
+    lootMethod: text('loot_method'),
+    /** Schema 3: RunBossLoot[] (C_LootHistory drops, winners and rolls by class). */
+    bossLoot: jsonb('boss_loot'),
+    /** Schema 3: RunGroupLoot[] (CHAT_MSG_LOOT lines while grouped, by class). */
+    groupLoot: jsonb('group_loot'),
     updatedAt: updatedAt(),
   },
   (t) => [index('runs_instance_idx').on(t.instanceId, t.build)],

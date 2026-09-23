@@ -20,14 +20,20 @@ local function default_world()
                level = 10, xp = 0, xpMax = 7600, guid = "Player-1-0000AAAA" },
     zone = { zone = "Elwynn Forest", subzone = "Goldshire", mapID = 1429, x = 0.421, y = 0.659 },
     instance = nil,        -- { name=, type="party", difficulty=1, maxPlayers=5, instanceID= }
-    party = {},            -- { { class=, level= }, ... }
+    party = {},            -- { { class=, level=, name= }, ... } party1..4
+    raid = nil,            -- { { class=, name= }, ... } raid1..40 when set
     npc = nil,             -- { name=, guid= }
     questFrame = nil,      -- { questID=, title=, xp=, money=, choices={ {id=, count=} }, rewards={...} }
     questLog = {},         -- { { title=, level=, suggestedGroup=, isHeader=, questID=, objectives={...},
                            --     choices={ id, ... }, money= } }
     items = {},            -- [itemID] = { name=, quality=, ilvl=, reqLevel=, type=, subtype=, equipLoc=,
                            --              sellPrice=, stats={}, tooltip={ {l, r}, ... }, cached=true|false }
-    loot = {},             -- { { itemID=, sourceGUID= } }
+    loot = {},             -- { { itemID=, sourceGUID=, quantity=, money=<copper>, sources={ guid, qty, ... } } }
+    money = 0,             -- GetMoney()
+    lootMethod = nil,      -- C_PartyInfo.GetLootMethod() (an Enum.LootMethod value)
+    lootHistory = {},      -- [encounterID] = { EncounterLootDropInfo, ... } for C_LootHistory
+    globalStrings = nil,   -- [name] = template overriding the enUS loot GlobalStrings below
+    rng = 0,               -- math.random calls so far (deterministic)
     api = "classic",       -- "forever": swap Classic globals for the namespaces the Forever 1.60 client has
     missing = {},          -- [globalName] = true to simulate an API the client lacks
     rejectEvents = {},     -- [event] = true to make RegisterEvent throw for it
@@ -86,6 +92,15 @@ function H.new(worldOverrides)
     world.printed[#world.printed + 1] = table.concat(parts, " ")
   end
   env.SlashCmdList = {}
+  -- deterministic math.random so fixtures are stable
+  env.math = setmetatable({
+    random = function(a, b)
+      world.rng = world.rng + 1
+      if not a then return (world.rng % 1000) / 1000 end
+      if not b then a, b = 1, a end
+      return a + (world.rng * 40503) % (b - a + 1)
+    end,
+  }, { __index = math })
   -- hooksecurefunc([table,] name, hook): the hook runs after the original with the same arguments.
   env.hooksecurefunc = function(a, b, c)
     local tbl, name, hook = a, b, c
@@ -189,9 +204,17 @@ function H.new(worldOverrides)
   env.C_CombatLog = { IsCombatLogRestricted = function() return world.combatLogRestricted end }
 
   -- units
+  local function groupUnit(u)
+    local i = tonumber((u or ""):match("^party(%d)$"))
+    if i then return world.party[i] end
+    i = tonumber((u or ""):match("^raid(%d+)$"))
+    if i and world.raid then return world.raid[i] end
+  end
   env.UnitName = function(u)
     if u == "player" then return world.player.name end
     if u == "npc" and world.npc then return world.npc.name end
+    local m = groupUnit(u)
+    if m and m.name then return m.name, m.realm end
   end
   env.UnitGUID = function(u)
     if u == "player" then return world.player.guid end
@@ -204,14 +227,19 @@ function H.new(worldOverrides)
   end
   env.UnitClass = function(u)
     if u == "player" then return "Hunter", world.player.class end
-    local i = tonumber((u or ""):match("party(%d)"))
-    if i and world.party[i] then return world.party[i].class, world.party[i].class end
+    local m = groupUnit(u)
+    if m then return m.class, m.class end
   end
   env.UnitRace = function() return world.player.race, world.player.race end
   env.UnitFactionGroup = function() return world.player.faction end
   env.UnitExists = function(u)
     local i = tonumber((u or ""):match("party(%d)"))
     return i ~= nil and world.party[i] ~= nil
+  end
+  env.IsInGroup = function() return #world.party > 0 or (world.raid ~= nil and #world.raid > 0) end
+  env.GetNumGroupMembers = function()
+    if world.raid then return #world.raid end
+    return #world.party > 0 and #world.party + 1 or 0
   end
   env.UnitXP = function() return world.player.xp end
   env.UnitXPMax = function() return world.player.xpMax end
@@ -294,7 +322,51 @@ function H.new(worldOverrides)
     local l = world.loot[i]
     return l and world.items[l.itemID] and itemLink(l.itemID, world.items[l.itemID])
   end
-  env.GetLootSourceInfo = function(i) return world.loot[i] and world.loot[i].sourceGUID, 1 end
+  -- guid1, qty1, guid2, qty2, ...: qty is the stack from that source, or copper for a money slot
+  env.GetLootSourceInfo = function(i)
+    local l = world.loot[i]
+    if not l then return nil end
+    if l.sources then return unpack(l.sources) end
+    return l.sourceGUID, l.money or l.quantity or 1
+  end
+  env.GetLootSlotType = function(i)
+    local l = world.loot[i]
+    if not l then return 0 end
+    return l.money and 2 or 1
+  end
+  env.GetLootSlotInfo = function(i)
+    local l = world.loot[i]
+    if not l then return nil end
+    if l.money then return 133784, l.money .. " Copper", 0, nil, 0, false, false, nil, true end
+    local it = world.items[l.itemID] or {}
+    return 134939, it.name, l.quantity or 1, nil, it.quality or 1, false, false, nil, true
+  end
+  env.GetMoney = function() return world.money end
+  env.Enum = {
+    LootSlotType = { None = 0, Item = 1, Money = 2, Currency = 3 },
+    LootMethod = { Freeforall = 0, Roundrobin = 1, Masterlooter = 2, Group = 3, Needbeforegreed = 4, Personal = 5 },
+    EncounterLootDropRollState = { NeedMainSpec = 0, NeedOffSpec = 1, Transmog = 2, Greed = 3, NoRoll = 4, Pass = 5 },
+  }
+  env.C_PartyInfo = { GetLootMethod = function() return world.lootMethod end }
+  env.C_LootHistory = {
+    GetSortedDropsForEncounter = function(encounterID)
+      local drops = world.lootHistory[encounterID]
+      return drops and copy(drops) or nil
+    end,
+    GetSortedInfoForDrop = function(encounterID, lootListKey)
+      for _, d in ipairs(world.lootHistory[encounterID] or {}) do
+        if d.lootListKey == lootListKey then return copy(d) end
+      end
+    end,
+  }
+  -- enUS loot GlobalStrings (FrameXML GlobalStrings.lua)
+  local strings = {
+    LOOT_ITEM = "%s receives loot: %s.", LOOT_ITEM_MULTIPLE = "%s receives loot: %sx%d.",
+    LOOT_ITEM_SELF = "You receive loot: %s.", LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d.",
+    LOOT_ROLL_WON = "%s won: %s", LOOT_ROLL_YOU_WON = "You won: %s",
+  }
+  for k, v in pairs(world.globalStrings or {}) do strings[k] = v end
+  for k, v in pairs(strings) do env[k] = v end
 
   -- addons
   env.LoadAddOn = function(name)
@@ -367,6 +439,11 @@ function H.new(worldOverrides)
 
   function ctl.slash(cmdKey, msg) env.SlashCmdList[cmdKey](msg or "") end
   function ctl.advance(secs) world.clock = world.clock + secs end
+
+  -- A CHAT_MSG_LOOT line built from the environment's GlobalStrings, as the client formats it.
+  function ctl.lootLine(global, playerName, ...)
+    ctl.fire("CHAT_MSG_LOOT", string.format(env[global], ...), playerName or "", "", "", playerName or "")
+  end
 
   function ctl.gainXP(amount)
     local p = world.player

@@ -106,6 +106,42 @@ describe('upload-once end to end (mock server implementing the ingest contract)'
     expect(batch.records.turnIns[0]?.choice).toEqual({ index: 1, itemId: 5555 });
   });
 
+  it('schema 3: a new session with the same drop counts is uploaded again, not hidden by the old hash', async () => {
+    // Forever starts every /reload with an empty table, so two sessions can hold identical totals.
+    const sv = (session: string) =>
+      `ForeverLedgerDB = {
+	["meta"] = { ["schemaVersion"] = 3, ["addonVersion"] = "0.2.4", ["build"] = 69977, ["session"] = "${session}" },
+	["drops"] = { [2589] = { [69977] = { [1234] = 1 } } },
+	["dropQty"] = { [2589] = { [69977] = { [1234] = 2 } } },
+	["corpses"] = { [69977] = { [1234] = { ["n"] = 1, ["copper"] = 12 } } },
+}
+`;
+    server = await startMockServer();
+    await env.writeSv(sv('1790000000-aaaa'));
+    expect((await pass(server.url)).ok).toBe(true);
+    await env.writeSv(sv('1790000600-bbbb'));
+    expect((await pass(server.url)).ok).toBe(true);
+    expect(server.receivedKeys).toEqual([
+      'drop:2589:69977:1234:1790000000-aaaa',
+      'corpse:1234:69977:1790000000-aaaa',
+      'drop:2589:69977:1234:1790000600-bbbb',
+      'corpse:1234:69977:1790000600-bbbb',
+    ]);
+    expect(server.batches.map((b) => b.schemaVersion)).toEqual([3, 3]);
+    expect(server.batches[1]?.records.drops[0]).toEqual({
+      itemId: 2589,
+      build: 69977,
+      npcId: 1234,
+      session: '1790000600-bbbb',
+      count: 1,
+      quantity: 2,
+    });
+    // The same session again: nothing new.
+    const requests = server.ingestRequests;
+    expect((await pass(server.url)).ok).toBe(true);
+    expect(server.ingestRequests).toBe(requests);
+  });
+
   it('bad token → 401 stops the pass with a clear message', async () => {
     await env.writeSv(await readFixture('session-v1.lua'));
     server = await startMockServer({ token: 'another-token' });

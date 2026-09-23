@@ -1,8 +1,9 @@
--- ForeverLedger v0.2.3 behaviour and fixture generation.
+-- ForeverLedger v0.2.4 behaviour and fixture generation.
 local S = require("scenario")
 
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
 local ADDON_0_2_2 = "legacy/ForeverLedger-0.2.2.lua" -- last schema 1 release, for the schema 1 fixture
+local ADDON_0_2_3 = "legacy/ForeverLedger-0.2.3.lua" -- last schema 2 release, for the schema 2 fixture
 local FIXTURES = "../../fixtures/synthetic/"
 local ME = "Thibodeaux-Bayou"
 
@@ -41,14 +42,16 @@ return function(H)
   -- Schema 1 fixture from the real 0.2.2 addon: the TS side must keep reading files written before 0.2.3.
   local _, v1 = twoSessions(H, ADDON_0_2_2)
   H.writeFile(FIXTURES .. "session-v1.lua", H.serialize("ForeverLedgerDB", v1))
+  local _, v2 = twoSessions(H, ADDON_0_2_3)
+  H.writeFile(FIXTURES .. "session-v2.lua", H.serialize("ForeverLedgerDB", v2))
 
   local db, db2, start = twoSessions(H)
 
   H.test("ledger: meta carries schema and build", function()
-    H.eq(db.meta.schemaVersion, 2)
+    H.eq(db.meta.schemaVersion, 3)
     H.eq(db.meta.build, 61582)
     H.eq(db.meta.interface, 11507)
-    H.eq(db.meta.addonVersion, "0.2.3")
+    H.eq(db.meta.addonVersion, "0.2.4")
     H.eq(db.chars[ME].class, "HUNTER")
   end)
 
@@ -118,6 +121,16 @@ return function(H)
     H.eq(v1.turnIns[1].choice, nil)
   end)
 
+  H.test("ledger: schema 2 fixture comes from 0.2.3 and has no session or corpses", function()
+    H.eq(v2.meta.schemaVersion, 2)
+    H.eq(v2.meta.addonVersion, "0.2.3")
+    H.eq(v2.meta.session, nil)
+    H.eq(v2.corpses, nil)
+    H.eq(v2.dropQty, nil)
+    H.eq(v2.runs[1].bossLoot, nil)
+    H.eq(v2.turnIns[1].choice.itemID, 5555)
+  end)
+
   H.test("ledger: drops are counted per build and source npc, once per corpse", function()
     H.eq(db.drops[872][61582][644], 1)
   end)
@@ -180,5 +193,5 @@ return function(H)
     H.eq(d.drops[872][61582][0], 1) -- unknown source npc
   end)
 
-  H.writeFile(FIXTURES .. "session-v2.lua", H.serialize("ForeverLedgerDB", db2))
+  H.writeFile(FIXTURES .. "session-v3.lua", H.serialize("ForeverLedgerDB", db2))
 end

@@ -1,19 +1,23 @@
 import { z } from 'zod';
 
 /** SavedVariables / upload schema major. Bump together with `SCHEMA_VERSION` in the addon. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
- * Schema majors this code reads. 2 only adds `turnIns[].choice` (addon 0.2.3), so schema 1 files and queued
- * schema 1 batches stay valid as they are.
+ * Schema majors this code reads. Each one is additive, so older files and queued older batches stay valid:
+ * 2 adds `turnIns[].choice` (addon 0.2.3); 3 adds `meta.session`, `dropQty`, `corpses` and run loot details
+ * (addon 0.2.4).
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3] as const;
 export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
 
 export const isSupportedSchemaVersion = (v: unknown): v is SchemaVersion =>
   (SUPPORTED_SCHEMA_VERSIONS as readonly unknown[]).includes(v);
 
-const schemaVersion = z.union([z.literal(1), z.literal(2)]);
+const schemaVersion = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+
+/** Schema 3 `meta.session`: `<epoch>-<4 hex>`, one per SavedVariables table. '' for older files. */
+const session = z.string().max(64);
 
 const int = z.number().int();
 const nonNegInt = int.nonnegative();
@@ -51,6 +55,8 @@ export const Meta = z.object({
   version: z.string().optional(),
   buildDate: z.string().optional(),
   interface: nonNegInt.optional(),
+  /** Schema 3: identifies this SavedVariables table. Per-session counters (drops, corpses) are totals for it. */
+  session: session.optional(),
 });
 export type Meta = z.infer<typeof Meta>;
 
@@ -149,14 +155,32 @@ export const ItemBuildSnapshot = z.object({
 });
 export type ItemBuildSnapshot = z.infer<typeof ItemBuildSnapshot>;
 
-/** Running total for one account file: the server stores (sets) the count, it never adds. */
+/**
+ * Total for one SavedVariables session (uploader + account + `session`): the server stores (sets) the count, it
+ * never adds. Forever starts every /reload with an empty table, so each session is its own record.
+ */
 export const Drop = z.object({
   itemId: nonNegInt,
   build,
   npcId: nonNegInt,
+  /** Schema 3 `meta.session`; '' for schema 1/2 files (one running total per file). */
+  session: session.default(''),
+  /** Loot sources (corpses) that dropped the item. */
   count: nonNegInt,
+  /** Schema 3: total stack quantity over those sources. */
+  quantity: nonNegInt.optional(),
 });
 export type Drop = z.infer<typeof Drop>;
+
+/** Schema 3: distinct loot sources of one npc looted in a session, and the copper their money slots held. */
+export const Corpse = z.object({
+  npcId: nonNegInt,
+  build,
+  session,
+  count: nonNegInt,
+  copper: nonNegInt,
+});
+export type Corpse = z.infer<typeof Corpse>;
 
 export const RunBoss = z.object({
   id: int.optional(),
@@ -171,6 +195,38 @@ export const RunLoot = z.object({
   npcID: nonNegInt,
 });
 export type RunLoot = z.infer<typeof RunLoot>;
+
+/** Schema 3: one C_LootHistory roll. Never a player name. */
+export const RunLootRoll = z.object({
+  class: z.string().max(32).optional(),
+  roll: nonNegInt.optional(),
+  /** Enum.EncounterLootDropRollState key, lower-cased (e.g. 'needmainspec', 'greed', 'pass'), or the raw number. */
+  state: z.string().max(32).optional(),
+});
+export type RunLootRoll = z.infer<typeof RunLootRoll>;
+
+/** Schema 3: one boss drop from C_LootHistory, updated as rolls resolve. */
+export const RunBossLoot = z.object({
+  encounterId: int,
+  lootListKey: int.optional(),
+  itemId: nonNegInt,
+  qty: nonNegInt.optional(),
+  winnerClass: z.string().max(32).optional(),
+  winnerIsSelf: z.boolean().optional(),
+  allPassed: z.boolean().optional(),
+  rolls: z.array(RunLootRoll).max(40),
+});
+export type RunBossLoot = z.infer<typeof RunBossLoot>;
+
+/** Schema 3: an item a group member received (CHAT_MSG_LOOT). Party members are identified by class only. */
+export const RunGroupLoot = z.object({
+  itemId: nonNegInt,
+  qty: nonNegInt,
+  by: z.enum(['self', 'party']),
+  class: z.string().max(32).optional(),
+  won: z.boolean().optional(),
+});
+export type RunGroupLoot = z.infer<typeof RunGroupLoot>;
 
 export const RunPartyMember = z.object({
   class: z.string().optional(),
@@ -199,6 +255,10 @@ export const Run = z.object({
   bosses: z.array(RunBoss),
   loot: z.array(RunLoot),
   party: z.array(RunPartyMember),
+  /** Schema 3: C_PartyInfo.GetLootMethod() as the lower-cased Enum.LootMethod key (e.g. 'group'), or the raw value. */
+  lootMethod: z.string().max(32).optional(),
+  bossLoot: z.array(RunBossLoot).max(500).optional(),
+  groupLoot: z.array(RunGroupLoot).max(500).optional(),
 });
 export type Run = z.infer<typeof Run>;
 
@@ -210,6 +270,7 @@ export const Records = z.object({
   items: z.array(Item).default([]),
   itemSnapshots: z.array(ItemBuildSnapshot).default([]),
   drops: z.array(Drop).default([]),
+  corpses: z.array(Corpse).default([]),
   runs: z.array(Run).default([]),
 });
 export type Records = z.infer<typeof Records>;
