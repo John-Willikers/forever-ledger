@@ -82,3 +82,56 @@ Each addon phase ends with a reviewer pass (spec + quality); the schema/server p
 - `TRADE_SKILL_ITEM_CRAFTED_RESULT` may not fire for Classic-style crafts → fallbacks (spellcast + "You create").
 - Recipe item → recipe mapping (e.g. "Pattern: X" teaches recipe X) is done server-side by name/learn events, not guaranteed for every item.
 - Required skill for a node is inferred as the lowest rank seen gathering it (no tooltip parsing).
+
+## 📐 Appendix — exact shapes (both lanes build against this)
+
+**SavedVariables (addon writes, schema 4).** `char` = `Name-Realm` (`charKey()`), `build` = number, times = epoch secs.
+Difficulty strings are the lower-cased `Enum.TradeskillRelativeDifficulty` key (`optimal`, `medium`, `easy`,
+`trivial`), or the number as a string if the enum is missing. Session = `db.meta.session` (per-session tables below).
+
+```lua
+db.skills[char][skillLineID] = { name=, rank=, maxRank=, modifier=, parentID=, lastSeen= }
+db.skillUps = { { char=, skillLineID=, from=, to=, build=, time=, recipeID= }, ... }            -- cap 2000
+db.recipes[recipeID] = { id=, name=, skillLineID=, categoryID=,
+  byBuild = { [build] = { outputItemID=, qtyMin=, qtyMax=, reagents = { { itemID=, qty= }, ... },
+                          maxTrivial=, sourceText=, firstSeen= } } }
+db.recipeSeen[build][char][recipeID] = { learned=, difficulty=, rank=, seenAt=,
+  byDifficulty = { [difficulty] = { minRank=, maxRank= } } }
+db.learned = { { char=, recipeID=, build=, time=, via= }, ... }   -- via "trainer:<npcID>" | "item:<itemID>" | "unknown"; cap 2000
+db.crafts[build][recipeID] = { casts=, qty=, procs=, skillUps= }                                 -- per session
+db.nodes[build][objectID] = { opened=, name=, rankMin=, skillLineID=, spots = { [mapID] = { "x,y", ... } } }  -- per session; fishing = objectID 0; ≤50 spots per map
+db.nodeLoot[itemID][build][objectID] = { n=, qty= }                                             -- per session
+db.trainers[build][npcID] = { name=, loc=, skillLineID=, seenAt=,
+  services = { { name=, type=, cost=, skill=, skillRank=, level=, itemID= }, ... } }
+db.vendors[build][npcID] = { name=, loc=, seenAt=,
+  items = { { itemID=, price=, stack=, numAvailable=, currencyID=, extendedCost= }, ... } }
+db.items[itemID].classID / .subclassID                                                           -- new optional fields
+db.apiSamples[api] = { build=, time=, sample= }   -- api e.g. "C_TradeSkillUI.GetRecipeInfo"; sample = the returned table,
+                                                  -- depth ≤ 2, ≤ 60 keys, strings ≤ 200 chars, functions/userdata dropped
+```
+
+`loc` is the table `where()` already returns (`zone, subzone, mapID, x, y`).
+
+**Records (contracts, camelCase; `itemID`→`itemId` etc.).** Order in `Records`: after `corpses`, before `runs`.
+
+| kind | fields | key (`keys.ts`) |
+|---|---|---|
+| `skills` | char, skillLineId, name, rank, maxRank, modifier?, parentId?, lastSeen | `skill:char:skillLineId` |
+| `skillUps` | char, skillLineId, from, to, build, time, recipeId? | `skillup:char:skillLineId:time:to` |
+| `recipes` | recipeId, name, skillLineId?, categoryId? | `recipe:recipeId` |
+| `recipeSnapshots` | recipeId, build, outputItemId?, qtyMin?, qtyMax?, reagents[{itemId, qty}], maxTrivial?, sourceText? | `rsnap:recipeId:build` |
+| `recipeStatus` | recipeId, build, char, learned, difficulty?, rank?, seenAt | `rstat:recipeId:build:char` |
+| `recipeDifficulty` | recipeId, build, char, difficulty, minRank, maxRank | `rdiff:recipeId:build:char:difficulty` |
+| `recipesLearned` | char, recipeId, build, time, via | `rlearn:char:recipeId:time` |
+| `crafts` | recipeId, build, session, casts, qty, procs, skillUps | `craft:recipeId:build` + session suffix |
+| `nodes` | objectId, build, session, opened, name?, rankMin?, skillLineId?, spots[{mapId, points[[x,y]]}] | `node:objectId:build` + session suffix |
+| `nodeLoot` | itemId, objectId, build, session, count, quantity | `nloot:itemId:objectId:build` + session suffix |
+| `trainers` | npcId, build, name?, loc?, skillLineId?, seenAt, services[{name, type?, cost?, skill?, skillRank?, level?, itemId?}] | `trainer:npcId:build` |
+| `vendors` | npcId, build, name?, loc?, seenAt, items[{itemId, price?, stack?, numAvailable?, currencyId?, extendedCost?}] | `vendor:npcId:build` |
+| `apiSamples` | api, build, time, sample (json) | `api:api:build` |
+| `items` (existing) | + classId?, subclassId? | unchanged |
+
+Server tables (snake_case): `skills`, `skill_ups`, `recipes` (keepKnown), `recipe_snapshots` (reagents jsonb),
+`recipe_status`, `recipe_difficulty`, `recipes_learned`, `crafts` / `nodes` / `node_loot` (PK includes uploader_id,
+account, session like `drops`/`corpses`; nodes.spots jsonb), `trainers` / `vendors` (services/items/loc jsonb, row
+replaced), `api_samples` (sample jsonb), `items.class_id/subclass_id`.
