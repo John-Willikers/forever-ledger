@@ -1,4 +1,5 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acquireLock, LockedError } from '../src/lock.js';
 import { startWatch } from '../src/watch.js';
@@ -151,7 +152,14 @@ describe('watch', () => {
       const config = env.config({ serverUrl: server.url });
       const release = await acquireLock(config.stateDir);
       const rec = recorder();
-      handle = await startWatch({ config, ...fast, onEvent: rec.onEvent });
+      handle = await startWatch({
+        config,
+        ...fast,
+        // A lock retry must not wait out the (here: huge) server backoff.
+        backoff: { baseMs: 60_000, capMs: 60_000 },
+        lockRetryMs: 30,
+        onEvent: rec.onEvent,
+      });
       await handle.idle();
       expect(rec.types()).toEqual(['pass-start', 'pass-error']);
       const err = rec.events[1];
@@ -159,6 +167,22 @@ describe('watch', () => {
       await release();
       await vi.waitFor(() => expect(rec.types()).toContain('pass-end'), { timeout: 5_000 });
       expect(server.receivedKeys.length).toBeGreaterThan(0);
+    });
+
+    it('emits pass-error when state.json is corrupt', async () => {
+      await env.writeSv(await readFixture('session-v1.lua'));
+      server = await startMockServer();
+      const config = env.config({ serverUrl: server.url });
+      await mkdir(config.stateDir, { recursive: true });
+      await writeFile(join(config.stateDir, 'state.json'), '{ not json');
+      const rec = recorder();
+      handle = await startWatch({ config, ...fast, onEvent: rec.onEvent });
+      await handle.idle();
+      expect(rec.types()).toEqual(['pass-start', 'pass-error']);
+      expect(rec.events[1]?.type === 'pass-error' && rec.events[1].error).toBeInstanceOf(
+        SyntaxError,
+      );
+      expect(server.receivedKeys).toEqual([]);
     });
 
     it('a listener that throws does not stop watching', async () => {
@@ -212,6 +236,28 @@ describe('watch', () => {
       });
       await handle.idle();
       expect(types).toEqual(['pass-start', 'pass-end', 'pass-start', 'pass-end']);
+    });
+
+    it('does not wait out the retry backoff', async () => {
+      await env.writeSv(await readFixture('session-v1.lua'));
+      const port = await (async () => {
+        const s = await startMockServer();
+        await s.close();
+        return s.port;
+      })();
+      const types: string[] = [];
+      handle = await startWatch({
+        config: env.config({ serverUrl: `http://127.0.0.1:${port}` }),
+        ...fast,
+        backoff: { baseMs: 60_000, capMs: 60_000 },
+        onEvent: (e) => types.push(e.type),
+      });
+      await handle.idle();
+      server = await startMockServer({ port });
+      handle.trigger();
+      await vi.waitFor(() => expect(server?.receivedKeys.length).toBeGreaterThan(0), {
+        timeout: 2_000,
+      });
     });
 
     it('does nothing after close', async () => {

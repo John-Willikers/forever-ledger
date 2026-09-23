@@ -40,6 +40,8 @@ export interface WatchOptions {
   awaitWriteFinish?: { stabilityThreshold: number; pollInterval: number };
   usePolling?: boolean;
   backoff?: BackoffOptions;
+  /** Retry delay after a pass found the state folder locked (default 5 s; doesn't grow the backoff). */
+  lockRetryMs?: number;
   /**
    * Called around every pass (initial, file change, queue retry, trigger) and when a fatal error stops watching.
    * A pass that throws (e.g. the state folder is locked) ends with pass-error instead of pass-end; the loop retries
@@ -74,6 +76,7 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
   const logger = opts.logger ?? silentLogger();
   const tickMs = opts.tickMs ?? 5_000;
   const rediscoverMs = opts.rediscoverMs ?? 60_000;
+  const lockRetryMs = opts.lockRetryMs ?? 5_000;
   const wowPath = config.wowPath;
   if (!wowPath) throw new Error('wowPath is not set');
 
@@ -175,15 +178,22 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
         emit({ type: 'pass-end', result });
         afterFlush(result.flush);
       } catch (err) {
-        if (err instanceof FatalUploadError) return stop(err);
         if (err instanceof LockedError) logger.warn(err.message);
-        else logger.error({ err }, `upload pass failed: ${errorMessage(err)}`);
+        else if (!(err instanceof FatalUploadError))
+          logger.error({ err }, `upload pass failed: ${errorMessage(err)}`);
+        // Every pass-start gets exactly one pass-end or pass-error (a fatal error follows it).
         emit({ type: 'pass-error', error: err instanceof Error ? err : new Error(String(err)) });
+        if (err instanceof FatalUploadError) return stop(err);
         // Try again later, including the files we did not get to.
         if (all) pendingAll = true;
         for (const f of files) pendingFiles.add(f);
-        failures++;
-        nextRetryAt = Date.now() + backoffDelay(failures, opts.backoff);
+        if (err instanceof LockedError) {
+          // Another uploader is mid-pass: not a server problem, so no growing backoff.
+          nextRetryAt = Date.now() + lockRetryMs;
+        } else {
+          failures++;
+          nextRetryAt = Date.now() + backoffDelay(failures, opts.backoff);
+        }
         queueNonEmpty = true;
         return;
       }
@@ -194,6 +204,9 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
     if (closed || running) return;
     running = loop().finally(() => {
       running = null;
+      // Work that arrived after the loop's last check (e.g. trigger()) would otherwise wait for the next tick.
+      if (!closed && Date.now() >= nextRetryAt && (pendingAll || pendingFiles.size > 0 || flushDue))
+        kick();
     });
   }
 
@@ -239,6 +252,7 @@ export async function startWatch(opts: WatchOptions): Promise<WatchHandle> {
     trigger: () => {
       if (closed) return;
       pendingAll = true;
+      nextRetryAt = 0; // the user asked: don't wait out the backoff
       kick();
     },
   };

@@ -51,6 +51,8 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
   const stream: DestinationStream = {
     write: (line: string) => write(opts.json ? line : prettyLine(line)),
   };
+  // Never add a pino `transport:` here: transports load worker files via __dirname, which the ESM desktop bundle
+  // doesn't have. Lines go through the synchronous `write` stream instead.
   return pino(
     {
       level: opts.level ?? 'info',
