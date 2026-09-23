@@ -24,6 +24,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @forever-ledger/desktop build
+      # Electron 44 downloads its binary on first use; do it here, not inside the smoke test's timeout.
+      - run: pnpm --filter @forever-ledger/desktop exec node -e "require('electron')"
       - run: pnpm --filter @forever-ledger/desktop test:smoke
       # Packaging check without publishing: catches electron-builder config errors on every PR.
       - run: pnpm --filter @forever-ledger/desktop exec electron-builder --win --publish never
