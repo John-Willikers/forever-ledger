@@ -1,8 +1,8 @@
--- Forever Ledger v0.2.1 (SavedVariables schema 1)
+-- Forever Ledger v0.2.2 (SavedVariables schema 1)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.2.1"
+local VERSION = "0.2.2"
 local SCHEMA_VERSION = 1
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local f = CreateFrame("Frame")
@@ -44,6 +44,38 @@ local RESUME_WINDOW = 900 -- seconds: re-entering the same instance within 15 mi
 
 local function now() return time() end
 local function say(msg) print("|cff33ff99Forever Ledger:|r " .. msg) end
+
+---------------------------------------------------------------- checkpoint nudges
+-- Only SavedVariables reach disk, and only on /reload or logout. At natural checkpoints (boss kill, run closed,
+-- quest turned in, dungeon finder reward) remind the player once, out of combat, that there is unsaved data.
+-- It only prints. Bookkeeping stays in locals so the SavedVariables shape is unchanged (/fl nudge off lasts until
+-- the next /reload or logout).
+local NUDGE_GAP = 300    -- seconds: at most one nudge per 5 minutes
+local newRecords = 0     -- records added since this load (every load is a save point)
+local nudgeOn = true
+local nudgeDeferred = false
+local lastNudgeAt
+
+local function added() newRecords = newRecords + 1 end
+
+local function inCombat()
+  local ok, locked = pcall(InCombatLockdown)
+  if ok and locked then return true end
+  local ok2, busy = pcall(UnitAffectingCombat, "player")
+  return ok2 and busy and true or false
+end
+
+local function checkpoint()
+  if not nudgeOn or newRecords < 1 then return end
+  if inCombat() then nudgeDeferred = true; return end
+  nudgeDeferred = false
+  if lastNudgeAt and now() - lastNudgeAt < NUDGE_GAP then return end
+  lastNudgeAt = now()
+  say(format("%d new record%s since your last /reload — type /reload to save them (the tray app uploads within "
+    .. "seconds).", newRecords, newRecords == 1 and "" or "s"))
+end
+
+---------------------------------------------------------------- helpers
 local function idFromLink(link) return link and tonumber(link:match("item:(%d+)")) end
 local function charKey() return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?") end
 
@@ -98,8 +130,12 @@ local function scanItem(itemID, link)
   rec.name, rec.quality, rec.type, rec.subtype, rec.equipLoc = name, quality, itype, isub, equipLoc
 
   -- Per-build snapshot: beta stat changes are data, never overwrite another build's values.
-  local snap = rec.byBuild[build] or { firstSeen = now() }
-  rec.byBuild[build] = snap
+  local snap = rec.byBuild[build]
+  if not snap then
+    snap = { firstSeen = now() }
+    rec.byBuild[build] = snap
+    added()
+  end
   snap.link, snap.ilvl, snap.reqLevel, snap.sellPrice = ilink, ilvl, reqLevel, sellPrice
 
   local ok, stats = pcall(GetItemStats, ilink)
@@ -133,8 +169,12 @@ end
 local function questObs(questID, stage)
   local q = questRec(questID)
   local key = build .. ":" .. stage .. ":" .. charKey()
-  local o = q.obs[key] or { build = build, stage = stage, char = charKey() }
-  q.obs[key] = o
+  local o = q.obs[key]
+  if not o then
+    o = { build = build, stage = stage, char = charKey() }
+    q.obs[key] = o
+    added()
+  end
   o.level, o.time = UnitLevel("player"), now()
   return o, q
 end
@@ -237,6 +277,7 @@ local function closeRun(reason)
   say(format("%s run logged: %d min active, %d XP (%d from mobs).",
     run.instance or "?", floor(run.activeSecs / 60), run.xpTotal or 0, run.mobXP))
   run = nil
+  checkpoint()
 end
 
 local function checkInstance()
@@ -263,6 +304,7 @@ local function checkInstance()
             bosses = {}, loot = {}, party = partyInfo() }
     db.runs[#db.runs + 1] = run
     trim(db.runs, HISTORY_CAP)
+    added()
     say("started timing " .. name .. ".")
   elseif run then
     closeRun("left")
@@ -294,6 +336,7 @@ local function onLootOpened()
         db.drops[id] = byBuild
         byBuild[build] = byBuild[build] or {}
         byBuild[build][src] = (byBuild[build][src] or 0) + 1
+        added()
         scanItem(id, link)
         if run then run.loot[#run.loot + 1] = { itemID = id, npcID = src } end
       end
@@ -417,7 +460,9 @@ function handlers.QUEST_TURNED_IN(questID, xp, money)
                   runID = run and run.id or nil }
   db.turnIns[#db.turnIns + 1] = entry
   trim(db.turnIns, HISTORY_CAP)
+  added()
   if run then run.questXP = run.questXP + (xp or 0) end
+  checkpoint()
 end
 
 function handlers.ENCOUNTER_END(encounterID, name, _, _, success)
@@ -425,6 +470,14 @@ function handlers.ENCOUNTER_END(encounterID, name, _, _, success)
     run.bosses[#run.bosses + 1] = { id = encounterID, name = name, killed = success == 1,
                                     atSecs = now() - run.start - (run.awaySecs or 0) }
   end
+  if success == 1 or success == true then checkpoint() end
+end
+
+function handlers.LFG_COMPLETION_REWARD() checkpoint() end
+
+-- A checkpoint that came during combat prints once the fight is over.
+function handlers.PLAYER_REGEN_ENABLED()
+  if nudgeDeferred then checkpoint() end
 end
 
 function handlers.PLAYER_DEAD() if run then run.deaths = run.deaths + 1 end end
@@ -445,6 +498,10 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     scanWholeLog()
   elseif msg == "done" then
     closeRun("manual")
+  elseif msg == "nudge off" or msg == "nudge on" then
+    nudgeOn = msg == "nudge on"
+    nudgeDeferred = false
+    say(nudgeOn and "/reload reminders on." or "/reload reminders off until your next /reload or logout.")
   elseif msg == "reset confirm" then
     wipe(db.quests); wipe(db.items); wipe(db.runs); wipe(db.drops); wipe(db.turnIns)
     say("all data wiped.")
@@ -456,8 +513,11 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     say(format("schema %d, build %d.", db.meta.schemaVersion or 0, build))
     say(format("%d quests, %d turn-ins, %d items, %d looted item types, %d runs.",
       nq, #db.turnIns, ni, nd, #db.runs))
+    say(format("%d new record%s since your last /reload (saved on the next /reload); reminders %s.",
+      newRecords, newRecords == 1 and "" or "s", nudgeOn and "on" or "off"))
     say("/fl scanlog  -  read rewards for quests already in your log")
     say("/fl done  -  close the current dungeon timer by hand")
+    say("/fl nudge off|on  -  reminders to /reload after bosses, runs and turn-ins")
     say("/fl reset confirm  -  wipe everything")
     say("Type /reload after each dungeon so the data hits disk.")
   end

@@ -18,13 +18,19 @@ Plan and live progress: [`project-plans/forever-ledger-m0-m5.md`](project-plans/
 
 Copy both folders from `addon/` into the Forever client's `Interface/AddOns/` folder:
 
-| Addon                | What it does                                                                                                              | Commands                                                                            |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, drops and dungeon runs.                   | `/fl` status · `/fl scanlog` · `/fl done` · `/fl reset confirm`                     |
-| `ForeverLedgerProbe` | Development only: dumps what the client supports (same API docs as `/api`, globals, events) and can sniff event payloads. | `/flprobe` dump · `/flprobe sniff on` / `off` · `/flprobe io …` · `/flprobe status` |
+| Addon                | What it does                                                                                                              | Commands                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, drops and dungeon runs.                   | `/fl` status · `/fl scanlog` · `/fl done` · `/fl nudge off` / `on` · `/fl reset confirm` |
+| `ForeverLedgerProbe` | Development only: dumps what the client supports (same API docs as `/api`, globals, events) and can sniff event payloads. | `/flprobe` dump · `/flprobe sniff on` / `off` · `/flprobe io …` · `/flprobe status`      |
 
 Data reaches disk only on `/reload`, logout or a clean exit, so `/reload` after each dungeon. Upgrading from
 v0.1.0 migrates your existing data the first time you log in.
+
+Since 0.2.2 the addon reminds you at natural checkpoints (a boss kill, a dungeon run closing, a quest turn-in, a
+dungeon finder reward): `Forever Ledger: N new records since your last /reload — type /reload to save them`. It
+prints at most once every 5 minutes, waits until you leave combat, and only prints; the tray app uploads within
+seconds of the `/reload`. `/fl` shows the unsaved count. `/fl nudge off` silences it until your next `/reload` or
+logout (the switch isn't saved, so the SavedVariables shape is unchanged).
 
 **First thing to do on a real Forever install:** enable `ForeverLedgerProbe`, run `/flprobe`, then
 `/flprobe sniff on`, accept and turn in a quest, run a dungeon, `/reload`, and send back
