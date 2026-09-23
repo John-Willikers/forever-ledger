@@ -3,12 +3,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
   contentHash,
+  NO_ADDON_RELEASE,
   RECORD_KINDS,
   recordKey,
   SCHEMA_VERSION,
   UploadBatch,
 } from '@forever-ledger/contracts';
 import type { Acknowledged } from '@forever-ledger/contracts';
+import type { AddonRelease } from './addonRelease.js';
 
 export interface MockReply {
   status: number;
@@ -32,6 +34,11 @@ export interface MockServer {
   receivedKeys: string[];
   /** Every POST /v1/ingest, accepted or not. */
   ingestRequests: number;
+  /**
+   * What GET /v1/addon/manifest recommends (null: nothing published). Its zip is served at the path of the release
+   * url, so a client that sends https://github.com/… here downloads it.
+   */
+  addonRelease: AddonRelease | null;
   close(): Promise<void>;
 }
 
@@ -55,11 +62,24 @@ export async function startMockServer(opts: MockServerOptions = {}): Promise<Moc
     batches: [] as UploadBatch[],
     receivedKeys: [] as string[],
     ingestRequests: 0,
+    addonRelease: null as AddonRelease | null,
   };
 
   const server = createServer((req, res) => {
     void (async () => {
       if (req.method === 'GET' && req.url === '/v1/health') return send(res, 200, { ok: true });
+      const release = state.addonRelease;
+      if (req.method === 'GET' && req.url?.split('?')[0] === '/v1/addon/manifest') {
+        if (req.headers.authorization !== `Bearer ${token}`)
+          return send(res, 401, { error: 'unauthorized' });
+        return release
+          ? send(res, 200, release.manifest)
+          : send(res, 404, { error: NO_ADDON_RELEASE });
+      }
+      if (req.method === 'GET' && release && req.url === new URL(release.manifest.url).pathname) {
+        res.writeHead(200, { 'content-type': 'application/zip' });
+        return res.end(release.zip);
+      }
       if (req.method !== 'POST' || req.url !== '/v1/ingest')
         return send(res, 404, { error: 'not found' });
       state.ingestRequests++;
@@ -106,6 +126,12 @@ export async function startMockServer(opts: MockServerOptions = {}): Promise<Moc
     },
     get ingestRequests() {
       return state.ingestRequests;
+    },
+    get addonRelease() {
+      return state.addonRelease;
+    },
+    set addonRelease(r: AddonRelease | null) {
+      state.addonRelease = r;
     },
     close: () =>
       new Promise<void>((resolve, reject) => {

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   lstat,
   mkdir,
@@ -12,7 +11,6 @@ import {
 import { join } from 'node:path';
 import { addonDownloadUrl, MAX_ADDON_BYTES, NO_ADDON_RELEASE } from '@forever-ledger/contracts';
 import type { AddonManifest } from '@forever-ledger/contracts';
-import { strToU8, zipSync } from 'fflate';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { installAddon, readInstalledVersion } from '../src/addonInstall.js';
 import { readAddonSyncState, rollbackAddonEverywhere, syncAddon } from '../src/addonSync.js';
@@ -22,30 +20,12 @@ import { ConfigError } from '../src/errors.js';
 import { writeJsonAtomic } from '../src/fsutil.js';
 import { runUploadPass } from '../src/pass.js';
 import { StateStore } from '../src/state.js';
+import { release } from './helpers/addonRelease.js';
 import { FAST_READ, readFixture, tempEnv } from './helpers/fixtures.js';
 import type { TempEnv } from './helpers/fixtures.js';
 
 const SERVER = 'https://ledger.test';
 const SV = 'ForeverLedgerDB = { ["meta"] = { ["build"] = 69913, ["schemaVersion"] = 1 } }\n';
-
-function release(version: string) {
-  const zip = zipSync({
-    'ForeverLedger/ForeverLedger.toc': strToU8(`## Interface: 11508\n## Version: ${version}\n`),
-    'ForeverLedger/ForeverLedger.lua': strToU8(`-- ${version}`),
-  });
-  const manifest: AddonManifest = {
-    addon: 'ForeverLedger',
-    version,
-    url: addonDownloadUrl(version),
-    sha256: createHash('sha256').update(zip).digest('hex'),
-    size: zip.length,
-  };
-  const files = new Map([
-    ['ForeverLedger.toc', strToU8(`## Interface: 11508\n## Version: ${version}\n`)],
-    ['ForeverLedger.lua', strToU8(`-- ${version}`)],
-  ]);
-  return { zip, manifest, files };
-}
 
 interface FakeServer {
   manifest: AddonManifest | null;

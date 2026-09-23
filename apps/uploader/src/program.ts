@@ -1,6 +1,9 @@
 import { Command, Option } from 'commander';
 import { createRequire } from 'node:module';
 import { basename, dirname, resolve } from 'node:path';
+import { ADDON_NAME } from '@forever-ledger/contracts';
+import { rollbackAddonEverywhere, syncAddon } from './addonSync.js';
+import type { AddonSyncResult } from './addonSync.js';
 import { checkHealth } from './client.js';
 import {
   loadConfig,
@@ -21,6 +24,7 @@ import { createLogger } from './log.js';
 import type { Logger } from './log.js';
 import { runUploadPass } from './pass.js';
 import type { PassResult } from './pass.js';
+import { withLock } from './lock.js';
 import { formatProbeSummary, probeDump } from './probe.js';
 import { collectStatus, formatStatus } from './status.js';
 import { startWatch } from './watch.js';
@@ -76,6 +80,31 @@ function printPass(res: PassResult) {
       if (e.message !== res.fatal?.message) out(`${e.account}: ${e.message}`);
   }
   if (res.fatal) out(`STOPPED: ${res.fatal.message}`);
+}
+
+/** Output lines for one addon sync; exit code 1 on `error`. */
+function printAddonSync(res: AddonSyncResult): number {
+  const skipped = new Set(res.skipped);
+  for (const dir of res.recovered ?? []) out(`recovered ${ADDON_NAME} in ${dir}`);
+  for (const dir of skipped) out(`skipped ${dir} (linked folder)`);
+  const v = res.recommended ?? '?';
+  switch (res.status) {
+    case 'installed':
+      out(`addon ${v} installed in ${res.addonsDirs.filter((d) => !skipped.has(d)).join(', ')}`);
+      return 0;
+    case 'up-to-date':
+      out(`addon up to date (${v})`);
+      return 0;
+    case 'paused':
+      out(`paused after rollback: server still recommends ${v} (use --force)`);
+      return 0;
+    case 'no-release':
+      out('no addon release published');
+      return 0;
+    case 'error':
+      out(`addon sync failed: ${res.error ?? 'unknown error'}`);
+      return 1;
+  }
 }
 
 export function buildProgram(): Command {
@@ -199,6 +228,36 @@ export function buildProgram(): Command {
       action(async (_opts: unknown, cmd: Command) => {
         const config = await loadConfig(resolveConfigPath(globals(cmd).config));
         out(formatStatus(config, await collectStatus(config)));
+      }),
+    );
+
+  program
+    .command('addon-sync')
+    .description(
+      'install the ForeverLedger addon version the server recommends for your client build (restart or /reload WoW after)',
+    )
+    .option('--force', 'install even while paused after a rollback')
+    .addOption(
+      new Option(
+        '--rollback',
+        'restore the previous addon version and pause auto-update until the server recommends another',
+      ).conflicts('force'),
+    )
+    .action(
+      action(async (opts: { force?: boolean; rollback?: boolean }, cmd: Command) => {
+        const g = globals(cmd);
+        const config = await loadConfig(resolveConfigPath(g.config));
+        const log = logger(g);
+        return withLock(config.stateDir, async () => {
+          if (opts.rollback) {
+            const version = await rollbackAddonEverywhere({ config, logger: log });
+            out(
+              `rolled back to ${version}; auto-update paused until the server recommends another version`,
+            );
+            return 0;
+          }
+          return printAddonSync(await syncAddon({ config, logger: log, force: opts.force }));
+        });
       }),
     );
 

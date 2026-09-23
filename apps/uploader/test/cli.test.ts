@@ -1,9 +1,12 @@
 import { execFile } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { installAddon, readInstalledVersion } from '../src/addonInstall.js';
+import { acquireLock } from '../src/lock.js';
+import { release } from './helpers/addonRelease.js';
 import { fixturePath, readFixture, tempEnv } from './helpers/fixtures.js';
 import type { TempEnv } from './helpers/fixtures.js';
 import { startMockServer } from './helpers/mockServer.js';
@@ -11,14 +14,18 @@ import type { MockServer } from './helpers/mockServer.js';
 
 const run = promisify(execFile);
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const githubRedirect = fileURLToPath(new URL('./helpers/githubRedirect.ts', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 
-/** Runs the CLI from source (tsx, workspace packages via the `development` condition). */
+/**
+ * Runs the CLI from source (tsx, workspace packages via the `development` condition). FL_TEST_GITHUB in `env` sends
+ * addon downloads to the mock server.
+ */
 async function forever(args: string[], env: NodeJS.ProcessEnv = {}) {
   try {
     const { stdout, stderr } = await run(
       process.execPath,
-      ['--conditions=development', '--import', 'tsx', cli, ...args],
+      ['--conditions=development', '--import', 'tsx', '--import', githubRedirect, cli, ...args],
       { cwd: repoRoot, env: { ...process.env, ...env }, timeout: 30_000 },
     );
     return { code: 0, stdout, stderr };
@@ -123,5 +130,116 @@ describe('cli', () => {
     const res = await forever(['--config', join(env.dir, 'none.json'), 'status']);
     expect(res.code).toBe(1);
     expect(res.stderr).toMatch(/run `forever-ledger init/);
+  });
+
+  describe('addon-sync', () => {
+    let configPath: string;
+    let addonsDir: string;
+    let githubUrl: string;
+    const sync = (...args: string[]) =>
+      forever(['--config', configPath, 'addon-sync', ...args], { FL_TEST_GITHUB: githubUrl });
+
+    beforeEach(async () => {
+      server = await startMockServer();
+      githubUrl = server.url;
+      configPath = join(env.dir, 'config.json');
+      await writeFile(
+        configPath,
+        JSON.stringify({
+          wowPath: env.wowPath,
+          serverUrl: server.url,
+          token: 'test-token',
+          uploaderId: 'u',
+        }),
+      );
+      await env.writeSv(await readFixture('session-v1.lua'));
+      addonsDir = join(env.wowPath, '_classic_era_', 'Interface', 'AddOns');
+    });
+
+    it(
+      'no release → installed → up to date → rollback pauses → --force',
+      { timeout: 90_000 },
+      async () => {
+        const none = await sync();
+        expect(none.code).toBe(0);
+        expect(none.stdout).toBe('no addon release published\n');
+
+        const srv = server as MockServer;
+        srv.addonRelease = release('0.2.2');
+        const first = await sync();
+        expect(first.code).toBe(0);
+        expect(first.stdout).toBe(`addon 0.2.2 installed in ${addonsDir}\n`);
+        expect(await readInstalledVersion(addonsDir)).toBe('0.2.2');
+
+        const again = await sync();
+        expect(again.stdout).toBe('addon up to date (0.2.2)\n');
+
+        srv.addonRelease = release('0.2.3');
+        expect((await sync()).stdout).toBe(`addon 0.2.3 installed in ${addonsDir}\n`);
+
+        const back = await sync('--rollback');
+        expect(back.code).toBe(0);
+        expect(back.stdout).toBe(
+          'rolled back to 0.2.2; auto-update paused until the server recommends another version\n',
+        );
+        expect(await readInstalledVersion(addonsDir)).toBe('0.2.2');
+
+        const paused = await sync();
+        expect(paused.code).toBe(0);
+        expect(paused.stdout).toBe(
+          'paused after rollback: server still recommends 0.2.3 (use --force)\n',
+        );
+
+        const forced = await sync('--force');
+        expect(forced.stdout).toBe(`addon 0.2.3 installed in ${addonsDir}\n`);
+        expect(await readInstalledVersion(addonsDir)).toBe('0.2.3');
+      },
+    );
+
+    it(
+      'exits 1 when the sync fails, when there is nothing to roll back, and while locked',
+      { timeout: 90_000 },
+      async () => {
+        await (server as MockServer).close();
+        server = undefined;
+        const down = await sync();
+        expect(down.code).toBe(1);
+        expect(down.stdout).toMatch(/^addon sync failed: manifest request failed/);
+
+        const nothing = await sync('--rollback');
+        expect(nothing.code).toBe(1);
+        expect(nothing.stderr).toMatch(/no previous version to roll back to/);
+
+        const unlock = await acquireLock(join(env.dir, 'state'));
+        try {
+          const locked = await sync();
+          expect(locked.code).toBe(1);
+          expect(locked.stderr).toMatch(/another forever-ledger uploader/);
+        } finally {
+          await unlock();
+        }
+      },
+    );
+
+    it('reports skipped linked folders and recovered installs', { timeout: 60_000 }, async () => {
+      (server as MockServer).addonRelease = release('0.2.2');
+      // An interrupted swap: the marker and ForeverLedger.bak are left, ForeverLedger is gone.
+      await installAddon(addonsDir, release('0.2.1').files);
+      await writeFile(join(addonsDir, '.ForeverLedger.swap'), '');
+      await rename(join(addonsDir, 'ForeverLedger'), join(addonsDir, 'ForeverLedger.bak'));
+      const res = await sync();
+      expect(res.code).toBe(0);
+      expect(res.stdout).toContain(`recovered ForeverLedger in ${addonsDir}\n`);
+      expect(res.stdout).toContain(`addon 0.2.2 installed in ${addonsDir}\n`);
+
+      const other = join(env.dir, 'checkout');
+      await mkdir(other, { recursive: true });
+      await installAddon(other, release('0.3.0').files);
+      await rm(join(addonsDir, 'ForeverLedger'), { recursive: true });
+      await symlink(join(other, 'ForeverLedger'), join(addonsDir, 'ForeverLedger'), 'dir');
+      const linked = await sync();
+      expect(linked.code).toBe(0);
+      expect(linked.stdout).toContain(`skipped ${addonsDir} (linked folder)\n`);
+    });
   });
 });
