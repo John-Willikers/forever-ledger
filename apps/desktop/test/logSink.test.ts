@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LogSink, rotatedPath } from '../src/main/logSink.js';
+import { LogSink, parseProblemLine, rotatedPath } from '../src/main/logSink.js';
 
 let dir: string;
 beforeEach(async () => {
@@ -73,5 +73,54 @@ describe('LogSink', () => {
     expect(await readFile(file, 'utf8')).toBe(`${'x'.repeat(100)}still here\nand here\n`);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(/cannot rotate/);
+  });
+});
+
+describe('problem lines', () => {
+  it('parses WARN, ERROR and FATAL lines; ignores the rest', () => {
+    expect(parseProblemLine('[2026-09-23 05:22:10 CDT] WARN  addon sync failed err=x')).toEqual({
+      level: 'warn',
+      text: 'addon sync failed err=x',
+    });
+    expect(parseProblemLine('[2026-09-23 05:22:10 CDT] ERROR cannot load the config\n')).toEqual({
+      level: 'error',
+      text: 'cannot load the config',
+    });
+    expect(parseProblemLine('[t] FATAL token rejected')).toEqual({
+      level: 'fatal',
+      text: 'token rejected',
+    });
+    expect(parseProblemLine('[t] INFO  all good')).toBeUndefined();
+    expect(parseProblemLine('[t] DEBUG noise')).toBeUndefined();
+    expect(parseProblemLine('WARN not a log line')).toBeUndefined();
+    expect(parseProblemLine('[t] WARN  ')).toBeUndefined();
+  });
+
+  it('tells problem listeners about warn/error/fatal lines only', async () => {
+    const sink = new LogSink(join(dir, 'forever-ledger.log'));
+    const seen: unknown[] = [];
+    const off = sink.onProblem((p) => seen.push(p));
+    sink.write('[t] INFO  fine\n');
+    sink.write('[t] WARN  careful k=v\n');
+    sink.write('[t] ERROR broken\n');
+    off();
+    sink.write('[t] ERROR after unsubscribing\n');
+    await sink.close();
+    expect(seen).toEqual([
+      { level: 'warn', text: 'careful k=v' },
+      { level: 'error', text: 'broken' },
+    ]);
+  });
+
+  it('keeps logging when a problem listener throws', async () => {
+    const file = join(dir, 'forever-ledger.log');
+    const sink = new LogSink(file, { onError: () => undefined });
+    sink.onProblem(() => {
+      throw new Error('listener bug');
+    });
+    sink.write('[t] ERROR one\n');
+    sink.write('[t] ERROR two\n');
+    await sink.close();
+    expect(await readFile(file, 'utf8')).toBe('[t] ERROR one\n[t] ERROR two\n');
   });
 });

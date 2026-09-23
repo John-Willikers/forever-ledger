@@ -17,6 +17,28 @@ export function chicagoTime(epochMs: number): string {
   return `${p.month} ${p.day}, ${p.year} ${p.hour}:${p.minute} ${p.dayPeriod} ${p.timeZoneName}`;
 }
 
+const chicagoClock = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Chicago',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+  timeZoneName: 'short',
+});
+const chicagoDay = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Chicago',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** `17:22 CDT` today (Chicago), else the full `chicagoTime`. */
+function shortChicagoTime(epochMs: number, now: number): string {
+  if (chicagoDay.format(epochMs) !== chicagoDay.format(now)) return chicagoTime(epochMs);
+  const p: Record<string, string> = {};
+  for (const part of chicagoClock.formatToParts(epochMs)) p[part.type] = part.value;
+  return `${p.hour}:${p.minute} ${p.timeZoneName}`;
+}
+
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** One line for the Uploads card, e.g. `Up to date · last upload Sep 23, 2026 5:22 AM CDT`. */
@@ -55,6 +77,14 @@ export function addonLine(s: Snapshot): string {
         return `${installed} · server recommends ${a.recommended}${forBuild}`;
       return `${installed} · up to date${forBuild}`;
   }
+}
+
+/** The App card's error report line, e.g. `Error reports: last sent 17:22 CDT · 0 pending`. */
+export function diagnosticsLine(s: Snapshot, now = Date.now()): string {
+  const d = s.diagnostics;
+  if (!d.enabled) return 'Error reports: off';
+  const last = d.lastSentAt ? `last sent ${shortChicagoTime(d.lastSentAt, now)}` : 'none sent yet';
+  return `Error reports: ${last} · ${d.pending} pending`;
 }
 
 /** Per-account detail for the Uploads card. */

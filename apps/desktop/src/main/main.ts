@@ -73,6 +73,7 @@ function prefsStore(file: string, logger: Logger, onSet: (p: Prefs) => void) {
     const raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<Prefs>;
     if (typeof raw.startWithWindows === 'boolean') prefs.startWithWindows = raw.startWithWindows;
     if (typeof raw.autoUpdateAddon === 'boolean') prefs.autoUpdateAddon = raw.autoUpdateAddon;
+    if (typeof raw.sendErrorReports === 'boolean') prefs.sendErrorReports = raw.sendErrorReports;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
       logger.warn({ file, err: errorMessage(err) }, 'ignoring unreadable prefs');
@@ -99,10 +100,32 @@ async function run() {
   });
   const level = process.env.FL_LOG_LEVEL === 'debug' ? 'debug' : 'info';
   const logger = uploader.createLogger({ level, write: (line) => sink.write(line) });
-  process.on('uncaughtException', (err) => logger.error({ err }, 'uncaught exception'));
-  process.on('unhandledRejection', (err) =>
-    logger.error({ err: errorMessage(err) }, 'unhandled rejection'),
-  );
+  // Crashes also go into the error reports once the controller exists.
+  const crash: { reports?: LedgerController } = {};
+  process.on('uncaughtException', (err) => {
+    logger.error({ err }, 'uncaught exception');
+    crash.reports?.reportProblem(
+      {
+        level: 'fatal',
+        source: 'tray',
+        message: `uncaught exception: ${err.message}`,
+        detail: { stack: err.stack },
+      },
+      err.message,
+    );
+  });
+  process.on('unhandledRejection', (err) => {
+    logger.error({ err: errorMessage(err) }, 'unhandled rejection');
+    crash.reports?.reportProblem(
+      {
+        level: 'error',
+        source: 'tray',
+        message: `unhandled rejection: ${errorMessage(err)}`,
+        ...(err instanceof Error ? { detail: { stack: err.stack } } : {}),
+      },
+      errorMessage(err),
+    );
+  });
 
   const applyLoginItem = (p: Prefs) => {
     // Dev builds would register electron.exe; only the installed app starts with Windows.
@@ -120,6 +143,9 @@ async function run() {
     appVersion: APP_VERSION,
     prefs,
   });
+  crash.reports = controller;
+  // Every WARN/ERROR/FATAL line is a candidate for the error reports (the controller drops duplicates).
+  sink.onProblem((p) => controller.noteLogProblem(p));
 
   const notify = (body: string) => {
     if (!Notification.isSupported()) return;
@@ -222,6 +248,14 @@ async function run() {
     });
     autoUpdater.on('error', (err) => {
       logger.warn({ err: errorMessage(err) }, 'app update check failed');
+      controller.reportProblem(
+        {
+          level: 'error',
+          source: 'updater',
+          message: `app update check failed: ${errorMessage(err)}`,
+        },
+        errorMessage(err),
+      );
       if (manualUpdateCheck) notify(`Couldn't check for updates: ${errorMessage(err)}`);
       manualUpdateCheck = false;
     });

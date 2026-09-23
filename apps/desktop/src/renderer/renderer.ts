@@ -1,6 +1,13 @@
 import type { WowFlavor, WowFolderPick } from '../main/ipc.js';
 import type { Snapshot } from '../main/state.js';
-import { accountLine, addonLine, chicagoTime, ipcErrorMessage, uploadsLine } from './format.js';
+import {
+  accountLine,
+  addonLine,
+  chicagoTime,
+  diagnosticsLine,
+  ipcErrorMessage,
+  uploadsLine,
+} from './format.js';
 
 // Everything user- or server-provided goes in with textContent; never innerHTML.
 
@@ -141,6 +148,7 @@ action('set-token-save', 'settings-error', async () => {
 for (const [id, key] of [
   ['set-startup', 'startWithWindows'],
   ['set-autoaddon', 'autoUpdateAddon'],
+  ['set-errorreports', 'sendErrorReports'],
 ] as const) {
   const box = el<HTMLInputElement>(id);
   box.addEventListener('change', () => {
@@ -200,6 +208,7 @@ function render(s: Snapshot) {
       : `Version ${s.appVersion}`,
   );
   el('restart-update').hidden = !s.appUpdateReady;
+  setText('app-diagnostics', diagnosticsLine(s));
 
   // Settings
   setText('set-wow', s.settings.wowPath ?? 'Not set');
@@ -207,6 +216,7 @@ function render(s: Snapshot) {
   setText('set-token-state', s.settings.tokenSet ? '(saved)' : '(not set)');
   el<HTMLInputElement>('set-startup').checked = s.settings.startWithWindows;
   el<HTMLInputElement>('set-autoaddon').checked = s.settings.autoUpdateAddon;
+  el<HTMLInputElement>('set-errorreports').checked = s.settings.sendErrorReports;
 }
 
 // ---- activity ----

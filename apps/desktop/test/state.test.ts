@@ -22,7 +22,13 @@ function snapshot(over: Partial<Snapshot> = {}): Snapshot {
     uploading: false,
     accounts: [account()],
     appVersion: '0.1.0',
-    settings: { tokenSet: true, startWithWindows: true, autoUpdateAddon: true },
+    diagnostics: { enabled: true, pending: 0 },
+    settings: {
+      tokenSet: true,
+      startWithWindows: true,
+      autoUpdateAddon: true,
+      sendErrorReports: true,
+    },
     ...over,
   };
 }

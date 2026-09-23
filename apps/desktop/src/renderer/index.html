@@ -70,6 +70,7 @@
       <section class="card" data-card="app">
         <h2>App</h2>
         <p id="app-line" class="line"></p>
+        <p id="app-diagnostics" class="muted"></p>
         <div class="actions">
           <button id="restart-update" type="button" class="primary" hidden>
             Restart to update
@@ -113,6 +114,10 @@
         <label class="check"
           ><input id="set-autoaddon" type="checkbox" /> Keep the addon up to date
           automatically</label
+        >
+        <label class="check"
+          ><input id="set-errorreports" type="checkbox" /> Send error reports (problems only: no
+          game data, tokens or your user folder)</label
         >
         <p id="settings-error" class="error" hidden></p>
         <div class="actions">

@@ -44,6 +44,9 @@ test('starts, shows the four cards and writes its log', async () => {
     for (const card of ['uploads', 'addon', 'app', 'settings']) {
       await expect(win.locator(`[data-card="${card}"]`)).toBeVisible({ timeout: 20_000 });
     }
+    // Error reports: on by default, shown in the App card.
+    await expect(win.locator('#app-diagnostics')).toContainText('Error reports:');
+    await expect(win.locator('#set-errorreports')).toBeChecked();
     const version = await app.evaluate(({ app: a }) => a.getVersion());
     expect(version).toMatch(/^\d+\.\d+\.\d+$/);
   } catch (err) {
