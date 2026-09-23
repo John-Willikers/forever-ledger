@@ -3,6 +3,13 @@ export const PACKAGE = 'uploader';
 export { addonsDirFor, installAddon, readInstalledVersion, rollbackAddon } from './addonInstall.js';
 export { AddonSyncError, fetchManifest } from './addonManifest.js';
 export type { ManifestOptions } from './addonManifest.js';
+export { readAddonSyncState, rollbackAddonEverywhere, syncAddon } from './addonSync.js';
+export type {
+  AddonSyncOptions,
+  AddonSyncResult,
+  AddonSyncState,
+  AddonSyncStatus,
+} from './addonSync.js';
 export { backoffDelay } from './backoff.js';
 export type { BackoffOptions } from './backoff.js';
 export {
