@@ -12,13 +12,22 @@ export interface Database {
   pool: pg.Pool;
 }
 
-/** Opens a pool whose sessions render timestamps in America/Chicago. */
-export function openDatabase(url: string): Database {
+/**
+ * Opens a pool whose sessions render timestamps in America/Chicago. An idle client that Postgres drops (restart,
+ * admin shutdown) emits 'error' on the pool; without a listener that is an uncaught exception that kills the process.
+ * The pool discards the client and connects a new one on the next query.
+ */
+export function openDatabase(
+  url: string,
+  onIdleError: (err: Error) => void = (err) =>
+    process.stderr.write(`postgres idle client error: ${err.message}\n`),
+): Database {
   const pool = new pg.Pool({
     connectionString: url,
     max: 10,
     options: '-c timezone=America/Chicago',
   });
+  pool.on('error', onIdleError);
   return { pool, db: drizzle(pool, { schema }) };
 }
 
