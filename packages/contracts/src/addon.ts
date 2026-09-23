@@ -6,6 +6,8 @@ export const ADDON_REPO = 'John-Willikers/forever-ledger';
 /** Downloads must come from this repo's releases. */
 export const ADDON_DOWNLOAD_PREFIX = `https://github.com/${ADDON_REPO}/releases/download/`;
 export const MAX_ADDON_BYTES = 5 * 1024 * 1024;
+/** `error` of the manifest route's 404 when no release matches; any other 404 is a misconfiguration. */
+export const NO_ADDON_RELEASE = 'no addon release published';
 
 /** x.y.z, no leading zeros, each part at most 9 digits. */
 const VERSION_RE = /^(0|[1-9]\d{0,8})(\.(0|[1-9]\d{0,8})){2}$/;

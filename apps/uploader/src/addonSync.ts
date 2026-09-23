@@ -1,6 +1,15 @@
 import { join } from 'node:path';
 import { ADDON_NAME, MAX_ADDON_BYTES, verifyAddonZip } from '@forever-ledger/contracts';
-import { addonsDirFor, installAddon, readInstalledVersion, rollbackAddon } from './addonInstall.js';
+import {
+  addonsDirFor,
+  hasAddonFolder,
+  installAddon,
+  isAddonLinked,
+  readInstalledVersion,
+  recoverAddon,
+  rollbackAddon,
+} from './addonInstall.js';
+import type { InstallDeps } from './addonInstall.js';
 import { AddonSyncError, fetchManifest } from './addonManifest.js';
 import type { FetchLike } from './client.js';
 import { requireServer } from './config.js';
@@ -14,6 +23,9 @@ import type { Logger } from './log.js';
 import { readSavedVariable } from './reader.js';
 import type { ReadOptions } from './reader.js';
 
+/** Folder operations used for install/rollback (tests inject failures). */
+export type AddonFsDeps = Pick<InstallDeps, 'rename' | 'remove'>;
+
 export interface AddonSyncOptions {
   config: Config;
   fetchImpl?: FetchLike;
@@ -22,6 +34,7 @@ export interface AddonSyncOptions {
   force?: boolean;
   /** Timings for reading SavedVariables (tests shorten them). */
   read?: ReadOptions;
+  installDeps?: AddonFsDeps;
 }
 
 export type AddonSyncStatus = 'up-to-date' | 'installed' | 'paused' | 'no-release' | 'error';
@@ -34,7 +47,10 @@ export interface AddonSyncResult {
   installed?: string;
   /** Client build sent to the server. */
   build?: number;
+  /** AddOns folders this sync manages. */
   addonsDirs: string[];
+  /** AddOns folders left alone because ForeverLedger there is a link (a developer checkout). */
+  skipped?: string[];
   /** Epoch seconds. */
   checkedAt: number;
   error?: string;
@@ -52,9 +68,47 @@ const statePath = (config: Config) => join(config.stateDir, 'addon-sync.json');
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
-export async function readAddonSyncState(config: Config): Promise<AddonSyncState> {
-  const raw = await readJsonIfExists(statePath(config));
+/** Reads addon-sync.json; a missing or corrupt file reads as empty (a corrupt one is logged). */
+export async function readAddonSyncState(
+  config: Config,
+  logger: Logger = silentLogger(),
+): Promise<AddonSyncState> {
+  let raw: unknown;
+  try {
+    raw = await readJsonIfExists(statePath(config));
+  } catch (err) {
+    if (!(err instanceof SyntaxError)) throw err;
+    logger.warn({ file: statePath(config), err: err.message }, 'ignoring corrupt addon sync state');
+    return {};
+  }
   return isObj(raw) ? (raw as AddonSyncState) : {};
+}
+
+/** Read-modify-write of addon-sync.json; only called under `serialized`. */
+async function updateState(
+  config: Config,
+  logger: Logger,
+  change: (state: AddonSyncState) => void,
+): Promise<void> {
+  const state = await readAddonSyncState(config, logger);
+  change(state);
+  await writeJsonAtomic(statePath(config), state);
+}
+
+/** Tail of the running sync/rollback per state folder: they touch the same AddOns folders and state file. */
+const running = new Map<string, Promise<unknown>>();
+
+/** Runs `fn` after every earlier sync/rollback for the same stateDir has finished (in this process). */
+async function serialized<T>(config: Config, fn: () => Promise<T>): Promise<T> {
+  const key = config.stateDir;
+  const run = (running.get(key) ?? Promise.resolve()).then(fn, fn);
+  const tail = run.catch(() => undefined);
+  running.set(key, tail);
+  try {
+    return await run;
+  } finally {
+    if (running.get(key) === tail) running.delete(key);
+  }
 }
 
 function requireWowPath(config: Config): string {
@@ -66,9 +120,31 @@ function requireWowPath(config: Config): string {
 }
 
 /** Interface/AddOns next to every WTF folder under wowPath, plus the SavedVariables files found. */
-async function findAddonsDirs(config: Config, wowPath: string) {
+async function discoverAddons(config: Config, wowPath: string) {
   const d = await discoverSavedVariables(wowPath, { accounts: config.accounts });
-  return { addonsDirs: [...new Set(d.wtfDirs.map(addonsDirFor))], files: d.files };
+  const dirs = d.wtfDirs.map((wtfDir) => ({ wtfDir, addonsDir: addonsDirFor(wtfDir) }));
+  return { dirs, files: d.files };
+}
+
+/**
+ * The AddOns folders to manage: flavors where the addon is installed or has written SavedVariables for an uploaded
+ * account. On a first run with a single flavor, that one.
+ */
+async function targetDirs(
+  wowPath: string,
+  found: Awaited<ReturnType<typeof discoverAddons>>,
+): Promise<string[]> {
+  if (found.dirs.length === 0)
+    throw new AddonSyncError(`no WTF folder found under ${wowPath} — start the game once`);
+  const withSv = new Set(found.files.map((f) => f.wtfDir));
+  const targets: string[] = [];
+  for (const { wtfDir, addonsDir } of found.dirs)
+    if (withSv.has(wtfDir) || (await hasAddonFolder(addonsDir))) targets.push(addonsDir);
+  if (targets.length) return [...new Set(targets)];
+  if (found.dirs.length === 1) return [found.dirs[0]?.addonsDir as string];
+  throw new AddonSyncError(
+    'several WoW flavors found; start the game with the addon once or set wowPath to the flavor folder',
+  );
 }
 
 /** Highest `meta.build` among the SavedVariables files; files that can't be read are skipped. */
@@ -123,32 +199,59 @@ async function download(url: string, fetchImpl: FetchLike): Promise<Uint8Array> 
   return Buffer.concat(chunks);
 }
 
+/** Puts ForeverLedger.bak back wherever an interrupted install left no working addon. Never throws. */
+async function recoverAll(dirs: string[], deps: InstallDeps, logger: Logger) {
+  for (const dir of dirs) {
+    try {
+      await recoverAddon(dir, deps);
+    } catch (err) {
+      logger.warn({ dir, err: errorMessage(err) }, 'cannot restore addon from ForeverLedger.bak');
+    }
+  }
+}
+
 /**
- * One addon sync: asks the server which version this client build should run and installs it into every AddOns
- * folder that has a different version. Network, zip and disk problems come back as status `error` (retry next
- * cycle); only a missing server/wowPath throws (ConfigError). The result is saved to addon-sync.json.
+ * One addon sync: heals interrupted installs, asks the server which version this client build should run and
+ * installs it into every managed AddOns folder that has a different version. Network, zip and disk problems come
+ * back as status `error` (retry next cycle); only a missing server/wowPath throws (ConfigError). The result is saved
+ * to addon-sync.json. Runs one at a time with rollbackAddonEverywhere.
  */
 export async function syncAddon(opts: AddonSyncOptions): Promise<AddonSyncResult> {
   const { config } = opts;
-  const logger = opts.logger ?? silentLogger();
-  const fetchImpl = opts.fetchImpl ?? fetch;
   const { serverUrl, token } = requireServer(config);
   const wowPath = requireWowPath(config);
+  return serialized(config, () => runSync(opts, serverUrl, token, wowPath));
+}
+
+async function runSync(
+  opts: AddonSyncOptions,
+  serverUrl: string,
+  token: string,
+  wowPath: string,
+): Promise<AddonSyncResult> {
+  const { config } = opts;
+  const logger = opts.logger ?? silentLogger();
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const deps: InstallDeps = { ...opts.installDeps, logger };
 
   const result: AddonSyncResult = {
     status: 'error',
     addonsDirs: [],
     checkedAt: Math.floor(Date.now() / 1000),
   };
-  let state: AddonSyncState = {};
+  let resume = false;
   try {
-    state = await readAddonSyncState(config);
-    const found = await findAddonsDirs(config, wowPath);
-    result.addonsDirs = found.addonsDirs;
-    if (found.addonsDirs.length === 0)
-      throw new AddonSyncError(`no WTF folder found under ${wowPath} — start the game once`);
+    const found = await discoverAddons(config, wowPath);
+    // Before the pause check and any network call, so it heals offline and paused installs too.
+    await recoverAll(
+      found.dirs.map((d) => d.addonsDir),
+      deps,
+      logger,
+    );
+    result.addonsDirs = await targetDirs(wowPath, found);
     result.build = await clientBuild(found.files, opts.read, logger);
 
+    const state = await readAddonSyncState(config, logger);
     const manifest = await fetchManifest({ serverUrl, token, build: result.build, fetchImpl });
     if (!manifest) {
       result.status = 'no-release';
@@ -159,15 +262,20 @@ export async function syncAddon(opts: AddonSyncOptions): Promise<AddonSyncResult
       } else {
         let files: Map<string, Uint8Array> | undefined;
         result.status = 'up-to-date';
-        for (const dir of found.addonsDirs) {
+        for (const dir of result.addonsDirs) {
+          if (await isAddonLinked(dir)) {
+            logger.warn({ dir }, `${ADDON_NAME} is a link here; leaving it alone`);
+            (result.skipped ??= []).push(dir);
+            continue;
+          }
           if ((await readInstalledVersion(dir)) === manifest.version) continue;
           files ??= verifyAddonZip(await download(manifest.url, fetchImpl), manifest);
-          await installAddon(dir, files);
+          await installAddon(dir, files, deps);
           result.status = 'installed';
           logger.info({ dir, version: manifest.version }, 'addon installed');
         }
         // The server now recommends something else, or the user forced this version: resume auto-update.
-        delete state.pausedWhileRecommended;
+        resume = true;
       }
     }
   } catch (err) {
@@ -179,35 +287,72 @@ export async function syncAddon(opts: AddonSyncOptions): Promise<AddonSyncResult
   const first = result.addonsDirs[0];
   if (first) result.installed = await readInstalledVersion(first).catch(() => undefined);
   try {
-    await writeJsonAtomic(statePath(config), { ...state, last: result });
+    await updateState(config, logger, (state) => {
+      if (resume) delete state.pausedWhileRecommended;
+      state.last = result;
+    });
   } catch (err) {
     logger.warn({ err: errorMessage(err) }, 'cannot save addon sync state');
   }
   return result;
 }
 
+export interface RollbackOptions {
+  config: Config;
+  logger?: Logger;
+  installDeps?: AddonFsDeps;
+}
+
 /**
  * Restores ForeverLedger.bak in every AddOns folder that has one and pauses auto-update until the server recommends
- * a different version. Returns the restored version.
+ * a different version. Returns the restored version. If some folders fail, the pause is still saved for the ones
+ * that were restored and the failures are thrown afterwards.
  */
-export async function rollbackAddonEverywhere(opts: { config: Config }): Promise<string> {
+export async function rollbackAddonEverywhere(opts: RollbackOptions): Promise<string> {
   const { config } = opts;
   const wowPath = requireWowPath(config);
-  const { addonsDirs } = await findAddonsDirs(config, wowPath);
-  const state = await readAddonSyncState(config);
+  const logger = opts.logger ?? silentLogger();
+  const deps: InstallDeps = { ...opts.installDeps, logger };
 
-  let restored: string | undefined;
-  let replaced: string | undefined;
-  for (const dir of addonsDirs) {
-    if (!(await readInstalledVersion(dir, `${ADDON_NAME}.bak`))) continue;
-    replaced ??= await readInstalledVersion(dir);
-    const version = await rollbackAddon(dir);
-    restored ??= version;
-  }
-  if (!restored) throw new AddonSyncError(`no previous version to roll back to under ${wowPath}`);
+  return serialized(config, async () => {
+    const { dirs } = await discoverAddons(config, wowPath);
+    const candidates: string[] = [];
+    for (const { addonsDir } of dirs)
+      if (
+        !(await isAddonLinked(addonsDir)) &&
+        (await readInstalledVersion(addonsDir, `${ADDON_NAME}.bak`))
+      )
+        candidates.push(addonsDir);
+    if (candidates.length === 0)
+      throw new AddonSyncError(`no previous version to roll back to under ${wowPath}`);
 
-  // Without a recorded recommendation, the version just rolled back from is the best guess.
-  const paused = state.last?.recommended ?? replaced;
-  await writeJsonAtomic(statePath(config), { ...state, pausedWhileRecommended: paused });
-  return restored;
+    let restored: string | undefined;
+    let replaced: string | undefined;
+    const failures: string[] = [];
+    for (const dir of candidates) {
+      try {
+        const current = await readInstalledVersion(dir).catch(() => undefined);
+        const version = await rollbackAddon(dir, deps);
+        replaced ??= current;
+        restored ??= version;
+        logger.info({ dir, version }, 'addon rolled back');
+      } catch (err) {
+        failures.push(`${dir}: ${errorMessage(err)}`);
+        logger.warn({ dir, err: errorMessage(err) }, 'addon rollback failed');
+      }
+    }
+
+    if (restored) {
+      await updateState(config, logger, (state) => {
+        // Without a recorded recommendation, the version just rolled back from is the best guess.
+        const paused = state.last?.recommended ?? replaced;
+        if (paused) state.pausedWhileRecommended = paused;
+      });
+    }
+    if (failures.length)
+      throw new AddonSyncError(
+        `${restored ? `rolled back to ${restored} in ${candidates.length - failures.length} of ${candidates.length} folders, but` : 'rollback'} failed in ${failures.join('; ')}`,
+      );
+    return restored as string;
+  });
 }

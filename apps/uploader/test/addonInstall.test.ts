@@ -1,4 +1,14 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename as fsRename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { strToU8 } from 'fflate';
@@ -6,7 +16,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   addonsDirFor,
   installAddon,
+  isAddonLinked,
   readInstalledVersion,
+  recoverAddon,
   rollbackAddon,
 } from '../src/addonInstall.js';
 
@@ -16,6 +28,20 @@ const files = (v: string) =>
     ['ForeverLedger.toc', strToU8(toc(v))],
     ['ForeverLedger.lua', strToU8(`-- ${v}`)],
   ]);
+
+/** A rename that fails with EBUSY on the calls listed (1-based), like a file held open by a virus scanner. */
+function failingRename(...failOn: number[]) {
+  let calls = 0;
+  return async (from: string, to: string) => {
+    calls++;
+    if (failOn.includes(calls)) throw Object.assign(new Error(`busy#${calls}`), { code: 'EBUSY' });
+    await fsRename(from, to);
+  };
+}
+
+const failingRemove = async () => {
+  throw Object.assign(new Error('locked'), { code: 'EBUSY' });
+};
 
 let dir: string;
 beforeEach(async () => {
@@ -45,20 +71,55 @@ describe('addon install', () => {
     expect(await readFile(join(dir, 'ForeverLedger.bak', 'ForeverLedger.lua'), 'utf8')).toBe(
       '-- 0.2.1',
     );
+    expect((await readdir(dir)).sort()).toEqual(['ForeverLedger', 'ForeverLedger.bak']);
   });
 
   it('puts the old version back when the final rename fails', async () => {
     await installAddon(dir, files('0.2.1'));
-    let calls = 0;
-    const rename = async (from: string, to: string) => {
-      calls++;
-      if (calls === 2) throw Object.assign(new Error('busy'), { code: 'EBUSY' });
-      const { rename: fsRename } = await import('node:fs/promises');
-      await fsRename(from, to);
-    };
-    await expect(installAddon(dir, files('0.2.2'), { rename })).rejects.toThrow(/busy/);
+    await expect(installAddon(dir, files('0.2.2'), { rename: failingRename(2) })).rejects.toThrow(
+      /busy/,
+    );
     expect(await readInstalledVersion(dir)).toBe('0.2.1');
     expect((await readdir(dir)).sort()).toEqual(['ForeverLedger']);
+  });
+
+  it('keeps the older .bak too when an install over a .bak fails', async () => {
+    await installAddon(dir, files('0.2.1'));
+    await installAddon(dir, files('0.2.2'));
+    // 1: old .bak → trash, 2: current → .bak, 3: staging → current (fails)
+    await expect(installAddon(dir, files('0.2.3'), { rename: failingRename(3) })).rejects.toThrow(
+      /busy#3/,
+    );
+    expect(await readInstalledVersion(dir)).toBe('0.2.2');
+    expect(await readInstalledVersion(dir, 'ForeverLedger.bak')).toBe('0.2.1');
+    expect((await readdir(dir)).sort()).toEqual(['ForeverLedger', 'ForeverLedger.bak']);
+  });
+
+  it('rethrows the original error when the restore fails too, and recoverAddon heals it', async () => {
+    await installAddon(dir, files('0.2.1'));
+    await expect(
+      installAddon(dir, files('0.2.2'), { rename: failingRename(2, 3) }),
+    ).rejects.toThrow('busy#2');
+    expect(await readdir(dir)).toEqual(['ForeverLedger.bak']);
+
+    expect(await recoverAddon(dir)).toBe('0.2.1');
+    expect(await readInstalledVersion(dir)).toBe('0.2.1');
+    expect(await readdir(dir)).toEqual(['ForeverLedger']);
+  });
+
+  it('sweeps leftovers of interrupted runs', async () => {
+    for (const name of ['.ForeverLedger.new', '.ForeverLedger.old', '.ForeverLedger.trash-1a2b'])
+      await mkdir(join(dir, name, 'sub'), { recursive: true });
+    await installAddon(dir, files('0.2.1'));
+    expect(await readdir(dir)).toEqual(['ForeverLedger']);
+  });
+
+  it('does not fail a finished install when cleanup fails', async () => {
+    await installAddon(dir, files('0.2.1'));
+    await installAddon(dir, files('0.2.2'));
+    await installAddon(dir, files('0.2.3'), { remove: failingRemove });
+    expect(await readInstalledVersion(dir)).toBe('0.2.3');
+    expect(await readInstalledVersion(dir, 'ForeverLedger.bak')).toBe('0.2.2');
   });
 
   it('rolls back to .bak', async () => {
@@ -66,21 +127,22 @@ describe('addon install', () => {
     await installAddon(dir, files('0.2.2'));
     expect(await rollbackAddon(dir)).toBe('0.2.1');
     expect(await readInstalledVersion(dir)).toBe('0.2.1');
+    expect(await readdir(dir)).toEqual(['ForeverLedger']);
   });
 
   it('keeps the current version when the rollback rename fails', async () => {
     await installAddon(dir, files('0.2.1'));
     await installAddon(dir, files('0.2.2'));
-    let calls = 0;
-    const rename = async (from: string, to: string) => {
-      calls++;
-      if (calls === 2) throw Object.assign(new Error('busy'), { code: 'EBUSY' });
-      const { rename: fsRename } = await import('node:fs/promises');
-      await fsRename(from, to);
-    };
-    await expect(rollbackAddon(dir, { rename })).rejects.toThrow(/busy/);
+    await expect(rollbackAddon(dir, { rename: failingRename(2) })).rejects.toThrow(/busy/);
     expect(await readInstalledVersion(dir)).toBe('0.2.2');
     expect(await readInstalledVersion(dir, 'ForeverLedger.bak')).toBe('0.2.1');
+  });
+
+  it('does not fail a finished rollback when cleanup fails', async () => {
+    await installAddon(dir, files('0.2.1'));
+    await installAddon(dir, files('0.2.2'));
+    expect(await rollbackAddon(dir, { remove: failingRemove })).toBe('0.2.1');
+    expect(await readInstalledVersion(dir)).toBe('0.2.1');
   });
 
   it('refuses to roll back without a .bak', async () => {
@@ -93,5 +155,59 @@ describe('addon install', () => {
     await mkdir(join(dir, 'ForeverLedger'));
     await writeFile(join(dir, 'ForeverLedger', 'ForeverLedger.toc'), '## Title: x\n');
     expect(await readInstalledVersion(dir)).toBeUndefined();
+  });
+});
+
+describe('recoverAddon', () => {
+  it('leaves a working install alone', async () => {
+    await installAddon(dir, files('0.2.1'));
+    await installAddon(dir, files('0.2.2'));
+    expect(await recoverAddon(dir)).toBeUndefined();
+    expect(await readInstalledVersion(dir)).toBe('0.2.2');
+  });
+
+  it('replaces a folder without a valid .toc by the .bak', async () => {
+    await installAddon(dir, files('0.2.1'));
+    await installAddon(dir, files('0.2.2'));
+    await writeFile(join(dir, 'ForeverLedger', 'ForeverLedger.toc'), '## Title: x\n');
+    expect(await recoverAddon(dir)).toBe('0.2.1');
+    expect(await readInstalledVersion(dir)).toBe('0.2.1');
+    expect(await readdir(dir)).toEqual(['ForeverLedger']);
+  });
+
+  it('does nothing without a .bak', async () => {
+    expect(await recoverAddon(dir)).toBeUndefined();
+    expect(await readdir(dir)).toEqual([]);
+  });
+});
+
+describe('linked addon folders', () => {
+  /** Links AddOns/ForeverLedger to a checkout elsewhere; false where the OS refuses links. */
+  async function linkCheckout(): Promise<string | false> {
+    const checkout = join(dir, 'checkout');
+    await mkdir(checkout);
+    await writeFile(join(checkout, 'ForeverLedger.toc'), toc('9.9.9'));
+    await mkdir(join(dir, 'AddOns'));
+    try {
+      await symlink(checkout, join(dir, 'AddOns', 'ForeverLedger'), 'junction');
+    } catch {
+      return false;
+    }
+    return join(dir, 'AddOns');
+  }
+
+  it('refuses to replace or recover over a linked folder', async (ctx) => {
+    const addons = await linkCheckout();
+    if (!addons) return ctx.skip();
+    expect(await isAddonLinked(addons)).toBe(true);
+    await expect(installAddon(addons, files('0.2.1'))).rejects.toThrow(/link/);
+    expect((await lstat(join(addons, 'ForeverLedger'))).isSymbolicLink()).toBe(true);
+    await mkdir(join(addons, 'ForeverLedger.bak'));
+    await writeFile(join(addons, 'ForeverLedger.bak', 'ForeverLedger.toc'), toc('0.2.0'));
+    expect(await recoverAddon(addons)).toBeUndefined();
+    await expect(rollbackAddon(addons)).rejects.toThrow(/link/);
+    expect((await lstat(join(addons, 'ForeverLedger'))).isSymbolicLink()).toBe(true);
+    expect(await readInstalledVersion(addons)).toBe('9.9.9');
+    expect(await isAddonLinked(dir)).toBe(false);
   });
 });

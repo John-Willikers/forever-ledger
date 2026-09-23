@@ -1,4 +1,4 @@
-import { AddonManifest } from '@forever-ledger/contracts';
+import { AddonManifest, NO_ADDON_RELEASE } from '@forever-ledger/contracts';
 import { errorText } from './client.js';
 import type { FetchLike } from './client.js';
 import { errorMessage } from './errors.js';
@@ -17,13 +17,23 @@ export interface ManifestOptions {
   timeoutMs?: number;
 }
 
+/** The `error` string of a JSON error body, if any. */
+function errorField(text: string): unknown {
+  try {
+    return (JSON.parse(text) as { error?: unknown } | null)?.error;
+  } catch {
+    return undefined;
+  }
+}
+
 /** `GET /v1/addon/manifest[?build=N]` → the addon version to run, or null when nothing is published yet. */
 export async function fetchManifest(opts: ManifestOptions): Promise<AddonManifest | null> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const query = opts.build === undefined ? '' : `?build=${opts.build}`;
+  const url = `${opts.serverUrl}/v1/addon/manifest${query}`;
   let res: Response;
   try {
-    res = await fetchImpl(`${opts.serverUrl}/v1/addon/manifest${query}`, {
+    res = await fetchImpl(url, {
       headers: { authorization: `Bearer ${opts.token}`, accept: 'application/json' },
       signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
     });
@@ -34,7 +44,13 @@ export async function fetchManifest(opts: ManifestOptions): Promise<AddonManifes
     );
   }
 
-  if (res.status === 404) return null;
+  if (res.status === 404) {
+    const text = await res.text().catch(() => '');
+    if (errorField(text) === NO_ADDON_RELEASE) return null;
+    throw new AddonSyncError(
+      `manifest route not found at ${url} (404: check serverUrl): ${text.slice(0, 200)}`,
+    );
+  }
   if (res.status === 401 || res.status === 403)
     throw new AddonSyncError(`token rejected by the server (${await errorText(res)})`);
   if (!res.ok) throw new AddonSyncError(`manifest request failed: ${await errorText(res)}`);

@@ -1,4 +1,4 @@
-import { addonDownloadUrl } from '@forever-ledger/contracts';
+import { addonDownloadUrl, NO_ADDON_RELEASE } from '@forever-ledger/contracts';
 import { describe, expect, it } from 'vitest';
 import { AddonSyncError, fetchManifest } from '../src/addonManifest.js';
 import type { FetchLike } from '../src/client.js';
@@ -41,9 +41,20 @@ describe('fetchManifest', () => {
     expect(calls[0]?.url).toBe('https://ledger.test/v1/addon/manifest');
   });
 
-  it('returns null on 404 (no release yet)', async () => {
-    const { fetchImpl } = stub(() => json({ error: 'no release' }, 404));
+  it('returns null on the server 404 for "no release yet"', async () => {
+    const { fetchImpl } = stub(() => json({ error: NO_ADDON_RELEASE }, 404));
     await expect(fetchManifest({ ...base, fetchImpl })).resolves.toBeNull();
+  });
+
+  it('throws on any other 404 (wrong serverUrl, route not deployed)', async () => {
+    const { fetchImpl } = stub(() =>
+      json({ message: 'Route GET:/v1/addon/manifest not found' }, 404),
+    );
+    const err = await fetchManifest({ ...base, fetchImpl }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AddonSyncError);
+    expect((err as Error).message).toContain('https://ledger.test/v1/addon/manifest');
+    const html = stub(() => new Response('<h1>Not Found</h1>', { status: 404 }));
+    await expect(fetchManifest({ ...base, fetchImpl: html.fetchImpl })).rejects.toThrow(/404/);
   });
 
   it('throws on 401', async () => {
