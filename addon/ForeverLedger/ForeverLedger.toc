@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Forever Ledger
 ## Notes: Passively records quest rewards, quest XP, item stats, loot and drop rates, boss drops and dungeon run times for offline analysis.
-## Version: 0.2.4
+## Version: 0.3.0
 ## SavedVariables: ForeverLedgerDB
 
 ForeverLedger.lua
