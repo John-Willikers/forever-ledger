@@ -71,7 +71,7 @@ User idea: use the client's `/api` docs to find out what Forever really supports
 - [x] `LoadAddOn("Blizzard_APIDocumentation")` (C_AddOns fallback) and walk `APIDocumentation.systems` → every namespace, function (args/returns) and event (payload fields) — same data `/api` shows → questions 3, 4
 - [x] Presence check for globals we depend on (`GetRewardXP`, `GetLootSourceInfo`, `GetQuestID`, `C_Item.*`, `C_QuestLog.*`, `C_Map.*`, …) and `pcall(RegisterEvent)` result for each candidate event (`QUEST_TURNED_IN`, `ENCOUNTER_END`, `GET_ITEM_INFO_RECEIVED`, `QUEST_ACCEPTED`, …)
 - [x] Live event sniffer toggle (`/flprobe sniff on|off`): records the first N payloads per event (`QUEST_ACCEPTED` arg order, `QUEST_TURNED_IN` xp/money, `ENCOUNTER_END`) to answer arg-order questions from real play
-- [ ] ⏳ (M4) Uploader gets `probe-dump <file>` → parses `ForeverLedgerProbe.lua` with our parser → `fixtures/real/api-<build>.json`; later: diff two dumps to see API changes between beta builds
+- [x] Uploader gets `probe-dump <file>` → parses `ForeverLedgerProbe.lua` with our parser → `fixtures/real/api-<build>.json`; later: diff two dumps to see API changes between beta builds
 - **Done when:** probe passes luacheck + harness test; after the user runs it in-game once, open questions 2–4 are answered in `CLAUDE.md` and M2 adapts accordingly.
   - 🟡 2026-09-23 00:22 CDT — probe built + 6 harness tests pass; **waiting on the user to run `/flprobe` in-game.**
 
@@ -86,29 +86,36 @@ User idea: use the client's `/api` docs to find out what Forever really supports
   - 📝 Change vs doc: `UploadBatch` carries `account` (SavedVariables file = one WoW account, many characters) instead of one `character`; each record names its own `char`. Drop counts keyed item+build+npc+uploader+account.
 
 ### 🗄️ M3 — Server ingest + DB + deploy
-- [ ] Drizzle schema for all 13 tables in the doc, with deltas: `drops` PK = item+npc+build+character; `quest_observations` PK = quest+build+stage+character; `api_tokens` (sha256 hash, label, created/revoked) table; `raw_uploads` JSONB
-- [ ] `POST /v1/ingest`: bearer auth → zod validate → reject unknown schema major (409) → one transaction: insert `raw_uploads`, upsert builds/characters, then each record type `ON CONFLICT DO UPDATE` → return `{ acknowledged: [{ key, hash }] }`
-- [ ] `@fastify/rate-limit`, `bodyLimit` 5 MB (uploader chunks under it), pino with America/Chicago timestamps, `GET /v1/health` (checks DB)
-- [ ] Admin CLI `pnpm --filter server token:mint <label>` / `token:revoke <id>` / `token:list` (plaintext shown once)
-- [ ] `deploy/docker-compose.yml`: postgres (current official image, `127.0.0.1:5440:5432`, named volume, `TZ`/`PGTZ=America/Chicago`); `ecosystem.config.cjs`: `forever-ledger-api`, port 3410, `TZ=America/Chicago`; Nginx site proxy → 127.0.0.1:3410, `client_max_body_size 6m`, then `certbot --nginx -d ledger.willikers.dev`
-- [ ] Integration tests (Vitest + testcontainers Postgres): same batch twice → no duplicate rows; changed run → updated; bad token 401; revoked token 401; oversized 413; malformed 400; unknown schema 409
+- [x] Drizzle schema for all 13 tables in the doc, with deltas: `drops` PK = item+npc+build+character; `quest_observations` PK = quest+build+stage+character; `api_tokens` (sha256 hash, label, created/revoked) table; `raw_uploads` JSONB
+- [x] `POST /v1/ingest`: bearer auth → zod validate → reject unknown schema major (409) → one transaction: insert `raw_uploads`, upsert builds/characters, then each record type `ON CONFLICT DO UPDATE` → return `{ acknowledged: [{ key, hash }] }`
+- [x] `@fastify/rate-limit`, `bodyLimit` 5 MB (uploader chunks under it), pino with America/Chicago timestamps, `GET /v1/health` (checks DB)
+- [x] Admin CLI `pnpm --filter server token:mint <label>` / `token:revoke <id>` / `token:list` (plaintext shown once)
+- [x] `deploy/docker-compose.yml`: postgres (current official image, `127.0.0.1:5440:5432`, named volume, `TZ`/`PGTZ=America/Chicago`); `ecosystem.config.cjs`: `forever-ledger-api`, port 3410, `TZ=America/Chicago`; Nginx site proxy → 127.0.0.1:3410, `client_max_body_size 6m`, then `certbot --nginx -d ledger.willikers.dev`
+- [x] Integration tests (Vitest + testcontainers Postgres): same batch twice → no duplicate rows; changed run → updated; bad token 401; revoked token 401; oversized 413; malformed 400; unknown schema 409
 - **Done when:** idempotency tests pass and `https://ledger.willikers.dev/v1/health` returns ok.
+  - 🟡 2026-09-23 00:30 CDT — 16 integration tests pass on real Postgres 18 (testcontainers). Deployed: Postgres `forever-ledger-postgres` on 127.0.0.1:5440, PM2 `forever-ledger-api` on 127.0.0.1:3410, Nginx site enabled (routes correctly via the public IP). Token #1 minted (plaintext in gitignored `deploy/.first-token`).
+  - ⏳ **Waiting on DNS** A record `ledger.willikers.dev → 135.148.136.99`, then `sudo certbot --nginx -d ledger.willikers.dev`.
+  - ⚠️ Did **not** run `pm2 save`: the saved dump holds 17 other apps (freshy-*, ticket-bot, …) that aren't running now, and saving would erase them from it. The ledger API won't come back after a reboot until the user decides.
+  - 📝 Read routes (analysis/export) also need a token, since the data includes contributors' character names.
 
 ### 📤 M4 — Uploader
-- [ ] Config file (`~/.config/forever-ledger/config.json` or `%APPDATA%` on Windows): wowPath, accounts, serverUrl, token, uploaderId; `init` discovers `WTF/Account/*/SavedVariables/ForeverLedger.lua` under the given install path (folder name unconfirmed → user-supplied, globbed)
-- [ ] `watch`: chokidar with `awaitWriteFinish` + own size/mtime-stable check; parse failure → retry with backoff (mid-write), never crash
-- [ ] Pipeline: parse → normalize → validate → diff vs local state (`key → hash`) → chunk batches → POST → mark acked only for keys returned on 2xx
-- [ ] Offline queue: pending batches persisted to disk (atomic write-rename), exponential backoff retry; replays before new batches
-- [ ] Commands: `init`, `watch`, `upload-once`, `status` (pending/acked counts, last success), `export <file>` (normalized JSON, no server needed)
-- [ ] Tests: diff logic, queue persistence, and an e2e test: start server, upload, kill server mid-session, append records, restart → everything arrives exactly once
-- **Done when:** that kill/restart test passes.
+- [x] Config file (`~/.config/forever-ledger/config.json` or `%APPDATA%` on Windows): wowPath, accounts, serverUrl, token, uploaderId; `init` discovers `WTF/Account/*/SavedVariables/ForeverLedger.lua` under the given install path (folder name unconfirmed → user-supplied, globbed)
+- [x] `watch`: chokidar with `awaitWriteFinish` + own size/mtime-stable check; parse failure → retry with backoff (mid-write), never crash
+- [x] Pipeline: parse → normalize → validate → diff vs local state (`key → hash`) → chunk batches → POST → mark acked only for keys returned on 2xx
+- [x] Offline queue: pending batches persisted to disk (atomic write-rename), exponential backoff retry; replays before new batches
+- [x] Commands: `init`, `watch`, `upload-once`, `status` (pending/acked counts, last success), `export <file>` (normalized JSON, no server needed)
+- [x] Tests: diff logic, queue persistence, and an e2e test: start server, upload, kill server mid-session, append records, restart → everything arrives exactly once
+- **Done when:** that kill/restart test passes. ✅ Done 2026-09-23 00:38 CDT
+  - 53 uploader tests (mock server) + a manual run against the **real** API/Postgres: 17 records uploaded, second pass sent 0, server killed → changed run queued on disk (exit 1), restart → exactly 1 record acked, DB has no duplicates.
+  - 📝 Built by a sub-agent. Deviations: config is checked by a small hand-written validator instead of zod (zod isn't a direct uploader dependency); a 400 splits the batch until only the bad record is left, and that record alone is parked in `rejected/`.
 
 ### 📊 M5 — Stub analysis + export
-- [ ] `GET /v1/quests/xp` (XP offered vs paid per quest per build, XP-per-minute by dungeon from `runs` = xp_total / active_secs×60, split mob/quest)
-- [ ] `GET /v1/runs/summary` (per instance: median/best clear time, boss splits, deaths, runs count)
-- [ ] `GET /v1/items/:id` (item + all build snapshots + drop sources + which classes/specs can use it via `classRules`)
-- [ ] `GET /v1/export?format=json|csv&table=…` (times in America/Chicago)
+- [x] `GET /v1/quests/xp` (XP offered vs paid per quest per build, XP-per-minute by dungeon from `runs` = xp_total / active_secs×60, split mob/quest)
+- [x] `GET /v1/runs/summary` (per instance: median/best clear time, boss splits, deaths, runs count)
+- [x] `GET /v1/items/:id` (item + all build snapshots + drop sources + which classes/specs can use it via `classRules`)
+- [x] `GET /v1/export?format=json|csv&table=…` (times in America/Chicago)
 - **Done when:** XP-per-minute per dungeon returns from synthetic data now, and from real data once the user uploads a play session.
+  - 🟡 2026-09-23 00:30 CDT — built early alongside M3; synthetic Deadmines run gives 280.6 XP/min (225.8 mob + 54.8 quest). Real data pending the user's first play session.
 
 ---
 

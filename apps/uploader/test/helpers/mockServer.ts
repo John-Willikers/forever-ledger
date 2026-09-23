@@ -1,0 +1,116 @@
+import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import {
+  contentHash,
+  RECORD_KINDS,
+  recordKey,
+  SCHEMA_VERSION,
+  UploadBatch,
+} from '@forever-ledger/contracts';
+import type { Acknowledged } from '@forever-ledger/contracts';
+
+export interface MockReply {
+  status: number;
+  body?: unknown;
+}
+
+export interface MockServerOptions {
+  token?: string;
+  port?: number;
+  bodyLimit?: number;
+  /** Return a reply to override the contract behaviour for a request (after auth). */
+  override?: (batch: unknown, requestNo: number) => MockReply | undefined;
+}
+
+export interface MockServer {
+  url: string;
+  port: number;
+  /** Every accepted batch, in order. */
+  batches: UploadBatch[];
+  /** Record keys of every accepted record, in order (duplicates included). */
+  receivedKeys: string[];
+  /** Every POST /v1/ingest, accepted or not. */
+  ingestRequests: number;
+  close(): Promise<void>;
+}
+
+function send(res: ServerResponse, status: number, body: unknown) {
+  res.writeHead(status, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
+async function readBody(req: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  return Buffer.concat(chunks);
+}
+
+/** Implements the /v1/ingest + /v1/health contract the real server follows. */
+export async function startMockServer(opts: MockServerOptions = {}): Promise<MockServer> {
+  const token = opts.token ?? 'test-token';
+  const bodyLimit = opts.bodyLimit ?? 5 * 1024 * 1024;
+  let batchId = 0;
+  const state = {
+    batches: [] as UploadBatch[],
+    receivedKeys: [] as string[],
+    ingestRequests: 0,
+  };
+
+  const server = createServer((req, res) => {
+    void (async () => {
+      if (req.method === 'GET' && req.url === '/v1/health') return send(res, 200, { ok: true });
+      if (req.method !== 'POST' || req.url !== '/v1/ingest')
+        return send(res, 404, { error: 'not found' });
+      state.ingestRequests++;
+      const body = await readBody(req);
+      if (req.headers.authorization !== `Bearer ${token}`)
+        return send(res, 401, { error: 'unauthorized' });
+      if (body.length > bodyLimit) return send(res, 413, { error: 'payload too large' });
+      let json: unknown;
+      try {
+        json = JSON.parse(body.toString('utf8'));
+      } catch {
+        return send(res, 400, { error: 'invalid JSON' });
+      }
+      const override = opts.override?.(json, state.ingestRequests);
+      if (override) return send(res, override.status, override.body ?? {});
+      const version = (json as { schemaVersion?: unknown }).schemaVersion;
+      if (version !== SCHEMA_VERSION)
+        return send(res, 409, { error: `unsupported schemaVersion ${String(version)}` });
+      const parsed = UploadBatch.safeParse(json);
+      if (!parsed.success) return send(res, 400, { error: parsed.error.message });
+
+      const acknowledged: Acknowledged[] = [];
+      for (const kind of RECORD_KINDS)
+        for (const r of parsed.data.records[kind]) {
+          const key = recordKey(kind, r as never);
+          acknowledged.push({ key, hash: contentHash(r) });
+          state.receivedKeys.push(key);
+        }
+      state.batches.push(parsed.data);
+      send(res, 200, { batchId: ++batchId, acknowledged });
+    })().catch((err: unknown) => send(res, 500, { error: String(err) }));
+  });
+
+  await new Promise<void>((resolve) => server.listen(opts.port ?? 0, '127.0.0.1', resolve));
+  const port = (server.address() as AddressInfo).port;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    port,
+    get batches() {
+      return state.batches;
+    },
+    get receivedKeys() {
+      return state.receivedKeys;
+    },
+    get ingestRequests() {
+      return state.ingestRequests;
+    },
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.closeAllConnections();
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  };
+}
