@@ -1,0 +1,20 @@
+appId: dev.willikers.forever-ledger
+productName: Forever Ledger
+directories:
+  output: release
+files:
+  - dist/**
+  - assets/**
+  - package.json
+npmRebuild: false
+win:
+  target: nsis
+  icon: assets/icon.png
+nsis:
+  oneClick: true
+  perMachine: false
+publish:
+  provider: github
+  owner: John-Willikers
+  repo: forever-ledger
+  releaseType: release

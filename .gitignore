@@ -13,3 +13,4 @@ fixtures/real/*.lua
 deploy/.first-token
 deploy/.*-token
 .claude/worktrees/
+apps/desktop/release/
