@@ -60,8 +60,8 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Timestam
 - ✅ 4.3 `LedgerController` (no Electron imports) + tests — 2026-09-23 02:22 CDT (e83dc03, 80ac794; 30 tests)
 - ✅ 4.4 Electron main: single instance, tray, window, IPC, login item, updater, toasts — 2026-09-23 02:22 CDT (841e394; xvfb run: live upload + addon 0.2.1 installed + toast + CDT log)
 - ✅ 4.5 Preload + renderer (setup view + four cards) — 2026-09-23 02:22 CDT (68b08ee; + Activity log list)
-- 🟡 4.6 Playwright Electron smoke test — spec 5cfe141, waiting on Windows CI
-- 🟡 4.7 `app-release.yml` + Windows smoke job in CI — 5cfe141, waiting on Windows CI
+- ✅ 4.6 Playwright Electron smoke test — 2026-09-23 02:33 CDT (passes on windows-latest after fixing a trailing-backslash quoting bug in the test's app path)
+- ✅ 4.7 `app-release.yml` + Windows smoke job in CI — 2026-09-23 02:33 CDT (CI builds `Forever Ledger Setup 0.1.0.exe` on every push)
 - ⬜ 4.8 First app release `v0.1.0`
 
 ### 🎁 Phase 5 — Wrap up
