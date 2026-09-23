@@ -8,6 +8,13 @@
       "when": 1790141055017,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790146682168,
+      "tag": "0001_addon_releases",
+      "breakpoints": true
     }
   ]
 }
