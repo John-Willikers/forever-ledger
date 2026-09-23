@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as uploader from '@forever-ledger/uploader/lib';
 import type { Logger } from '@forever-ledger/uploader/lib';
@@ -11,6 +11,7 @@ import {
   Menu,
   nativeImage,
   Notification,
+  powerMonitor,
   shell,
   Tray,
 } from 'electron';
@@ -18,7 +19,7 @@ import electronUpdater from 'electron-updater';
 import { DEFAULT_PREFS, LedgerController } from './controller.js';
 import type { Prefs } from './controller.js';
 import { IPC, sanitizeSettings } from './ipc.js';
-import type { WowFolderPick } from './ipc.js';
+import type { WowFlavor, WowFolderPick } from './ipc.js';
 import { LogSink } from './logSink.js';
 import { deriveTrayState, TRAY_TOOLTIP } from './state.js';
 import type { Snapshot, TrayState } from './state.js';
@@ -29,19 +30,40 @@ declare const __APP_VERSION__: string | undefined;
 const APP_ID = 'dev.willikers.forever-ledger';
 const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : app.getVersion();
 const UPDATE_CHECK_MS = 6 * 60 * 60_000;
+/** How long quitting waits for the watch and addon sync to stop before exiting anyway. */
+const QUIT_TIMEOUT_MS = 5_000;
 const here = dirname(fileURLToPath(import.meta.url));
 const assetsDir = join(here, '..', 'assets');
 const smoke = Boolean(process.env.FL_SMOKE);
 const startHidden = process.argv.includes('--hidden');
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** A startup failure must not leave an invisible process behind: say what happened and exit. */
+function startupFailed(err: unknown) {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+  let logPath = '(unknown)';
+  try {
+    logPath = join(app.getPath('logs'), 'forever-ledger.log');
+  } catch {
+    // keep the placeholder
+  }
+  try {
+    process.stderr.write(`Forever Ledger could not start: ${detail}\n`);
+  } catch {
+    // no console (packaged Windows app)
+  }
+  dialog.showErrorBox('Forever Ledger could not start', `${detail}\n\nLog file: ${logPath}`);
+  app.exit(1);
+}
 
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  void app.whenReady().then(run);
+  void app.whenReady().then(run).catch(startupFailed);
 }
 
 /** Prefs in `<userData>/prefs.json`; a missing or broken file means the defaults. */
@@ -129,6 +151,8 @@ async function run() {
       e.preventDefault();
       w.hide();
     });
+    // Windows logoff/shutdown: there's little time; stop quickly (the watch lets go of the lock).
+    w.on('session-end', () => systemShutdown('session-end'));
     w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     w.webContents.on('will-navigate', (e) => e.preventDefault());
     void w.loadFile(join(here, 'index.html'));
@@ -144,6 +168,19 @@ async function run() {
   const send = (channel: string, payload: unknown) => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   };
+  let shuttingDown = false;
+  const systemShutdown = (why: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info({ why }, 'system is shutting down; stopping');
+    quitting = true;
+    // The OS won't wait long: drop our lock after 2 s even if a pass is still stuck on the network.
+    void Promise.race([controller.stop().catch(() => undefined), delay(2_000)]).then(() =>
+      uploader.releaseHeldLocksSync(),
+    );
+  };
+  // Linux/macOS; on Windows the window's session-end covers it.
+  powerMonitor.on('shutdown', () => systemShutdown('shutdown'));
   app.on('second-instance', showWindow);
   // The window only hides; keep running in the tray even if it is ever destroyed.
   app.on('window-all-closed', () => undefined);
@@ -151,6 +188,7 @@ async function run() {
 
   // ---- app self-update ----
   let manualUpdateCheck = false;
+  let readyToasted: string | undefined;
   const updater = (() => {
     if (!app.isPackaged || smoke) {
       logger.info('app self-update is off (not an installed build)');
@@ -160,29 +198,37 @@ async function run() {
     autoUpdater.logger = {
       info: (m?: unknown) => logger.info(`updater: ${String(m)}`),
       warn: (m?: unknown) => logger.warn(`updater: ${String(m)}`),
-      error: (m?: unknown) => logger.error(`updater: ${String(m)}`),
+      // Errors are logged once by the 'error' handler below.
+      error: (m?: unknown) => logger.debug(`updater: ${String(m)}`),
       debug: (m: string) => logger.debug(`updater: ${m}`),
     };
     autoUpdater.autoDownload = true;
-    autoUpdater.on('update-available', (info) =>
-      logger.info({ version: info.version }, 'app update available; downloading'),
-    );
+    autoUpdater.on('update-available', (info) => {
+      logger.info({ version: info.version }, 'app update available; downloading');
+      if (manualUpdateCheck) notify(`Downloading Forever Ledger ${info.version}…`);
+      manualUpdateCheck = false;
+    });
     autoUpdater.on('update-not-available', () => {
       logger.info({ version: APP_VERSION }, 'app is up to date');
       if (manualUpdateCheck) notify(`Forever Ledger ${APP_VERSION} is up to date.`);
       manualUpdateCheck = false;
     });
     autoUpdater.on('update-downloaded', (info) => {
+      // Every 6-hour check reports the already-downloaded update again: tell the user once per version.
+      if (readyToasted === info.version) return;
+      readyToasted = info.version;
       controller.setAppUpdateReady(info.version);
       notify(`Forever Ledger ${info.version} is ready — open the window and restart to update.`);
     });
     autoUpdater.on('error', (err) => {
       logger.warn({ err: errorMessage(err) }, 'app update check failed');
+      if (manualUpdateCheck) notify(`Couldn't check for updates: ${errorMessage(err)}`);
       manualUpdateCheck = false;
     });
     const check = () =>
       autoUpdater.checkForUpdates().catch((err: unknown) => {
-        logger.warn({ err: errorMessage(err) }, 'app update check failed');
+        // Also reported through the 'error' event.
+        logger.debug({ err: errorMessage(err) }, 'checkForUpdates rejected');
       });
     void check();
     setInterval(() => void check(), UPDATE_CHECK_MS).unref();
@@ -275,7 +321,19 @@ async function run() {
     if (res.canceled || !path) return undefined;
     try {
       const d = await uploader.discoverSavedVariables(path, { accounts: [] });
-      return { path, accounts: [...new Set(d.files.map((f) => f.account))], notes: d.notes };
+      const pick: WowFolderPick = {
+        path,
+        accounts: [...new Set(d.files.map((f) => f.account))],
+        notes: d.notes,
+      };
+      // Several flavors (_classic_era_, _classic_beta_…): the user picks one; wowPath becomes that flavor folder.
+      if (d.wtfDirs.length > 1)
+        pick.flavors = d.wtfDirs.map((wtfDir): WowFlavor => ({
+          name: basename(dirname(wtfDir)),
+          path: dirname(wtfDir),
+          accounts: [...new Set(d.files.filter((f) => f.wtfDir === wtfDir).map((f) => f.account))],
+        }));
+      return pick;
     } catch (err) {
       return { path, accounts: [], notes: [errorMessage(err)] };
     }
@@ -294,14 +352,24 @@ async function run() {
     quitting = true;
     if (stopped) return;
     e.preventDefault();
-    void controller
+    // A pass stuck on an unanswering server can take a minute to give up: don't wait for it.
+    const stop = controller
       .stop()
-      .catch((err: unknown) => logger.error({ err: errorMessage(err) }, 'stop failed'))
-      .finally(async () => {
-        stopped = true;
-        await sink.close();
-        app.quit();
+      .then(() => true)
+      .catch((err: unknown) => {
+        logger.error({ err: errorMessage(err) }, 'stop failed');
+        return true;
       });
+    void Promise.race([stop, delay(QUIT_TIMEOUT_MS).then(() => false)]).then(async (clean) => {
+      if (!clean) {
+        logger.warn({ afterMs: QUIT_TIMEOUT_MS }, 'still busy; quitting anyway');
+        // The interrupted pass's lock would otherwise stay behind with our pid.
+        uploader.releaseHeldLocksSync();
+      }
+      stopped = true;
+      await Promise.race([sink.close(), delay(500)]);
+      app.quit();
+    });
   });
   for (const sig of ['SIGINT', 'SIGTERM'] as const)
     process.on(sig, () => {

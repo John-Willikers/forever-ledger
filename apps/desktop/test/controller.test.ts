@@ -294,8 +294,10 @@ describe('LedgerController', () => {
       await t.controller.start();
       const w = t.watches[0] as FakeWatch;
       w.emit({ type: 'fatal', error: new FatalUploadError('unauthorized', 'token rejected') });
-      expect(t.controller.snapshot().fatal).toBe('token rejected');
-      expect(t.toasts).toContain('Uploads stopped: token rejected');
+      expect(t.controller.snapshot().fatal).toMatch(
+        /^The server rejected the upload token\. Paste a new token in Settings/,
+      );
+      expect(t.toasts.at(-1)).toMatch(/^Uploads stopped: The server rejected the upload token/);
 
       t.controller.uploadNow();
       await flush();

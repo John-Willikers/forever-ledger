@@ -12,6 +12,8 @@ files:
   - assets/**
   - package.json
 npmRebuild: false
+# latest.yml format that electron-updater 2.16+ reads (with sha512).
+electronUpdaterCompatibility: '>=2.16'
 win:
   target: nsis
   icon: assets/icon.png

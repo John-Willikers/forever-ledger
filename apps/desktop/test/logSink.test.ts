@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -47,5 +47,31 @@ describe('LogSink', () => {
     await sink.close();
     expect(sink.recent()).toEqual(['line 4', 'line 5', 'line 6']);
     expect(seen).toHaveLength(5);
+  });
+
+  it('rotates while running once the file passes maxBytes', async () => {
+    const file = join(dir, 'forever-ledger.log');
+    const sink = new LogSink(file, { maxBytes: 20 });
+    sink.write('0123456789\n');
+    sink.write('0123456789\n'); // 22 bytes now: the next write rotates first
+    sink.write('after\n');
+    await sink.close();
+    expect(await readFile(rotatedPath(file), 'utf8')).toBe('0123456789\n0123456789\n');
+    expect(await readFile(file, 'utf8')).toBe('after\n');
+  });
+
+  it('keeps appending when rotation fails, and says why once', async () => {
+    const file = join(dir, 'forever-ledger.log');
+    await writeFile(file, 'x'.repeat(100));
+    // A non-empty folder where the rotated file should go: rm and rename both fail.
+    await mkdir(join(rotatedPath(file), 'blocker'), { recursive: true });
+    const errors: string[] = [];
+    const sink = new LogSink(file, { maxBytes: 50, onError: (m) => errors.push(m) });
+    sink.write('still here\n');
+    sink.write('and here\n');
+    await sink.close();
+    expect(await readFile(file, 'utf8')).toBe(`${'x'.repeat(100)}still here\nand here\n`);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/cannot rotate/);
   });
 });

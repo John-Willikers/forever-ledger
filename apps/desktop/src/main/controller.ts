@@ -524,8 +524,12 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       case 'fatal':
         this.setUploading(false);
         this.watch = undefined;
-        this.fatal = e.error.message;
-        this.toast(`Uploads stopped: ${e.error.message}`);
+        // The uploader's text points at the CLI; in the app the fix is the Settings card.
+        this.fatal =
+          e.error.code === 'unauthorized'
+            ? 'The server rejected the upload token. Paste a new token in Settings; queued data is kept.'
+            : e.error.message;
+        this.toast(`Uploads stopped: ${this.fatal}`);
         break;
     }
     this.changed();
