@@ -26,7 +26,11 @@ Plan and live progress: `project-plans/forever-ledger-m0-m5.md`.
 
 - `addon/ForeverLedger` — the addon; `addon/ForeverLedgerProbe` — client API/event probe; `addon/tests` — Lua 5.1
   harness with WoW stubs (generates `fixtures/synthetic`).
-- `packages/lua-sv-parser`, `packages/contracts`, `apps/uploader`, `apps/server`, `deploy/`.
+- `packages/lua-sv-parser`, `packages/contracts`, `apps/uploader`, `apps/server`, `apps/desktop` (Electron tray app; imports
+  `@forever-ledger/uploader/lib`, never the bare package), `deploy/`.
+- Addon releases: tag `addon-vX` → GitHub release created with `--latest=false` (app releases `vX` own "latest", which
+  electron-updater reads) → `addon-cli publish X` on the VPS is what makes a version live. A published version's zip
+  can never change; release a new version instead.
 - Workspace packages export `src/*.ts` under the `development` condition and `dist/` otherwise; build with `pnpm build`.
 
 ## Deploy (this VPS)
