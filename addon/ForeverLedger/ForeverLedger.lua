@@ -603,6 +603,88 @@ local function onPlayerSpellForRecipeItem()
   if u and now() - u.usedAt <= 30 then u.at = now() end
 end
 
+---------------------------------------------------------------- professions: trainers and vendors
+-- Profession trainers (IsTradeskillTrainer) and every vendor with an NPC GUID. Each scan (throttled like the
+-- profession window) replaces the whole list for that NPC and build. The lists are what the window shows, so the
+-- trainer's available/unavailable/used filters and the vendor's item filter narrow them. At most LIST_CAP entries.
+local merchantNpc -- npcID while a merchant window is open
+
+local function skillLineByName(name)
+  if type(name) ~= "string" or name == "" then return nil end
+  for id, sk in pairs(charSkills()) do
+    if sk.name == name then return id end
+  end
+end
+
+local function trainerService(i)
+  local n, r = packed(GetTrainerServiceInfo(i))
+  sampleReturns("GetTrainerServiceInfo", unpack(r, 1, n))
+  local name, serviceType = r[1], r[3] -- name, subText, serviceType, isExpanded
+  if type(name) ~= "string" or serviceType == "header" then return nil end
+  local s = { name = name, type = serviceType ~= nil and tostring(serviceType) or nil }
+  if GetTrainerServiceCost then s.cost = tonumber((GetTrainerServiceCost(i))) end
+  if GetTrainerServiceSkillReq then
+    local skill, rank = GetTrainerServiceSkillReq(i)
+    s.skill, s.skillRank = type(skill) == "string" and skill or nil, tonumber(rank)
+  end
+  if GetTrainerServiceLevelReq then s.level = tonumber((GetTrainerServiceLevelReq(i))) end
+  if GetTrainerServiceItemLink then
+    local link = GetTrainerServiceItemLink(i)
+    s.itemID = idFromLink(link)
+    if s.itemID then scanItemOnce(s.itemID, link) end
+  end
+  return s
+end
+
+local function scanTrainer()
+  if not trainerNpc or not IsTradeskillTrainer or not GetNumTrainerServices or not GetTrainerServiceInfo then
+    return
+  end
+  local ok, isTradeskill = pcall(IsTradeskillTrainer)
+  if not ok or not isTradeskill then return end
+  local services, skillLineID = {}, nil
+  for i = 1, math.min(GetNumTrainerServices() or 0, LIST_CAP) do
+    local s = trainerService(i)
+    if s then
+      services[#services + 1] = s
+      skillLineID = skillLineID or skillLineByName(GetTrainerServiceSkillLine and GetTrainerServiceSkillLine(i))
+        or skillLineByName(s.skill)
+    end
+  end
+  local byNpc = db.trainers[build] or {}
+  db.trainers[build] = byNpc
+  if not byNpc[trainerNpc] then added() end
+  byNpc[trainerNpc] = { name = UnitName("npc"), loc = where(), skillLineID = skillLineID, seenAt = now(),
+                        services = services }
+end
+
+local function scanVendor()
+  if not merchantNpc or not GetMerchantNumItems then return end
+  local MF = C_MerchantFrame
+  local api = "C_MerchantFrame.GetItemInfo"
+  local list = {}
+  for i = 1, math.min(GetMerchantNumItems() or 0, LIST_CAP) do
+    local info = MF and MF.GetItemInfo and MF.GetItemInfo(i)
+    sample(api, info)
+    local link = GetMerchantItemLink and GetMerchantItemLink(i)
+    local itemID = tonumber((GetMerchantItemID and GetMerchantItemID(i))) or idFromLink(link)
+    if itemID then
+      local e = { itemID = itemID, price = tonumber(need(api, info, "price", "cost")),
+                  stack = tonumber(need(api, info, "stackCount", "stack", "quantity")),
+                  numAvailable = tonumber(field(info, "numAvailable")),
+                  currencyID = tonumber(field(info, "currencyID")) }
+      local ext = field(info, "hasExtendedCost", "extendedCost")
+      if ext ~= nil then e.extendedCost = ext and true or false end
+      list[#list + 1] = e
+      scanItemOnce(itemID, link)
+    end
+  end
+  local byNpc = db.vendors[build] or {}
+  db.vendors[build] = byNpc
+  if not byNpc[merchantNpc] then added() end
+  byNpc[merchantNpc] = { name = UnitName("npc"), loc = where(), seenAt = now(), items = list }
+end
+
 ---------------------------------------------------------------- quests
 local function questRec(questID)
   local q = db.quests[questID] or { id = questID, obs = {} }
@@ -1714,8 +1796,18 @@ function handlers.TRADE_SKILL_LIST_UPDATE() if tradeOpen then throttled("trade",
 function handlers.TRADE_SKILL_DATA_SOURCE_CHANGED() if tradeOpen then throttled("trade", scanTrade) end end
 function handlers.TRADE_SKILL_CLOSE() tradeOpen = false end
 function handlers.NEW_RECIPE_LEARNED(...) pcall(onRecipeLearned, ...) end
-function handlers.TRAINER_SHOW() trainerNpc = npcIDFromGUID(UnitGUID("npc")) end
+function handlers.TRAINER_SHOW()
+  trainerNpc = npcIDFromGUID(UnitGUID("npc"))
+  if trainerNpc then throttled("trainer", scanTrainer) end
+end
+function handlers.TRAINER_UPDATE() if trainerNpc then throttled("trainer", scanTrainer) end end
 function handlers.TRAINER_CLOSED() trainerNpc = nil end
+function handlers.MERCHANT_SHOW()
+  merchantNpc = npcIDFromGUID(UnitGUID("npc"))
+  if merchantNpc then throttled("vendor", scanVendor) end
+end
+function handlers.MERCHANT_UPDATE() if merchantNpc then throttled("vendor", scanVendor) end end
+function handlers.MERCHANT_CLOSED() merchantNpc = nil end
 function handlers.UNIT_SPELLCAST_START(unit, castGUID, spellID)
   if unit == "player" then pcall(onPlayerCastStart, castGUID, spellID) end
 end

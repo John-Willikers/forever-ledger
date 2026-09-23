@@ -850,6 +850,199 @@ return function(H)
     end
   end)
 
+  ---------------------------------------------------------------- trainers
+  local VENDOR = "Creature-0-1-0-1-1347-0000V01" -- Alexandra Bolero, cloth vendor (npc 1347)
+  local function tailorServices()
+    return {
+      { name = "Tailoring", type = "header" },
+      { name = "Brown Linen Vest", sub = "Apprentice", type = "available", cost = 100, skill = "Tailoring",
+        skillRank = 10, level = 5, itemID = 2568, skillLine = "Tailoring" },
+      { name = "Red Linen Robe", type = "unavailable", cost = 250, skill = "Tailoring", skillRank = 40, level = 8,
+        itemID = 2572, skillLine = "Tailoring" },
+      { name = "Journeyman Tailoring", type = "used", cost = 500, level = 10, skillLine = "Tailoring" },
+    }
+  end
+  local function atTrainer(c, services, tradeskill)
+    c.world.npc = { name = "Eldrin", guid = TRAINER }
+    c.world.trainer = { tradeskill = tradeskill ~= false, services = services or tailorServices() }
+    c.fire("TRAINER_SHOW")
+  end
+
+  H.test("trainers: a profession trainer's services, costs and requirements are recorded", function()
+    local c = session(H)
+    atTrainer(c)
+    local d = c.env.ForeverLedgerDB
+    local t = d.trainers[B][1103]
+    H.eq(t.name, "Eldrin")
+    H.eq(t.loc.zone, "Elwynn Forest")
+    H.eq(t.loc.mapID, 1429)
+    H.eq(t.loc.x, 42.1)
+    H.eq(t.skillLineID, TAILORING)
+    H.eq(t.seenAt, c.world.clock)
+    H.eq(#t.services, 3, "headers are left out")
+    local vest = t.services[1]
+    H.eq(vest.name, "Brown Linen Vest")
+    H.eq(vest.type, "available")
+    H.eq(vest.cost, 100)
+    H.eq(vest.skill, "Tailoring")
+    H.eq(vest.skillRank, 10)
+    H.eq(vest.level, 5)
+    H.eq(vest.itemID, 2568)
+    H.eq(t.services[2].type, "unavailable")
+    H.eq(t.services[3].skill, nil)
+    H.eq(t.services[3].itemID, nil)
+    H.ok(d.items[2568].byBuild[B], "service items are scanned")
+    local s = d.apiSamples.GetTrainerServiceInfo.sample
+    H.eq(s[1], "Tailoring")
+    H.eq(s[3], "header")
+  end)
+
+  H.test("trainers: class trainers are not recorded", function()
+    local c = session(H)
+    atTrainer(c, nil, false)
+    H.eq(next(c.env.ForeverLedgerDB.trainers), nil)
+  end)
+
+  H.test("trainers: updates replace the list, throttled with one trailing scan", function()
+    local c = session(H)
+    atTrainer(c)
+    H.eq(c.world.calls.GetNumTrainerServices, 1)
+    local services = tailorServices()
+    services[2].type = "used" -- bought
+    table.remove(services, 4)
+    c.world.trainer.services = services
+    c.fire("TRAINER_UPDATE")
+    c.fire("TRAINER_UPDATE")
+    H.eq(c.world.calls.GetNumTrainerServices, 1)
+    c.advance(2)
+    H.eq(c.world.calls.GetNumTrainerServices, 2)
+    local t = c.env.ForeverLedgerDB.trainers[B][1103]
+    H.eq(#t.services, 2)
+    H.eq(t.services[1].type, "used")
+    c.fire("TRAINER_CLOSED")
+    c.advance(5)
+    c.fire("TRAINER_UPDATE")
+    H.eq(c.world.calls.GetNumTrainerServices, 2, "closed windows are not read")
+    H.eq(H.count(c.env.ForeverLedgerDB.trainers[B]), 1)
+  end)
+
+  H.test("trainers: the skill line comes from the skill requirement when the service has no skill line", function()
+    local c = session(H)
+    local services = tailorServices()
+    for _, s in ipairs(services) do s.skillLine = nil end
+    atTrainer(c, services)
+    H.eq(c.env.ForeverLedgerDB.trainers[B][1103].skillLineID, TAILORING)
+  end)
+
+  ---------------------------------------------------------------- vendors
+  local function merchantItem(itemID, price, extra)
+    local info = { name = "?", texture = 134939, price = price, stackCount = 1, numAvailable = -1,
+                   isPurchasable = true, isUsable = true, hasExtendedCost = false, currencyID = nil, spellID = nil,
+                   isQuestStartItem = false }
+    for k, v in pairs(extra or {}) do info[k] = v end
+    return { itemID = itemID, info = info }
+  end
+  local function atVendor(c, stock, guid)
+    c.world.npc = { name = "Alexandra Bolero", guid = guid or VENDOR }
+    c.world.merchant = { items = stock or { merchantItem(2320, 10, { stackCount = 5 }),
+                                            merchantItem(2598, 1200, { numAvailable = 1 }),
+                                            merchantItem(2996, 0, { hasExtendedCost = true, currencyID = 1901 }) } }
+    c.fire("MERCHANT_SHOW")
+  end
+
+  H.test("vendors: every item with price, stack, stock and currency; items are scanned", function()
+    local c = session(H)
+    atVendor(c)
+    local d = c.env.ForeverLedgerDB
+    local v = d.vendors[B][1347]
+    H.eq(v.name, "Alexandra Bolero")
+    H.eq(v.loc.subzone, "Goldshire")
+    H.eq(v.seenAt, c.world.clock)
+    H.eq(#v.items, 3)
+    H.eq(v.items[1].itemID, 2320)
+    H.eq(v.items[1].price, 10)
+    H.eq(v.items[1].stack, 5)
+    H.eq(v.items[1].numAvailable, -1)
+    H.eq(v.items[1].currencyID, nil)
+    H.eq(v.items[1].extendedCost, false)
+    H.eq(v.items[2].numAvailable, 1)
+    H.eq(v.items[3].extendedCost, true)
+    H.eq(v.items[3].currencyID, 1901)
+    H.eq(d.items[2598].classID, 9, "a recipe for sale is findable by class")
+    H.ok(d.items[2320].byBuild[B], "stock is scanned")
+    H.eq(d.apiSamples["C_MerchantFrame.GetItemInfo"].sample.price, 10)
+  end)
+
+  H.test("vendors: updates replace the list; closed or non-NPC merchants are not read", function()
+    local c = session(H)
+    atVendor(c)
+    c.world.merchant.items[2].info.numAvailable = 0
+    table.remove(c.world.merchant.items, 3)
+    c.advance(1)
+    c.fire("MERCHANT_UPDATE")
+    c.advance(1)
+    local v = c.env.ForeverLedgerDB.vendors[B][1347]
+    H.eq(#v.items, 2)
+    H.eq(v.items[2].numAvailable, 0)
+    c.fire("MERCHANT_CLOSED")
+    c.advance(5)
+    c.fire("MERCHANT_UPDATE")
+    H.eq(c.world.calls.GetMerchantNumItems, 2)
+    atVendor(c, nil, "GameObject-0-1-0-1-9999-0000X01")
+    H.eq(c.world.calls.GetMerchantNumItems, 2)
+    H.eq(H.count(c.env.ForeverLedgerDB.vendors[B]), 1)
+  end)
+
+  H.test("vendors: item info that has not loaded yet still lists the item", function()
+    local c = session(H)
+    local stock = { { itemID = 2320 } }
+    atVendor(c, stock)
+    local it = c.env.ForeverLedgerDB.vendors[B][1347].items[1]
+    H.eq(it.itemID, 2320)
+    H.eq(it.price, nil)
+    H.eq(c.env.ForeverLedgerDB.apiSamples["ForeverLedger.fieldMisses"], nil, "no table, no miss")
+  end)
+
+  H.test("vendors and trainers: at most 500 entries per NPC", function()
+    local c = session(H)
+    local stock, services = {}, {}
+    for i = 1, 510 do
+      stock[i] = merchantItem(2320, i)
+      services[i] = { name = "Service " .. i, cost = i }
+    end
+    atVendor(c, stock)
+    atTrainer(c, services)
+    H.eq(#c.env.ForeverLedgerDB.vendors[B][1347].items, 500)
+    H.eq(#c.env.ForeverLedgerDB.trainers[B][1103].services, 500)
+  end)
+
+  H.test("vendors and trainers: each build keeps its own list", function()
+    local c = session(H)
+    atVendor(c)
+    atTrainer(c)
+    local d = c.env.ForeverLedgerDB
+    local c2 = session(H, { buildInfo = { "1.15.8", "61600", "Oct 01 2026", 11508 } }, d)
+    atVendor(c2, { merchantItem(2320, 12) })
+    H.eq(d.vendors[B][1347].items[1].price, 10)
+    H.eq(d.vendors[61600][1347].items[1].price, 12)
+    H.eq(d.trainers[61600], nil)
+  end)
+
+  H.test("vendors and trainers: missing window APIs do not break anything", function()
+    local c = session(H, { missing = { GetMerchantNumItems = true, C_MerchantFrame = true, IsTradeskillTrainer = true,
+                                       GetNumTrainerServices = true, C_Timer = true } })
+    atVendor(c)
+    atTrainer(c)
+    c.fire("NEW_RECIPE_LEARNED", LINEN_SHIRT)
+    local d = c.env.ForeverLedgerDB
+    H.eq(next(d.vendors), nil)
+    H.eq(next(d.trainers), nil)
+    H.eq(d.learned[1].via, "trainer:1103")
+    local c2 = session(H, { missing = { C_MerchantFrame = true, GetMerchantItemID = true } })
+    atVendor(c2)
+    H.eq(c2.env.ForeverLedgerDB.vendors[B][1347].items[2].itemID, 2598, "the id from the item link")
+  end)
+
   ---------------------------------------------------------------- status, reset, nudge
   H.test("professions: /fl shows profession counts and reset wipes the new tables", function()
     local c = session(H)
@@ -885,5 +1078,13 @@ return function(H)
     lootNode(c, { { itemID = 2770, sourceGUID = VEIN, quantity = 2 } })
     lootNode(c, { { itemID = 2770, sourceGUID = VEIN, quantity = 2 } })
     H.eq(statusCount(c), 16, "node, node loot and the Copper Ore snapshot; the reopened vein adds nothing")
+    atTrainer(c)
+    atVendor(c)
+    c.advance(5)
+    c.fire("MERCHANT_UPDATE")
+    H.eq(statusCount(c), 19, "a trainer, a vendor and the Pattern snapshot; a rescan adds nothing")
+    c.slash("FOREVERLEDGER", "")
+    H.ok(printed(c, "professions: 2 skills, 3 recipes, 1 crafts, 1 nodes gathered, 1 trainers, 1 vendors."),
+      table.concat(c.world.printed, "\n"))
   end)
 end
