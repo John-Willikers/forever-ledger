@@ -309,7 +309,7 @@ function H.new(worldOverrides)
     local it = world.items[id]
     if not it or it.cached == false then return nil end
     return it.name, itemLink(id, it), it.quality, it.ilvl, it.reqLevel, it.type, it.subtype, 1, it.equipLoc,
-      nil, it.sellPrice
+      nil, it.sellPrice, it.classID, it.subclassID
   end
   env.GetItemStats = function(link)
     local it = world.items[linkID(link)]
@@ -368,6 +368,136 @@ function H.new(worldOverrides)
   for k, v in pairs(world.globalStrings or {}) do strings[k] = v end
   for k, v in pairs(strings) do env[k] = v end
 
+  -- professions
+  local function installProfessionAPI()
+    -- World fields (retail-style API of Forever 1.60; field names as the retail docs have them). The stubs only
+    -- exist with world.professionAPI = true, so the probe's global census (probe-dump fixture) stays as it was.
+    local defaults = {
+      skillLines = {},       -- C_SkillInfo lines: { skillID=, name=, isHeader=, rank=, maxRank=, modifier=,
+                             --   parentSkillLineID=, skillLineCategoryID= }
+      -- professions = nil:  GetProfessions() indices -> { name=, rank=, maxRank=, skillLine=, modifier= }
+      -- tradeSkill = nil:   the profession window's data: { base=ProfessionInfo, child=ProfessionInfo,
+      --                     ids={ recipeID, ... }, recipes={ [id]={ info=, schematic=, sourceText=, profession= } },
+      --                     linked=, guild=, npcCrafting=, changing= }
+      calls = {},            -- [api] = number of calls of the profession/trainer/vendor stubs
+      timers = {},           -- pending C_Timer.After callbacks { at=, fn= }; ctl.advance runs the due ones
+      -- bags = nil:         [bag][slot] = itemID; when set, C_Container exists
+      -- casting = nil:      UnitCastingInfo("player") returns, as a list
+      spells = {},           -- [spellID] = { name= } for C_Spell.GetSpellInfo
+      fishing = false,       -- IsFishingLoot()
+      tooltip = { shown = false }, -- GameTooltip: { shown=, owner="UIParent"|<other>, text=, unit=, item=, spell= }
+      -- trainer = nil:      { tradeskill=true, services={ { name=, sub=, type=, cost=, skill=, skillRank=, level=,
+      --                     itemID=, skillLine= } } }
+      -- merchant = nil:     { items={ { itemID=, info=MerchantItemInfo } } }
+    }
+    for k, v in pairs(defaults) do
+      if world[k] == nil then world[k] = v end
+    end
+    env.Enum.TradeskillRelativeDifficulty = { Optimal = 0, Medium = 1, Easy = 2, Trivial = 3 }
+    env.Enum.CraftingReagentType = { Modifying = 0, Basic = 1, Finishing = 2, Automatic = 3 }
+    env.Enum.ItemClass = { Consumable = 0, Container = 1, Weapon = 2, Armor = 4, Reagent = 5, Tradegoods = 7,
+                           Recipe = 9 }
+    env.LOOT_ITEM_CREATED_SELF = (world.globalStrings or {}).LOOT_ITEM_CREATED_SELF or "You create: %s."
+    env.LOOT_ITEM_CREATED_SELF_MULTIPLE = (world.globalStrings or {}).LOOT_ITEM_CREATED_SELF_MULTIPLE
+      or "You create: %sx%d."
+    local function called(api) world.calls[api] = (world.calls[api] or 0) + 1 end
+    env.C_Timer = {
+      After = function(secs, fn) world.timers[#world.timers + 1] = { at = world.clock + secs, fn = fn } end,
+    }
+    env.C_SkillInfo = {
+      GetNumSkillLines = function() return #world.skillLines end,
+      GetSkillLineInfo = function(i) return copy(world.skillLines[i]) end,
+    }
+    if world.professions then
+      env.GetProfessions = function()
+        local idx = {}
+        for i = 1, #world.professions do idx[i] = i end
+        return unpack(idx)
+      end
+      env.GetProfessionInfo = function(i)
+        local p = world.professions[i]
+        return p.name, 136240, p.rank, p.maxRank, 10, 0, p.skillLine, p.modifier or 0, 0, 0
+      end
+    end
+    local function trade() return world.tradeSkill or {} end
+    local function recipe(id) return (trade().recipes or {})[id] end
+    env.C_TradeSkillUI = {
+      GetAllRecipeIDs = function() called("GetAllRecipeIDs"); return copy(trade().ids or {}) end,
+      GetRecipeInfo = function(id)
+        called("GetRecipeInfo")
+        return recipe(id) and copy(recipe(id).info)
+      end,
+      GetRecipeSchematic = function(id, isRecraft)
+        called("GetRecipeSchematic")
+        assert(isRecraft == false, "GetRecipeSchematic(recipeID, false)")
+        return recipe(id) and copy(recipe(id).schematic)
+      end,
+      GetRecipeSourceText = function(id) return recipe(id) and recipe(id).sourceText end,
+      GetBaseProfessionInfo = function() return copy(trade().base) end,
+      GetChildProfessionInfo = function() return copy(trade().child) end,
+      GetProfessionInfoByRecipeID = function(id)
+        called("GetProfessionInfoByRecipeID")
+        return copy(recipe(id) and recipe(id).profession or trade().base)
+      end,
+      IsTradeSkillLinked = function() return trade().linked or false end,
+      IsTradeSkillGuild = function() return trade().guild or false end,
+      IsNPCCrafting = function() return trade().npcCrafting or false end,
+      IsDataSourceChanging = function() return trade().changing or false end,
+    }
+    if world.bags then
+      env.C_Container = {
+        GetContainerItemID = function(bag, slot) return (world.bags[bag] or {})[slot] end,
+        UseContainerItem = function(bag, slot) world.usedItem = { bag, slot } end,
+      }
+    end
+    env.UnitCastingInfo = function(u) if u == "player" and world.casting then return unpack(world.casting) end end
+    env.C_Spell = { GetSpellInfo = function(id) return copy(world.spells[id]) end }
+    env.IsFishingLoot = function() return world.fishing end
+    env.GameTooltip = {
+      IsShown = function() return world.tooltip.shown end,
+      GetOwner = function() return world.tooltip.owner == "UIParent" and env.UIParent or world.tooltip.owner end,
+      GetUnit = function() return world.tooltip.unit end,
+      GetItem = function() return world.tooltip.item end,
+      GetSpell = function() return world.tooltip.spell end,
+    }
+    env.GameTooltipTextLeft1 = { GetText = function() return world.tooltip.text end }
+    -- trainer window (GetTrainerServiceInfo: name, subText, serviceType, isExpanded)
+    local function service(i) return ((world.trainer or {}).services or {})[i] end
+    env.IsTradeskillTrainer = function() return world.trainer and world.trainer.tradeskill or false end
+    env.GetNumTrainerServices = function()
+      called("GetNumTrainerServices")
+      return #((world.trainer or {}).services or {})
+    end
+    env.GetTrainerServiceInfo = function(i)
+      local s = service(i)
+      if s then return s.name, s.sub or "", s.type or "available", false end
+    end
+    env.GetTrainerServiceCost = function(i) local s = service(i); return s and s.cost or 0, false end
+    env.GetTrainerServiceSkillReq = function(i)
+      local s = service(i)
+      if s and s.skill then return s.skill, s.skillRank, true end
+    end
+    env.GetTrainerServiceLevelReq = function(i) local s = service(i); return s and s.level or 0 end
+    env.GetTrainerServiceSkillLine = function(i) local s = service(i); return s and s.skillLine end
+    env.GetTrainerServiceItemLink = function(i)
+      local s = service(i)
+      return s and s.itemID and world.items[s.itemID] and itemLink(s.itemID, world.items[s.itemID]) or nil
+    end
+    -- merchant window
+    local function stock(i) return ((world.merchant or {}).items or {})[i] end
+    env.GetMerchantNumItems = function()
+      called("GetMerchantNumItems")
+      return #((world.merchant or {}).items or {})
+    end
+    env.GetMerchantItemID = function(i) local m = stock(i); return m and m.itemID end
+    env.GetMerchantItemLink = function(i)
+      local m = stock(i)
+      return m and world.items[m.itemID] and itemLink(m.itemID, world.items[m.itemID]) or nil
+    end
+    env.C_MerchantFrame = { GetItemInfo = function(i) local m = stock(i); return m and copy(m.info) end }
+  end
+  if world.professionAPI then installProfessionAPI() end
+
   -- addons
   env.LoadAddOn = function(name)
     local fn = world.addons[name]
@@ -414,6 +544,13 @@ function H.new(worldOverrides)
       end,
     }
     env.C_Item = { GetItemInfo = env.GetItemInfo, GetItemStats = env.GetItemStats }
+    if world.professionAPI then
+      env.C_Item.GetItemInfoInstant = function(x)
+        local id = type(x) == "number" and x or linkID(x)
+        local it = world.items[id]
+        if it then return id, it.type, it.subtype, it.equipLoc, 134939, it.classID, it.subclassID end
+      end
+    end
     for _, name in ipairs({ "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogSelection",
                             "SelectQuestLogEntry", "GetItemInfo", "GetItemStats", "LoadAddOn" }) do
       world.missing[name] = true
@@ -438,7 +575,19 @@ function H.new(worldOverrides)
   end
 
   function ctl.slash(cmdKey, msg) env.SlashCmdList[cmdKey](msg or "") end
-  function ctl.advance(secs) world.clock = world.clock + secs end
+  -- Moves the clock and runs the C_Timer callbacks that are due, oldest first.
+  function ctl.advance(secs)
+    world.clock = world.clock + secs
+    while true do
+      local due
+      for i, t in ipairs(world.timers or {}) do
+        if t.at <= world.clock and (not due or t.at < world.timers[due].at) then due = i end
+      end
+      if not due then break end
+      local t = table.remove(world.timers, due)
+      t.fn()
+    end
+  end
 
   -- A CHAT_MSG_LOOT line built from the environment's GlobalStrings, as the client formats it.
   function ctl.lootLine(global, playerName, ...)

@@ -1,9 +1,10 @@
--- ForeverLedger v0.2.4 behaviour and fixture generation.
+-- ForeverLedger behaviour and fixture generation.
 local S = require("scenario")
 
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
 local ADDON_0_2_2 = "legacy/ForeverLedger-0.2.2.lua" -- last schema 1 release, for the schema 1 fixture
 local ADDON_0_2_3 = "legacy/ForeverLedger-0.2.3.lua" -- last schema 2 release, for the schema 2 fixture
+local ADDON_0_2_4 = "legacy/ForeverLedger-0.2.4.lua" -- last schema 3 release, for the schema 3 fixture
 local FIXTURES = "../../fixtures/synthetic/"
 local ME = "Thibodeaux-Bayou"
 
@@ -44,11 +45,13 @@ return function(H)
   H.writeFile(FIXTURES .. "session-v1.lua", H.serialize("ForeverLedgerDB", v1))
   local _, v2 = twoSessions(H, ADDON_0_2_3)
   H.writeFile(FIXTURES .. "session-v2.lua", H.serialize("ForeverLedgerDB", v2))
+  local _, v3 = twoSessions(H, ADDON_0_2_4)
+  H.writeFile(FIXTURES .. "session-v3.lua", H.serialize("ForeverLedgerDB", v3))
 
   local db, db2, start = twoSessions(H)
 
   H.test("ledger: meta carries schema and build", function()
-    H.eq(db.meta.schemaVersion, 3)
+    H.eq(db.meta.schemaVersion, 4)
     H.eq(db.meta.build, 61582)
     H.eq(db.meta.interface, 11507)
     H.eq(db.meta.addonVersion, "0.2.4")
@@ -193,5 +196,9 @@ return function(H)
     H.eq(d.drops[872][61582][0], 1) -- unknown source npc
   end)
 
-  H.writeFile(FIXTURES .. "session-v3.lua", H.serialize("ForeverLedgerDB", db2))
+  H.test("ledger: schema 3 fixture comes from 0.2.4", function()
+    H.eq(v3.meta.schemaVersion, 3)
+    H.eq(v3.meta.addonVersion, "0.2.4")
+    H.eq(v3.skills, nil)
+  end)
 end
