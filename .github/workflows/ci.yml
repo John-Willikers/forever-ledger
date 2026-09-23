@@ -1,0 +1,16 @@
+# Inactive until the repo is pushed to GitHub at launch (alpha works on local master).
+name: ci
+on: [push, pull_request]
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: sudo apt-get update && sudo apt-get install -y lua-check lua5.1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.state.json
+.uploader-queue/
+*.log
+.DS_Store
+fixtures/real/*.lua
+!fixtures/real/.gitkeep

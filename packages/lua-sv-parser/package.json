@@ -1,0 +1,21 @@
+{
+  "name": "@forever-ledger/lua-sv-parser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Safe WoW SavedVariables parser (AST walk, never executes Lua).",
+  "author": "John-Willikers <harlanbmiltonjr@gmail.com>",
+  "license": "UNLICENSED",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  }
+}

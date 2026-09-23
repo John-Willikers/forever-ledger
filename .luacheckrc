@@ -1,0 +1,38 @@
+-- luacheck config for the Forever Ledger addons (WoW Lua 5.1 environment)
+std = "lua51"
+max_line_length = 120
+codes = true
+
+globals = {
+  -- SavedVariables
+  "ForeverLedgerDB", "ForeverLedgerProbeDB",
+  -- slash commands
+  "SlashCmdList", "SLASH_FOREVERLEDGER1", "SLASH_FOREVERLEDGER2", "SLASH_FOREVERLEDGERPROBE1",
+}
+
+read_globals = {
+  -- Lua helpers WoW adds to the global env
+  "wipe", "floor", "format", "strsplit", "strjoin", "strtrim", "tinsert", "tremove", "time", "date",
+  "debugprofilestop", "GetTime", "GetServerTime", "select", "hooksecurefunc",
+  -- frames / UI
+  "CreateFrame", "WorldFrame", "UIParent",
+  -- namespaces
+  "C_Item", "C_Map", "C_QuestLog", "C_AddOns", "C_Container", "C_Timer", "APIDocumentation",
+  -- client / addon
+  "GetBuildInfo", "LoadAddOn", "IsAddOnLoaded", "GetLocale",
+  -- units
+  "UnitLevel", "UnitName", "UnitXP", "UnitXPMax", "UnitClass", "UnitRace", "UnitGUID", "UnitFactionGroup",
+  "UnitExists", "GetRealmName",
+  -- zone / instance
+  "GetRealZoneText", "GetSubZoneText", "IsInInstance", "GetInstanceInfo",
+  -- quests
+  "GetQuestID", "GetTitleText", "GetRewardXP", "GetRewardMoney", "GetNumQuestChoices", "GetNumQuestRewards",
+  "GetQuestItemLink", "GetQuestItemInfo", "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogSelection",
+  "SelectQuestLogEntry", "GetNumQuestLogChoices", "GetQuestLogItemLink", "GetQuestLogRewardMoney",
+  "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard",
+  -- items / loot
+  "GetItemInfo", "GetItemStats", "GetNumLootItems", "GetLootSlotLink", "GetLootSourceInfo",
+}
+
+-- The test harness defines WoW stubs as globals on purpose.
+files["addon/tests"] = { ignore = { "111", "112", "113", "121", "122", "131", "142", "143" } }

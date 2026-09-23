@@ -1,0 +1,5 @@
+dist
+coverage
+fixtures
+pnpm-lock.yaml
+project-plans

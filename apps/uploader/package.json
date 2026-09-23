@@ -1,0 +1,24 @@
+{
+  "name": "@forever-ledger/uploader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Watches ForeverLedger SavedVariables and ships new records to the ingest server.",
+  "author": "John-Willikers <harlanbmiltonjr@gmail.com>",
+  "license": "UNLICENSED",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "forever-ledger": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  }
+}

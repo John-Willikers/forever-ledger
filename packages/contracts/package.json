@@ -1,0 +1,21 @@
+{
+  "name": "@forever-ledger/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared zod schemas, TS types and class/spec rules for Forever Ledger.",
+  "author": "John-Willikers <harlanbmiltonjr@gmail.com>",
+  "license": "UNLICENSED",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  }
+}
