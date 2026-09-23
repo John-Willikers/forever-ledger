@@ -1,111 +1,16 @@
 -- ForeverLedger professions (schema 4): skills, recipes, learned recipes, API samples, crafts, gathering, trainers
 -- and vendors. The stubs follow the retail field names; the addon reads them defensively.
+local P = require("professions_world")
 local S = require("scenario")
 
-local ADDON = "../ForeverLedger/ForeverLedger.lua"
-local B = 61582
-local ME = "Thibodeaux-Bayou"
-local TAILORING, FIRST_AID = 197, 129
-local RED_ROBE, LINEN_BOLT, LINEN_SHIRT, BANDAGE = 2389, 2963, 2393, 3275 -- recipe (spell) IDs
-local TRAINER = "Creature-0-1-0-1-1103-0000T01" -- Eldrin, tailoring trainer (npc 1103)
-
-local function items()
-  local it = S.items()
-  local function add(id, name, classID, subclassID, extra)
-    local t = { name = name, quality = 1, ilvl = 5, reqLevel = 0, type = "Trade Goods", subtype = "Cloth",
-                equipLoc = "", sellPrice = 10, stats = {}, tooltip = { { name } }, classID = classID,
-                subclassID = subclassID }
-    for k, v in pairs(extra or {}) do t[k] = v end
-    it[id] = t
-  end
-  add(2996, "Bolt of Linen Cloth", 7, 5)
-  add(2320, "Coarse Thread", 7, 5)
-  add(2568, "Brown Linen Vest", 4, 1, { type = "Armor", subtype = "Cloth", equipLoc = "INVTYPE_CHEST" })
-  add(2572, "Red Linen Robe", 4, 1, { type = "Armor", subtype = "Cloth", equipLoc = "INVTYPE_ROBE" })
-  add(2598, "Pattern: Red Linen Robe", 9, 2, { type = "Recipe", subtype = "Tailoring",
-                                               tooltip = { { "Pattern: Red Linen Robe" },
-                                                           { "Teaches you how to sew a Red Linen Robe." } } })
-  add(1251, "Linen Bandage", 0, 7)
-  add(2770, "Copper Ore", 7, 7)
-  add(2447, "Peacebloom", 7, 9)
-  add(6303, "Raw Slitherskin Mackerel", 7, 8)
-  add(4470, "Simple Wood", 7, 11)
-  it[2589].classID, it[2589].subclassID = 7, 5 -- Linen Cloth
-  return it
-end
-
--- A full retail SkillLineAttributes table.
-local function line(id, name, rank, maxRank, category, extra)
-  local l = { skillID = id, name = name, isHeader = false, isCollapsed = false, rank = rank, tempPoints = 0,
-              modifier = 0, maxRank = maxRank, isAbandonable = true, stepCost = 0, rankCost = 0, minLevel = 5,
-              costType = 0, parentSkillLineID = 0, skillLineCategoryID = category, description = "" }
-  for k, v in pairs(extra or {}) do l[k] = v end
-  return l
-end
-local function header(name, category) return { name = name, isHeader = true, skillLineCategoryID = category } end
-
-local function skillLines(tailoring)
-  return {
-    header("Professions", 11), line(TAILORING, "Tailoring", tailoring or 50, 75, 11),
-    header("Secondary Skills", 9), line(FIRST_AID, "First Aid", 1, 75, 9),
-    header("Weapon Skills", 6), line(45, "Bows", 50, 50, 6),
-    header("Languages", 10), line(98, "Language: Common", 300, 300, 10),
-  }
-end
-
-local function profInfo(id, name, rank)
-  return { professionID = id, professionName = name, expansionName = "Classic", skillLevel = rank,
-           maxSkillLevel = 75, skillModifier = 0, isPrimaryProfession = true, parentProfessionID = 0 }
-end
-
--- Retail TradeSkillRecipeInfo / CraftingRecipeSchematic shapes.
-local function recipe(id, name, learned, difficulty, output, reagents, extra)
-  local slots = {}
-  for i, r in ipairs(reagents) do
-    slots[i] = { reagents = { { itemID = r[1] } }, quantityRequired = r[2], reagentType = r[3] or 1,
-                 required = r[3] == nil or r[3] == 1, slotIndex = i, dataSlotIndex = i }
-  end
-  local rec = {
-    info = { recipeID = id, categoryID = 1001, name = name, learned = learned, relativeDifficulty = difficulty,
-             numSkillUps = 1, maxTrivialLevel = 90, craftable = true, disabled = false, icon = 132149,
-             hyperlink = "|Henchant:" .. id .. "|h[" .. name .. "]|h", supportsQualities = false,
-             favorite = false, alternateVerb = nil },
-    schematic = { recipeID = id, outputItemID = output, quantityMin = 1, quantityMax = 1, name = name,
-                  reagentSlotSchematics = slots, isRecraft = false, recipeType = 1, productQuality = nil },
-    profession = profInfo(TAILORING, "Tailoring", 50),
-  }
-  for k, v in pairs(extra or {}) do rec[k] = v end
-  return rec
-end
-
-local function tailoringWindow(rank)
-  return {
-    base = profInfo(TAILORING, "Tailoring", rank or 50),
-    ids = { LINEN_BOLT, LINEN_SHIRT, RED_ROBE },
-    recipes = {
-      [LINEN_BOLT] = recipe(LINEN_BOLT, "Bolt of Linen Cloth", true, 3, 2996, { { 2589, 2 } }),
-      [LINEN_SHIRT] = recipe(LINEN_SHIRT, "Brown Linen Vest", true, 0, 2568,
-        { { 2996, 1 }, { 2320, 1 }, { 4470, 1, 0 } }), -- the third slot is an optional (modifying) reagent
-      [RED_ROBE] = recipe(RED_ROBE, "Red Linen Robe", false, 0, 2572, { { 2996, 3 }, { 2320, 2 } },
-        { sourceText = "|cffffd100Vendor: |rMisensi" }),
-    },
-  }
-end
-
-local function session(H, overrides, savedDB)
-  local world = { items = items(), questLog = S.questLog(), professionAPI = true, skillLines = skillLines() }
-  for k, v in pairs(overrides or {}) do world[k] = v end
-  local ctl = H.new(world)
-  ctl.env.ForeverLedgerDB = savedDB
-  ctl.load(ADDON)
-  ctl.login("ForeverLedger")
-  return ctl
-end
-
-local function openTrade(c, window)
-  c.world.tradeSkill = window or tailoringWindow()
-  c.fire("TRADE_SKILL_SHOW")
-end
+local ADDON, B, ME, TAILORING, FIRST_AID = P.ADDON, P.B, P.ME, P.TAILORING, P.FIRST_AID
+local RED_ROBE, LINEN_BOLT, LINEN_SHIRT, BANDAGE = P.RED_ROBE, P.LINEN_BOLT, P.LINEN_SHIRT, P.BANDAGE
+local TRAINER = P.TRAINER
+local line, header, skillLines, recipe, tailoringWindow = P.line, P.header, P.skillLines, P.recipe, P.tailoringWindow
+local session, openTrade, cast, result, created = P.session, P.openTrade, P.cast, P.result, P.created
+local MINING, HERBALISM, VEIN, VEIN2, BOBBER = P.MINING, P.HERBALISM, P.VEIN, P.VEIN2, P.BOBBER
+local gatherer, lootNode, mine = P.gatherer, P.lootNode, P.mine
+local tailorServices, atTrainer, merchantItem, atVendor = P.tailorServices, P.atTrainer, P.merchantItem, P.atVendor
 
 local function printed(c, text)
   for _, l in ipairs(c.world.printed) do
@@ -121,6 +26,69 @@ local function statusCount(c)
     local n = l:match("|r (%d+) new records? since your last /reload %(saved")
     if n then return tonumber(n) end
   end
+end
+
+local FIXTURE = "../../fixtures/synthetic/session-v4.lua"
+
+-- The schema 4 fixture: the shared play session (quests, loot, a dungeon run), then a profession session that
+-- touches every appendix table: skills and a skill-up, a trainer (a recipe learned there), a vendor, the profession
+-- window (one client field missing), crafts with a proc, a recipe learned from a pattern, a mined vein and fishing.
+local function v4Session(H)
+  local c = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true, skillLines = P.gatherLines(),
+                    bags = { [0] = { [1] = 2598 } } })
+  c.load(ADDON)
+  S.play(c, "ForeverLedger")
+  local w = c.world
+  c.advance(60)
+
+  atTrainer(c)
+  c.fire("NEW_RECIPE_LEARNED", LINEN_SHIRT, nil, LINEN_SHIRT) -- (recipeID, recipeLevel, baseRecipeID): a nil gap
+  c.fire("TRAINER_CLOSED")
+  w.npc, w.trainer = nil, nil
+  c.advance(30)
+  atVendor(c)
+  c.fire("MERCHANT_CLOSED")
+  w.npc, w.merchant = nil, nil
+  c.advance(30)
+
+  local window = tailoringWindow()
+  window.recipes[RED_ROBE].schematic.quantityMax = nil -- a field this client leaves out: noted as a miss
+  openTrade(c, window)
+  c.advance(10)
+  cast(c, "Cast-V4-1", LINEN_BOLT, true)
+  result(c, 2996, 3, 2) -- multicraft
+  created(c, 2996, 3)
+  c.advance(1)
+  w.skillLines[2].rank = 51 -- Tailoring
+  c.fire("SKILL_LINES_CHANGED")
+  c.advance(10)
+  cast(c, "Cast-V4-2", LINEN_SHIRT, true)
+  result(c, 2568, 1)
+  created(c, 2568, 1)
+  c.advance(10)
+  c.env.C_Container.UseContainerItem(0, 1) -- Pattern: Red Linen Robe
+  c.advance(2)
+  c.fire("NEW_RECIPE_LEARNED", RED_ROBE)
+  window.recipes[RED_ROBE].info.learned = true
+  window.recipes[LINEN_SHIRT].info.relativeDifficulty = 1
+  c.fire("TRADE_SKILL_LIST_UPDATE")
+  c.fire("TRADE_SKILL_CLOSE")
+  w.tradeSkill = nil
+  c.advance(60)
+
+  w.tooltip = { shown = true, owner = "UIParent", text = "Copper Vein" }
+  mine(c, VEIN)
+  c.advance(40)
+  w.zone.x, w.zone.y = 0.50, 0.70
+  mine(c, VEIN2)
+  w.tooltip = { shown = false }
+  c.advance(120)
+  w.fishing = true
+  c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-F", 7620)
+  lootNode(c, { { itemID = 6303, sourceGUID = BOBBER } })
+  w.fishing = false
+  c.advance(30)
+  return c.env.ForeverLedgerDB
 end
 
 return function(H)
@@ -513,25 +481,6 @@ return function(H)
   end)
 
   ---------------------------------------------------------------- crafts
-  local function cast(c, guid, spellID, tradeskill)
-    c.world.casting = { "Craft", "", 132149, 0, 1000, tradeskill and true or false, guid, false, spellID, 0, 0 }
-    c.fire("UNIT_SPELLCAST_START", "player", guid, spellID)
-    c.world.casting = nil
-    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", guid, spellID)
-  end
-  local function result(c, itemID, qty, multicraft)
-    c.fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = itemID, quantity = qty, multicraft = multicraft or 0,
-      isCrit = false, operationID = 1, hasIngenuityProc = false, craftingQuality = nil,
-      hyperlink = require("harness").itemLink(itemID, c.world.items[itemID]) })
-  end
-  local function created(c, itemID, qty)
-    local link = require("harness").itemLink(itemID, c.world.items[itemID])
-    if qty and qty > 1 then
-      c.lootLine("LOOT_ITEM_CREATED_SELF_MULTIPLE", c.world.player.name, link, qty)
-    else
-      c.lootLine("LOOT_ITEM_CREATED_SELF", c.world.player.name, link)
-    end
-  end
   -- A session whose recipes are known from the profession window.
   local function crafting(H_, overrides)
     local c = session(H_, overrides)
@@ -672,33 +621,6 @@ return function(H)
   end)
 
   ---------------------------------------------------------------- gathering
-  local MINING, HERBALISM = 186, 182
-  local VEIN = "GameObject-0-1-0-1-1731-0000N01"   -- Copper Vein (object 1731)
-  local VEIN2 = "GameObject-0-1-0-1-1731-0000N02"
-  local BOBBER = "GameObject-0-1-0-1-35591-0000F01"
-  local function gatherLines()
-    local lines = skillLines()
-    lines[#lines + 1] = header("Professions", 11)
-    lines[#lines + 1] = line(MINING, "Mining", 70, 75, 11)
-    lines[#lines + 1] = line(HERBALISM, "Herbalism", 40, 75, 11)
-    lines[#lines + 1] = line(356, "Fishing", 25, 75, 9)
-    return lines
-  end
-  local function gatherer(H_, overrides)
-    local o = { skillLines = gatherLines(), tooltip = { shown = true, owner = "UIParent", text = "Copper Vein" } }
-    for k, v in pairs(overrides or {}) do o[k] = v end
-    return session(H_, o)
-  end
-  local function lootNode(c, slots)
-    c.world.loot = slots
-    c.fire("LOOT_OPENED")
-    c.fire("LOOT_CLOSED")
-    c.world.loot = {}
-  end
-  local function mine(c, guid, spell)
-    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-" .. guid, spell or 2575)
-    lootNode(c, { { itemID = 2770, sourceGUID = guid, quantity = 2 } })
-  end
 
   H.test("gathering: a mined vein is a node with its skill, rank, name, spot and loot; not a drop", function()
     local c = gatherer(H)
@@ -851,22 +773,6 @@ return function(H)
   end)
 
   ---------------------------------------------------------------- trainers
-  local VENDOR = "Creature-0-1-0-1-1347-0000V01" -- Alexandra Bolero, cloth vendor (npc 1347)
-  local function tailorServices()
-    return {
-      { name = "Tailoring", type = "header" },
-      { name = "Brown Linen Vest", sub = "Apprentice", type = "available", cost = 100, skill = "Tailoring",
-        skillRank = 10, level = 5, itemID = 2568, skillLine = "Tailoring" },
-      { name = "Red Linen Robe", type = "unavailable", cost = 250, skill = "Tailoring", skillRank = 40, level = 8,
-        itemID = 2572, skillLine = "Tailoring" },
-      { name = "Journeyman Tailoring", type = "used", cost = 500, level = 10, skillLine = "Tailoring" },
-    }
-  end
-  local function atTrainer(c, services, tradeskill)
-    c.world.npc = { name = "Eldrin", guid = TRAINER }
-    c.world.trainer = { tradeskill = tradeskill ~= false, services = services or tailorServices() }
-    c.fire("TRAINER_SHOW")
-  end
 
   H.test("trainers: a profession trainer's services, costs and requirements are recorded", function()
     local c = session(H)
@@ -935,20 +841,6 @@ return function(H)
   end)
 
   ---------------------------------------------------------------- vendors
-  local function merchantItem(itemID, price, extra)
-    local info = { name = "?", texture = 134939, price = price, stackCount = 1, numAvailable = -1,
-                   isPurchasable = true, isUsable = true, hasExtendedCost = false, currencyID = nil, spellID = nil,
-                   isQuestStartItem = false }
-    for k, v in pairs(extra or {}) do info[k] = v end
-    return { itemID = itemID, info = info }
-  end
-  local function atVendor(c, stock, guid)
-    c.world.npc = { name = "Alexandra Bolero", guid = guid or VENDOR }
-    c.world.merchant = { items = stock or { merchantItem(2320, 10, { stackCount = 5 }),
-                                            merchantItem(2598, 1200, { numAvailable = 1 }),
-                                            merchantItem(2996, 0, { hasExtendedCost = true, currencyID = 1901 }) } }
-    c.fire("MERCHANT_SHOW")
-  end
 
   H.test("vendors: every item with price, stack, stock and currency; items are scanned", function()
     local c = session(H)
@@ -1086,5 +978,38 @@ return function(H)
     c.slash("FOREVERLEDGER", "")
     H.ok(printed(c, "professions: 2 skills, 3 recipes, 1 crafts, 1 nodes gathered, 1 trainers, 1 vendors."),
       table.concat(c.world.printed, "\n"))
+  end)
+  ---------------------------------------------------------------- schema 4 fixture
+  H.test("professions: session-v4 fixture fills every schema 4 table from one real session", function()
+    local d = v4Session(H)
+    H.writeFile(FIXTURE, H.serialize("ForeverLedgerDB", d))
+    H.eq(d.meta.schemaVersion, 4)
+    for _, k in ipairs({ "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
+                         "trainers", "vendors", "apiSamples", "quests", "turnIns", "runs", "drops", "corpses" }) do
+      H.ok(next(d[k]) ~= nil, k)
+    end
+    H.eq(#d.skillUps, 1)
+    H.eq(d.skillUps[1].recipeID, LINEN_BOLT)
+    H.eq(d.learned[1].via, "trainer:1103")
+    H.eq(d.learned[2].via, "item:2598")
+    local seen = d.recipeSeen[B][ME]
+    H.eq(seen[RED_ROBE].learned, true, "learned from the pattern, then rescanned")
+    H.ok(seen[LINEN_SHIRT].byDifficulty.optimal and seen[LINEN_SHIRT].byDifficulty.medium, "two difficulties")
+    local k = d.crafts[B][LINEN_BOLT]
+    H.eq(k.casts, 1)
+    H.eq(k.qty, 3)
+    H.eq(k.procs, 1)
+    H.eq(k.skillUps, 1)
+    H.eq(d.crafts[B][LINEN_SHIRT].casts, 1)
+    H.eq(d.nodes[B][1731].opened, 2)
+    H.eq(d.nodes[B][0].opened, 1)
+    H.eq(d.items[2598].classID, 9)
+    H.ok(d.trainers[B][1103] and d.vendors[B][1347], "trainer and vendor")
+    local misses = d.apiSamples["ForeverLedger.fieldMisses"].sample
+    H.eq(misses["C_TradeSkillUI.GetRecipeSchematic:quantityMax"], "quantityMax|maxQuantity")
+    local learned = d.apiSamples.NEW_RECIPE_LEARNED.sample
+    H.eq(learned[1], LINEN_SHIRT)
+    H.eq(learned[2], nil, "a nil gap")
+    H.eq(learned[3], LINEN_SHIRT)
   end)
 end

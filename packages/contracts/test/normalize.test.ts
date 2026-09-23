@@ -24,6 +24,7 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
     ['session-v2.lua', 2],
     ['session-v3.lua', 3],
     ['session-migrated.lua', 3],
+    ['session-v4.lua', 4],
   ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
@@ -620,6 +621,89 @@ describe('normalize — schema 4 professions (hand-written professions-v4.lua)',
     const v3 = normalize(load('session-v3.lua'));
     for (const kind of ['skills', 'recipes', 'crafts', 'nodes', 'trainers', 'apiSamples'] as const)
       expect(v3.records[kind]).toEqual([]);
+  });
+});
+
+describe('normalize — schema 4 from the real addon (session-v4.lua)', () => {
+  const { meta, records, problems } = normalize(load('session-v4.lua'));
+  const PROFESSION_KINDS = [
+    'skills',
+    'skillUps',
+    'recipes',
+    'recipeSnapshots',
+    'recipeStatus',
+    'recipeDifficulty',
+    'recipesLearned',
+    'crafts',
+    'nodes',
+    'nodeLoot',
+    'trainers',
+    'vendors',
+    'apiSamples',
+  ] as const;
+
+  it('validates with no problems and fills each of the 13 professions kinds', () => {
+    expect(problems).toEqual([]);
+    expect(meta).toMatchObject({ schemaVersion: 4, addonVersion: '0.2.4' });
+    expect(PROFESSION_KINDS).toHaveLength(13);
+    for (const kind of PROFESSION_KINDS) {
+      expect(records[kind].length, kind).toBeGreaterThanOrEqual(1);
+      expect(RECORD_KINDS).toContain(kind);
+    }
+  });
+
+  it('yields unique natural keys and a valid schema 4 batch', () => {
+    for (const kind of RECORD_KINDS) {
+      const keys = (records[kind] as never[]).map((r) => recordKey(kind, r));
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+    const batch = UploadBatch.parse({
+      schemaVersion: 4,
+      uploaderId: 'pc-1',
+      account: 'A',
+      meta,
+      records,
+    });
+    expect(batch.records.trainers).toHaveLength(1);
+  });
+
+  it('keeps what the addon observed: skill-up recipe, learn sources, procs, fishing, recipe items', () => {
+    expect(records.skillUps).toEqual([
+      expect.objectContaining({ skillLineId: 197, from: 50, to: 51, recipeId: 2963 }),
+    ]);
+    expect(records.recipesLearned.map((l) => l.via)).toEqual(['trainer:1103', 'item:2598']);
+    expect(records.crafts.find((c) => c.recipeId === 2963)).toMatchObject({
+      casts: 1,
+      qty: 3,
+      procs: 1,
+      skillUps: 1,
+      session: meta.session,
+    });
+    expect(records.nodes.find((n) => n.objectId === 0)).toMatchObject({ skillLineId: 356 });
+    expect(records.nodes.find((n) => n.objectId === 1731)).toMatchObject({
+      name: 'Copper Vein',
+      opened: 2,
+    });
+    expect(
+      records.recipeDifficulty.filter((d) => d.recipeId === 2393).map((d) => d.difficulty),
+    ).toEqual(['medium', 'optimal']);
+    expect(records.items.find((i) => i.itemId === 2598)).toMatchObject({
+      classId: 9,
+      subclassId: 2,
+    });
+  });
+
+  it('API samples keep field misses and sparse multi-return samples as sent', () => {
+    const byApi = new Map(records.apiSamples.map((s) => [s.api, s.sample]));
+    expect(byApi.get('ForeverLedger.fieldMisses')).toEqual({
+      'C_TradeSkillUI.GetRecipeSchematic:quantityMax': 'quantityMax|maxQuantity',
+    });
+    // NEW_RECIPE_LEARNED(recipeID, nil, baseRecipeID): the nil gap makes it a keyed table, not a list
+    expect({ ...(byApi.get('NEW_RECIPE_LEARNED') as object) }).toEqual({ 1: 2393, 3: 2393 });
+    expect(byApi.get('GetTrainerServiceInfo')).toEqual(['Tailoring', '', 'header', false]);
+    expect(byApi.get('C_TradeSkillUI.GetRecipeSchematic:reagentSlot')).toMatchObject({
+      quantityRequired: 2,
+    });
   });
 });
 

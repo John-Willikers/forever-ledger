@@ -440,6 +440,140 @@ describe('profession routes', () => {
   });
 });
 
+describe("the real addon's schema 4 session (session-v4.lua)", () => {
+  let s: Server;
+  const get = (url: string) => s.app.inject({ method: 'GET', url, headers: s.auth });
+  const build = 61582;
+  const batch = batchFromFixture('session-v4.lua', 'ADDON-V4');
+  const loc = { zone: 'Elwynn Forest', subzone: 'Goldshire', mapID: 1429, x: 42.1, y: 65.9 };
+
+  beforeAll(async () => {
+    s = await startServer();
+  });
+  afterAll(async () => {
+    await s?.stop();
+  });
+
+  it('ingests with 200 and every professions table gets rows', async () => {
+    expect(batch.schemaVersion).toBe(4);
+    const res = await s.app.inject({
+      method: 'POST',
+      url: '/v1/ingest',
+      headers: s.auth,
+      payload: batch,
+    });
+    expect(res.statusCode).toBe(200);
+    const tables = {
+      skills: 5,
+      skill_ups: 1,
+      recipes: 3,
+      recipe_snapshots: 3,
+      recipe_status: 3,
+      recipe_difficulty: 4,
+      recipes_learned: 2,
+      crafts: 2,
+      nodes: 2,
+      node_loot: 2,
+      trainers: 1,
+      vendors: 1,
+      api_samples: 15,
+    };
+    const counts = Object.fromEntries(
+      await Promise.all(Object.keys(tables).map(async (t) => [t, await s.count(t)])),
+    );
+    expect(counts).toEqual(tables);
+    const { rows } = await s.database.pool.query(
+      `select sample from api_samples where api = 'NEW_RECIPE_LEARNED'`,
+    );
+    expect(rows[0].sample).toEqual({ 1: 2393, 3: 2393 });
+  });
+
+  it('/v1/professions/recipes: schematics, observed difficulty and how each recipe was learned', async () => {
+    const res = await get(`/v1/professions/recipes?skillLine=197&build=${build}`);
+    expect(res.statusCode).toBe(200);
+    const recipes = res.json() as { recipeId: number }[];
+    expect(recipes.map((r) => r.recipeId).sort()).toEqual([2389, 2393, 2963]);
+    const byId = new Map(recipes.map((r) => [r.recipeId, r]));
+    expect(byId.get(2393)).toMatchObject({
+      name: 'Brown Linen Vest',
+      learnedVia: [{ via: 'trainer:1103', count: 1 }],
+      builds: [
+        {
+          build,
+          outputItemId: 2568,
+          outputItemName: 'Brown Linen Vest',
+          reagents: [
+            { itemId: 2996, name: 'Bolt of Linen Cloth', qty: 1 },
+            { itemId: 2320, name: 'Coarse Thread', qty: 1 },
+          ],
+          difficulty: [
+            { difficulty: 'optimal', minRank: 50, maxRank: 50, chars: 1 },
+            { difficulty: 'medium', minRank: 51, maxRank: 51, chars: 1 },
+          ],
+        },
+      ],
+    });
+    expect(byId.get(2389)).toMatchObject({
+      learnedVia: [{ via: 'item:2598', count: 1 }],
+      builds: [{ qtyMin: 1, qtyMax: null, sourceText: '|cffffd100Vendor: |rMisensi' }],
+    });
+  });
+
+  it('/v1/professions/sources: the trainer, the vendor and the pattern of a recipe', async () => {
+    const robe = await get('/v1/professions/sources?recipeId=2389');
+    expect(robe.statusCode).toBe(200);
+    expect(robe.json()).toMatchObject({
+      recipes: [{ recipeId: 2389, name: 'Red Linen Robe' }],
+      recipeItems: [{ itemId: 2598, name: 'Pattern: Red Linen Robe' }],
+      trainers: [{ npcId: 1103, npcName: 'Eldrin', loc, service: 'Red Linen Robe', cost: 250 }],
+      vendors: [{ npcId: 1347, npcName: 'Alexandra Bolero', loc, itemId: 2598, price: 1200 }],
+      drops: [],
+    });
+    const thread = (await get('/v1/professions/sources?itemId=2320')).json();
+    expect(thread.vendors).toEqual([
+      expect.objectContaining({ npcId: 1347, itemId: 2320, price: 10, stack: 5, numAvailable: -1 }),
+    ]);
+  });
+
+  it('/v1/professions/gathering: the mined vein and fishing', async () => {
+    const res = await get(`/v1/professions/gathering?build=${build}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      {
+        build,
+        objectId: 1731,
+        name: 'Copper Vein',
+        skillLineId: 186,
+        opens: 2,
+        rankMin: 70,
+        zones: [{ mapId: 1429, spots: 2 }],
+        loot: [
+          { itemId: 2770, name: 'Copper Ore', count: 2, quantity: 4, perOpen: 1, qtyPerOpen: 2 },
+        ],
+      },
+      {
+        build,
+        objectId: 0,
+        name: null,
+        skillLineId: 356,
+        opens: 1,
+        rankMin: 25,
+        zones: [{ mapId: 1429, spots: 1 }],
+        loot: [
+          {
+            itemId: 6303,
+            name: 'Raw Slitherskin Mackerel',
+            count: 1,
+            quantity: 1,
+            perOpen: 1,
+            qtyPerOpen: 1,
+          },
+        ],
+      },
+    ]);
+  });
+});
+
 describe('toCsv', () => {
   it('quotes commas, quotes and newlines and JSON-encodes objects', () => {
     expect(toCsv([{ a: 'x,y', b: 'say "hi"', c: { k: 1 }, d: null }], ['a', 'b', 'c', 'd'])).toBe(

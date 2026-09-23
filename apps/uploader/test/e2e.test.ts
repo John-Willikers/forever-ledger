@@ -178,6 +178,42 @@ describe('upload-once end to end (mock server implementing the ingest contract)'
     expect(server.ingestRequests).toBe(requests);
   });
 
+  it("schema 4: the real addon's session-v4.lua uploads every record, every professions kind included", async () => {
+    await env.writeSv(await readFixture('session-v4.lua'));
+    const { records } = normalize(await loadFixtureDb('session-v4.lua'));
+    const total = toEntries(records).length;
+
+    server = await startMockServer();
+    const first = await pass(server.url);
+    expect(first.ok).toBe(true);
+    expect(first.flush).toMatchObject({ acked: total, pendingBatches: 0, errors: [] });
+    expect(server.receivedKeys).toHaveLength(total);
+    expect(server.batches.every((b) => b.schemaVersion === 4)).toBe(true);
+    const received = (kind: keyof typeof records) =>
+      server!.batches.reduce((n, b) => n + b.records[kind].length, 0);
+    for (const kind of [
+      'skills',
+      'skillUps',
+      'recipes',
+      'recipeSnapshots',
+      'recipeStatus',
+      'recipeDifficulty',
+      'recipesLearned',
+      'crafts',
+      'nodes',
+      'nodeLoot',
+      'trainers',
+      'vendors',
+      'apiSamples',
+    ] as const)
+      expect(received(kind), kind).toBeGreaterThanOrEqual(1);
+
+    // Unchanged file: nothing more is sent.
+    const requests = server.ingestRequests;
+    expect((await pass(server.url)).ok).toBe(true);
+    expect(server.ingestRequests).toBe(requests);
+  });
+
   it('bad token → 401 stops the pass with a clear message', async () => {
     await env.writeSv(await readFixture('session-v1.lua'));
     server = await startMockServer({ token: 'another-token' });
