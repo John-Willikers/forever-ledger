@@ -2,14 +2,127 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
     <title>Forever Ledger</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main>
+    <header>
       <h1>Forever Ledger</h1>
-      <p id="status"></p>
+      <p id="banner" class="banner" role="alert" hidden></p>
+    </header>
+
+    <section id="setup" class="card" hidden>
+      <h2>Set up</h2>
+      <p class="muted">
+        Point Forever Ledger at your World of Warcraft folder and paste your upload token. It then
+        uploads what the ForeverLedger addon records and keeps the addon up to date.
+      </p>
+      <div class="field">
+        <span class="label">World of Warcraft folder</span>
+        <div class="row">
+          <span id="setup-wow" class="path">Not chosen</span>
+          <button id="setup-pick" type="button">Choose…</button>
+        </div>
+        <ul id="setup-found" class="notes"></ul>
+      </div>
+      <div class="field">
+        <label class="label" for="setup-token">Upload token</label>
+        <input id="setup-token" type="password" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="field">
+        <label class="label" for="setup-server">Server</label>
+        <input id="setup-server" type="text" readonly value="https://ledger.willikers.dev" />
+      </div>
+      <p id="setup-error" class="error" hidden></p>
+      <div class="actions">
+        <button id="setup-save" type="button" class="primary">Save and start</button>
+      </div>
+    </section>
+
+    <main id="main" hidden>
+      <section class="card" data-card="uploads">
+        <h2>Uploads</h2>
+        <p id="uploads-line" class="line"></p>
+        <ul id="uploads-accounts" class="notes"></ul>
+        <p id="uploads-error" class="error" hidden></p>
+        <div class="actions">
+          <button id="upload-now" type="button">Upload now</button>
+          <button id="pause" type="button">Pause uploads</button>
+        </div>
+      </section>
+
+      <section class="card" data-card="addon">
+        <h2>Addon</h2>
+        <p id="addon-line" class="line"></p>
+        <p id="addon-detail" class="muted"></p>
+        <p id="addon-error" class="error" hidden></p>
+        <div class="actions">
+          <button id="addon-update" type="button">Update now</button>
+          <button id="addon-rollback" type="button">Roll back</button>
+        </div>
+      </section>
+
+      <section class="card" data-card="app">
+        <h2>App</h2>
+        <p id="app-line" class="line"></p>
+        <div class="actions">
+          <button id="restart-update" type="button" class="primary" hidden>
+            Restart to update
+          </button>
+        </div>
+      </section>
+
+      <section class="card" data-card="settings">
+        <h2>Settings</h2>
+        <div class="field">
+          <span class="label">World of Warcraft folder</span>
+          <div class="row">
+            <span id="set-wow" class="path"></span>
+            <button id="set-pick" type="button">Change…</button>
+          </div>
+          <ul id="set-found" class="notes"></ul>
+        </div>
+        <div class="field">
+          <span class="label">Server</span>
+          <span id="set-server" class="path"></span>
+        </div>
+        <div class="field">
+          <label class="label" for="set-token"
+            >Upload token <span id="set-token-state" class="muted"></span
+          ></label>
+          <div class="row">
+            <input
+              id="set-token"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Paste a new token"
+            />
+            <button id="set-token-save" type="button">Save</button>
+          </div>
+        </div>
+        <label class="check"
+          ><input id="set-startup" type="checkbox" /> Start with Windows (starts hidden in the
+          tray)</label
+        >
+        <label class="check"
+          ><input id="set-autoaddon" type="checkbox" /> Keep the addon up to date
+          automatically</label
+        >
+        <p id="settings-error" class="error" hidden></p>
+        <div class="actions">
+          <button id="open-logs" type="button">Open logs folder</button>
+        </div>
+      </section>
+
+      <section class="card" data-card="activity">
+        <h2>Activity</h2>
+        <ol id="log" class="log"></ol>
+      </section>
     </main>
     <script src="renderer.js"></script>
   </body>
