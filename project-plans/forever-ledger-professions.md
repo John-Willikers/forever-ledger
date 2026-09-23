@@ -32,6 +32,9 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 5 🔖 Addon release plumbing — 17:44 CDT (75c65b1, 2001717; real addon output validates with zero problems across all 13 kinds)
 - ✅ 6 📊 Server routes (`/v1/professions/*`) — 17:29 CDT (f17b8d4)
 - ✅ 7 🖥️ Tray v0.1.3 — 17:29 CDT (3109503, not released yet)
+- ✅ 7b 🧹 Review fixes — 18:20 CDT (6698173…aeec82c: per-harvest nodes, node names from UNIT_SPELLCAST_SENT, skill-up
+  and difficulty attribution, trainer `complete` + merge, newer-wins trainers/vendors, errors sample, scan spreading;
+  166 Lua / 393 vitest)
 - ⬜ 8 🚀 Rollout (server → tray → addon 0.3.0)
 - ⬜ 9 🔍 Live verification (api_samples, then data)
 
@@ -43,7 +46,7 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 | SV table | Filled from | Record kind → server table |
 |---|---|---|
 | `skills[char][skillLineID] = {name, rank, maxRank, modifier, parentID, lastSeen}` | `C_SkillInfo.GetNumSkillLines/GetSkillLineInfo` (documented fields) on login + `SKILL_LINES_CHANGED`; profession details from `C_TradeSkillUI.GetProfessionInfoBySkillLineID` when a window is open | `skill` → `skills` (char+skillLine, upsert) |
-| `skillUps[] = {char, skillLineID, from, to, build, time, recipeID?}` (cap 2000) | rank delta on `SKILL_LINES_CHANGED`; `recipeID` = last craft/gather within 5 s | `skillUp` → `skill_ups` |
+| `skillUps[] = {char, skillLineID, from, to, build, time, recipeID?}` (cap 2000) | rank delta on `SKILL_LINES_CHANGED`; `recipeID` = last craft within 5 s when the risen line is the recipe's line or its parent/child (credited to `crafts.skillUps` once per craft) | `skillUp` → `skill_ups` |
 | `recipes[recipeID] = {name, skillLineID, categoryID, byBuild[build] = {outputItemID, qtyMin, qtyMax, reagents[], maxTrivial?, sourceText?}}` | `TRADE_SKILL_SHOW`/`LIST_UPDATE` (throttled, only own profession: skip when `IsTradeSkillLinked/Guild`, `IsNPCCrafting`, `IsDataSourceChanging`) → `GetAllRecipeIDs` → `GetRecipeInfo` + `GetRecipeSchematic` once per recipe per build; reagent/output items go through `scanItem` | `recipe` (keepKnown) + `recipeSnapshot` (recipe+build) |
 | `recipeSeen[build][char][recipeID] = {learned, rank, difficulty, numSkillUps}` → per difficulty keep `minRank/maxRank` | same scan; `relativeDifficulty` at the character's current rank ⇒ over time gives the orange/yellow/green/gray thresholds | `recipeDifficulty` (recipe+build+char+difficulty: minRank, maxRank) |
 | `learned[] = {char, recipeID, build, time, via = "trainer:<npcID>" / "item:<itemID>" / "unknown"}` | `NEW_RECIPE_LEARNED` (+ trainer window open, or a Recipe-class item used in the last 5 s) | `recipeLearned` |
@@ -82,6 +85,12 @@ Each addon phase ends with a reviewer pass (spec + quality); the schema/server p
 - `TRADE_SKILL_ITEM_CRAFTED_RESULT` may not fire for Classic-style crafts → fallbacks (spellcast + "You create").
 - Recipe item → recipe mapping (e.g. "Pattern: X" teaches recipe X) is done server-side by name/learn events, not guaranteed for every item.
 - Required skill for a node is inferred as the lowest rank seen gathering it (no tooltip parsing).
+- 🧪 Live probe must confirm (review fixes): `UNIT_SPELLCAST_SENT` target is the node name for gather casts; the order
+  of `TRADE_SKILL_SHOW` / `_DATA_SOURCE_CHANGING` / `_CHANGED` / `_CLOSE` on open, switch and close, and that
+  `GetBaseProfessionInfo()` is filled at `TRADE_SKILL_SHOW` and empty after close; `GetTrainerServiceTypeFilter`
+  returns and header `isExpanded`; whether a multi-harvest vein keeps its GUID; `TRADE_SKILL_ITEM_CRAFTED_RESULT` for
+  bonus items (and its `recipeID` field); `ProfessionInfo.parentProfessionID` and child lines in `C_SkillInfo`;
+  `C_Item.GetItemSpell` for recipe items; `ADDON_ACTION_BLOCKED` first argument is the addon name.
 
 ## 📐 Appendix — exact shapes (both lanes build against this)
 
@@ -100,6 +109,8 @@ db.recipeSeen[build][char][recipeID] = { learned=, difficulty=, rank=, seenAt=,
 db.learned = { { char=, recipeID=, build=, time=, via= }, ... }   -- via "trainer:<npcID>" | "item:<itemID>" | "unknown"; cap 2000
 db.crafts[build][recipeID] = { casts=, qty=, procs=, skillUps= }                                 -- per session
 db.nodes[build][objectID] = { opened=, name=, rankMin=, skillLineID=, spots = { [mapID] = { "x,y", ... } } }  -- per session; fishing = objectID 0; ≤50 spots per map
+  -- opened counts harvests: a GUID opened after a new gather cast is a new harvest (veins/herbs give 2-3), without a
+  -- gather cast once per GUID; name = the gather cast's UNIT_SPELLCAST_SENT target, else the world tooltip
 db.nodeLoot[itemID][build][objectID] = { n=, qty= }                                             -- per session
 db.trainers[build][npcID] = { name=, loc=, skillLineID=, seenAt=, complete=,
   services = { { name=, type=, cost=, skill=, skillRank=, level=, itemID= }, ... } }
@@ -109,7 +120,12 @@ db.vendors[build][npcID] = { name=, loc=, seenAt=,
   items = { { itemID=, price=, stack=, numAvailable=, currencyID=, extendedCost= }, ... } }
 db.items[itemID].classID / .subclassID                                                           -- new optional fields
 db.apiSamples[api] = { build=, time=, sample= }   -- api e.g. "C_TradeSkillUI.GetRecipeInfo"; sample = the returned table,
-                                                  -- depth ≤ 2, ≤ 60 keys, strings ≤ 200 chars, functions/userdata dropped
+                                                  -- depth ≤ 2, ≤ 60 keys, strings ≤ 200 chars, functions/userdata dropped;
+                                                  -- contracts reject a sample over 16 KB of JSON (that record only)
+db.apiSamples["ForeverLedger.fieldMisses"].sample = { ["api:firstName"] = "firstName|otherName" }   -- required reads that found no name
+db.apiSamples["ForeverLedger.errors"].sample = { [place] = { msg=, count=, last= } }   -- per build, ≤ 40 places, msg ≤ 200 chars:
+  -- place = handler/function name, "scan:<window>", "event:<EVENT>", "blocked:<fn>" / "forbidden:<fn>"
+  -- (ADDON_ACTION_* blamed on ForeverLedger) or "warning:<text>" (LUA_WARNING naming the addon)
 ```
 
 `loc` is the table `where()` already returns (`zone, subzone, mapID, x, y`).
