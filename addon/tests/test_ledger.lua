@@ -1,30 +1,54 @@
--- ForeverLedger v0.2.2 behaviour and fixture generation.
+-- ForeverLedger v0.2.3 behaviour and fixture generation.
 local S = require("scenario")
 
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
+local ADDON_0_2_2 = "legacy/ForeverLedger-0.2.2.lua" -- last schema 1 release, for the schema 1 fixture
 local FIXTURES = "../../fixtures/synthetic/"
 local ME = "Thibodeaux-Bayou"
 
-local function newSession(H, overrides, savedDB)
+local function newSession(H, overrides, savedDB, addon)
   local world = { items = S.items(), questLog = S.questLog() }
   for k, v in pairs(overrides or {}) do world[k] = v end
   local ctl = H.new(world)
   ctl.env.ForeverLedgerDB = savedDB
-  ctl.load(ADDON)
+  ctl.load(addon or ADDON)
   return ctl
 end
 
-return function(H)
-  local ctl = newSession(H)
+-- The scenario, then a second session on a newer build with changed item stats (both snapshots must survive).
+local function twoSessions(H, addon)
+  local ctl = newSession(H, nil, nil, addon)
   local start = ctl.world.clock
   S.play(ctl, "ForeverLedger")
   local db = ctl.env.ForeverLedgerDB
 
+  local items2 = S.items()
+  items2[872].ilvl, items2[872].stats = 22, { ITEM_MOD_STRENGTH_SHORT = 8, ITEM_MOD_STAMINA_SHORT = 2 }
+  local ctl2 = newSession(H, { items = items2, buildInfo = { "1.15.8", "61600", "Oct 01 2026", 11508 },
+                               clock = ctl.world.clock + 86400 }, H.copy(db), addon)
+  ctl2.login("ForeverLedger")
+  ctl2.world.instance = S.DEADMINES
+  ctl2.fire("PLAYER_ENTERING_WORLD", false, false)
+  ctl2.world.loot = { { itemID = 872, sourceGUID = "Creature-0-1-36-1-644-0000999" } }
+  ctl2.fire("LOOT_OPENED")
+  ctl2.advance(1200)
+  ctl2.world.instance = nil
+  ctl2.fire("ZONE_CHANGED_NEW_AREA")
+  return db, ctl2.env.ForeverLedgerDB, start
+end
+
+return function(H)
+  -- Schema 1 fixture from the real 0.2.2 addon: the TS side must keep reading files written before 0.2.3.
+  local _, v1 = twoSessions(H, ADDON_0_2_2)
+  H.writeFile(FIXTURES .. "session-v1.lua", H.serialize("ForeverLedgerDB", v1))
+
+  local db, db2, start = twoSessions(H)
+
   H.test("ledger: meta carries schema and build", function()
-    H.eq(db.meta.schemaVersion, 1)
+    H.eq(db.meta.schemaVersion, 2)
     H.eq(db.meta.build, 61582)
     H.eq(db.meta.interface, 11507)
-    H.eq(db.meta.addonVersion, "0.2.2")
+    H.eq(db.meta.addonVersion, "0.2.3")
     H.eq(db.chars[ME].class, "HUNTER")
   end)
 
@@ -84,26 +108,19 @@ return function(H)
     H.eq(t.build, 61582)
     H.eq(t.id, ME .. "-1234-" .. t.time)
     H.eq(t.runID, db.runs[1].id)
+    H.eq(t.choice.index, 1)
+    H.eq(t.choice.itemID, 5555)
+  end)
+
+  H.test("ledger: schema 1 fixture comes from 0.2.2 and has no choice", function()
+    H.eq(v1.meta.schemaVersion, 1)
+    H.eq(v1.meta.addonVersion, "0.2.2")
+    H.eq(v1.turnIns[1].choice, nil)
   end)
 
   H.test("ledger: drops are counted per build and source npc, once per corpse", function()
     H.eq(db.drops[872][61582][644], 1)
   end)
-
-  -- Second session on a newer build with changed item stats: both snapshots must survive.
-  local items2 = S.items()
-  items2[872].ilvl, items2[872].stats = 22, { ITEM_MOD_STRENGTH_SHORT = 8, ITEM_MOD_STAMINA_SHORT = 2 }
-  local ctl2 = newSession(H, { items = items2, buildInfo = { "1.15.8", "61600", "Oct 01 2026", 11508 },
-                               clock = ctl.world.clock + 86400 }, db)
-  ctl2.login("ForeverLedger")
-  ctl2.world.instance = S.DEADMINES
-  ctl2.fire("PLAYER_ENTERING_WORLD", false, false)
-  ctl2.world.loot = { { itemID = 872, sourceGUID = "Creature-0-1-36-1-644-0000999" } }
-  ctl2.fire("LOOT_OPENED")
-  ctl2.advance(1200)
-  ctl2.world.instance = nil
-  ctl2.fire("ZONE_CHANGED_NEW_AREA")
-  local db2 = ctl2.env.ForeverLedgerDB
 
   H.test("ledger: a new build adds snapshots instead of overwriting", function()
     H.eq(db2.meta.build, 61600)
@@ -163,5 +180,5 @@ return function(H)
     H.eq(d.drops[872][61582][0], 1) -- unknown source npc
   end)
 
-  H.writeFile(FIXTURES .. "session-v1.lua", H.serialize("ForeverLedgerDB", db2))
+  H.writeFile(FIXTURES .. "session-v2.lua", H.serialize("ForeverLedgerDB", db2))
 end

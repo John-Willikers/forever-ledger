@@ -1,9 +1,9 @@
--- Forever Ledger v0.2.3 (SavedVariables schema 2)
+-- Forever Ledger v0.2.2 (SavedVariables schema 1)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.2.3"
-local SCHEMA_VERSION = 2 -- 2 adds turnIns[].choice; schema 1 data is valid schema 2 as it is
+local VERSION = "0.2.2"
+local SCHEMA_VERSION = 1
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local f = CreateFrame("Frame")
 
@@ -204,111 +204,6 @@ local function captureQuestFrame(stage)
   o.choices = nChoice > 0 and readItemList("choice", nChoice) or nil
   o.rewards = nReward > 0 and readItemList("reward", nReward) or nil
   o.npc = { name = UnitName("npc"), id = npcIDFromGUID(UnitGUID("npc")), loc = where() }
-  return questID, o
-end
-
----------------------------------------------------------------- chosen reward
--- The reward window only lists the choices; which one you took is only visible as the argument the quest frame
--- passes to GetQuestReward when you click Complete. A post-hook reads that argument (it never calls anything) and
--- the next QUEST_TURNED_IN for the same quest gets it.
-local CHOICE_TTL = 60   -- seconds: a remembered pick older than this is dropped
-local completeWindow    -- { questID =, choices = } from the last QUEST_COMPLETE
-local pendingChoice     -- { questID =, index =, itemID =, at = }
-
-local function onGetQuestReward(index)
-  if type(index) ~= "number" or index < 1 then return end
-  local questID = GetQuestID and GetQuestID()
-  if not questID or questID == 0 then questID = completeWindow and completeWindow.questID end
-  if not questID then return end
-  local choices = completeWindow and completeWindow.questID == questID and completeWindow.choices
-  local n = choices and #choices or (GetNumQuestChoices and GetNumQuestChoices() or 0)
-  if n < 1 or index > n then return end
-  local itemID = choices and choices[index] and choices[index].itemID
-  if not itemID and GetQuestItemLink then itemID = idFromLink(GetQuestItemLink("choice", index)) end
-  if not itemID then return end
-  pendingChoice = { questID = questID, index = index, itemID = itemID, at = now() }
-end
-
-if hooksecurefunc and GetQuestReward then
-  -- pcall: an error here must never surface in the middle of turning a quest in
-  hooksecurefunc("GetQuestReward", function(index) pcall(onGetQuestReward, index) end)
-end
-
--- The pick for questID, if one is waiting and fresh. Consumes it.
-local function takeChoice(questID)
-  local p = pendingChoice
-  if not p then return end
-  if now() - p.at > CHOICE_TTL then pendingChoice = nil; return end
-  if p.questID ~= questID then return end
-  pendingChoice = nil
-  return { index = p.index, itemID = p.itemID }
-end
-
----------------------------------------------------------------- objectives
--- Item objectives read before the item is cached come back as "0/10  " (count, no name). Such quests are asked
--- to load and re-read on QUEST_DATA_LOAD_RESULT / QUEST_WATCH_UPDATE / (throttled) QUEST_LOG_UPDATE until the
--- names are there or the quest leaves the log.
-local OBJ_REFRESH_GAP = 2 -- seconds between QUEST_LOG_UPDATE re-reads
-local blankObjectives = {} -- [questID] = true while some objective has no text
-local loadRequested = {}   -- [questID] = true once RequestLoadQuestByID was called this session
-local lastObjRefresh = 0
-
-local function isBlankObjective(text)
-  return type(text) ~= "string" or text:match("^%s*$") ~= nil or text:match("^%s*%d+/%d+%s*$") ~= nil
-    or text:match("^%s*:%s*%d+/%d+%s*$") ~= nil
-end
-
-local function readObjectives(logIndex, questID)
-  local objs = {}
-  if QuestLog.GetQuestObjectives and questID then
-    local ok, list = pcall(QuestLog.GetQuestObjectives, questID)
-    if ok and type(list) == "table" then
-      for _, o in ipairs(list) do
-        objs[#objs + 1] = type(o) == "table" and type(o.text) == "string" and o.text or ""
-      end
-    end
-  end
-  if #objs == 0 and GetNumQuestLeaderBoards and GetQuestLogLeaderBoard then
-    for j = 1, (GetNumQuestLeaderBoards(logIndex) or 0) do
-      objs[#objs + 1] = GetQuestLogLeaderBoard(j, logIndex)
-    end
-  end
-  return objs
-end
-
--- Stores what was read, never replacing a named objective with a blank one, and tracks blanks.
-local function applyObjectives(q, questID, objs)
-  if #objs == 0 then return end
-  local old, anyBlank = q.objectives or {}, false
-  for j, text in ipairs(objs) do
-    if isBlankObjective(text) and old[j] and not isBlankObjective(old[j]) then objs[j] = old[j] end
-    if isBlankObjective(objs[j]) then anyBlank = true end
-  end
-  q.objectives = objs
-  if not anyBlank then blankObjectives[questID] = nil; return end
-  blankObjectives[questID] = true
-  if not loadRequested[questID] and QuestLog.RequestLoadQuestByID then
-    loadRequested[questID] = true
-    pcall(QuestLog.RequestLoadQuestByID, questID)
-  end
-end
-
--- Re-reads objectives of the tracked quests (or just onlyID); drops quests no longer in the log.
-local function refreshBlankObjectives(onlyID)
-  if not next(blankObjectives) or not NumLogEntries then return end
-  if onlyID and not blankObjectives[onlyID] then return end
-  lastObjRefresh = now()
-  local inLog = {}
-  for i = 1, NumLogEntries() do
-    local _, _, _, isHeader, qid = logEntry(i)
-    if not isHeader and qid and blankObjectives[qid] and (not onlyID or qid == onlyID) then
-      inLog[qid] = true
-      applyObjectives(questRec(qid), qid, readObjectives(i, qid))
-    end
-  end
-  for qid in pairs(blankObjectives) do
-    if not inLog[qid] and (not onlyID or qid == onlyID) then blankObjectives[qid] = nil end
-  end
 end
 
 -- Pulls level, group size, category (zone/dungeon header) and objectives from the quest log
@@ -323,7 +218,11 @@ local function captureFromLog(questID)
       local q = questRec(qid)
       q.title, q.level, q.category = title, level, header
       q.suggestedGroup = (suggestedGroup and suggestedGroup > 0) and suggestedGroup or nil
-      applyObjectives(q, qid, readObjectives(i, qid))
+      local objs = {}
+      for j = 1, (GetNumQuestLeaderBoards(i) or 0) do
+        objs[#objs + 1] = GetQuestLogLeaderBoard(j, i)
+      end
+      if #objs > 0 then q.objectives = objs end
       if questID then return end
     end
   end
@@ -509,9 +408,8 @@ local function initDB()
   db.meta = db.meta or {}
   if not db.meta.schemaVersion then
     if next(db.quests) or next(db.items) or next(db.runs) or next(db.drops) then migrateV0() end
+    db.meta.schemaVersion = SCHEMA_VERSION
   end
-  -- 1 -> 2 only adds turnIns[].choice, so schema 1 data needs nothing but the new stamp.
-  if (tonumber(db.meta.schemaVersion) or 0) < SCHEMA_VERSION then db.meta.schemaVersion = SCHEMA_VERSION end
 
   local version, buildStr, buildDate, interface = GetBuildInfo()
   build = tonumber(buildStr) or 0
@@ -544,10 +442,7 @@ end
 function handlers.PLAYER_ENTERING_WORLD() checkInstance() end
 function handlers.ZONE_CHANGED_NEW_AREA() checkInstance() end
 function handlers.QUEST_DETAIL() captureQuestFrame("detail") end
-function handlers.QUEST_COMPLETE()
-  local questID, o = captureQuestFrame("complete")
-  completeWindow = questID and { questID = questID, choices = o.choices } or nil
-end
+function handlers.QUEST_COMPLETE() captureQuestFrame("complete") end
 function handlers.PLAYER_XP_UPDATE() onXP() end
 function handlers.LOOT_OPENED() onLootOpened() end
 
@@ -562,7 +457,7 @@ function handlers.QUEST_TURNED_IN(questID, xp, money)
   local t = now()
   local entry = { id = charKey() .. "-" .. questID .. "-" .. t, questID = questID, build = build,
                   char = charKey(), xp = xp, money = money, level = UnitLevel("player"), time = t,
-                  runID = run and run.id or nil, choice = takeChoice(questID) }
+                  runID = run and run.id or nil }
   db.turnIns[#db.turnIns + 1] = entry
   trim(db.turnIns, HISTORY_CAP)
   added()
@@ -590,13 +485,6 @@ function handlers.PLAYER_DEAD() if run then run.deaths = run.deaths + 1 end end
 function handlers.GET_ITEM_INFO_RECEIVED(itemID)
   local link = pendingItems[itemID]
   if link then scanItem(itemID, type(link) == "string" and link or nil) end
-end
-
-function handlers.QUEST_DATA_LOAD_RESULT(questID) refreshBlankObjectives(questID) end
-function handlers.QUEST_WATCH_UPDATE(questID) refreshBlankObjectives(questID) end
-
-function handlers.QUEST_LOG_UPDATE()
-  if next(blankObjectives) and now() - lastObjRefresh >= OBJ_REFRESH_GAP then refreshBlankObjectives() end
 end
 
 for event in pairs(handlers) do pcall(f.RegisterEvent, f, event) end -- pcall: skip events a client lacks

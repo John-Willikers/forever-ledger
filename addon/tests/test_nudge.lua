@@ -159,6 +159,6 @@ return function(H)
     for k in pairs(d.meta) do meta[#meta + 1] = k end
     table.sort(meta)
     H.eq(table.concat(meta, ","), "addonVersion,build,buildDate,interface,lastChar,schemaVersion,version")
-    H.eq(d.meta.schemaVersion, 1)
+    H.eq(d.meta.schemaVersion, 2)
   end)
 end

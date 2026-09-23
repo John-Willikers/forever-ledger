@@ -90,7 +90,7 @@ describe('analysis and export routes', () => {
     const csv = await get('/v1/export?format=csv&table=turn_ins');
     expect(csv.headers['content-type']).toMatch(/text\/csv/);
     expect(csv.body.split('\n')[0]).toBe(
-      'id,questId,build,char,xp,money,level,turnedInAt,runId,updatedAt',
+      'id,questId,build,char,xp,money,level,turnedInAt,runId,choiceIndex,choiceItemId,updatedAt',
     );
     expect((await get('/v1/export?format=csv')).statusCode).toBe(400);
     expect((await get('/v1/export?table=api_tokens')).statusCode).toBe(400);

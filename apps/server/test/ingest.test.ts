@@ -148,9 +148,38 @@ describe('ingest API (real Postgres)', () => {
     expect(i.rows[0]).toMatchObject({ name: item.name, quality: item.quality });
   });
 
+  it('accepts schema 1 and 2 batches and stores the chosen reward from schema 2', async () => {
+    const v1 = batchFromFixture('session-v1.lua');
+    const v2 = batchFromFixture('session-v2.lua');
+    expect([v1.schemaVersion, v2.schemaVersion]).toEqual([1, 2]);
+    const id = v2.records.turnIns[0]!.id;
+    expect(v1.records.turnIns[0]!.id).toBe(id);
+    const choiceOf = async () =>
+      (
+        await s.database.pool.query(
+          'select choice_index, choice_item_id from turn_ins where id = $1',
+          [id],
+        )
+      ).rows[0];
+
+    expect((await post(v1)).statusCode).toBe(200);
+    expect(await choiceOf()).toEqual({ choice_index: null, choice_item_id: null });
+
+    const res = await post(v2);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().acknowledged).toContainEqual({
+      key: `turnin:${id}`,
+      hash: contentHash(v2.records.turnIns[0]),
+    });
+    expect(await choiceOf()).toEqual({ choice_index: 1, choice_item_id: 5555 });
+    expect(await s.count('turn_ins')).toBe(1);
+  });
+
   it('rejects unknown schema versions with 409 and malformed batches with 400', async () => {
     const batch = batchFromFixture('session-v1.lua');
-    expect((await post({ ...batch, schemaVersion: 2 })).statusCode).toBe(409);
+    const res409 = await post({ ...batch, schemaVersion: 3 });
+    expect(res409.statusCode).toBe(409);
+    expect(res409.json().error).toMatch(/accepts 1, 2/);
     const bad = structuredClone(batch) as unknown as { records: { runs: { start: unknown }[] } };
     bad.records.runs[0]!.start = 'yesterday';
     const res = await post(bad);

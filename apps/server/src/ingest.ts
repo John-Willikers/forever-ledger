@@ -202,7 +202,12 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       turnIns,
-      r.turnIns.map((t) => ({ ...t, turnedInAt: fromEpoch(t.time)! })),
+      r.turnIns.map(({ choice, ...t }) => ({
+        ...t,
+        turnedInAt: fromEpoch(t.time)!,
+        choiceIndex: choice?.index,
+        choiceItemId: choice?.itemId,
+      })),
       [turnIns.id],
     );
 

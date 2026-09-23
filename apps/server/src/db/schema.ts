@@ -116,6 +116,9 @@ export const turnIns = pgTable(
     level: integer('level'),
     turnedInAt: tz('turned_in_at').notNull(),
     runId: text('run_id'),
+    /** Schema 2: the picked reward (1-based index into the complete-stage choices). Null when none or unknown. */
+    choiceIndex: integer('choice_index'),
+    choiceItemId: integer('choice_item_id'),
     updatedAt: updatedAt(),
   },
   (t) => [

@@ -17,11 +17,15 @@ const load = (name: string) =>
   ).ForeverLedgerDB;
 
 describe('normalize — synthetic fixtures from the Lua harness', () => {
-  for (const name of ['session-v1.lua', 'session-migrated.lua']) {
+  for (const [name, schemaVersion] of [
+    ['session-v1.lua', 1],
+    ['session-v2.lua', 2],
+    ['session-migrated.lua', 2],
+  ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
       expect(problems).toEqual([]);
-      expect(meta.schemaVersion).toBe(1);
+      expect(meta.schemaVersion).toBe(schemaVersion);
       expect(records.quests).toHaveLength(1);
       expect(records.questObservations.length).toBeGreaterThanOrEqual(3);
       expect(records.turnIns).toHaveLength(1);
@@ -93,9 +97,44 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 2, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 2/,
+    expect(() => normalize({ meta: { schemaVersion: 3, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 3 is not supported \(expected 1 or 2\)/,
     );
+  });
+
+  it('maps a schema 2 turn-in choice (itemID) to choice.itemId', () => {
+    const { records, problems } = normalize({
+      meta: { schemaVersion: 2, addonVersion: '0.2.3', build: 5 },
+      turnIns: [
+        {
+          id: 'a-1-1',
+          questID: 1,
+          build: 5,
+          char: 'A-R',
+          time: 10,
+          choice: { index: 2, itemID: 99 },
+        },
+        {
+          id: 'a-2-1',
+          questID: 2,
+          build: 5,
+          char: 'A-R',
+          time: 11,
+          choice: { index: 0, itemID: 9 },
+        },
+      ],
+    });
+    expect(records.turnIns).toEqual([
+      {
+        id: 'a-1-1',
+        questId: 1,
+        build: 5,
+        char: 'A-R',
+        time: 10,
+        choice: { index: 2, itemId: 99 },
+      },
+    ]);
+    expect(problems[0]).toMatchObject({ kind: 'turnIns', path: 'turnIns.2' });
   });
 
   it('reads id-keyed tables that the parser turned into arrays', () => {
@@ -124,6 +163,42 @@ describe('normalize — edge cases', () => {
     expect(records.turnIns).toHaveLength(1);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatchObject({ kind: 'turnIns', path: 'turnIns.2' });
+  });
+});
+
+describe('normalize — schema 2 (addon 0.2.3)', () => {
+  const v1 = normalize(load('session-v1.lua'));
+  const v2 = normalize(load('session-v2.lua'));
+
+  it('records the chosen reward on the turn-in', () => {
+    expect(v2.meta).toMatchObject({ schemaVersion: 2, addonVersion: '0.2.3' });
+    expect(v2.records.turnIns[0]!.choice).toEqual({ index: 1, itemId: 5555 });
+  });
+
+  it('schema 1 turn-ins have no choice and keep their content hash', () => {
+    const t = v1.records.turnIns[0]!;
+    expect(t.choice).toBeUndefined();
+    const { choice: _c, ...rest } = t;
+    expect(contentHash(t)).toBe(contentHash(rest));
+  });
+
+  it('only the turn-in and meta differ between the 0.2.2 and 0.2.3 fixtures', () => {
+    for (const kind of RECORD_KINDS) {
+      if (kind === 'turnIns') continue;
+      expect(v2.records[kind]).toEqual(v1.records[kind]);
+    }
+    const { choice: _c, ...t2 } = v2.records.turnIns[0]!;
+    expect(t2).toEqual(v1.records.turnIns[0]);
+  });
+
+  it('accepts schema 1 and 2 upload batches, not 3', () => {
+    const batch = { uploaderId: 'pc-1', account: 'A', meta: v2.meta, records: v2.records };
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 2 }).success).toBe(true);
+    expect(
+      UploadBatch.safeParse({ ...batch, schemaVersion: 1, meta: v1.meta, records: v1.records })
+        .success,
+    ).toBe(true);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 3 }).success).toBe(false);
   });
 });
 

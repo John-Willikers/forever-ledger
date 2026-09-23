@@ -1,4 +1,4 @@
-import { normalize, SCHEMA_VERSION, UnsupportedSchemaError } from '@forever-ledger/contracts';
+import { normalize, UnsupportedSchemaError } from '@forever-ledger/contracts';
 import { SavedVariablesParseError } from '@forever-ledger/lua-sv-parser';
 import { resolve } from 'node:path';
 import { buildBatch, chunkEntries, diffRecords, toEntries } from './batches.js';
@@ -144,7 +144,11 @@ export interface FlushOptions {
   accounts?: string[];
 }
 
-function fatalFor(kind: 'unauthorized' | 'unsupported-schema', message: string) {
+function fatalFor(
+  kind: 'unauthorized' | 'unsupported-schema',
+  message: string,
+  schemaVersion: number,
+) {
   return kind === 'unauthorized'
     ? new FatalUploadError(
         'unauthorized',
@@ -152,7 +156,7 @@ function fatalFor(kind: 'unauthorized' | 'unsupported-schema', message: string) 
       )
     : new FatalUploadError(
         'unsupported-schema',
-        `the server does not accept schemaVersion ${SCHEMA_VERSION} (${message}). Update the Forever Ledger uploader (and addon); queued data is kept.`,
+        `the server does not accept schemaVersion ${schemaVersion} (${message}). Update the Forever Ledger uploader (and addon); queued data is kept.`,
       );
 }
 
@@ -239,7 +243,7 @@ export async function flushQueue(ctx: Ctx, opts: FlushOptions): Promise<FlushRes
         }
         case 'unauthorized':
         case 'unsupported-schema': {
-          const fatal = fatalFor(res.kind, res.message);
+          const fatal = fatalFor(res.kind, res.message, qb.batch.schemaVersion);
           log.error(fatal.message);
           await state.setError(account, fatal.message);
           out.fatal = fatal;

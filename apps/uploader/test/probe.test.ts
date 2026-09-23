@@ -30,7 +30,7 @@ describe('probe-dump', () => {
       interface: 11507,
       apiDocsAvailable: true,
       systems: 1,
-      globalFunctions: 51,
+      globalFunctions: 53,
       namespaces: 5,
       rejectedEvents: ['ENCOUNTER_END'],
     });

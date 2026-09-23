@@ -1,7 +1,19 @@
 import { z } from 'zod';
 
 /** SavedVariables / upload schema major. Bump together with `SCHEMA_VERSION` in the addon. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
+/**
+ * Schema majors this code reads. 2 only adds `turnIns[].choice` (addon 0.2.3), so schema 1 files and queued
+ * schema 1 batches stay valid as they are.
+ */
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2] as const;
+export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
+
+export const isSupportedSchemaVersion = (v: unknown): v is SchemaVersion =>
+  (SUPPORTED_SCHEMA_VERSIONS as readonly unknown[]).includes(v);
+
+const schemaVersion = z.union([z.literal(1), z.literal(2)]);
 
 const int = z.number().int();
 const nonNegInt = int.nonnegative();
@@ -33,7 +45,7 @@ export const RewardItem = z.object({
 export type RewardItem = z.infer<typeof RewardItem>;
 
 export const Meta = z.object({
-  schemaVersion: z.literal(SCHEMA_VERSION),
+  schemaVersion,
   addonVersion: z.string(),
   build,
   version: z.string().optional(),
@@ -93,6 +105,12 @@ export const QuestRewardOption = z.object({
 });
 export type QuestRewardOption = z.infer<typeof QuestRewardOption>;
 
+export const TurnInChoice = z.object({
+  index: int.min(1),
+  itemId: int.positive(),
+});
+export type TurnInChoice = z.infer<typeof TurnInChoice>;
+
 export const TurnIn = z.object({
   id: z.string().min(1).max(256),
   questId: nonNegInt,
@@ -103,6 +121,8 @@ export const TurnIn = z.object({
   level: nonNegInt.optional(),
   time: epochSecs,
   runId: z.string().max(256).optional(),
+  /** Schema 2: the reward the player picked (1-based index into the complete-stage `choices`). */
+  choice: TurnInChoice.optional(),
 });
 export type TurnIn = z.infer<typeof TurnIn>;
 
@@ -197,7 +217,8 @@ export type RecordKind = keyof Records;
 export const RECORD_KINDS = Object.keys(Records.shape) as RecordKind[];
 
 export const UploadBatch = z.object({
-  schemaVersion: z.number().int(),
+  /** The SavedVariables file's `meta.schemaVersion`, so the server knows the shape. */
+  schemaVersion,
   uploaderId: z.string().min(1).max(128),
   /** Which SavedVariables file this came from: the WoW account folder name on the uploader's PC. */
   account: z.string().min(1).max(128),

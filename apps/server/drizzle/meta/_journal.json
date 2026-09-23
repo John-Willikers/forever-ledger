@@ -15,6 +15,13 @@
       "when": 1790146682168,
       "tag": "0001_addon_releases",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790191913585,
+      "tag": "0002_turn_in_choice",
+      "breakpoints": true
     }
   ]
 }

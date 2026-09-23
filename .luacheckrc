@@ -31,7 +31,7 @@ read_globals = {
   "GetQuestID", "GetTitleText", "GetRewardXP", "GetRewardMoney", "GetNumQuestChoices", "GetNumQuestRewards",
   "GetQuestItemLink", "GetQuestItemInfo", "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogSelection",
   "SelectQuestLogEntry", "GetNumQuestLogChoices", "GetQuestLogItemLink", "GetQuestLogRewardMoney",
-  "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard",
+  "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard", "GetQuestReward",
   -- items / loot
   "GetItemInfo", "GetItemStats", "GetNumLootItems", "GetLootSlotLink", "GetLootSourceInfo",
 }

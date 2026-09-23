@@ -85,6 +85,27 @@ describe('upload-once end to end (mock server implementing the ingest contract)'
     expect(after?.lastSuccessAt).toBeTypeOf('number');
   });
 
+  it('uploads a schema 1 file, then only the turn-in that gained a choice after the addon update', async () => {
+    await env.writeSv(await readFixture('session-v1.lua'));
+    const total = toEntries(normalize(await loadFixtureDb('session-v1.lua')).records).length;
+    server = await startMockServer();
+    const first = await pass(server.url);
+    expect(first.ok).toBe(true);
+    expect(first.flush).toMatchObject({ acked: total, pendingBatches: 0, errors: [] });
+    expect(server.batches.map((b) => b.schemaVersion)).toEqual(server.batches.map(() => 1));
+
+    // Addon 0.2.3 writes the same play as schema 2: the turn-in now carries the chosen reward.
+    await env.writeSv(await readFixture('session-v2.lua'));
+    const sent = server.batches.length;
+    const second = await pass(server.url);
+    expect(second.ok).toBe(true);
+    expect(server.receivedKeys.slice(total)).toEqual(['turnin:Thibodeaux-Bayou-1234-1790001080']);
+    const batch = server.batches[sent]!;
+    expect(batch.schemaVersion).toBe(2);
+    expect(batch.meta.schemaVersion).toBe(2);
+    expect(batch.records.turnIns[0]?.choice).toEqual({ index: 1, itemId: 5555 });
+  });
+
   it('bad token → 401 stops the pass with a clear message', async () => {
     await env.writeSv(await readFixture('session-v1.lua'));
     server = await startMockServer({ token: 'another-token' });
