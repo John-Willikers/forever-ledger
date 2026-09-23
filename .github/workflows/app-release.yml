@@ -1,0 +1,27 @@
+name: app-release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: tag matches apps/desktop version
+        shell: bash
+        run: |
+          want="$(node -p "require('./apps/desktop/package.json').version")"
+          test "${GITHUB_REF_NAME#v}" = "$want" || { echo "tag $GITHUB_REF_NAME != package version $want"; exit 1; }
+      - run: pnpm --filter @forever-ledger/desktop build
+      - run: pnpm --filter @forever-ledger/desktop test:smoke
+      - run: pnpm --filter @forever-ledger/desktop exec electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ github.token }}

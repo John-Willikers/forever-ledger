@@ -13,3 +13,17 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y lua-check lua5.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm run check
+  desktop-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @forever-ledger/desktop build
+      - run: pnpm --filter @forever-ledger/desktop test:smoke
+      # Packaging check without publishing: catches electron-builder config errors on every PR.
+      - run: pnpm --filter @forever-ledger/desktop exec electron-builder --win --publish never
