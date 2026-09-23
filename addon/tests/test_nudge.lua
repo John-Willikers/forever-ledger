@@ -28,7 +28,7 @@ local function printed(ctl, text)
   return false
 end
 
--- Enters the Deadmines (a run: 1 record) and loots Rockslicer from Rhahk'Zor (drop + item snapshot: 2 records).
+-- Enters the Deadmines (a run: 1 record) and loots Rockslicer from Rhahk'Zor (corpse + drop + item snapshot: 3).
 local function enterAndLoot(ctl)
   ctl.world.instance = S.DEADMINES
   ctl.fire("PLAYER_ENTERING_WORLD", false, false)
@@ -45,7 +45,7 @@ return function(H)
     c.fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
     local n = nudges(c)
     H.eq(#n, 1)
-    H.ok(n[1]:find("Forever Ledger:|r 3 new records since your last /reload — type /reload to save them "
+    H.ok(n[1]:find("Forever Ledger:|r 4 new records since your last /reload — type /reload to save them "
       .. "(the tray app uploads within seconds).", 1, true), n[1])
   end)
 
@@ -100,7 +100,7 @@ return function(H)
     c.fire("QUEST_TURNED_IN", 1235, 900, 500)
     local n = nudges(c)
     H.eq(#n, 2)
-    H.ok(n[2]:find("|r 5 new records", 1, true), n[2])
+    H.ok(n[2]:find("|r 6 new records", 1, true), n[2])
   end)
 
   H.test("nudge: closing a run and a dungeon finder reward are checkpoints", function()
@@ -122,7 +122,7 @@ return function(H)
     c.fire("ENCOUNTER_END", 1, "Rhahk'Zor", 1, 5, 1)
     H.eq(#nudges(c), 0)
     c.slash("FOREVERLEDGER", "")
-    H.ok(printed(c, "3 new records since your last /reload (saved on the next /reload); reminders off."),
+    H.ok(printed(c, "4 new records since your last /reload (saved on the next /reload); reminders off."),
       "status shows the count and the switch")
     c.slash("FOREVERLEDGER", "nudge on")
     c.fire("ENCOUNTER_END", 2, "Edwin VanCleef", 1, 5, 1)
@@ -135,14 +135,15 @@ return function(H)
     S.play(c, "ForeverLedger")
     c.world.printed = {}
     c.slash("FOREVERLEDGER", "")
-    -- detail obs, 2 item snapshots (5555, 5556), accept obs, run, drop, snapshot 872, complete obs, turn-in.
+    -- detail obs, 2 item snapshots (5555, 5556), accept obs, run, corpse, drop, snapshot 872, boss loot, 3 group
+    -- loot entries (the won + received Rockslicer lines are one), snapshot 2589, complete obs, turn-in.
     -- Not counted: the reopened corpse, the resumed run, refreshed observations and already-snapshotted items.
-    H.ok(printed(c, "|r 9 new records since your last /reload"), table.concat(c.world.printed, "\n"))
+    H.ok(printed(c, "|r 15 new records since your last /reload"), table.concat(c.world.printed, "\n"))
     -- scanning the log adds one "log" observation
     c.world.printed = {}
     c.slash("FOREVERLEDGER", "scanlog")
     c.slash("FOREVERLEDGER", "")
-    H.ok(printed(c, "|r 10 new records"), table.concat(c.world.printed, "\n"))
+    H.ok(printed(c, "|r 16 new records"), table.concat(c.world.printed, "\n"))
   end)
 
   H.test("nudge: bookkeeping stays out of SavedVariables", function()
@@ -154,11 +155,12 @@ return function(H)
     local keys = {}
     for k in pairs(d) do keys[#keys + 1] = k end
     table.sort(keys)
-    H.eq(table.concat(keys, ","), "chars,drops,items,meta,quests,runs,turnIns")
+    H.eq(table.concat(keys, ","), "chars,corpses,dropQty,drops,items,meta,quests,runs,turnIns")
     local meta = {}
     for k in pairs(d.meta) do meta[#meta + 1] = k end
     table.sort(meta)
-    H.eq(table.concat(meta, ","), "addonVersion,build,buildDate,interface,lastChar,schemaVersion,version")
-    H.eq(d.meta.schemaVersion, 2)
+    H.eq(table.concat(meta, ","),
+      "addonVersion,build,buildDate,interface,lastChar,schemaVersion,session,version")
+    H.eq(d.meta.schemaVersion, 3)
   end)
 end

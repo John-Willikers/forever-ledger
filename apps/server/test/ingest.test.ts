@@ -259,6 +259,24 @@ describe('ingest API (real Postgres)', () => {
     });
   });
 
+  it('ingests the schema 3 fixture written by the 0.2.4 addon', async () => {
+    const batch = batchFromFixture('session-v3.lua', 'ACCOUNT-V3');
+    expect(batch.schemaVersion).toBe(3);
+    const res = await post(batch);
+    expect(res.statusCode).toBe(200);
+    const { rows } = await s.database.pool.query(
+      `select npc_id, build, count, copper from corpses where account = 'ACCOUNT-V3' order by build`,
+    );
+    expect(rows).toEqual([
+      { npc_id: 644, build: 61582, count: 1, copper: 245 },
+      { npc_id: 644, build: 61600, count: 1, copper: 0 },
+    ]);
+    const run = await s.database.pool.query('select loot_method from runs where id = $1', [
+      batch.records.runs[0]!.id,
+    ]);
+    expect(run.rows[0].loot_method).toBe('group');
+  });
+
   it('schema 1/2 drops keep session "" next to schema 3 sessions of the same file', async () => {
     const acct = 'ACCOUNT-MIX';
     expect((await post(batchFromFixture('session-v2.lua', acct))).statusCode).toBe(200);

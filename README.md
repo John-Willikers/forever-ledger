@@ -20,11 +20,17 @@ Copy both folders from `addon/` into the Forever client's `Interface/AddOns/` fo
 
 | Addon                | What it does                                                                                                              | Commands                                                                                 |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, drops and dungeon runs.                   | `/fl` status · `/fl scanlog` · `/fl done` · `/fl nudge off` / `on` · `/fl reset confirm` |
+| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, loot and drop rates, and dungeon runs.    | `/fl` status · `/fl scanlog` · `/fl done` · `/fl nudge off` / `on` · `/fl reset confirm` |
 | `ForeverLedgerProbe` | Development only: dumps what the client supports (same API docs as `/api`, globals, events) and can sniff event payloads. | `/flprobe` dump · `/flprobe sniff on` / `off` · `/flprobe io …` · `/flprobe status`      |
 
 Data reaches disk only on `/reload`, logout or a clean exit, so `/reload` after each dungeon. Upgrading from
 v0.1.0 migrates your existing data the first time you log in.
+
+Since 0.2.4 it also records loot for drop rates: every corpse you loot once (with the copper it held), stack sizes,
+AoE loot split per corpse, and inside a grouped dungeon run the loot method, boss drops with rolls and winners from
+the loot history, and what party members receive in loot chat. Party members are stored by class only, never by name.
+Each load of the addon is a session (Forever starts every `/reload` with an empty file), and the server keeps every
+session, so repeated `/reload`s no longer overwrite each other's counts.
 
 Since 0.2.2 the addon reminds you at natural checkpoints (a boss kill, a dungeon run closing, a quest turn-in, a
 dungeon finder reward): `Forever Ledger: N new records since your last /reload — type /reload to save them`. It

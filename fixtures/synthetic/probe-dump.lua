@@ -106,53 +106,58 @@ ForeverLedgerProbeDB = {
 				"GetInstanceInfo", -- [4]
 				"GetItemInfo", -- [5]
 				"GetItemStats", -- [6]
-				"GetLootSlotLink", -- [7]
-				"GetLootSourceInfo", -- [8]
-				"GetNumLootItems", -- [9]
-				"GetNumQuestChoices", -- [10]
-				"GetNumQuestLeaderBoards", -- [11]
-				"GetNumQuestLogChoices", -- [12]
-				"GetNumQuestLogEntries", -- [13]
-				"GetNumQuestRewards", -- [14]
-				"GetQuestID", -- [15]
-				"GetQuestItemInfo", -- [16]
-				"GetQuestItemLink", -- [17]
-				"GetQuestLogItemLink", -- [18]
-				"GetQuestLogLeaderBoard", -- [19]
-				"GetQuestLogRewardMoney", -- [20]
-				"GetQuestLogSelection", -- [21]
-				"GetQuestLogTitle", -- [22]
-				"GetQuestReward", -- [23]
-				"GetRealZoneText", -- [24]
-				"GetRealmName", -- [25]
-				"GetRewardMoney", -- [26]
-				"GetSubZoneText", -- [27]
-				"GetTitleText", -- [28]
-				"InCombatLockdown", -- [29]
-				"IsInInstance", -- [30]
-				"LoadAddOn", -- [31]
-				"LoggingChat", -- [32]
-				"LoggingCombat", -- [33]
-				"ReloadUI", -- [34]
-				"SelectQuestLogEntry", -- [35]
-				"UnitAffectingCombat", -- [36]
-				"UnitClass", -- [37]
-				"UnitExists", -- [38]
-				"UnitFactionGroup", -- [39]
-				"UnitGUID", -- [40]
-				"UnitLevel", -- [41]
-				"UnitName", -- [42]
-				"UnitRace", -- [43]
-				"UnitXP", -- [44]
-				"UnitXPMax", -- [45]
-				"date", -- [46]
-				"floor", -- [47]
-				"format", -- [48]
-				"hooksecurefunc", -- [49]
-				"print", -- [50]
-				"strsplit", -- [51]
-				"time", -- [52]
-				"wipe", -- [53]
+				"GetLootSlotInfo", -- [7]
+				"GetLootSlotLink", -- [8]
+				"GetLootSlotType", -- [9]
+				"GetLootSourceInfo", -- [10]
+				"GetMoney", -- [11]
+				"GetNumGroupMembers", -- [12]
+				"GetNumLootItems", -- [13]
+				"GetNumQuestChoices", -- [14]
+				"GetNumQuestLeaderBoards", -- [15]
+				"GetNumQuestLogChoices", -- [16]
+				"GetNumQuestLogEntries", -- [17]
+				"GetNumQuestRewards", -- [18]
+				"GetQuestID", -- [19]
+				"GetQuestItemInfo", -- [20]
+				"GetQuestItemLink", -- [21]
+				"GetQuestLogItemLink", -- [22]
+				"GetQuestLogLeaderBoard", -- [23]
+				"GetQuestLogRewardMoney", -- [24]
+				"GetQuestLogSelection", -- [25]
+				"GetQuestLogTitle", -- [26]
+				"GetQuestReward", -- [27]
+				"GetRealZoneText", -- [28]
+				"GetRealmName", -- [29]
+				"GetRewardMoney", -- [30]
+				"GetSubZoneText", -- [31]
+				"GetTitleText", -- [32]
+				"InCombatLockdown", -- [33]
+				"IsInGroup", -- [34]
+				"IsInInstance", -- [35]
+				"LoadAddOn", -- [36]
+				"LoggingChat", -- [37]
+				"LoggingCombat", -- [38]
+				"ReloadUI", -- [39]
+				"SelectQuestLogEntry", -- [40]
+				"UnitAffectingCombat", -- [41]
+				"UnitClass", -- [42]
+				"UnitExists", -- [43]
+				"UnitFactionGroup", -- [44]
+				"UnitGUID", -- [45]
+				"UnitLevel", -- [46]
+				"UnitName", -- [47]
+				"UnitRace", -- [48]
+				"UnitXP", -- [49]
+				"UnitXPMax", -- [50]
+				"date", -- [51]
+				"floor", -- [52]
+				"format", -- [53]
+				"hooksecurefunc", -- [54]
+				"print", -- [55]
+				"strsplit", -- [56]
+				"time", -- [57]
+				"wipe", -- [58]
 			},
 			["globals"] = {
 				["C_AddOns"] = "table",
@@ -187,7 +192,7 @@ ForeverLedgerProbeDB = {
 				["GetItemInfo"] = "function",
 				["GetItemStats"] = "function",
 				["GetLocale"] = "nil",
-				["GetLootSlotInfo"] = "nil",
+				["GetLootSlotInfo"] = "function",
 				["GetLootSlotLink"] = "function",
 				["GetLootSourceInfo"] = "function",
 				["GetNumLootItems"] = "function",
@@ -239,9 +244,16 @@ ForeverLedgerProbeDB = {
 				["C_CombatLog"] = {
 					"IsCombatLogRestricted", -- [1]
 				},
+				["C_LootHistory"] = {
+					"GetSortedDropsForEncounter", -- [1]
+					"GetSortedInfoForDrop", -- [2]
+				},
 				["C_Map"] = {
 					"GetBestMapForUnit", -- [1]
 					"GetPlayerMapPosition", -- [2]
+				},
+				["C_PartyInfo"] = {
+					"GetLootMethod", -- [1]
 				},
 				["C_QuestLog"] = {
 					"GetInfo", -- [1]
@@ -544,7 +556,7 @@ ForeverLedgerProbeDB = {
 				["action"] = "reloadui-result",
 				["at"] = 1790000050,
 				["result"] = {
-					["err"] = "./harness.lua:171: Interface action failed because of an AddOn",
+					["err"] = "./harness.lua:186: Interface action failed because of an AddOn",
 					["ok"] = false,
 				},
 			}, -- [9]

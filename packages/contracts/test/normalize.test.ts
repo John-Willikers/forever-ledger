@@ -20,7 +20,8 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
   for (const [name, schemaVersion] of [
     ['session-v1.lua', 1],
     ['session-v2.lua', 2],
-    ['session-migrated.lua', 2],
+    ['session-v3.lua', 3],
+    ['session-migrated.lua', 3],
   ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
@@ -201,6 +202,61 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
         .success,
     ).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 4 }).success).toBe(false);
+  });
+});
+
+describe('normalize — schema 3 fixture from the 0.2.4 addon', () => {
+  const { meta, records } = normalize(load('session-v3.lua'));
+  const session = meta.session!;
+
+  it('has a session id and stamps it on drops and corpses', () => {
+    expect(meta).toMatchObject({ schemaVersion: 3, addonVersion: '0.2.4' });
+    expect(session).toMatch(/^\d+-[0-9a-f]{4}$/);
+    expect(records.drops).toContainEqual({
+      itemId: 872,
+      build: 61582,
+      npcId: 644,
+      session,
+      count: 1,
+      quantity: 1,
+    });
+    expect(records.corpses).toContainEqual({
+      npcId: 644,
+      build: 61582,
+      session,
+      count: 1,
+      copper: 245,
+    });
+  });
+
+  it('carries loot method, boss loot and group loot on the run, by class only', () => {
+    const run = records.runs[0]!;
+    expect(run.lootMethod).toBe('group');
+    expect(run.bossLoot).toEqual([
+      {
+        encounterId: 1,
+        lootListKey: 1,
+        itemId: 872,
+        winnerClass: 'WARRIOR',
+        winnerIsSelf: false,
+        rolls: [
+          { class: 'WARRIOR', roll: 91, state: 'needmainspec' },
+          { class: 'HUNTER', roll: 45, state: 'greed' },
+        ],
+      },
+    ]);
+    expect(run.groupLoot).toEqual([
+      { itemId: 872, qty: 1, by: 'party', class: 'WARRIOR', won: true },
+      { itemId: 2589, qty: 2, by: 'party', class: 'PRIEST' },
+      { itemId: 2589, qty: 3, by: 'self' },
+    ]);
+    expect(JSON.stringify(records)).not.toMatch(/Boudreaux|Fontenot/);
+  });
+
+  it('the migrated v0 file keeps session "" (its drops are running totals)', () => {
+    const migrated = normalize(load('session-migrated.lua'));
+    expect(migrated.meta.session).toBe('');
+    expect(migrated.records.drops.every((d) => d.session === '')).toBe(true);
   });
 });
 
