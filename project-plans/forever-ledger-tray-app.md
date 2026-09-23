@@ -26,17 +26,17 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Timestam
 
 ### 🌐 Phase 0 — Go public
 
-- ⬜ 0.1 gitleaks scan of full history is clean
-- ⬜ 0.2 Public repo `John-Willikers/forever-ledger` created, `master` pushed
-- ⬜ 0.3 CI green on GitHub; `CLAUDE.md` workflow → branch/PR
+- ✅ 0.1 gitleaks scan of full history is clean — 2026-09-23 01:13 CDT (11 commits, no leaks, no `flt_` tokens, no secret files)
+- ✅ 0.2 Public repo created, `master` + `feat/tray-app` pushed — 2026-09-23 01:13 CDT → https://github.com/John-Willikers/forever-ledger
+- ✅ 0.3 CI green on GitHub (run 35825738526, master) — 2026-09-23 01:14 CDT; `CLAUDE.md` workflow → branch/PR (e2d69ec)
 
 ### 📦 Phase 1 — Shared addon logic + uploader sync
 
-- ⬜ 1.1 contracts: `compareVersions`, `tocVersion`, `AddonManifest` schema, names
-- ⬜ 1.2 contracts: `verifyAddonZip` (sha, zip-slip, size, `.toc` version)
-- ⬜ 1.3 uploader: `fetchManifest` client
-- ⬜ 1.4 uploader: `installAddon` / `rollbackAddon` / `readInstalledVersion`
-- ⬜ 1.5 uploader: `syncAddon` orchestrator + pause-after-rollback state
+- ✅ 1.1 contracts: `compareVersions`, `tocVersion`, `AddonManifest` schema, names — 2026-09-23 01:28 CDT (b34acd4)
+- ✅ 1.2 contracts: `verifyAddonZip` (sha, zip-slip, size, `.toc` version) — 2026-09-23 01:28 CDT (28056c4, hardened after 2 review rounds: 03c40c5, 633871c; 63 tests)
+- 🟡 1.3 uploader: `fetchManifest` client
+- 🟡 1.4 uploader: `installAddon` / `rollbackAddon` / `readInstalledVersion`
+- 🟡 1.5 uploader: `syncAddon` orchestrator + pause-after-rollback state
 - ⬜ 1.6 uploader: `addon-sync` CLI command
 - ⬜ 1.7 uploader: `startWatch` `onEvent` hook + `trigger()`
 
@@ -378,6 +378,12 @@ export function verifyAddonZip(
 ```
 
 **Step 4:** PASS. **Step 5:** commit `feat(contracts): verifyAddonZip`.
+
+> 🔒 **Hardened after code review (2026-09-23):** the code above had holes: an unpacked-size bypass via overlapping
+> stored entries, Windows path segments (`C:`, `:ads`, `CON`, trailing dots), case-colliding `.toc` names and a `../`
+> manifest URL. The shipped version uses a per-segment allowlist, case-folded duplicate checks, stored/overlap size
+> accounting, per-entry length checks, wrapped fflate errors, an exact manifest URL, a single-line `tocVersion` and a
+> throwing `compareVersions`. See design rule 3 and commit `fix(contracts): harden verifyAddonZip and manifest url`.
 
 ### Task 1.3: Manifest client (uploader)
 

@@ -59,9 +59,17 @@ GitHub's "latest release" (which `electron-updater` reads) is always an app rele
 1. Ask the manifest for the build last seen in SavedVariables (no build yet → no `build` parameter).
 2. Install when the recommended version **differs** from the installed `.toc` `## Version` (a server pin to an older
    version is how rollback reaches the PC).
-3. Verify before writing anything: sha256 matches the manifest; every entry is under `ForeverLedger/` with no `..`,
-   no absolute path and no backslash tricks; total ≤ 5 MB; the zip's `.toc` Version equals the manifest version.
-   Any failure: install nothing, report 🔴, retry next cycle.
+3. Verify before writing anything (`verifyAddonZip`, shared by the tray app and the server's publish step):
+   - the zip is ≤ 5 MB and its sha256 matches the manifest;
+   - every entry is under `ForeverLedger/` and every path segment matches `[A-Za-z0-9_-][A-Za-z0-9_.-]*`, doesn't end
+     in `.` and isn't a Windows reserved name (`CON`, `AUX`, `COM1`, …), which rules out `..`, `C:`, `:ads` streams,
+     backslashes, NUL and trailing spaces;
+   - no duplicate names, no names that collide case-insensitively (NTFS), no file that is also a folder;
+   - only stored or deflate entries; the unpacked total (counting stored entries by their real size and rejecting
+     overlapping entries) is ≤ 5 MB, and each entry unpacks to its declared size;
+   - the `.toc` Version equals the manifest version.
+   - The manifest URL must be exactly `…/releases/download/addon-v<version>/ForeverLedger-<version>.zip` in our repo.
+   - Any failure: install nothing, report 🔴, retry next cycle.
 4. Swap: extract to `AddOns/.ForeverLedger.new` → rename `ForeverLedger` → `ForeverLedger.bak` (replacing an older
    `.bak`) → rename `.ForeverLedger.new` → `ForeverLedger`. Renames retry on Windows' transient EPERM/EBUSY; if the
    last rename fails, the `.bak` is renamed back.
