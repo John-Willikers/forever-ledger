@@ -5,6 +5,7 @@ import {
   buildBatch,
   chunkEntries,
   diffRecords,
+  emptyRecords,
   jsonBytes,
   MAX_BATCH_BYTES,
   MAX_BATCH_RECORDS,
@@ -105,17 +106,7 @@ describe('chunkEntries', () => {
       session: '',
       count: 1,
     }));
-    return toEntries({
-      characters: [],
-      quests: [],
-      questObservations: [],
-      turnIns: [],
-      items: [],
-      itemSnapshots: [],
-      drops,
-      corpses: [],
-      runs: [],
-    });
+    return toEntries({ ...emptyRecords(), drops });
   }
 
   it('defaults stay under the 5 MB server limit', () => {

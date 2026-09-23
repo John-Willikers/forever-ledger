@@ -5,20 +5,33 @@ import type { SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { Db } from './db/client.js';
 import {
+  apiSamples,
   builds,
   characters,
   corpses,
+  crafts,
   drops,
   items,
   itemSnapshots,
+  nodeLoot,
+  nodes,
   questObservations,
   questRewardOptions,
   quests,
   rawUploads,
+  recipeDifficulty,
+  recipes,
+  recipeSnapshots,
+  recipesLearned,
+  recipeStatus,
   runBosses,
   runParty,
   runs,
+  skills,
+  skillUps,
+  trainers,
   turnIns,
+  vendors,
 } from './db/schema.js';
 import { fromEpoch } from './time.js';
 
@@ -46,22 +59,33 @@ function excludedSet(table: PgTable, target: PgColumn[], keepKnown = false): Rec
   return set;
 }
 
+interface UpsertOptions {
+  keepKnown?: boolean;
+  /** Per-column overrides of the generated SET. */
+  set?: Record<string, SQL>;
+  /** Only update a stored row when this holds (e.g. the incoming row is newer). */
+  setWhere?: SQL;
+}
+
 async function upsert<T extends PgTable>(
   tx: Tx,
   table: T,
   rows: T['$inferInsert'][],
   target: PgColumn[],
-  opts: { keepKnown?: boolean } = {},
+  opts: UpsertOptions = {},
 ) {
   if (rows.length === 0) return;
-  const set = excludedSet(table, target, opts.keepKnown);
+  const set: Record<string, SQL> = { ...excludedSet(table, target, opts.keepKnown), ...opts.set };
   for (let i = 0; i < rows.length; i += CHUNK) {
     await tx
       .insert(table)
       .values(rows.slice(i, i + CHUNK))
-      .onConflictDoUpdate({ target, set });
+      .onConflictDoUpdate({ target, set, setWhere: opts.setWhere });
   }
 }
+
+/** `excluded.<col> >= <table>.<col>`: the incoming row is at least as new as the stored one. */
+const notOlder = (col: PgColumn) => sql`${sql.raw(`excluded."${col.name}"`)} >= ${col}`;
 
 async function insertChunked<T extends PgTable>(tx: Tx, table: T, rows: T['$inferInsert'][]) {
   for (let i = 0; i < rows.length; i += CHUNK)
@@ -110,6 +134,17 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       'itemSnapshots',
       'drops',
       'corpses',
+      'skillUps',
+      'recipeSnapshots',
+      'recipeStatus',
+      'recipeDifficulty',
+      'recipesLearned',
+      'crafts',
+      'nodes',
+      'nodeLoot',
+      'trainers',
+      'vendors',
+      'apiSamples',
       'runs',
     ] as const) {
       for (const rec of r[kind]) buildIds.add(rec.build);
@@ -233,6 +268,127 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       corpses,
       r.corpses.map((c) => ({ ...c, uploaderId: batch.uploaderId, account: batch.account })),
       [corpses.npcId, corpses.build, corpses.uploaderId, corpses.account, corpses.session],
+    );
+
+    // Schema 4: professions.
+    const perSession = { uploaderId: batch.uploaderId, account: batch.account };
+
+    // Latest state per character: an older SavedVariables session uploaded late must not roll a rank back.
+    await upsert(
+      tx,
+      skills,
+      r.skills.map((s) => ({ ...s, lastSeen: fromEpoch(s.lastSeen)! })),
+      [skills.char, skills.skillLineId],
+      { setWhere: notOlder(skills.lastSeen) },
+    );
+    await upsert(
+      tx,
+      skillUps,
+      r.skillUps.map((u) => ({
+        char: u.char,
+        skillLineId: u.skillLineId,
+        fromRank: u.from,
+        toRank: u.to,
+        build: u.build,
+        observedAt: fromEpoch(u.time)!,
+        recipeId: u.recipeId,
+      })),
+      [skillUps.char, skillUps.skillLineId, skillUps.observedAt, skillUps.toRank],
+    );
+
+    await upsert(tx, recipes, r.recipes, [recipes.recipeId], { keepKnown: true });
+    await upsert(tx, recipeSnapshots, r.recipeSnapshots, [
+      recipeSnapshots.recipeId,
+      recipeSnapshots.build,
+    ]);
+    await upsert(
+      tx,
+      recipeStatus,
+      r.recipeStatus.map((s) => ({ ...s, seenAt: fromEpoch(s.seenAt)! })),
+      [recipeStatus.recipeId, recipeStatus.build, recipeStatus.char],
+      { setWhere: notOlder(recipeStatus.seenAt) },
+    );
+    // Each session only knows the ranks it saw, so widen the stored range instead of replacing it.
+    await upsert(
+      tx,
+      recipeDifficulty,
+      r.recipeDifficulty,
+      [
+        recipeDifficulty.recipeId,
+        recipeDifficulty.build,
+        recipeDifficulty.char,
+        recipeDifficulty.difficulty,
+      ],
+      {
+        set: {
+          minRank: sql`least(${recipeDifficulty.minRank}, excluded.min_rank)`,
+          maxRank: sql`greatest(${recipeDifficulty.maxRank}, excluded.max_rank)`,
+        },
+      },
+    );
+    await upsert(
+      tx,
+      recipesLearned,
+      r.recipesLearned.map((l) => ({
+        char: l.char,
+        recipeId: l.recipeId,
+        build: l.build,
+        learnedAt: fromEpoch(l.time)!,
+        via: l.via,
+      })),
+      [recipesLearned.char, recipesLearned.recipeId, recipesLearned.learnedAt],
+    );
+
+    // Per-session totals, keyed like drops/corpses: set, never added.
+    await upsert(
+      tx,
+      crafts,
+      r.crafts.map((c) => ({ ...c, ...perSession })),
+      [crafts.recipeId, crafts.build, crafts.uploaderId, crafts.account, crafts.session],
+    );
+    await upsert(
+      tx,
+      nodes,
+      r.nodes.map((n) => ({ ...n, ...perSession })),
+      [nodes.objectId, nodes.build, nodes.uploaderId, nodes.account, nodes.session],
+    );
+    await upsert(
+      tx,
+      nodeLoot,
+      r.nodeLoot.map((l) => ({ ...l, ...perSession })),
+      [
+        nodeLoot.itemId,
+        nodeLoot.objectId,
+        nodeLoot.build,
+        nodeLoot.uploaderId,
+        nodeLoot.account,
+        nodeLoot.session,
+      ],
+    );
+
+    // Trainer and vendor lists: the latest upload replaces the whole row.
+    await upsert(
+      tx,
+      trainers,
+      r.trainers.map((t) => ({ ...t, seenAt: fromEpoch(t.seenAt)! })),
+      [trainers.npcId, trainers.build],
+    );
+    await upsert(
+      tx,
+      vendors,
+      r.vendors.map((v) => ({ ...v, seenAt: fromEpoch(v.seenAt)! })),
+      [vendors.npcId, vendors.build],
+    );
+    await upsert(
+      tx,
+      apiSamples,
+      r.apiSamples.map((a) => ({
+        api: a.api,
+        build: a.build,
+        observedAt: fromEpoch(a.time)!,
+        sample: a.sample,
+      })),
+      [apiSamples.api, apiSamples.build],
     );
 
     await upsert(

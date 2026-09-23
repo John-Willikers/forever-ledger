@@ -181,6 +181,14 @@ describe('analysis and export routes', () => {
     expect(csv.body.split('\n')[0]).toBe(
       'id,questId,build,char,xp,money,level,turnedInAt,runId,choiceIndex,choiceItemId,updatedAt',
     );
+    expect((await get('/v1/export?format=csv&table=crafts')).body.split('\n')[0]).toBe(
+      'recipeId,build,uploaderId,account,session,casts,qty,procs,skillUps,updatedAt',
+    );
+    expect((await get('/v1/export?format=csv&table=trainers')).body.split('\n')[0]).toBe(
+      'npcId,build,name,loc,skillLineId,seenAt,services,updatedAt',
+    );
+    expect((await get('/v1/export?format=csv&table=recipe_difficulty')).statusCode).toBe(200);
+    expect(json.tables).toHaveProperty('api_samples');
     expect((await get('/v1/export?format=csv')).statusCode).toBe(400);
     expect((await get('/v1/export?table=api_tokens')).statusCode).toBe(400);
   });

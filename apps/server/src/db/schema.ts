@@ -134,6 +134,9 @@ export const items = pgTable('items', {
   type: text('type'),
   subtype: text('subtype'),
   equipLoc: text('equip_loc'),
+  /** Schema 4: C_Item.GetItemInfo item class (9 = Recipe) and subclass. */
+  classId: integer('class_id'),
+  subclassId: integer('subclass_id'),
   updatedAt: updatedAt(),
 });
 
@@ -195,6 +198,227 @@ export const corpses = pgTable(
     primaryKey({ columns: [t.npcId, t.build, t.uploaderId, t.account, t.session] }),
     index('corpses_build_idx').on(t.build),
   ],
+);
+
+// Schema 4: professions.
+
+/** A character's skill line as last seen (upload with the newest `last_seen` wins). */
+export const skills = pgTable(
+  'skills',
+  {
+    char: text('char').notNull(),
+    skillLineId: integer('skill_line_id').notNull(),
+    name: text('name').notNull(),
+    rank: integer('rank').notNull(),
+    maxRank: integer('max_rank').notNull(),
+    modifier: integer('modifier'),
+    parentId: integer('parent_id'),
+    lastSeen: tz('last_seen').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.char, t.skillLineId] })],
+);
+
+export const skillUps = pgTable(
+  'skill_ups',
+  {
+    char: text('char').notNull(),
+    skillLineId: integer('skill_line_id').notNull(),
+    fromRank: integer('from_rank').notNull(),
+    toRank: integer('to_rank').notNull(),
+    build: integer('build').notNull(),
+    observedAt: tz('observed_at').notNull(),
+    /** The craft or gather within 5 s before the rank change, if any. */
+    recipeId: integer('recipe_id'),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.char, t.skillLineId, t.observedAt, t.toRank] })],
+);
+
+/** Static recipe facts; ingest keeps known values when a later upload leaves them blank. */
+export const recipes = pgTable(
+  'recipes',
+  {
+    recipeId: integer('recipe_id').primaryKey(),
+    name: text('name').notNull(),
+    skillLineId: integer('skill_line_id'),
+    categoryId: integer('category_id'),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('recipes_skill_line_idx').on(t.skillLineId)],
+);
+
+export const recipeSnapshots = pgTable(
+  'recipe_snapshots',
+  {
+    recipeId: integer('recipe_id').notNull(),
+    build: integer('build').notNull(),
+    outputItemId: integer('output_item_id'),
+    qtyMin: integer('qty_min'),
+    qtyMax: integer('qty_max'),
+    reagents: jsonb('reagents').$type<{ itemId: number; qty: number }[]>().notNull(),
+    maxTrivial: integer('max_trivial'),
+    sourceText: text('source_text'),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.recipeId, t.build] })],
+);
+
+/** A character's recipe list entry, the last time it was scanned in a build (newest `seen_at` wins). */
+export const recipeStatus = pgTable(
+  'recipe_status',
+  {
+    recipeId: integer('recipe_id').notNull(),
+    build: integer('build').notNull(),
+    char: text('char').notNull(),
+    learned: boolean('learned').notNull(),
+    difficulty: text('difficulty'),
+    rank: integer('rank'),
+    seenAt: tz('seen_at').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.recipeId, t.build, t.char] })],
+);
+
+/**
+ * Skill ranks at which a character saw a recipe at a difficulty. Every SavedVariables session starts empty, so ingest
+ * widens the stored range (least/greatest) instead of replacing it.
+ */
+export const recipeDifficulty = pgTable(
+  'recipe_difficulty',
+  {
+    recipeId: integer('recipe_id').notNull(),
+    build: integer('build').notNull(),
+    char: text('char').notNull(),
+    difficulty: text('difficulty').notNull(),
+    minRank: integer('min_rank').notNull(),
+    maxRank: integer('max_rank').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.recipeId, t.build, t.char, t.difficulty] })],
+);
+
+export const recipesLearned = pgTable(
+  'recipes_learned',
+  {
+    char: text('char').notNull(),
+    recipeId: integer('recipe_id').notNull(),
+    build: integer('build').notNull(),
+    learnedAt: tz('learned_at').notNull(),
+    /** `trainer:<npcID>`, `item:<itemID>` or `unknown`. */
+    via: text('via').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.char, t.recipeId, t.learnedAt] }),
+    index('recipes_learned_recipe_idx').on(t.recipeId),
+  ],
+);
+
+/** Craft counters per recipe and SavedVariables session (uploader + account + session). Set, never added. */
+export const crafts = pgTable(
+  'crafts',
+  {
+    recipeId: integer('recipe_id').notNull(),
+    build: integer('build').notNull(),
+    uploaderId: text('uploader_id').notNull(),
+    account: text('account').notNull(),
+    session: text('session').notNull(),
+    casts: integer('casts').notNull(),
+    qty: integer('qty').notNull(),
+    procs: integer('procs').notNull(),
+    skillUps: integer('skill_ups').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.recipeId, t.build, t.uploaderId, t.account, t.session] })],
+);
+
+/** Gathering per game object and session (fishing = object 0). `spots` is NodeSpots[]. Set, never added. */
+export const nodes = pgTable(
+  'nodes',
+  {
+    objectId: integer('object_id').notNull(),
+    build: integer('build').notNull(),
+    uploaderId: text('uploader_id').notNull(),
+    account: text('account').notNull(),
+    session: text('session').notNull(),
+    opened: integer('opened').notNull(),
+    name: text('name'),
+    rankMin: integer('rank_min'),
+    skillLineId: integer('skill_line_id'),
+    spots: jsonb('spots').$type<{ mapId: number; points: [number, number][] }[]>().notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.objectId, t.build, t.uploaderId, t.account, t.session] }),
+    index('nodes_build_idx').on(t.build),
+  ],
+);
+
+/** Per session: loot windows of an object that held the item, and their total stack quantity. */
+export const nodeLoot = pgTable(
+  'node_loot',
+  {
+    itemId: integer('item_id').notNull(),
+    objectId: integer('object_id').notNull(),
+    build: integer('build').notNull(),
+    uploaderId: text('uploader_id').notNull(),
+    account: text('account').notNull(),
+    session: text('session').notNull(),
+    count: integer('count').notNull(),
+    quantity: integer('quantity').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({
+      columns: [t.itemId, t.objectId, t.build, t.uploaderId, t.account, t.session],
+    }),
+    index('node_loot_object_idx').on(t.objectId, t.build),
+  ],
+);
+
+/** A trainer's services (TrainerService[]) in one build; the latest upload replaces the row. */
+export const trainers = pgTable(
+  'trainers',
+  {
+    npcId: integer('npc_id').notNull(),
+    build: integer('build').notNull(),
+    name: text('name'),
+    loc: jsonb('loc'),
+    skillLineId: integer('skill_line_id'),
+    seenAt: tz('seen_at').notNull(),
+    services: jsonb('services').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.npcId, t.build] })],
+);
+
+/** A vendor's items (VendorItem[]) in one build; the latest upload replaces the row. */
+export const vendors = pgTable(
+  'vendors',
+  {
+    npcId: integer('npc_id').notNull(),
+    build: integer('build').notNull(),
+    name: text('name'),
+    loc: jsonb('loc'),
+    seenAt: tz('seen_at').notNull(),
+    items: jsonb('items').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.npcId, t.build] })],
+);
+
+/** First result of a client API per build, to check real field names without asking for files. */
+export const apiSamples = pgTable(
+  'api_samples',
+  {
+    api: text('api').notNull(),
+    build: integer('build').notNull(),
+    observedAt: tz('observed_at').notNull(),
+    sample: jsonb('sample').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.api, t.build] })],
 );
 
 export const runs = pgTable(

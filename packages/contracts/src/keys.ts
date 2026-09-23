@@ -27,6 +27,32 @@ export function recordKey<K extends RecordKind>(kind: K, record: RecordOf<K>): s
       return `drop:${r.itemId}:${r.build}:${r.npcId}${sessionSuffix(r.session)}`;
     case 'corpses':
       return `corpse:${r.npcId}:${r.build}${sessionSuffix(r.session)}`;
+    case 'skills':
+      return `skill:${r.char}:${r.skillLineId}`;
+    case 'skillUps':
+      return `skillup:${r.char}:${r.skillLineId}:${r.time}:${r.to}`;
+    case 'recipes':
+      return `recipe:${r.recipeId}`;
+    case 'recipeSnapshots':
+      return `rsnap:${r.recipeId}:${r.build}`;
+    case 'recipeStatus':
+      return `rstat:${r.recipeId}:${r.build}:${r.char}`;
+    case 'recipeDifficulty':
+      return `rdiff:${r.recipeId}:${r.build}:${r.char}:${r.difficulty}`;
+    case 'recipesLearned':
+      return `rlearn:${r.char}:${r.recipeId}:${r.time}`;
+    case 'crafts':
+      return `craft:${r.recipeId}:${r.build}${sessionSuffix(r.session)}`;
+    case 'nodes':
+      return `node:${r.objectId}:${r.build}${sessionSuffix(r.session)}`;
+    case 'nodeLoot':
+      return `nloot:${r.itemId}:${r.objectId}:${r.build}${sessionSuffix(r.session)}`;
+    case 'trainers':
+      return `trainer:${r.npcId}:${r.build}`;
+    case 'vendors':
+      return `vendor:${r.npcId}:${r.build}`;
+    case 'apiSamples':
+      return `api:${r.api}:${r.build}`;
     case 'runs':
       return `run:${r.id}`;
     default:
