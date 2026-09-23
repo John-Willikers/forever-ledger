@@ -569,8 +569,9 @@ return function(H)
     H.eq(k.procs, 2)
   end)
 
-  H.test("crafts: without the result event, a tradeskill cast and the chat line are the fallback", function()
+  H.test("crafts: without the result event, a begun recipe's cast and the chat line are the fallback", function()
     local c = session(H) -- no profession window: no known recipes
+    c.fire("TRADE_SKILL_CRAFT_BEGIN", BANDAGE)
     cast(c, "Cast-1", BANDAGE, true)
     created(c, 1251, 2)
     local k = crafts(c, BANDAGE)
@@ -580,6 +581,37 @@ return function(H)
     H.eq(c.env.ForeverLedgerDB.apiSamples.UnitCastingInfo.sample[9], BANDAGE)
     cast(c, "Cast-2", 133, false) -- a Fireball is no craft
     H.eq(c.env.ForeverLedgerDB.crafts[B][133], nil)
+  end)
+
+  H.test("crafts: a tradeskill cast that is no known or begun recipe is not a craft (Disenchant, ...)", function()
+    local c = crafting(H)
+    for i, spell in ipairs({ 13262, 31252, 51005 }) do -- Disenchant, Prospecting, Milling
+      cast(c, "Cast-D" .. i, spell, true)
+      c.advance(5)
+    end
+    H.eq(next(c.env.ForeverLedgerDB.crafts[B] or {}), nil)
+  end)
+
+  H.test("crafts: another item in a second result event is a bonus of the same craft", function()
+    local c = crafting(H)
+    cast(c, "Cast-1", LINEN_BOLT, true)
+    result(c, 2996, 1)
+    result(c, 2568, 1) -- not the bolt: a bonus item (and the output of another known recipe)
+    created(c, 2996, 1)
+    created(c, 2568, 1)
+    local k = crafts(c, LINEN_BOLT)
+    H.eq(k.casts, 1)
+    H.eq(k.qty, 1, "the recipe's own output")
+    H.eq(k.procs, 1, "the bonus is a proc")
+    H.eq(c.env.ForeverLedgerDB.crafts[B][LINEN_SHIRT], nil, "no craft of the bonus item's recipe")
+    c.advance(5)
+    cast(c, "Cast-2", LINEN_BOLT, true)
+    result(c, 2568, 1) -- the bonus first,
+    result(c, 2996, 1) -- then the output, no multicraft: still one craft with a proc
+    k = crafts(c, LINEN_BOLT)
+    H.eq(k.casts, 2)
+    H.eq(k.qty, 2)
+    H.eq(k.procs, 2)
   end)
 
   H.test("crafts: a known recipe cast counts without UnitCastingInfo; lone chat lines need a known output", function()

@@ -1582,16 +1582,18 @@ end
 -- One craft can show up as up to three signals: UNIT_SPELLCAST_SUCCEEDED (castGUID), TRADE_SKILL_ITEM_CRAFTED_RESULT
 -- and a "You create" loot line (LOOT_ITEM_CREATED_SELF*, same template matching as the loot lines). Signals less than
 -- CRAFT_WINDOW seconds apart are one craft: a cast joins a craft that has no cast yet, a quantity replaces one from
--- a less trusted source (result event over chat line). A cast counts as a craft when UnitCastingInfo called it a
--- tradeskill cast, the spell is a known recipe, or TRADE_SKILL_CRAFT_BEGIN named it. Totals are per session.
+-- a less trusted source (result event over chat line). A cast counts as a craft when the spell is a known recipe or
+-- TRADE_SKILL_CRAFT_BEGIN named it; a tradeskill cast alone (Disenchant, Prospecting, Milling) is not one. A result
+-- event for another item than the recipe's output within the window is a bonus item of the same craft: a proc, not a
+-- new craft, and not part of qty (the recipe's own output). Totals are per session.
 local onPlayerCastStart, onPlayerCastSucceeded, onCraftBegin, onCraftedResult, onCreateLine
 do
   local CRAFT_WINDOW = 3
   local BEGIN_TTL = 60   -- seconds a TRADE_SKILL_CRAFT_BEGIN recipe stays the current one
   local CAST_MEMORY = 200 -- castGUIDs remembered before the lists are cleared
   local craftBegin       -- { recipeID =, at = }
-  local lastCraft        -- { recipeID =, at =, castGUID =, qty =, qtyRank =, proc =, chat = }
-  local tradeCasts, castSeen, castCount = {}, {}, 0
+  local lastCraft        -- { recipeID =, at =, castGUID =, qty =, qtyRank =, proc =, chat =, bonus = { [itemID] } }
+  local castSeen, castCount = {}, 0
 
   local function craftRec(recipeID)
     local byRecipe = db.crafts[build] or {}
@@ -1642,30 +1644,40 @@ do
     c.qty = c.qty + qty - (k.qty or 0)
     k.qty, k.qtyRank = qty, rank
     local snap = recipeSnap(k.recipeID)
-    proc = (proc or (snap and snap.qtyMax and qty > snap.qtyMax)) and true or false
+    proc = (proc or k.bonus or (snap and snap.qtyMax and qty > snap.qtyMax)) and true or false
     if proc ~= (k.proc or false) then
       c.procs = c.procs + (proc and 1 or -1)
       k.proc = proc
     end
   end
 
-  local function rememberCast(list, castGUID, value)
-    castCount = castCount + 1
-    if castCount > CAST_MEMORY then
-      wipe(tradeCasts); wipe(castSeen)
-      castCount = 0
+  -- A bonus item of craft k: a proc once per craft.
+  local function addBonus(k, itemID)
+    k.bonus = k.bonus or {}
+    k.bonus[itemID] = true
+    if not k.proc then
+      local c = craftRec(k.recipeID)
+      c.procs = c.procs + 1
+      k.proc = true
     end
-    list[castGUID] = value
+    scanItemOnce(itemID)
   end
 
-  function onPlayerCastStart(castGUID, spellID)
+  local function rememberCast(castGUID)
+    castCount = castCount + 1
+    if castCount > CAST_MEMORY then
+      wipe(castSeen)
+      castCount = 0
+    end
+    castSeen[castGUID] = true
+  end
+
+  -- Only sampled: name, displayName, texture, startTimeMs, endTimeMs, isTradeskill, castID, notInterruptible,
+  -- castingSpellID.
+  function onPlayerCastStart()
     if not UnitCastingInfo then return end
     local n, r = packed(UnitCastingInfo("player"))
-    if n == 0 then return end
-    sampleReturns("UnitCastingInfo", unpack(r, 1, n))
-    -- name, displayName, texture, startTimeMs, endTimeMs, isTradeskill, castID, notInterruptible, castingSpellID
-    local id = castGUID or r[7]
-    if r[6] and id then rememberCast(tradeCasts, id, tonumber(r[9]) or spellID) end
+    if n > 0 then sampleReturns("UnitCastingInfo", unpack(r, 1, n)) end
   end
 
   function onPlayerCastSucceeded(castGUID, spellID)
@@ -1674,8 +1686,8 @@ do
     local line = gatherSkill(spellID)
     if line then return noteGatherCast(line, castGUID, spellID) end
     if castGUID and castSeen[castGUID] then return end
-    if not ((castGUID and tradeCasts[castGUID]) or db.recipes[spellID] or beganRecipe() == spellID) then return end
-    if castGUID then rememberCast(castSeen, castGUID, true) end
+    if not (db.recipes[spellID] or beganRecipe() == spellID) then return end
+    if castGUID then rememberCast(castGUID) end
     local k = recentCraft()
     if k and not k.castGUID and k.recipeID == spellID then
       k.castGUID = castGUID or true
@@ -1699,7 +1711,11 @@ do
     local recipeID = tonumber(field(data, "recipeID", "recipeSpellID")) or (k and k.recipeID) or beganRecipe()
       or (itemID and recipeByOutput(itemID))
     if not recipeID then return end
+    local snap = recipeSnap(recipeID)
+    local bonus = itemID and snap and snap.outputItemID and itemID ~= snap.outputItemID
+    if bonus and k and k.recipeID == recipeID then return addBonus(k, itemID) end
     if not k or k.recipeID ~= recipeID or (k.qtyRank or 0) >= 2 then k = newCraft(recipeID) end
+    if bonus then return addBonus(k, itemID) end
     local extra = tonumber(field(data, "multicraft", "multicraftQuantity")) or 0
     setCraftQty(k, tonumber(need(api, data, "quantity", "count")) or 1, 2, extra > 0)
     if itemID then scanItemOnce(itemID) end
@@ -1726,6 +1742,7 @@ do
         local itemID = idFromLink(args[1])
         if not itemID then return end
         local k = recentCraft()
+        if k and k.bonus and k.bonus[itemID] then return end -- the bonus item's own line
         local snap = k and recipeSnap(k.recipeID)
         if snap and snap.outputItemID and snap.outputItemID ~= itemID then k = nil end
         if not k or k.chat then
@@ -1977,8 +1994,8 @@ function handlers.MERCHANT_SHOW()
 end
 function handlers.MERCHANT_UPDATE() if merchantNpc then throttled("vendor", scanVendor) end end
 function handlers.MERCHANT_CLOSED() merchantNpc = nil end
-function handlers.UNIT_SPELLCAST_START(unit, castGUID, spellID)
-  if unit == "player" then safely("onPlayerCastStart", onPlayerCastStart, castGUID, spellID) end
+function handlers.UNIT_SPELLCAST_START(unit)
+  if unit == "player" then safely("onPlayerCastStart", onPlayerCastStart) end
 end
 function handlers.UNIT_SPELLCAST_SENT(unit, target, castGUID, spellID)
   if unit == "player" then safely("onGatherSent", onGatherSent, target, castGUID, spellID) end
