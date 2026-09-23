@@ -456,6 +456,12 @@ function H.new(worldOverrides)
     end
     env.UnitCastingInfo = function(u) if u == "player" and world.casting then return unpack(world.casting) end end
     env.C_Spell = { GetSpellInfo = function(id) return copy(world.spells[id]) end }
+    -- GetItemSpell(item): the item's use spell (world.items[id].useSpell = spellID), as spellName, spellID
+    env.GetItemSpell = function(x)
+      local id = type(x) == "number" and x or linkID(x)
+      local it = world.items[id]
+      if it and it.useSpell then return (world.spells[it.useSpell] or {}).name or "Learning", it.useSpell end
+    end
     env.IsFishingLoot = function() return world.fishing end
     env.GameTooltip = {
       IsShown = function() return world.tooltip.shown end,
@@ -554,6 +560,7 @@ function H.new(worldOverrides)
     }
     env.C_Item = { GetItemInfo = env.GetItemInfo, GetItemStats = env.GetItemStats }
     if world.professionAPI then
+      env.C_Item.GetItemSpell = env.GetItemSpell
       env.C_Item.GetItemInfoInstant = function(x)
         local id = type(x) == "number" and x or linkID(x)
         local it = world.items[id]
@@ -563,6 +570,22 @@ function H.new(worldOverrides)
     for _, name in ipairs({ "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogSelection",
                             "SelectQuestLogEntry", "GetItemInfo", "GetItemStats", "LoadAddOn" }) do
       world.missing[name] = true
+    end
+  end
+
+  -- frame:RegisterUnitEvent(ev, unit, ...): the event only reaches the frame for those units (its first argument).
+  -- world.noUnitEvents: a client without it. (Added here, not in CreateFrame above, so harness line numbers that the
+  -- probe fixture records stay put.)
+  if not world.noUnitEvents then
+    local create = env.CreateFrame
+    env.CreateFrame = function(...)
+      local frame = create(...)
+      frame.unitEvents = {}
+      function frame:RegisterUnitEvent(ev, ...)
+        self:RegisterEvent(ev)
+        self.unitEvents[ev] = { ... }
+      end
+      return frame
     end
   end
 
@@ -577,9 +600,20 @@ function H.new(worldOverrides)
     chunk()
   end
 
+  local function unitMatches(units, unit)
+    if not units then return true end
+    for _, u in ipairs(units) do
+      if u == unit then return true end
+    end
+    return false
+  end
+
   function ctl.fire(event, ...)
     for _, f in ipairs(frames) do
-      if (f.events[event] or f.allEvents) and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
+      local units = f.unitEvents and f.unitEvents[event]
+      if (f.events[event] or f.allEvents) and f.scripts.OnEvent and unitMatches(units, (...)) then
+        f.scripts.OnEvent(f, event, ...)
+      end
     end
   end
 

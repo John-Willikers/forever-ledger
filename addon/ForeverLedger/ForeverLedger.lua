@@ -14,6 +14,7 @@ local f = CreateFrame("Frame")
 -- API compatibility (Classic-era globals vs newer namespaces; Forever 1.60 has only the namespaces)
 local GetItemInfo  = (C_Item and C_Item.GetItemInfo) or GetItemInfo
 local GetItemStats = (C_Item and C_Item.GetItemStats) or GetItemStats
+local GetItemSpell = (C_Item and C_Item.GetItemSpell) or GetItemSpell
 local QuestLog = C_QuestLog or {}
 local NumLogEntries = GetNumQuestLogEntries or QuestLog.GetNumQuestLogEntries
 
@@ -623,12 +624,13 @@ end
 
 ---------------------------------------------------------------- professions: learned recipes
 -- NEW_RECIPE_LEARNED says how when a trainer window is open ("trainer:<npcID>") or a Recipe-class item was used from
--- the bags in the last 5 s ("item:<itemID>"; a player spell that finishes within 30 s of the use restarts the 5 s,
--- for recipes with a cast bar). A post-hook on C_Container.UseContainerItem reads which item that was; items used
--- from action bars are not seen.
+-- the bags in the last 5 s ("item:<itemID>"). For recipes with a cast bar, the item's use spell (GetItemSpell)
+-- finishing within 30 s of the use restarts the 5 s, and so does any player spell finishing within 3 s of it (the use
+-- spell unknown). A post-hook on C_Container.UseContainerItem reads which item that was; items used from action bars
+-- are not seen.
 local RECIPE_CLASS = (Enum and Enum.ItemClass and Enum.ItemClass.Recipe) or 9
 local trainerNpc      -- npcID while a trainer window is open
-local recipeItemUse   -- { itemID =, at =, usedAt = }
+local recipeItemUse   -- { itemID =, spellID =, at =, usedAt = }
 
 local function itemClass(itemID)
   local rec = db.items[itemID]
@@ -646,7 +648,12 @@ local function onUseContainerItem(bag, slot)
   local itemID = C_Container.GetContainerItemID(bag, slot)
   itemID = tonumber(itemID)
   if itemID and itemClass(itemID) == RECIPE_CLASS then
-    recipeItemUse = { itemID = itemID, at = now(), usedAt = now() }
+    local spellID
+    if GetItemSpell then
+      local ok, _, id = pcall(GetItemSpell, itemID)
+      if ok then spellID = tonumber(id) end
+    end
+    recipeItemUse = { itemID = itemID, spellID = spellID, at = now(), usedAt = now() }
   end
 end
 
@@ -676,10 +683,12 @@ local function onRecipeLearned(recipeID, recipeLevel, baseRecipeID)
   added()
 end
 
--- A spell finishing shortly after a recipe item was used is that item's learning cast.
-local function onPlayerSpellForRecipeItem()
+-- The recipe item's own use spell finishing (or any player spell right after the use) is its learning cast.
+local function onPlayerSpellForRecipeItem(spellID)
   local u = recipeItemUse
-  if u and now() - u.usedAt <= 30 then u.at = now() end
+  if not u then return end
+  local since = now() - u.usedAt
+  if (u.spellID and u.spellID == tonumber(spellID) and since <= 30) or since <= 3 then u.at = now() end
 end
 
 ---------------------------------------------------------------- professions: trainers and vendors
@@ -2050,7 +2059,7 @@ function handlers.UNIT_SPELLCAST_SENT(unit, target, castGUID, spellID)
 end
 function handlers.UNIT_SPELLCAST_SUCCEEDED(unit, castGUID, spellID)
   if unit ~= "player" then return end
-  safely("onPlayerSpellForRecipeItem", onPlayerSpellForRecipeItem)
+  safely("onPlayerSpellForRecipeItem", onPlayerSpellForRecipeItem, spellID)
   safely("onPlayerCastSucceeded", onPlayerCastSucceeded, castGUID, spellID)
 end
 function handlers.TRADE_SKILL_CRAFT_BEGIN(recipeSpellID) safely("onCraftBegin", onCraftBegin, recipeSpellID) end
@@ -2074,7 +2083,13 @@ function handlers.LUA_WARNING(...)
   end
 end
 
-for event in pairs(handlers) do pcall(f.RegisterEvent, f, event) end -- pcall: skip events a client lacks
+-- Unit events only for the player where the client can filter them (the handlers check the unit too).
+local PLAYER_EVENTS = { UNIT_SPELLCAST_START = true, UNIT_SPELLCAST_SENT = true, UNIT_SPELLCAST_SUCCEEDED = true }
+for event in pairs(handlers) do -- pcall: skip events a client lacks
+  if not (PLAYER_EVENTS[event] and f.RegisterUnitEvent and pcall(f.RegisterUnitEvent, f, event, "player")) then
+    pcall(f.RegisterEvent, f, event)
+  end
+end
 -- A handler's error is noted, then raised as before.
 f:SetScript("OnEvent", function(_, event, ...)
   local ok, err = pcall(handlers[event], ...)

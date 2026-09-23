@@ -23,7 +23,7 @@ local function items()
   add(2320, "Coarse Thread", 7, 5)
   add(2568, "Brown Linen Vest", 4, 1, { type = "Armor", subtype = "Cloth", equipLoc = "INVTYPE_CHEST" })
   add(2572, "Red Linen Robe", 4, 1, { type = "Armor", subtype = "Cloth", equipLoc = "INVTYPE_ROBE" })
-  add(2598, "Pattern: Red Linen Robe", 9, 2, { type = "Recipe", subtype = "Tailoring",
+  add(2598, "Pattern: Red Linen Robe", 9, 2, { type = "Recipe", subtype = "Tailoring", useSpell = 483,
                                                tooltip = { { "Pattern: Red Linen Robe" },
                                                            { "Teaches you how to sew a Red Linen Robe." } } })
   add(1251, "Linen Bandage", 0, 7)

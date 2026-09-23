@@ -42,7 +42,7 @@ read_globals = {
   "IsTradeskillTrainer", "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost",
   "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq", "GetTrainerServiceItemLink", "GetTrainerServiceSkillLine",
   "GetTrainerServiceTypeFilter",
-  "GetMerchantNumItems", "GetMerchantItemID", "GetMerchantItemLink",
+  "GetMerchantNumItems", "GetMerchantItemID", "GetMerchantItemLink", "GetItemSpell",
 }
 
 -- The test harness defines WoW stubs as globals on purpose.

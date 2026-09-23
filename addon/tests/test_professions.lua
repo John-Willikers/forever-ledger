@@ -457,7 +457,7 @@ return function(H)
     H.eq(l[2].via, "unknown")
   end)
 
-  H.test("professions: an old item use is unknown unless a player spell finished since", function()
+  H.test("professions: an old item use is unknown unless its learning spell finished since", function()
     local c = learnSession(H)
     c.env.C_Container.UseContainerItem(0, 1)
     c.advance(6)
@@ -468,13 +468,25 @@ return function(H)
     c.fire("NEW_RECIPE_LEARNED", LINEN_SHIRT)
     c.env.C_Container.UseContainerItem(0, 1)
     c.advance(8)
-    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-2", 483) -- the learning cast finished
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-2", 483) -- the item's use spell finished
     c.advance(1)
     c.fire("NEW_RECIPE_LEARNED", BANDAGE)
+    c.env.C_Container.UseContainerItem(0, 1)
+    c.advance(8)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3", 133) -- an unrelated spell 8 s later
+    c.advance(1)
+    c.fire("NEW_RECIPE_LEARNED", 70001)
+    c.env.C_Container.UseContainerItem(0, 1)
+    c.advance(2)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-4", 133) -- any player spell within 3 s of the use
+    c.advance(4)
+    c.fire("NEW_RECIPE_LEARNED", 70002)
     local l = c.env.ForeverLedgerDB.learned
     H.eq(l[1].via, "unknown")
     H.eq(l[2].via, "unknown")
     H.eq(l[3].via, "item:2598")
+    H.eq(l[4].via, "unknown", "an unrelated spell does not restart the window")
+    H.eq(l[5].via, "item:2598")
   end)
 
   H.test("professions: the item class comes from GetItemInfoInstant when the item was never scanned", function()
@@ -491,6 +503,23 @@ return function(H)
     local l = c.env.ForeverLedgerDB.learned
     H.eq(#l, 2000)
     H.eq(l[1].recipeID, 70004)
+  end)
+
+  H.test("professions: spellcast events are registered for the player unit only", function()
+    local c = session(H)
+    local f = c.frames[1]
+    for _, ev in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED" }) do
+      H.ok(f.events[ev], ev)
+      H.eq(f.unitEvents[ev] and f.unitEvents[ev][1], "player", ev)
+    end
+    H.eq(f.unitEvents.LOOT_OPENED, nil)
+    local c2 = session(H, { noUnitEvents = true }) -- a client without RegisterUnitEvent
+    local f2 = c2.frames[1]
+    H.ok(f2.events.UNIT_SPELLCAST_SUCCEEDED and not f2.RegisterUnitEvent)
+    c2.world.bags = nil
+    c2.fire("UNIT_SPELLCAST_SUCCEEDED", "target", "Cast-T", 2575) -- another unit: still ignored
+    P.lootNode(c2, { { itemID = 2770, sourceGUID = VEIN } })
+    H.eq(c2.env.ForeverLedgerDB.nodes[B][1731].skillLineID, nil)
   end)
 
   ---------------------------------------------------------------- API samples
