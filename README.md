@@ -124,6 +124,7 @@ API (all but health need `Authorization: Bearer <token>`):
 | `GET /v1/runs/summary?build=`            | Per dungeon: runs, median/best clear, XP/min (mob vs quest), deaths, boss splits |
 | `GET /v1/quests/xp?build=`               | Offered vs paid XP per quest                                                     |
 | `GET /v1/items/:id`                      | Item snapshots per build, drop sources, quest rewards, class/spec fit            |
+| `GET /v1/drops/rates?build=`             | Per npc + item: corpses looted, dropped, rate, stack quantity, avg copper/corpse |
 | `GET /v1/export?format=json\|csv&table=` | Full dump for offline analysis (times in America/Chicago)                        |
 
 ## 🏷️ Releasing

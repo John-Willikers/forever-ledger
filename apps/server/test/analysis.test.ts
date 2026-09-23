@@ -52,6 +52,88 @@ describe('analysis and export routes', () => {
     expect(all).toHaveLength(2);
   });
 
+  it('returns drop rates from schema 3 sessions, summed over sessions and accounts', async () => {
+    const build = 69977;
+    const post = async (session: string, account: string, drops: object[], corpses: object[]) => {
+      const b = batchFromFixture('session-v2.lua', account);
+      const res = await s.app.inject({
+        method: 'POST',
+        url: '/v1/ingest',
+        headers: s.auth,
+        payload: {
+          ...b,
+          schemaVersion: 3,
+          meta: { ...b.meta, schemaVersion: 3, session },
+          records: { drops, corpses },
+        },
+      });
+      expect(res.statusCode).toBe(200);
+    };
+    const drop = (
+      session: string,
+      itemId: number,
+      npcId: number,
+      count: number,
+      quantity: number,
+    ) => ({
+      itemId,
+      build,
+      npcId,
+      session,
+      count,
+      quantity,
+    });
+    // Two sessions on one account with identical counts, and one on another account.
+    for (const [session, account] of [
+      ['1790000000-aaaa', 'RATES1'],
+      ['1790000900-bbbb', 'RATES1'],
+    ] as const) {
+      await post(
+        session,
+        account,
+        [drop(session, 2589, 1234, 3, 4), drop(session, 5555, 1234, 1, 1)],
+        [{ npcId: 1234, build, session, count: 10, copper: 100 }],
+      );
+    }
+    await post(
+      '1790001800-cccc',
+      'RATES2',
+      [drop('1790001800-cccc', 2589, 1234, 2, 2), drop('1790001800-cccc', 2589, 99, 1, 1)],
+      [{ npcId: 1234, build, session: '1790001800-cccc', count: 5, copper: 95 }],
+    );
+    // Legacy running totals (session '') have no corpses and must not inflate the rate.
+    await post('', 'RATES3', [drop('', 2589, 1234, 50, 50)], []);
+
+    const res = await get(`/v1/drops/rates?build=${build}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      {
+        build,
+        npcId: 1234,
+        itemId: 2589,
+        itemName: null,
+        corpses: 25,
+        dropped: 8,
+        rate: 0.32,
+        quantity: 10,
+        avgCopper: 11.8,
+      },
+      {
+        build,
+        npcId: 1234,
+        itemId: 5555,
+        itemName: "Swampwalker's Boots",
+        corpses: 25,
+        dropped: 2,
+        rate: 0.08,
+        quantity: 2,
+        avgCopper: 11.8,
+      },
+    ]);
+    expect((await get('/v1/drops/rates?build=1')).json()).toEqual([]);
+    expect((await get('/v1/drops/rates', {})).statusCode).toBe(401);
+  });
+
   it('returns offered vs paid quest XP', async () => {
     const res = await get('/v1/quests/xp');
     expect(res.json()).toEqual([
