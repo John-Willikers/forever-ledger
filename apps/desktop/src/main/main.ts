@@ -316,8 +316,15 @@ async function run() {
   );
   const w = createWindow();
   const ready = new Promise<void>((resolve) => w.once('ready-to-show', () => resolve()));
-  await controller.start();
-  if (!startHidden || controller.snapshot().setupNeeded) {
+  // Show the window before the first upload pass and addon sync finish: they can take seconds (on Windows a refused
+  // connection alone takes ~2 s) and the window fills in as their results arrive.
+  const starting = controller.start();
+  if (!startHidden) {
+    await ready;
+    showWindow();
+  }
+  await starting;
+  if (startHidden && controller.snapshot().setupNeeded) {
     await ready;
     showWindow();
   }
