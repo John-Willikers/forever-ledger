@@ -22,6 +22,7 @@ import { silentLogger } from './log.js';
 import type { Logger } from './log.js';
 import { readSavedVariable } from './reader.js';
 import type { ReadOptions } from './reader.js';
+import { StateStore } from './state.js';
 
 /** Folder operations used for install/rollback (tests inject failures). */
 export type AddonFsDeps = Pick<InstallDeps, 'rename' | 'remove'>;
@@ -147,12 +148,34 @@ async function targetDirs(
   );
 }
 
-/** Highest `meta.build` among the SavedVariables files; files that can't be read are skipped. */
+/** Highest build the upload pass recorded for these accounts, if any. */
+async function recordedBuild(
+  config: Config,
+  files: SavedVariablesFile[],
+  logger: Logger,
+): Promise<number | undefined> {
+  try {
+    const store = await StateStore.open(config.stateDir);
+    const builds = files.map((f) => store.peek(f.account)?.build).filter((b) => b !== undefined);
+    return builds.length ? Math.max(...builds) : undefined;
+  } catch (err) {
+    logger.debug({ err: errorMessage(err) }, 'no recorded client build');
+    return undefined;
+  }
+}
+
+/**
+ * Highest `meta.build` among the SavedVariables files. Uses what the upload pass recorded; parses the files (slow
+ * for big ones) only before the first upload pass. Files that can't be read are skipped.
+ */
 async function clientBuild(
+  config: Config,
   files: SavedVariablesFile[],
   read: ReadOptions | undefined,
   logger: Logger,
 ): Promise<number | undefined> {
+  const recorded = await recordedBuild(config, files, logger);
+  if (recorded !== undefined) return recorded;
   let best: number | undefined;
   for (const sv of files) {
     try {
@@ -249,7 +272,7 @@ async function runSync(
       logger,
     );
     result.addonsDirs = await targetDirs(wowPath, found);
-    result.build = await clientBuild(found.files, opts.read, logger);
+    result.build = await clientBuild(config, found.files, opts.read, logger);
 
     const state = await readAddonSyncState(config, logger);
     const manifest = await fetchManifest({ serverUrl, token, build: result.build, fetchImpl });

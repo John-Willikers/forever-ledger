@@ -105,6 +105,7 @@ export async function prepareFile(
     }
 
     await state.setFile(sv.account, sv.file);
+    await state.setBuild(sv.account, normalized.meta.build);
     const acked = state.account(sv.account).acked;
     const queued = await queue.pendingHashes(sv.account);
     const rejected = state.account(sv.account).rejected;

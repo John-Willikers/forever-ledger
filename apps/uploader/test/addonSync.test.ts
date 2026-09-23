@@ -11,7 +11,9 @@ import type { FetchLike } from '../src/client.js';
 import type { Config } from '../src/config.js';
 import { ConfigError } from '../src/errors.js';
 import { writeJsonAtomic } from '../src/fsutil.js';
-import { FAST_READ, tempEnv } from './helpers/fixtures.js';
+import { runUploadPass } from '../src/pass.js';
+import { StateStore } from '../src/state.js';
+import { FAST_READ, readFixture, tempEnv } from './helpers/fixtures.js';
 import type { TempEnv } from './helpers/fixtures.js';
 
 const SERVER = 'https://ledger.test';
@@ -427,5 +429,23 @@ describe('concurrent runs', () => {
     expect(await readInstalledVersion(addonsDir)).toBe('0.2.1');
     expect((await readAddonSyncState(config)).pausedWhileRecommended).toBe('0.2.2');
     expect((await sync()).status).toBe('paused');
+  });
+});
+
+describe('client build', () => {
+  it('uses the build recorded by the upload pass instead of parsing SavedVariables', async () => {
+    await env.writeSv(await readFixture('session-v1.lua'), 'ACC1'); // meta.build 61600
+    // The upload pass records the build even when the server is down.
+    await runUploadPass({
+      config: { ...config, serverUrl: 'http://127.0.0.1:9' },
+      read: FAST_READ,
+    });
+    expect((await StateStore.open(config.stateDir)).peek('ACC1')?.build).toBe(61600);
+
+    await env.writeSv('not lua at all', 'ACC1'); // parsing it now would lose the build
+    server.recommend('0.2.1');
+    const r = await sync();
+    expect(r.build).toBe(61600);
+    expect(server.manifestUrls).toEqual([`${SERVER}/v1/addon/manifest?build=61600`]);
   });
 });

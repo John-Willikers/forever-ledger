@@ -8,6 +8,8 @@ export interface AccountState {
   /** recordKey → contentHash the server rejected (400); not re-sent until the record changes. */
   rejected?: Record<string, string>;
   file?: string;
+  /** Client build (`meta.build`) of the last SavedVariables parsed; addon sync asks the server for it. */
+  build?: number;
   /** Epoch ms of the last 2xx from /v1/ingest. */
   lastSuccessAt?: number;
   lastError?: { at: number; message: string };
@@ -88,6 +90,13 @@ export class StateStore {
     const a = this.account(name);
     if (a.file === file) return;
     a.file = file;
+    await this.save();
+  }
+
+  async setBuild(name: string, build: number): Promise<void> {
+    const a = this.account(name);
+    if (a.build === build) return;
+    a.build = build;
     await this.save();
   }
 
