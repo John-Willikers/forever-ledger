@@ -504,12 +504,18 @@ describe("the real addon's schema 4 session (session-v4.lua)", () => {
       node_loot: 2,
       trainers: 1,
       vendors: 1,
-      api_samples: 15,
+      api_samples: 16,
     };
     const counts = Object.fromEntries(
       await Promise.all(Object.keys(tables).map(async (t) => [t, await s.count(t)])),
     );
     expect(counts).toEqual(tables);
+    const errors = await s.database.pool.query(
+      `select sample from api_samples where api = 'ForeverLedger.errors'`,
+    );
+    expect(errors.rows[0].sample).toEqual({
+      'blocked:UseAction()': { msg: 'UseAction()', count: 1, last: expect.any(Number) },
+    });
     const { rows } = await s.database.pool.query(
       `select sample from api_samples where api = 'NEW_RECIPE_LEARNED'`,
     );

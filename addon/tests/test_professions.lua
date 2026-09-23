@@ -88,6 +88,7 @@ local function v4Session(H)
   lootNode(c, { { itemID = 6303, sourceGUID = BOBBER } })
   w.fishing = false
   c.advance(30)
+  c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "UseAction()") -- reaches the server in the errors sample
   return c.env.ForeverLedgerDB
 end
 
@@ -1067,6 +1068,93 @@ return function(H)
     H.eq(c2.env.ForeverLedgerDB.vendors[B][1347].items[2].itemID, 2598, "the id from the item link")
   end)
 
+  ---------------------------------------------------------------- errors
+  local function errors(c)
+    local e = c.env.ForeverLedgerDB.apiSamples["ForeverLedger.errors"]
+    return e and e.sample, e
+  end
+
+  H.test("errors: an erroring reader keeps its first message per build, with a count", function()
+    local c = session(H)
+    c.env.C_SkillInfo.GetSkillLineInfo = function() error("GetSkillLineInfo exploded") end
+    c.fire("SKILL_LINES_CHANGED")
+    c.advance(5)
+    c.env.C_SkillInfo.GetSkillLineInfo = function() error("another message") end
+    c.fire("SKILL_LINES_CHANGED")
+    local e, m = errors(c)
+    H.eq(m.build, B)
+    H.ok(e.scanSkills.msg:find("GetSkillLineInfo exploded", 1, true), e.scanSkills.msg)
+    H.eq(e.scanSkills.count, 2)
+    H.eq(e.scanSkills.last, c.world.clock)
+    local c2 = session(H, { buildInfo = { "1.15.8", "61600", "Oct 01 2026", 11508 } }, c.env.ForeverLedgerDB)
+    c2.env.C_SkillInfo.GetSkillLineInfo = function() error("new build") end
+    c2.fire("SKILL_LINES_CHANGED")
+    e, m = errors(c2)
+    H.eq(m.build, 61600, "a new build starts over")
+    H.ok(e.scanSkills.msg:find("new build", 1, true))
+  end)
+
+  H.test("errors: throttled scans, loot windows, craft and learn handlers record their errors", function()
+    local c = session(H)
+    c.env.C_TradeSkillUI.GetAllRecipeIDs = function() error("no ids") end
+    openTrade(c)
+    c.env.GetNumLootItems = function() error("loot") end
+    c.fire("LOOT_OPENED")
+    c.fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", setmetatable({}, { __index = function() error("bad result") end }))
+    c.env.UnitName = function() error("who") end
+    c.fire("NEW_RECIPE_LEARNED", BANDAGE)
+    local e = errors(c)
+    H.ok(e["scan:trade"].msg:find("no ids", 1, true))
+    H.ok(e.onLootOpened.msg:find("loot", 1, true))
+    H.ok(e.onCraftedResult.msg:find("bad result", 1, true))
+    H.ok(e.onRecipeLearned.msg:find("who", 1, true))
+  end)
+
+  H.test("errors: other handlers still raise, and are recorded first", function()
+    local c = session(H)
+    c.env.GetTitleText = function() error("title") end
+    c.world.questFrame = { questID = 1234, title = "X" }
+    local ok = pcall(c.fire, "QUEST_DETAIL")
+    H.eq(ok, false, "the error still shows")
+    H.ok(errors(c)["event:QUEST_DETAIL"].msg:find("title", 1, true))
+  end)
+
+  H.test("errors: at most 40 entries, messages at most 200 characters", function()
+    local c = session(H)
+    c.env.C_SkillInfo.GetSkillLineInfo = function() error(string.rep("x", 300), 0) end
+    c.fire("SKILL_LINES_CHANGED")
+    for i = 1, 45 do c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "Protected" .. i .. "()") end
+    local e = errors(c)
+    H.eq(#e.scanSkills.msg, 200)
+    H.eq(H.count(e), 40)
+    H.ok(e["blocked:Protected39()"] and not e["blocked:Protected40()"], "the first 40 are kept")
+  end)
+
+  H.test("errors: blocked and forbidden actions of this addon are counted; others and warnings filtered", function()
+    local c = session(H)
+    c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "UseAction()")
+    c.advance(3)
+    c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "UseAction()")
+    c.fire("ADDON_ACTION_FORBIDDEN", "ForeverLedger", "CastSpellByName()")
+    c.fire("ADDON_ACTION_BLOCKED", "SomeOtherAddon", "UseAction()")
+    c.fire("LUA_WARNING", "Interface/AddOns/ForeverLedger/ForeverLedger.lua:12: something odd")
+    c.fire("LUA_WARNING", 0, "Interface/AddOns/Other/Other.lua:1: not ours")
+    local e = errors(c)
+    H.eq(e["blocked:UseAction()"].count, 2)
+    H.eq(e["blocked:UseAction()"].last, c.world.clock)
+    H.eq(e["blocked:UseAction()"].msg, "UseAction()")
+    H.eq(e["forbidden:CastSpellByName()"].count, 1)
+    local warnings = 0
+    for k, v in pairs(e) do
+      if k:find("^warning:") then
+        warnings = warnings + 1
+        H.ok(v.msg:find("something odd", 1, true))
+      end
+    end
+    H.eq(warnings, 1)
+    H.eq(H.count(e), 3)
+  end)
+
   ---------------------------------------------------------------- status, reset, nudge
   H.test("professions: /fl shows profession counts and reset wipes the new tables", function()
     local c = session(H)
@@ -1139,6 +1227,7 @@ return function(H)
     H.ok(d.trainers[B][1103] and d.vendors[B][1347], "trainer and vendor")
     local misses = d.apiSamples["ForeverLedger.fieldMisses"].sample
     H.eq(misses["C_TradeSkillUI.GetRecipeSchematic:quantityMax"], "quantityMax|maxQuantity")
+    H.eq(d.apiSamples["ForeverLedger.errors"].sample["blocked:UseAction()"].count, 1)
     local learned = d.apiSamples.NEW_RECIPE_LEARNED.sample
     H.eq(learned[1], LINEN_SHIRT)
     H.eq(learned[2], nil, "a nil gap")

@@ -199,7 +199,7 @@ end
 -- first candidate name that is present; `need` does the same and notes a miss. The first table each API returns on a
 -- build is kept in db.apiSamples (trimmed), so the real field names can be checked on the server.
 local ATTRIBUTE_WINDOW = 5 -- seconds: a skill-up or learned recipe belongs to a craft or item use this recent
-local field, sample, sampleReturns, need, throttled
+local field, sample, sampleReturns, need, throttled, noteError, safely
 do
   local SCAN_GAP = 2         -- seconds between two scans of the same window (profession, trainer, vendor)
   local SAMPLE_KEYS, SAMPLE_DEPTH, SAMPLE_STR = 60, 2, 200
@@ -276,6 +276,38 @@ do
     return v
   end
 
+  -- db.apiSamples["ForeverLedger.errors"].sample = { [where] = { msg =, count =, last = } } for this build: the first
+  -- message of each failing function or handler (<= 200 chars), how often it failed and when last; at most 40 places.
+  -- Blocked/forbidden actions blamed on this addon and Lua warnings naming it are kept the same way.
+  local ERRORS_API, ERRORS_CAP, ERROR_LEN = "ForeverLedger.errors", 40, 200
+
+  function noteError(place, msg)
+    if not db or type(db.apiSamples) ~= "table" then return end
+    local m = db.apiSamples[ERRORS_API]
+    if type(m) ~= "table" or m.build ~= build or type(m.sample) ~= "table" then
+      m = { build = build, time = now(), sample = {} }
+      db.apiSamples[ERRORS_API] = m
+    end
+    place = tostring(place):sub(1, 80)
+    local e = m.sample[place]
+    if not e then
+      local n = 0
+      for _ in pairs(m.sample) do n = n + 1 end
+      if n >= ERRORS_CAP then return end
+      e = { msg = tostring(msg):sub(1, ERROR_LEN), count = 0 }
+      m.sample[place] = e
+    end
+    e.count, e.last = e.count + 1, now()
+  end
+
+  local function captured(place, ok, ...)
+    if not ok then pcall(noteError, place, (...)) end
+    return ok, ...
+  end
+
+  -- pcall that notes a failure under `place`.
+  function safely(place, fn, ...) return captured(place, pcall(fn, ...)) end
+
   -- A window scan at most every SCAN_GAP seconds. A request inside the gap runs once when it ends (C_Timer), so the
   -- last state of the window is still read; `fn` returning true asks for another pass (work left over).
   local lastScan, scanQueued = {}, {}
@@ -289,7 +321,7 @@ do
       return
     end
     lastScan[key] = now()
-    local ok, more = pcall(fn)
+    local ok, more = safely("scan:" .. key, fn)
     if ok and more then throttled(key, fn) end
   end
 end
@@ -594,7 +626,9 @@ local function onUseContainerItem(bag, slot)
 end
 
 if hooksecurefunc and C_Container and C_Container.UseContainerItem then
-  hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot) pcall(onUseContainerItem, bag, slot) end)
+  hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
+    safely("onUseContainerItem", onUseContainerItem, bag, slot)
+  end)
 end
 
 local function learnedVia()
@@ -778,7 +812,7 @@ end
 
 if hooksecurefunc and GetQuestReward then
   -- pcall: an error here must never surface in the middle of turning a quest in
-  hooksecurefunc("GetQuestReward", function(index) pcall(onGetQuestReward, index) end)
+  hooksecurefunc("GetQuestReward", function(index) safely("onGetQuestReward", onGetQuestReward, index) end)
 end
 
 -- The pick for questID, if one is waiting and fresh. Consumes it.
@@ -1798,7 +1832,7 @@ function handlers.PLAYER_LOGIN()
   me.lastSeen = now()
   db.chars[charKey()] = me
   lastXP, lastMax, lastLevel = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
-  pcall(scanSkills)
+  safely("scanSkills", scanSkills)
   say("v" .. VERSION .. " recording. /fl for commands.")
 end
 
@@ -1814,16 +1848,21 @@ function handlers.QUEST_COMPLETE()
   completeWindow = questID and { questID = questID, choices = o.choices } or nil
 end
 function handlers.PLAYER_XP_UPDATE() onXP() end
-function handlers.LOOT_OPENED() onLootOpened() end
+function handlers.LOOT_OPENED() safely("onLootOpened", onLootOpened) end
 function handlers.LOOT_CLOSED() if pendingMoney then pendingMoney.untilAt = now() + MONEY_WAIT end end
-function handlers.PLAYER_MONEY() pcall(onPlayerMoney) end
--- pcall: loot bookkeeping reads client tables whose shape we only know from API docs; it must never error in play
+function handlers.PLAYER_MONEY() safely("onPlayerMoney", onPlayerMoney) end
+-- safely (pcall): loot bookkeeping reads client tables whose shape we only know from API docs; it must never error in
+-- play. Failures are noted in apiSamples["ForeverLedger.errors"].
 function handlers.CHAT_MSG_LOOT(text, playerName)
-  pcall(onChatLoot, text, playerName)
-  pcall(onCreateLine, text)
+  safely("onChatLoot", onChatLoot, text, playerName)
+  safely("onCreateLine", onCreateLine, text)
 end
-function handlers.LOOT_HISTORY_UPDATE_ENCOUNTER(encounterID) pcall(readEncounterLoot, encounterID) end
-function handlers.LOOT_HISTORY_UPDATE_DROP(encounterID, lootListKey) pcall(readDropLoot, encounterID, lootListKey) end
+function handlers.LOOT_HISTORY_UPDATE_ENCOUNTER(encounterID)
+  safely("readEncounterLoot", readEncounterLoot, encounterID)
+end
+function handlers.LOOT_HISTORY_UPDATE_DROP(encounterID, lootListKey)
+  safely("readDropLoot", readDropLoot, encounterID, lootListKey)
+end
 function handlers.PARTY_LOOT_METHOD_CHANGED() refreshLootMethod() end
 function handlers.GROUP_ROSTER_UPDATE() refreshLootMethod() end
 
@@ -1851,7 +1890,7 @@ function handlers.ENCOUNTER_END(encounterID, name, _, _, success)
     run.bosses[#run.bosses + 1] = { id = encounterID, name = name, killed = success == 1,
                                     atSecs = now() - run.start - (run.awaySecs or 0) }
     refreshLootMethod()
-    pcall(readEncounterLoot, encounterID)
+    safely("readEncounterLoot", readEncounterLoot, encounterID)
   end
   if success == 1 or success == true then checkpoint() end
 end
@@ -1877,8 +1916,8 @@ function handlers.QUEST_LOG_UPDATE()
   if next(blankObjectives) and now() - lastObjRefresh >= OBJ_REFRESH_GAP then refreshBlankObjectives() end
 end
 
--- professions: everything below reads client tables whose field names are unverified, so all of it is pcall'd
-function handlers.SKILL_LINES_CHANGED() pcall(scanSkills) end
+-- professions: everything below reads client tables whose field names are unverified, so all of it runs `safely`
+function handlers.SKILL_LINES_CHANGED() safely("scanSkills", scanSkills) end
 function handlers.TRADE_SKILL_SHOW()
   tradeOpen = true
   throttled("trade", scanTrade)
@@ -1886,7 +1925,7 @@ end
 function handlers.TRADE_SKILL_LIST_UPDATE() if tradeOpen then throttled("trade", scanTrade) end end
 function handlers.TRADE_SKILL_DATA_SOURCE_CHANGED() if tradeOpen then throttled("trade", scanTrade) end end
 function handlers.TRADE_SKILL_CLOSE() tradeOpen = false end
-function handlers.NEW_RECIPE_LEARNED(...) pcall(onRecipeLearned, ...) end
+function handlers.NEW_RECIPE_LEARNED(...) safely("onRecipeLearned", onRecipeLearned, ...) end
 function handlers.TRAINER_SHOW()
   trainerNpc = npcIDFromGUID(UnitGUID("npc"))
   if trainerNpc then throttled("trainer", scanTrainer) end
@@ -1900,21 +1939,46 @@ end
 function handlers.MERCHANT_UPDATE() if merchantNpc then throttled("vendor", scanVendor) end end
 function handlers.MERCHANT_CLOSED() merchantNpc = nil end
 function handlers.UNIT_SPELLCAST_START(unit, castGUID, spellID)
-  if unit == "player" then pcall(onPlayerCastStart, castGUID, spellID) end
+  if unit == "player" then safely("onPlayerCastStart", onPlayerCastStart, castGUID, spellID) end
 end
 function handlers.UNIT_SPELLCAST_SENT(unit, target, castGUID, spellID)
-  if unit == "player" then pcall(onGatherSent, target, castGUID, spellID) end
+  if unit == "player" then safely("onGatherSent", onGatherSent, target, castGUID, spellID) end
 end
 function handlers.UNIT_SPELLCAST_SUCCEEDED(unit, castGUID, spellID)
   if unit ~= "player" then return end
-  pcall(onPlayerSpellForRecipeItem)
-  pcall(onPlayerCastSucceeded, castGUID, spellID)
+  safely("onPlayerSpellForRecipeItem", onPlayerSpellForRecipeItem)
+  safely("onPlayerCastSucceeded", onPlayerCastSucceeded, castGUID, spellID)
 end
-function handlers.TRADE_SKILL_CRAFT_BEGIN(recipeSpellID) pcall(onCraftBegin, recipeSpellID) end
-function handlers.TRADE_SKILL_ITEM_CRAFTED_RESULT(data) pcall(onCraftedResult, data) end
+function handlers.TRADE_SKILL_CRAFT_BEGIN(recipeSpellID) safely("onCraftBegin", onCraftBegin, recipeSpellID) end
+function handlers.TRADE_SKILL_ITEM_CRAFTED_RESULT(data) safely("onCraftedResult", onCraftedResult, data) end
+
+-- ADDON_ACTION_BLOCKED / _FORBIDDEN (addonName, functionName): a protected call blamed on this addon. It never makes
+-- one, so any entry here is a bug (or taint from another addon) worth seeing on the server.
+function handlers.ADDON_ACTION_BLOCKED(addonName, fn)
+  if addonName == "ForeverLedger" then noteError("blocked:" .. tostring(fn), tostring(fn)) end
+end
+function handlers.ADDON_ACTION_FORBIDDEN(addonName, fn)
+  if addonName == "ForeverLedger" then noteError("forbidden:" .. tostring(fn), tostring(fn)) end
+end
+-- LUA_WARNING(warningText) (some clients send a warning type first): kept when the text names this addon.
+function handlers.LUA_WARNING(...)
+  for i = 1, select("#", ...) do
+    local text = select(i, ...)
+    if type(text) == "string" and text:find("ForeverLedger", 1, true) then
+      return noteError("warning:" .. text:sub(1, 60), text)
+    end
+  end
+end
 
 for event in pairs(handlers) do pcall(f.RegisterEvent, f, event) end -- pcall: skip events a client lacks
-f:SetScript("OnEvent", function(_, event, ...) handlers[event](...) end)
+-- A handler's error is noted, then raised as before.
+f:SetScript("OnEvent", function(_, event, ...)
+  local ok, err = pcall(handlers[event], ...)
+  if not ok then
+    pcall(noteError, "event:" .. event, err)
+    error(err, 0)
+  end
+end)
 
 ---------------------------------------------------------------- slash commands
 local function professionStatus()

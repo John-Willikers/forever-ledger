@@ -138,6 +138,17 @@ ForeverLedgerDB = {
 			},
 			["time"] = 1790001230,
 		},
+		["ForeverLedger.errors"] = {
+			["build"] = 61582,
+			["sample"] = {
+				["blocked:UseAction()"] = {
+					["count"] = 1,
+					["last"] = 1790001513,
+					["msg"] = "UseAction()",
+				},
+			},
+			["time"] = 1790001513,
+		},
 		["ForeverLedger.fieldMisses"] = {
 			["build"] = 61582,
 			["sample"] = {
