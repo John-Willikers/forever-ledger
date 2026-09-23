@@ -66,8 +66,8 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Timestam
 
 ### 🎁 Phase 5 — Wrap up
 
-- ⬜ 5.1 README + CLAUDE.md updated, `pnpm check` green
-- ⬜ 5.2 PR `feat/tray-app` → `master`, merged
+- ✅ 5.1 README + CLAUDE.md updated, `pnpm check` green — 2026-09-23 02:45 CDT (c36123d)
+- 🟡 5.2 PR `feat/tray-app` → `master`, merged — PR #1 open, final review fixes in (42a4ef6..7e19ceb), waiting on checks
 - ⬜ 5.3 Manual checklist on the gaming PC (user)
 
 ---
