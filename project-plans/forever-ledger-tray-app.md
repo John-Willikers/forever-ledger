@@ -1043,7 +1043,7 @@ export interface ControllerDeps {
   addonIntervalMs?: number; // default 30 min
 }
 export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: [string] }> {
-  start(): Promise<void>; // load config; setupNeeded if no wowPath/token; else lock, watch, first addon sync
+  start(): Promise<void>; // load config; setupNeeded if no wowPath/token; else watch + first addon sync
   stop(): Promise<void>; // close watch, clear timers, release lock
   snapshot(): Snapshot;
   uploadNow(): void; // watch.trigger()
@@ -1059,8 +1059,9 @@ Rules: `onEvent` pass-start → `uploading = true`; pass-end → `uploading = fa
 `collectStatus`; fatal → `fatal`. Addon sync runs at start and every `addonIntervalMs` when `autoUpdateAddon`;
 `installed` (or a non-empty `recovered`) → toast `ForeverLedger <v> installed — type /reload in game to use it`.
 The uploader already serializes `syncAddon`/`rollbackAddonEverywhere` with an in-process mutex; call only those
-(the low-level install functions are no longer exported). `LockedError` → `fatal = 'The
-uploader CLI is already running (forever-ledger watch). Stop it, then reopen this app.'`. An `error` addon status
+(the low-level install functions are no longer exported). **Locking:** the controller never holds the uploader lock for its lifetime — every watch pass already takes it
+(`runUploadPass`), so a held lock would block all uploads. Addon sync/rollback run inside `withLock(stateDir, …)`;
+on `LockedError` skip that cycle (log + retry next interval), and surface a warning only if it persists > 10 min. An `error` addon status
 that has lasted over an hour → one toast. Every state change emits `change`.
 
 Tests with fakes: setup-needed when config lacks token; start takes the lock and starts watch; events flip
