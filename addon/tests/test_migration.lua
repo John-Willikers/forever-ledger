@@ -6,6 +6,7 @@ local S = require("scenario")
 local LEGACY = "legacy/ForeverLedger-0.1.0.lua"
 local ADDON_0_2_2 = "legacy/ForeverLedger-0.2.2.lua"
 local ADDON_0_2_3 = "legacy/ForeverLedger-0.2.3.lua"
+local ADDON_0_2_4 = "legacy/ForeverLedger-0.2.4.lua" -- writes the schema 3 session-migrated fixture
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
 local FIXTURES = "../../fixtures/synthetic/"
 local ME = "Thibodeaux-Bayou"
@@ -24,15 +25,18 @@ return function(H)
     H.eq(v0.drops[872][644], 1)
   end)
 
-  local new = H.new({ items = S.items(), questLog = S.questLog(), clock = old.world.clock + 60 })
-  new.env.ForeverLedgerDB = H.copy(v0)
-  new.load(ADDON)
-  new.login("ForeverLedger")
-  local db = new.env.ForeverLedgerDB
-  H.writeFile(FIXTURES .. "session-migrated.lua", H.serialize("ForeverLedgerDB", db))
+  local function migrate(addon)
+    local new = H.new({ items = S.items(), questLog = S.questLog(), clock = old.world.clock + 60 })
+    new.env.ForeverLedgerDB = H.copy(v0)
+    new.load(addon)
+    new.login("ForeverLedger")
+    return new.env.ForeverLedgerDB
+  end
+  H.writeFile(FIXTURES .. "session-migrated.lua", H.serialize("ForeverLedgerDB", migrate(ADDON_0_2_4)))
+  local db = migrate(ADDON)
 
-  H.test("migration: stamps the current schema (3) and flattens meta.build", function()
-    H.eq(db.meta.schemaVersion, 3)
+  H.test("migration: stamps the current schema (4) and flattens meta.build", function()
+    H.eq(db.meta.schemaVersion, 4)
     H.eq(db.meta.session, "")
     H.eq(db.meta.build, 61582)
   end)
@@ -81,7 +85,7 @@ return function(H)
   end)
 
   for _, legacy in ipairs({ { ADDON_0_2_2, 1 }, { ADDON_0_2_3, 2 } }) do
-    H.test("migration: schema " .. legacy[2] .. " data is stamped 3, keeps session \"\" and is kept as is", function()
+    H.test("migration: schema " .. legacy[2] .. " data is stamped 4, keeps session \"\" and is kept as is", function()
       local old2 = H.new({ items = S.items(), questLog = S.questLog() })
       old2.load(legacy[1])
       S.play(old2, "ForeverLedger")
@@ -94,7 +98,7 @@ return function(H)
       up.load(ADDON)
       up.login("ForeverLedger")
       local d = up.env.ForeverLedgerDB
-      H.eq(d.meta.schemaVersion, 3)
+      H.eq(d.meta.schemaVersion, 4)
       H.eq(d.meta.addonVersion, "0.2.4")
       H.eq(d.meta.session, "")
       H.eq(#d.turnIns, 1)

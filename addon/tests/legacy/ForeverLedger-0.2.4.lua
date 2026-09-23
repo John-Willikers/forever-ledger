@@ -1,12 +1,11 @@
--- Forever Ledger v0.2.4 (SavedVariables schema 4)
+-- Forever Ledger v0.2.4 (SavedVariables schema 3)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
 local VERSION = "0.2.4"
--- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
--- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
--- items[].classID/subclassID and apiSamples. Each is additive: older data is valid as it is.
-local SCHEMA_VERSION = 4
+-- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot.
+-- Each is additive: older data is valid as it is.
+local SCHEMA_VERSION = 3
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local LIST_CAP = 500     -- bossLoot and groupLoot entries kept per run
 local f = CreateFrame("Frame")
@@ -112,21 +111,6 @@ local function whoAmI()
            race = race, faction = UnitFactionGroup("player"), level = UnitLevel("player") }
 end
 
-local function packed(...) return select("#", ...), { ... } end
-
--- Enum values are stored as their lower-cased key ("group", "needmainspec"); the raw value when the client has no
--- Enum for it; strings (the Classic GetLootMethod) lower-cased as they are.
-local function enumName(enum, v)
-  if type(v) == "string" then return v:lower() end
-  if type(v) ~= "number" then return nil end
-  if type(enum) == "table" then
-    for k, ev in pairs(enum) do
-      if ev == v and type(k) == "string" then return k:lower() end
-    end
-  end
-  return tostring(v)
-end
-
 -- Drops the oldest entries so the file stays bounded.
 local function trim(list, cap)
   local extra = #list - cap
@@ -139,7 +123,7 @@ local tip = CreateFrame("GameTooltip", "ForeverLedgerScanTip", nil, "GameTooltip
 
 local function scanItem(itemID, link)
   if not itemID then return end
-  local name, ilink, quality, ilvl, reqLevel, itype, isub, _, equipLoc, _, sellPrice, classID, subclassID =
+  local name, ilink, quality, ilvl, reqLevel, itype, isub, _, equipLoc, _, sellPrice =
     GetItemInfo(link or itemID)
   if not name then pendingItems[itemID] = link or true; return end -- server hasn't sent it yet
   pendingItems[itemID] = nil
@@ -147,8 +131,6 @@ local function scanItem(itemID, link)
   local rec = db.items[itemID] or { id = itemID, byBuild = {} }
   db.items[itemID] = rec
   rec.name, rec.quality, rec.type, rec.subtype, rec.equipLoc = name, quality, itype, isub, equipLoc
-  -- classID 9 is Recipe: lets the server find recipe drops and vendor recipes
-  rec.classID, rec.subclassID = tonumber(classID) or rec.classID, tonumber(subclassID) or rec.subclassID
 
   -- Per-build snapshot: beta stat changes are data, never overwrite another build's values.
   local snap = rec.byBuild[build]
@@ -177,420 +159,6 @@ local function scanItem(itemID, link)
     end
   end
   if #lines > 0 then snap.tooltip = lines end
-end
-
--- Items read in bulk (recipe reagents, vendor stock) are scanned once per build, not on every window refresh.
-local function scanItemOnce(itemID, link)
-  local rec = itemID and db.items[itemID]
-  if rec and rec.byBuild and rec.byBuild[build] then return end
-  scanItem(itemID, link)
-end
-
----------------------------------------------------------------- professions: API samples and readers
--- Forever runs the retail profession API, but the dump names its structs without their fields. `field` returns the
--- first candidate name that is present; `need` does the same and notes a miss. The first table each API returns on a
--- build is kept in db.apiSamples (trimmed), so the real field names can be checked on the server.
-local ATTRIBUTE_WINDOW = 5 -- seconds: a skill-up or learned recipe belongs to a craft or item use this recent
-local SCAN_GAP = 2         -- seconds between two scans of the same window (profession, trainer, vendor)
-local SAMPLE_KEYS, SAMPLE_DEPTH, SAMPLE_STR = 60, 2, 200
--- sample = { ["api:firstName"] = "firstName|otherName" } for required reads where no candidate name was present
-local MISSES_API = "ForeverLedger.fieldMisses"
-
-local function field(t, ...)
-  if type(t) ~= "table" then return nil end
-  for i = 1, select("#", ...) do
-    local v = t[(select(i, ...))]
-    if v ~= nil then return v end
-  end
-  return nil -- one value, always: callers pass this straight to tonumber()
-end
-
--- Keeps one sample per API per build: depth <= 2, <= 60 keys per table, strings <= 200 chars, functions and
--- userdata dropped; a deeper table becomes the string "<table>".
-local function trimSample(v, depth)
-  local tv = type(v)
-  if tv == "string" then return #v > SAMPLE_STR and v:sub(1, SAMPLE_STR) or v end
-  if tv == "boolean" then return v end
-  if tv == "number" then
-    if v ~= v or v == math.huge or v == -math.huge then return tostring(v) end
-    return v
-  end
-  if tv ~= "table" then return nil end
-  if depth > SAMPLE_DEPTH then return "<table>" end
-  local out, n = {}, 0
-  for k, x in pairs(v) do
-    if n >= SAMPLE_KEYS then break end
-    local tk = type(k)
-    if tk == "string" or (tk == "number" and k == floor(k)) then
-      local y = trimSample(x, depth + 1)
-      if y ~= nil then out[k] = y; n = n + 1 end
-    end
-  end
-  return out
-end
-
-local function sampled(api)
-  local s = db and db.apiSamples[api]
-  return s ~= nil and s.build == build
-end
-
-local function sample(api, value)
-  if not db or sampled(api) then return end
-  if type(value) ~= "table" then
-    if value == nil then return end
-    value = { value }
-  end
-  if next(value) == nil then return end -- an empty table says nothing about field names
-  db.apiSamples[api] = { build = build, time = now(), sample = trimSample(value, 1) }
-end
-
--- Several return values, kept by position.
-local function sampleReturns(api, ...)
-  if not db or sampled(api) or select("#", ...) == 0 then return end
-  sample(api, { ... })
-end
-
-local function need(api, t, ...)
-  local v = field(t, ...)
-  if v == nil and type(t) == "table" and db then
-    local m = db.apiSamples[MISSES_API]
-    if not m or m.build ~= build then
-      m = { build = build, time = now(), sample = {} }
-      db.apiSamples[MISSES_API] = m
-    end
-    local n = 0
-    for _ in pairs(m.sample) do n = n + 1 end
-    local key = api .. ":" .. tostring((...))
-    if not m.sample[key] and n < SAMPLE_KEYS then m.sample[key] = table.concat({ ... }, "|") end
-  end
-  return v
-end
-
--- A window scan at most every SCAN_GAP seconds. A request inside the gap runs once when it ends (C_Timer), so the
--- last state of the window is still read; `fn` returning true asks for another pass (work left over).
-local lastScan, scanQueued = {}, {}
-local function throttled(key, fn)
-  local wait = SCAN_GAP - (now() - (lastScan[key] or -SCAN_GAP))
-  if wait > 0 then
-    if not scanQueued[key] and C_Timer and C_Timer.After then
-      scanQueued[key] = true
-      C_Timer.After(wait, function() scanQueued[key] = nil; throttled(key, fn) end)
-    end
-    return
-  end
-  lastScan[key] = now()
-  local ok, more = pcall(fn)
-  if ok and more then throttled(key, fn) end
-end
-
----------------------------------------------------------------- professions: skills
--- C_SkillInfo lines in the SkillLine categories 9 (secondary skills) and 11 (professions). Without a category the
--- line counts when maxRank > 1 and its header is not weapons, armor, languages or class skills (enUS header words).
--- Collapsed headers hide their lines; the addon never expands them. GetProfessions/GetProfessionInfo add lines
--- C_SkillInfo did not list.
-local PROFESSION_CATEGORIES = { [9] = true, [11] = true }
-local NOT_PROFESSION_HEADERS = { "weapon", "armor", "language", "class" }
-local sessionRank = {} -- ["char:skillLineID"] = rank seen this load; skill-ups only count against these
-
-local function charSkills()
-  local byChar = db.skills[charKey()] or {}
-  db.skills[charKey()] = byChar
-  return byChar
-end
-
-local function skillRank(skillLineID)
-  local s = skillLineID and db.skills[charKey()] and db.skills[charKey()][skillLineID]
-  return s and s.rank
-end
-
-local function isProfessionLine(category, maxRank, header)
-  if category then return PROFESSION_CATEGORIES[category] == true end
-  if not maxRank or maxRank <= 1 then return false end
-  for _, word in ipairs(NOT_PROFESSION_HEADERS) do
-    if header and header:find(word, 1, true) then return false end
-  end
-  return true
-end
-
-local function noteSkill(id, name, rank, maxRank, modifier, parentID)
-  local byChar = charSkills()
-  local s = byChar[id]
-  if not s then
-    s = {}
-    byChar[id] = s
-    added()
-  end
-  s.name = type(name) == "string" and name or s.name
-  s.rank, s.maxRank, s.modifier = rank or s.rank, maxRank or s.maxRank, modifier or s.modifier
-  s.parentID = (parentID and parentID > 0) and parentID or s.parentID
-  s.lastSeen = now()
-
-  local key = charKey() .. ":" .. id
-  local before = sessionRank[key]
-  if rank then sessionRank[key] = rank end
-  if before and rank and rank > before then
-    local e = { char = charKey(), skillLineID = id, from = before, to = rank, build = build, time = now() }
-    db.skillUps[#db.skillUps + 1] = e
-    trim(db.skillUps, HISTORY_CAP)
-    added()
-  end
-end
-
-local function scanSkills()
-  local SI = C_SkillInfo
-  local listed = {}
-  if SI and SI.GetNumSkillLines and SI.GetSkillLineInfo then
-    local api = "C_SkillInfo.GetSkillLineInfo"
-    local header
-    for i = 1, (SI.GetNumSkillLines() or 0) do
-      local info = SI.GetSkillLineInfo(i)
-      if type(info) == "table" then
-        local name = field(info, "name", "skillName")
-        if field(info, "isHeader", "header") then
-          header = type(name) == "string" and name:lower() or nil
-        else
-          sample(api, info)
-          local id = tonumber(need(api, info, "skillID", "skillLineID", "id"))
-          local maxRank = tonumber(need(api, info, "maxRank", "skillMaxRank", "max"))
-          local category = tonumber(field(info, "skillLineCategoryID", "categoryID", "category"))
-          if id and isProfessionLine(category, maxRank, header) then
-            listed[id] = true
-            noteSkill(id, name, tonumber(need(api, info, "rank", "skillRank", "skillLevel")), maxRank,
-              tonumber(field(info, "modifier", "skillModifier")),
-              tonumber(field(info, "parentSkillLineID", "parentID")))
-          end
-        end
-      end
-    end
-  end
-  if GetProfessions and GetProfessionInfo then
-    local n, idx = packed(GetProfessions())
-    for i = 1, n do
-      if idx[i] then
-        local _, r = packed(GetProfessionInfo(idx[i]))
-        sampleReturns("GetProfessionInfo", unpack(r, 1, 10))
-        -- name, icon, skillLevel, maxSkillLevel, numAbilities, spellOffset, skillLine, skillModifier
-        local line = tonumber(r[7])
-        if line and not listed[line] then noteSkill(line, r[1], tonumber(r[3]), tonumber(r[4]), tonumber(r[8])) end
-      end
-    end
-  end
-end
-
----------------------------------------------------------------- professions: recipes
--- Read only from your own profession window (never a linked, guild or NPC crafter window, nor while the data source
--- is switching). The schematic is read once per recipe per build, at most SCHEMATIC_BUDGET new ones per scan.
-local SCHEMATIC_BUDGET = 60
-local tradeOpen = false
-
-local function tradeGuardsOK(T)
-  for _, guard in ipairs({ "IsTradeSkillLinked", "IsTradeSkillGuild", "IsNPCCrafting", "IsDataSourceChanging" }) do
-    if T[guard] then
-      local ok, v = pcall(T[guard])
-      if not ok or v then return false end
-    end
-  end
-  return true
-end
-
-local function professionInfo(T, fn, ...)
-  if not T[fn] then return nil end
-  local ok, info = pcall(T[fn], ...)
-  if not ok or type(info) ~= "table" then return nil end
-  sample("C_TradeSkillUI." .. fn, info)
-  return info
-end
-
--- The window's own profession: the child (expansion) line when the client has one, else the base line.
-local function windowProfession(T)
-  local child = professionInfo(T, "GetChildProfessionInfo")
-  local base = professionInfo(T, "GetBaseProfessionInfo")
-  for i = 1, 2 do
-    local p = i == 1 and child or base
-    local id = tonumber(field(p, "professionID", "skillLineID"))
-    if id and id > 0 then return id, tonumber(field(p, "skillLevel", "rank")) end
-  end
-end
-
-local function isRequiredSlot(slot)
-  local req = field(slot, "required")
-  if req ~= nil then return req and true or false end
-  local basic = Enum and Enum.CraftingReagentType and Enum.CraftingReagentType.Basic
-  local rt = field(slot, "reagentType")
-  if rt ~= nil and basic ~= nil then return rt == basic end
-  return true
-end
-
-local function readReagents(slots)
-  local out = {}
-  if type(slots) ~= "table" then return out end
-  local api = "C_TradeSkillUI.GetRecipeSchematic"
-  for _, slot in ipairs(slots) do
-    if type(slot) == "table" then
-      sample(api .. ":reagentSlot", slot)
-      local list = field(slot, "reagents")
-      local first = type(list) == "table" and list[1] or nil
-      if type(first) == "table" then sample(api .. ":reagent", first) end
-      local itemID = tonumber(field(first, "itemID")) or tonumber(field(slot, "itemID"))
-      if itemID and isRequiredSlot(slot) then
-        out[#out + 1] = { itemID = itemID, qty = tonumber(need(api .. ":reagentSlot", slot, "quantityRequired",
-          "quantity", "count")) or 1 }
-        scanItemOnce(itemID)
-      end
-    end
-  end
-  return out
-end
-
-local function readSnapshot(T, recipeID, info, rec, windowLine)
-  local api = "C_TradeSkillUI.GetRecipeSchematic"
-  local snap = { firstSeen = now(), reagents = {},
-                 maxTrivial = tonumber(field(info, "maxTrivialLevel", "trivialLevel", "maxTrivial")) }
-  if T.GetRecipeSchematic then
-    local ok, s = pcall(T.GetRecipeSchematic, recipeID, false)
-    if ok and type(s) == "table" then
-      sample(api, s)
-      snap.outputItemID = tonumber(field(s, "outputItemID", "itemID"))
-      snap.qtyMin = tonumber(need(api, s, "quantityMin", "minQuantity"))
-      snap.qtyMax = tonumber(need(api, s, "quantityMax", "maxQuantity"))
-      snap.reagents = readReagents(need(api, s, "reagentSlotSchematics", "reagentSlots", "reagents"))
-      if snap.outputItemID then scanItemOnce(snap.outputItemID) end
-    end
-  end
-  if T.GetRecipeSourceText and not field(info, "learned", "isLearned") then
-    local ok, text = pcall(T.GetRecipeSourceText, recipeID)
-    if ok and type(text) == "string" and text ~= "" then
-      sample("C_TradeSkillUI.GetRecipeSourceText", text)
-      snap.sourceText = text:sub(1, 500)
-    end
-  end
-  if not rec.skillLineID then
-    local p = professionInfo(T, "GetProfessionInfoByRecipeID", recipeID)
-    rec.skillLineID = tonumber(field(p, "professionID", "skillLineID")) or windowLine
-  end
-  return snap
-end
-
--- relativeDifficulty as the lower-cased Enum.TradeskillRelativeDifficulty key ("optimal", "medium", "easy",
--- "trivial"), or the number as a string.
-local function difficultyName(v)
-  return enumName(Enum and Enum.TradeskillRelativeDifficulty, v)
-end
-
-local function noteRecipeSeen(byRecipe, recipeID, info, rank)
-  local e = byRecipe[recipeID]
-  if not e then
-    e = { byDifficulty = {} }
-    byRecipe[recipeID] = e
-  end
-  e.learned = field(info, "learned", "isLearned") and true or false
-  e.difficulty = difficultyName(field(info, "relativeDifficulty", "difficulty"))
-  e.rank, e.seenAt = rank, now()
-  if e.learned and e.difficulty and rank then
-    local d = e.byDifficulty[e.difficulty]
-    if not d then
-      e.byDifficulty[e.difficulty] = { minRank = rank, maxRank = rank }
-    else
-      if rank < d.minRank then d.minRank = rank end
-      if rank > d.maxRank then d.maxRank = rank end
-    end
-  end
-end
-
-local function scanTrade()
-  local T = C_TradeSkillUI
-  if not tradeOpen or not T or not T.GetAllRecipeIDs or not T.GetRecipeInfo or not tradeGuardsOK(T) then return end
-  local ids = T.GetAllRecipeIDs()
-  if type(ids) ~= "table" then return end
-  sample("C_TradeSkillUI.GetAllRecipeIDs", ids)
-  local windowLine, windowRank = windowProfession(T)
-  local byChar = db.recipeSeen[build] or {}
-  db.recipeSeen[build] = byChar
-  local byRecipe = byChar[charKey()] or {}
-  byChar[charKey()] = byRecipe
-  local budget, more = SCHEMATIC_BUDGET, false
-  for _, rid in ipairs(ids) do
-    local recipeID = tonumber(rid)
-    local ok, info = pcall(T.GetRecipeInfo, recipeID)
-    if recipeID and ok and type(info) == "table" then
-      sample("C_TradeSkillUI.GetRecipeInfo", info)
-      local rec = db.recipes[recipeID] or { id = recipeID, byBuild = {} }
-      db.recipes[recipeID] = rec
-      local name = need("C_TradeSkillUI.GetRecipeInfo", info, "name", "recipeName")
-      rec.name = type(name) == "string" and name or rec.name
-      rec.categoryID = tonumber(field(info, "categoryID", "category")) or rec.categoryID
-      if not rec.byBuild[build] then
-        if budget > 0 then
-          budget = budget - 1
-          rec.byBuild[build] = readSnapshot(T, recipeID, info, rec, windowLine)
-          added()
-        else
-          more = true
-        end
-      end
-      noteRecipeSeen(byRecipe, recipeID, info, skillRank(rec.skillLineID) or windowRank)
-    end
-  end
-  return more
-end
-
----------------------------------------------------------------- professions: learned recipes
--- NEW_RECIPE_LEARNED says how when a trainer window is open ("trainer:<npcID>") or a Recipe-class item was used from
--- the bags in the last 5 s ("item:<itemID>"; a player spell that finishes within 30 s of the use restarts the 5 s,
--- for recipes with a cast bar). A post-hook on C_Container.UseContainerItem reads which item that was; items used
--- from action bars are not seen.
-local RECIPE_CLASS = (Enum and Enum.ItemClass and Enum.ItemClass.Recipe) or 9
-local trainerNpc      -- npcID while a trainer window is open
-local recipeItemUse   -- { itemID =, at =, usedAt = }
-
-local function itemClass(itemID)
-  local rec = db.items[itemID]
-  if rec and rec.classID then return rec.classID end
-  if C_Item and C_Item.GetItemInfoInstant then
-    local ok, _, _, _, _, _, classID = pcall(C_Item.GetItemInfoInstant, itemID)
-    if ok and classID then return tonumber(classID) end
-  end
-  local n, r = packed(pcall(GetItemInfo, itemID)) -- r[1] is pcall's ok, so return 12 (classID) is r[13]
-  if r[1] and n >= 13 then return tonumber(r[13]) end
-end
-
-local function onUseContainerItem(bag, slot)
-  if not db or not C_Container.GetContainerItemID then return end
-  local itemID = C_Container.GetContainerItemID(bag, slot)
-  itemID = tonumber(itemID)
-  if itemID and itemClass(itemID) == RECIPE_CLASS then
-    recipeItemUse = { itemID = itemID, at = now(), usedAt = now() }
-  end
-end
-
-if hooksecurefunc and C_Container and C_Container.UseContainerItem then
-  hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot) pcall(onUseContainerItem, bag, slot) end)
-end
-
-local function learnedVia()
-  if trainerNpc then return "trainer:" .. trainerNpc end
-  local u = recipeItemUse
-  if u and now() - u.at <= ATTRIBUTE_WINDOW then
-    recipeItemUse = nil
-    return "item:" .. u.itemID
-  end
-  return "unknown"
-end
-
-local function onRecipeLearned(recipeID, recipeLevel, baseRecipeID)
-  sampleReturns("NEW_RECIPE_LEARNED", recipeID, recipeLevel, baseRecipeID)
-  recipeID = tonumber(recipeID)
-  if not recipeID then return end
-  db.learned[#db.learned + 1] = { char = charKey(), recipeID = recipeID, build = build, time = now(),
-                                  via = learnedVia() }
-  trim(db.learned, HISTORY_CAP)
-  added()
-end
-
--- A spell finishing shortly after a recipe item was used is that item's learning cast.
-local function onPlayerSpellForRecipeItem()
-  local u = recipeItemUse
-  if u and now() - u.usedAt <= 30 then u.at = now() end
 end
 
 ---------------------------------------------------------------- quests
@@ -804,6 +372,19 @@ local function inGroup()
   return UnitExists("party1") and true or false
 end
 
+-- Enum values are stored as their lower-cased key ("group", "needmainspec"); the raw value when the client has no
+-- Enum for it; strings (the Classic GetLootMethod) lower-cased as they are.
+local function enumName(enum, v)
+  if type(v) == "string" then return v:lower() end
+  if type(v) ~= "number" then return nil end
+  if type(enum) == "table" then
+    for k, ev in pairs(enum) do
+      if ev == v and type(k) == "string" then return k:lower() end
+    end
+  end
+  return tostring(v)
+end
+
 local function lootMethod()
   local get = (C_PartyInfo and C_PartyInfo.GetLootMethod) or GetLootMethod
   if not get then return nil end
@@ -909,6 +490,8 @@ local seenCorpse = {} -- [guid] = true once counted in db.corpses
 local seenMoney = {}  -- [guid] = true once its copper was added
 local pendingMoney    -- { guid =, before =, untilAt = } for a money slot without a per-source amount
 local MONEY_WAIT = 2  -- seconds after LOOT_CLOSED that PLAYER_MONEY may still settle a pending money slot
+
+local function packed(...) return select("#", ...), { ... } end
 
 -- { { guid =, qty = }, ... } for loot slot i; empty when the client cannot say.
 local function lootSources(i)
@@ -1030,11 +613,11 @@ end
 ---------------------------------------------------------------- run loot
 -- run.bossLoot: C_LootHistory drops of this run's encounters (winner and rolls by class, never names).
 -- run.groupLoot: what group members received (CHAT_MSG_LOOT) while in a run and a group, by class.
-local function runList(key)
-  local list = run[key]
+local function runList(field)
+  local list = run[field]
   if type(list) ~= "table" then
     list = {}
-    run[key] = list
+    run[field] = list
   end
   return list
 end
@@ -1258,22 +841,17 @@ local function newSessionID()
   return format("%d-%04x", now(), rnd(0, 65535))
 end
 
--- Schema 4 tables; /fl reset confirm wipes them too.
-local PROFESSION_TABLES = { "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
-                            "trainers", "vendors", "apiSamples" }
-
 local function initDB()
   ForeverLedgerDB = ForeverLedgerDB or {}
   db = ForeverLedgerDB
   db.quests, db.items, db.runs, db.drops = db.quests or {}, db.items or {}, db.runs or {}, db.drops or {}
   db.turnIns = db.turnIns or {}
   db.dropQty, db.corpses = db.dropQty or {}, db.corpses or {}
-  for _, k in ipairs(PROFESSION_TABLES) do db[k] = db[k] or {} end
   db.meta = db.meta or {}
   local hadData = next(db.quests) or next(db.items) or next(db.runs) or next(db.drops)
   local existed = db.meta.schemaVersion ~= nil or hadData
   if not db.meta.schemaVersion and hadData then migrateV0() end
-  -- 1 -> 2 -> 3 -> 4 only add fields, so older data needs nothing but the new stamp.
+  -- 1 -> 2 -> 3 only add fields, so older data needs nothing but the new stamp.
   if (tonumber(db.meta.schemaVersion) or 0) < SCHEMA_VERSION then db.meta.schemaVersion = SCHEMA_VERSION end
   -- Per-session totals (drops, dropQty, corpses) belong to this session id for the life of the table. Forever
   -- starts every load with an empty table, so each load is a session. A table written by an older addon keeps
@@ -1301,7 +879,6 @@ function handlers.PLAYER_LOGIN()
   me.lastSeen = now()
   db.chars[charKey()] = me
   lastXP, lastMax, lastLevel = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
-  pcall(scanSkills)
   say("v" .. VERSION .. " recording. /fl for commands.")
 end
 
@@ -1377,50 +954,10 @@ function handlers.QUEST_LOG_UPDATE()
   if next(blankObjectives) and now() - lastObjRefresh >= OBJ_REFRESH_GAP then refreshBlankObjectives() end
 end
 
--- professions: everything below reads client tables whose field names are unverified, so all of it is pcall'd
-function handlers.SKILL_LINES_CHANGED() pcall(scanSkills) end
-function handlers.TRADE_SKILL_SHOW()
-  tradeOpen = true
-  throttled("trade", scanTrade)
-end
-function handlers.TRADE_SKILL_LIST_UPDATE() if tradeOpen then throttled("trade", scanTrade) end end
-function handlers.TRADE_SKILL_DATA_SOURCE_CHANGED() if tradeOpen then throttled("trade", scanTrade) end end
-function handlers.TRADE_SKILL_CLOSE() tradeOpen = false end
-function handlers.NEW_RECIPE_LEARNED(...) pcall(onRecipeLearned, ...) end
-function handlers.TRAINER_SHOW() trainerNpc = npcIDFromGUID(UnitGUID("npc")) end
-function handlers.TRAINER_CLOSED() trainerNpc = nil end
-function handlers.UNIT_SPELLCAST_SUCCEEDED(unit)
-  if unit ~= "player" then return end
-  pcall(onPlayerSpellForRecipeItem)
-end
-
 for event in pairs(handlers) do pcall(f.RegisterEvent, f, event) end -- pcall: skip events a client lacks
 f:SetScript("OnEvent", function(_, event, ...) handlers[event](...) end)
 
 ---------------------------------------------------------------- slash commands
-local function professionStatus()
-  local nSkills, nCrafts, nNodes, nTrainers, nVendors = 0, 0, 0, 0, 0
-  for _, byLine in pairs(db.skills) do
-    for _ in pairs(byLine) do nSkills = nSkills + 1 end
-  end
-  local nRecipes = 0
-  for _ in pairs(db.recipes) do nRecipes = nRecipes + 1 end
-  for _, byRecipe in pairs(db.crafts) do
-    for _, c in pairs(byRecipe) do nCrafts = nCrafts + (c.casts or 0) end
-  end
-  for _, byObj in pairs(db.nodes) do
-    for _, n in pairs(byObj) do nNodes = nNodes + (n.opened or 0) end
-  end
-  for _, byNpc in pairs(db.trainers) do
-    for _ in pairs(byNpc) do nTrainers = nTrainers + 1 end
-  end
-  for _, byNpc in pairs(db.vendors) do
-    for _ in pairs(byNpc) do nVendors = nVendors + 1 end
-  end
-  return format("professions: %d skills, %d recipes, %d crafts, %d nodes gathered, %d trainers, %d vendors.",
-    nSkills, nRecipes, nCrafts, nNodes, nTrainers, nVendors)
-end
-
 SLASH_FOREVERLEDGER1, SLASH_FOREVERLEDGER2 = "/fl", "/ledger"
 SlashCmdList.FOREVERLEDGER = function(msg)
   msg = (msg or ""):lower()
@@ -1435,7 +972,6 @@ SlashCmdList.FOREVERLEDGER = function(msg)
   elseif msg == "reset confirm" then
     wipe(db.quests); wipe(db.items); wipe(db.runs); wipe(db.drops); wipe(db.turnIns)
     wipe(db.dropQty); wipe(db.corpses)
-    for _, k in ipairs(PROFESSION_TABLES) do wipe(db[k]) end
     say("all data wiped.")
   else
     local nq, ni, nd, nc = 0, 0, 0, 0
@@ -1448,7 +984,6 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     say(format("schema %d, build %d, session %s.", db.meta.schemaVersion or 0, build, db.meta.session or "?"))
     say(format("%d quests, %d turn-ins, %d items, %d looted item types, %d corpses looted, %d runs.",
       nq, #db.turnIns, ni, nd, nc, #db.runs))
-    say(professionStatus())
     say(format("%d new record%s since your last /reload (saved on the next /reload); reminders %s.",
       newRecords, newRecords == 1 and "" or "s", nudgeOn and "on" or "off"))
     say("/fl scanlog  -  read rewards for quests already in your log")

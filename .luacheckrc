@@ -19,6 +19,7 @@ read_globals = {
   -- namespaces
   "C_Item", "C_Map", "C_QuestLog", "C_AddOns", "C_Container", "C_Timer", "APIDocumentation",
   "C_ChatInfo", "C_CombatLog", "C_UI", "C_LootHistory", "C_PartyInfo", "Enum",
+  "C_SkillInfo", "C_TradeSkillUI", "C_MerchantFrame", "C_Spell",
   -- client / addon
   "GetBuildInfo", "LoadAddOn", "IsAddOnLoaded", "GetLocale", "GetCVar", "ReloadUI", "InCombatLockdown",
   "LoggingChat", "LoggingCombat",
@@ -35,6 +36,12 @@ read_globals = {
   -- items / loot
   "GetItemInfo", "GetItemStats", "GetNumLootItems", "GetLootSlotLink", "GetLootSourceInfo", "GetLootSlotType",
   "GetLootSlotInfo", "GetMoney", "LOOT_SLOT_MONEY", "random",
+  -- professions
+  "GetProfessions", "GetProfessionInfo", "UnitCastingInfo", "IsFishingLoot", "GetSpellInfo", "GameTooltip",
+  "GameTooltipTextLeft1", "LOOT_ITEM_CREATED_SELF", "LOOT_ITEM_CREATED_SELF_MULTIPLE",
+  "IsTradeskillTrainer", "GetNumTrainerServices", "GetTrainerServiceInfo", "GetTrainerServiceCost",
+  "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq", "GetTrainerServiceItemLink", "GetTrainerServiceSkillLine",
+  "GetMerchantNumItems", "GetMerchantItemID", "GetMerchantItemLink",
 }
 
 -- The test harness defines WoW stubs as globals on purpose.
