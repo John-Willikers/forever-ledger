@@ -60,6 +60,10 @@ describe('deriveTrayState', () => {
     expect(deriveTrayState(snapshot({ addon: addonError }))).toBe('error');
   });
 
+  it('is not error while a new addon failure is still being retried', () => {
+    expect(deriveTrayState(snapshot({ addon: addonError, addonRetrying: true }))).toBe('idle');
+  });
+
   it('ranks error > uploading > queued > idle', () => {
     expect(deriveTrayState(snapshot({ fatal: 'x', uploading: true, accounts: queued }))).toBe(
       'error',

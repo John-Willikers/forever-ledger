@@ -13,6 +13,8 @@ export interface Snapshot {
   /** Something that has been going wrong for a while but may fix itself (another uploader holds the lock). */
   warning?: string;
   addon?: AddonSyncResult;
+  /** The addon sync is failing but not for long yet: shown as "retrying", not red. */
+  addonRetrying?: boolean;
   addonPausedFor?: string;
   appVersion: string;
   appUpdateReady?: string;
@@ -27,7 +29,7 @@ export interface Snapshot {
 
 /** Tray icon state; priority error > uploading > queued > idle. */
 export function deriveTrayState(s: Snapshot): TrayState {
-  if (s.fatal || s.warning || s.addon?.status === 'error') return 'error';
+  if (s.fatal || s.warning || (s.addon?.status === 'error' && !s.addonRetrying)) return 'error';
   if (s.uploading) return 'uploading';
   if (s.accounts.some((a) => a.queuedBatches > 0)) return 'queued';
   return 'idle';

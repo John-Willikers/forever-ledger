@@ -11,6 +11,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SERVER_URL, LedgerController } from '../src/main/controller.js';
 import type { ControllerDeps, Prefs, UploaderApi } from '../src/main/controller.js';
+import { deriveTrayState } from '../src/main/state.js';
 import type { Snapshot } from '../src/main/state.js';
 
 const CONFIG_PATH = '/cfg/config.json';
@@ -110,7 +111,10 @@ function setup(opts: { file?: ConfigFile; prefs?: Partial<Prefs> } = {}) {
     prefs: { get: () => prefs, set: (p) => (prefs = p) },
     now: () => now,
     addonIntervalMs: 1_000,
+    addonRetryMs: [100, 200],
     ownLockRetryMs: 10,
+    otherLockRetryMs: 10,
+    readRawConfig: vi.fn(async () => ({})),
     pid: 1,
   };
   const controller = new LedgerController(deps);
@@ -128,6 +132,7 @@ function setup(opts: { file?: ConfigFile; prefs?: Partial<Prefs> } = {}) {
     getFile: () => file,
     getPrefs: () => prefs,
     advance: (ms: number) => (now += ms),
+    deps,
   };
 }
 
@@ -356,22 +361,50 @@ describe('LedgerController', () => {
       expect(t.toasts).toContain('ForeverLedger 0.2.1 installed — type /reload in game to use it');
     });
 
-    it('skips a cycle while another process holds the lock and warns after 10 minutes', async () => {
+    it("retries another process's lock a few times within one cycle", async () => {
       const t = setup();
       t.lockHolder.pid = OTHER_PID;
       await t.controller.start();
       await flush();
       expect(t.uploader.syncAddon).not.toHaveBeenCalled();
-      expect(t.controller.snapshot().addon).toBeUndefined();
+      t.lockHolder.pid = undefined;
+      await vi.advanceTimersByTimeAsync(10);
+      expect(t.uploader.syncAddon).toHaveBeenCalledTimes(1);
+      expect(t.controller.snapshot().warning).toBeUndefined();
+    });
+
+    it('a locked cycle retries soon and warns only when consecutive failures span 10 minutes', async () => {
+      const t = setup();
+      t.lockHolder.pid = OTHER_PID;
+      await t.controller.start();
+      await vi.advanceTimersByTimeAsync(30); // 3 tries, 10 ms apart
+      expect(t.uploader.withLock).toHaveBeenCalledTimes(3);
+      expect(t.uploader.syncAddon).not.toHaveBeenCalled();
+
+      // One failed cycle long ago is not a lasting problem.
+      t.advance(11 * 60_000);
       expect(t.controller.snapshot().warning).toBeUndefined();
 
-      t.advance(11 * 60_000);
-      await vi.advanceTimersByTimeAsync(1_000);
+      // The retry (100 ms later) fails too: now the failures span 11 minutes.
+      await vi.advanceTimersByTimeAsync(130);
+      expect(t.uploader.withLock).toHaveBeenCalledTimes(6);
       expect(t.controller.snapshot().warning).toMatch(/can't be updated/);
 
       t.lockHolder.pid = undefined;
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(200);
       expect(t.uploader.syncAddon).toHaveBeenCalledTimes(1);
+      expect(t.controller.snapshot().warning).toBeUndefined();
+    });
+
+    it('turning auto-update off clears the addon lock warning', async () => {
+      const t = setup();
+      t.lockHolder.pid = OTHER_PID;
+      await t.controller.start();
+      await vi.advanceTimersByTimeAsync(30);
+      t.advance(11 * 60_000);
+      await vi.advanceTimersByTimeAsync(130);
+      expect(t.controller.snapshot().warning).toMatch(/can't be updated/);
+      await t.controller.saveSettings({ autoUpdateAddon: false });
       expect(t.controller.snapshot().warning).toBeUndefined();
     });
 
@@ -397,6 +430,48 @@ describe('LedgerController', () => {
       });
     });
 
+    it('retries a failing sync on the short schedule, then the normal interval', async () => {
+      const t = setup();
+      t.uploader.syncAddon.mockResolvedValue(syncResult({ status: 'error', error: 'HTTP 502' }));
+      await t.controller.start();
+      await flush();
+      expect(t.uploader.syncAddon).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(t.uploader.syncAddon).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(t.uploader.syncAddon).toHaveBeenCalledTimes(3);
+      // Retry delays used up: back to the normal interval.
+      await vi.advanceTimersByTimeAsync(999);
+      expect(t.uploader.syncAddon).toHaveBeenCalledTimes(3);
+      t.uploader.syncAddon.mockResolvedValue(syncResult());
+      await vi.advanceTimersByTimeAsync(1);
+      expect(t.uploader.syncAddon).toHaveBeenCalledTimes(4);
+      // Success resets the schedule: the next one is a normal interval away.
+      await vi.advanceTimersByTimeAsync(999);
+      expect(t.uploader.syncAddon).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(t.uploader.syncAddon).toHaveBeenCalledTimes(5);
+    });
+
+    it('shows a new addon error as retrying, and red only after 15 minutes of failures', async () => {
+      const t = setup();
+      t.uploader.syncAddon.mockResolvedValue(syncResult({ status: 'error', error: 'HTTP 502' }));
+      await t.controller.start();
+      await flush();
+      expect(t.controller.snapshot().addonRetrying).toBe(true);
+      expect(deriveTrayState(t.controller.snapshot())).toBe('idle');
+
+      t.advance(16 * 60_000);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(t.controller.snapshot().addonRetrying).toBe(false);
+      expect(deriveTrayState(t.controller.snapshot())).toBe('error');
+
+      t.uploader.syncAddon.mockResolvedValue(syncResult());
+      await vi.advanceTimersByTimeAsync(200);
+      expect(t.controller.snapshot().addonRetrying).toBe(false);
+      expect(deriveTrayState(t.controller.snapshot())).toBe('idle');
+    });
+
     it('toasts once when addon sync has failed for over an hour', async () => {
       const t = setup();
       t.uploader.syncAddon.mockResolvedValue(syncResult({ status: 'error', error: 'HTTP 502' }));
@@ -404,9 +479,24 @@ describe('LedgerController', () => {
       await flush();
       expect(t.toasts).toEqual([]);
       t.advance(61 * 60_000);
-      await vi.advanceTimersByTimeAsync(1_000);
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(t.uploader.syncAddon).toHaveBeenCalledTimes(3);
       expect(t.toasts).toEqual(['Addon updates have been failing for over an hour: HTTP 502']);
+    });
+
+    it('stop() during a pending addon sync never starts it', async () => {
+      const t = setup();
+      t.lockHolder.pid = 1; // our own upload pass holds the lock
+      await t.controller.start();
+      await flush();
+      const stopping = t.controller.stop();
+      t.lockHolder.pid = undefined;
+      // Resolves once the waiting sync notices the stop (10 ms), not after the 5 s cap.
+      await vi.advanceTimersByTimeAsync(20);
+      await stopping;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(t.uploader.syncAddon).not.toHaveBeenCalled();
     });
 
     it('Update now forces a sync', async () => {
@@ -492,6 +582,25 @@ describe('LedgerController', () => {
       await vi.advanceTimersByTimeAsync(5_000);
       expect(t.uploader.syncAddon).toHaveBeenCalledTimes(1);
       expect(t.controller.snapshot().settings.autoUpdateAddon).toBe(false);
+    });
+
+    it('keeps uploaderId and stateDir from a config that no longer validates', async () => {
+      const t = setup();
+      t.uploader.readConfigFile.mockRejectedValue(new Error('invalid config: serverUrl'));
+      (t.deps.readRawConfig as ReturnType<typeof vi.fn>).mockResolvedValue({
+        uploaderId: 'keep-me',
+        stateDir: '/old/state',
+        serverUrl: 'nope',
+      });
+      await t.controller.start();
+      expect(t.controller.snapshot().setupNeeded).toBe(true);
+      t.uploader.readConfigFile.mockImplementation(async () => t.getFile());
+      await t.controller.saveSettings({ wowPath: '/wow', token: 'flt_x' });
+      expect(t.getFile()).toMatchObject({
+        uploaderId: 'keep-me',
+        stateDir: '/old/state',
+        serverUrl: DEFAULT_SERVER_URL,
+      });
     });
 
     it('rejects an invalid config without saving', async () => {

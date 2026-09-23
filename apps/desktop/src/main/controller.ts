@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { LockedError, resolveConfig } from '@forever-ledger/uploader/lib';
 import type {
   AccountStatus,
@@ -46,10 +47,19 @@ export interface ControllerDeps {
   now?: () => number;
   /** Addon sync interval (default 30 min). */
   addonIntervalMs?: number;
-  /** Lock contention with another process is shown as a warning after this long (default 10 min). */
+  /** Lock contention with another process is shown as a warning once it has lasted this long (default 10 min). */
   lockWarnAfterMs?: number;
+  /** A failing addon sync turns the tray red once it has failed for this long (default 15 min). */
+  addonErrorRedAfterMs?: number;
   /** A failing addon sync toasts once after this long (default 1 h). */
   addonErrorToastAfterMs?: number;
+  /** Delays before retrying a failed addon sync, then the normal interval (default 1, 2, 5, 10 min). */
+  addonRetryMs?: number[];
+  /** Tries per addon sync while another process holds the lock (default 3, 10 s apart). */
+  otherLockRetries?: number;
+  otherLockRetryMs?: number;
+  /** Reads config.json as plain JSON (to keep uploaderId/stateDir from a config that no longer validates). */
+  readRawConfig?: (path: string) => Promise<unknown>;
   /** Retries while our own upload pass holds the state lock (default 40 × 3 s). */
   ownLockRetries?: number;
   ownLockRetryMs?: number;
@@ -68,6 +78,12 @@ export interface SettingsInput {
 }
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** Thrown inside addon sync/rollback once stop() was called: no new lock or network work after that. */
+class StoppedError extends Error {}
+
+const readJson = async (path: string): Promise<unknown> =>
+  JSON.parse(await readFile(path, 'utf8')) as unknown;
 const delay = (ms: number) =>
   new Promise<void>((resolve) => {
     const t = setTimeout(resolve, ms);
@@ -88,6 +104,19 @@ function passSummary(result: PassResult) {
   };
 }
 
+/** Consecutive LockedErrors from another process: first and latest time seen. */
+interface LockStreak {
+  since: number;
+  lastAt: number;
+  pid: number;
+}
+
+const extendStreak = (s: LockStreak | undefined, now: number, pid: number): LockStreak => ({
+  since: s?.since ?? now,
+  lastAt: now,
+  pid,
+});
+
 /**
  * Runs the uploader inside the tray app: the watch (uploads), periodic addon sync, settings. Owns everything the
  * window and tray show and emits `change` with a fresh Snapshot whenever it changes. No Electron in here.
@@ -100,7 +129,9 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
   private readonly pid: number;
   private readonly addonIntervalMs: number;
   private readonly lockWarnAfterMs: number;
+  private readonly addonErrorRedAfterMs: number;
   private readonly addonErrorToastAfterMs: number;
+  private readonly addonRetryMs: number[];
 
   private file?: ConfigFile;
   private config?: Config;
@@ -115,15 +146,17 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
 
   private watch?: WatchHandle;
   private watchGen = 0;
-  private addonTimer?: ReturnType<typeof setInterval>;
+  private addonTimer?: ReturnType<typeof setTimeout>;
+  /** Consecutive addon sync cycles that failed or found the lock taken (drives the short retry schedule). */
+  private addonFailures = 0;
   private addonRun?: Promise<void>;
   private ops: Promise<unknown> = Promise.resolve();
   private stopped = false;
 
   private uploadingTimer?: ReturnType<typeof setTimeout>;
   private passError?: string;
-  private uploadLocked?: { since: number; pid: number };
-  private addonLocked?: { since: number; pid: number };
+  private uploadLocked?: LockStreak;
+  private addonLocked?: LockStreak;
   private addonErrorSince?: number;
   private addonErrorToasted = false;
 
@@ -133,7 +166,9 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
     this.pid = deps.pid ?? process.pid;
     this.addonIntervalMs = deps.addonIntervalMs ?? 30 * 60_000;
     this.lockWarnAfterMs = deps.lockWarnAfterMs ?? 10 * 60_000;
+    this.addonErrorRedAfterMs = deps.addonErrorRedAfterMs ?? 15 * 60_000;
     this.addonErrorToastAfterMs = deps.addonErrorToastAfterMs ?? 60 * 60_000;
+    this.addonRetryMs = deps.addonRetryMs ?? [60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000];
   }
 
   private get log() {
@@ -179,6 +214,7 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       fatal: this.fatal,
       warning: this.warning(),
       addon: this.addon,
+      addonRetrying: this.addonRetrying(),
       addonPausedFor: this.addonPausedFor,
       appVersion: this.deps.appVersion,
       appUpdateReady: this.appUpdateReady,
@@ -284,10 +320,7 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
         !base.serverUrl;
 
       if (configChanged && (wowPath || token || serverUrl || base)) {
-        const from: ConfigFile = base ?? {
-          accounts: [],
-          uploaderId: this.deps.uploader.newUploaderId(),
-        };
+        const from: ConfigFile = base ?? (await this.salvageConfig());
         const next = this.deps.uploader.validateConfigFile({
           ...from,
           wowPath: wowPath ?? from.wowPath,
@@ -326,6 +359,35 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
 
   // ---- internals ----
 
+  /**
+   * A fresh config for setup, keeping uploaderId and stateDir from an existing config.json that no longer validates
+   * (so its queue and acks aren't orphaned). Best effort.
+   */
+  private async salvageConfig(): Promise<ConfigFile> {
+    const fresh: ConfigFile = { accounts: [], uploaderId: this.deps.uploader.newUploaderId() };
+    let raw: unknown;
+    try {
+      raw = await (this.deps.readRawConfig ?? readJson)(this.deps.configPath);
+    } catch {
+      return fresh;
+    }
+    if (typeof raw !== 'object' || raw === null) return fresh;
+    const r = raw as Record<string, unknown>;
+    const id = typeof r.uploaderId === 'string' ? r.uploaderId.trim() : '';
+    if (id && id.length <= 128) fresh.uploaderId = id;
+    if (typeof r.stateDir === 'string' && r.stateDir.trim()) fresh.stateDir = r.stateDir.trim();
+    return fresh;
+  }
+
+  /** A failing addon sync that hasn't failed for long yet: shown neutrally ("retrying"), not red. */
+  private addonRetrying(): boolean {
+    if (this.addon?.status !== 'error') return false;
+    return (
+      this.addonErrorSince === undefined ||
+      this.now() - this.addonErrorSince < this.addonErrorRedAfterMs
+    );
+  }
+
   /** Lifecycle operations (start/stop/pause/save) run one at a time. */
   private serial<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.ops.then(fn, fn);
@@ -343,9 +405,9 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
   }
 
   private warning(): string | undefined {
-    const now = this.now();
-    const lasting = (l?: { since: number }) =>
-      l !== undefined && now - l.since >= this.lockWarnAfterMs;
+    // "Lasting" = consecutive failures spanning the threshold, not one failure a while ago.
+    const lasting = (l?: LockStreak) =>
+      l !== undefined && l.lastAt - l.since >= this.lockWarnAfterMs;
     if (lasting(this.uploadLocked))
       return `Another Forever Ledger uploader (pid ${this.uploadLocked?.pid}) is using the same state folder, so uploads are waiting. Close it (for example \`forever-ledger watch\`).`;
     if (this.passError) return `Uploads are failing and will be retried: ${this.passError}`;
@@ -440,7 +502,12 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
         this.setUploading(false);
         this.uploadLocked = undefined;
         this.passError = undefined;
-        this.log.info(passSummary(e.result), 'upload pass finished');
+        {
+          const summary = passSummary(e.result);
+          if (summary.files === 0 && summary.sent === 0)
+            this.log.debug(summary, 'nothing to upload yet');
+          else this.log.info(summary, 'upload pass finished');
+        }
         void this.refreshAccounts();
         break;
       case 'pass-error':
@@ -448,7 +515,7 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
         if (e.error instanceof LockedError) {
           this.passError = undefined;
           if (e.error.pid !== this.pid)
-            this.uploadLocked ??= { since: this.now(), pid: e.error.pid };
+            this.uploadLocked = extendStreak(this.uploadLocked, this.now(), e.error.pid);
         } else {
           this.passError = e.error.message;
         }
@@ -476,17 +543,33 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
   }
 
   private clearAddonTimer() {
-    if (this.addonTimer) clearInterval(this.addonTimer);
+    if (this.addonTimer) clearTimeout(this.addonTimer);
     this.addonTimer = undefined;
   }
 
-  /** Periodic addon sync while auto-update is on; `runNow` also syncs right away. */
+  private autoAddon() {
+    return !this.stopped && !this.setupNeeded && this.deps.prefs.get().autoUpdateAddon;
+  }
+
+  /** Addon sync while auto-update is on: now (`runNow`) or after the next delay. Off clears the lock warning. */
   private scheduleAddon(runNow: boolean) {
     this.clearAddonTimer();
-    if (this.stopped || this.setupNeeded || !this.deps.prefs.get().autoUpdateAddon) return;
-    this.addonTimer = setInterval(() => void this.runAddonSync(false, false), this.addonIntervalMs);
-    (this.addonTimer as { unref?: () => void }).unref?.();
+    if (!this.autoAddon()) {
+      this.addonLocked = undefined;
+      return;
+    }
     if (runNow) void this.runAddonSync(false, false);
+    else this.scheduleNextAddon();
+  }
+
+  /** The next automatic sync: soon after failures (1, 2, 5, 10 min), else the normal interval. */
+  private scheduleNextAddon() {
+    this.clearAddonTimer();
+    if (!this.autoAddon()) return;
+    const retry = this.addonFailures > 0 ? this.addonRetryMs[this.addonFailures - 1] : undefined;
+    const ms = retry ?? this.addonIntervalMs;
+    this.addonTimer = setTimeout(() => void this.runAddonSync(false, false), ms);
+    (this.addonTimer as { unref?: () => void }).unref?.();
   }
 
   private runAddonSync(force: boolean, manual: boolean): Promise<void> {
@@ -498,37 +581,50 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
 
   /**
    * Runs `fn` under the state-folder lock. While our own upload pass holds it, waits for the pass and retries; a lock
-   * held by another process throws LockedError.
+   * held by another process is retried a few times (its passes are short) before LockedError. After stop(), throws
+   * StoppedError instead of taking the lock.
    */
   private async locked<T>(config: Config, fn: () => Promise<T>): Promise<T> {
-    const retries = this.deps.ownLockRetries ?? 40;
-    for (let attempt = 0; ; attempt++) {
+    let own = 0;
+    let other = 0;
+    for (;;) {
+      if (this.stopped) throw new StoppedError('stopped');
       await this.watch?.idle();
+      if (this.stopped) throw new StoppedError('stopped');
       try {
         return await this.deps.uploader.withLock(config.stateDir, fn);
       } catch (err) {
-        if (!(err instanceof LockedError) || err.pid !== this.pid || attempt >= retries) throw err;
-        await delay(this.deps.ownLockRetryMs ?? 3_000);
+        if (!(err instanceof LockedError)) throw err;
+        if (err.pid === this.pid) {
+          if (++own > (this.deps.ownLockRetries ?? 40)) throw err;
+          await delay(this.deps.ownLockRetryMs ?? 3_000);
+        } else {
+          if (++other >= (this.deps.otherLockRetries ?? 3)) throw err;
+          await delay(this.deps.otherLockRetryMs ?? 10_000);
+        }
       }
     }
   }
 
   private async doAddonSync(force: boolean, manual: boolean) {
     const config = this.config;
-    if (!config || this.setupNeeded) return;
+    if (!config || this.setupNeeded || this.stopped) return;
     this.log.info({ force }, 'checking for addon updates');
     try {
       const result = await this.locked(config, () =>
         this.deps.uploader.syncAddon({ config, logger: this.log, force }),
       );
       this.addonLocked = undefined;
+      this.addonFailures = result.status === 'error' ? this.addonFailures + 1 : 0;
       this.applyAddonResult(result);
     } catch (err) {
+      if (err instanceof StoppedError) return;
+      this.addonFailures++;
       if (err instanceof LockedError) {
-        this.addonLocked ??= { since: this.now(), pid: err.pid };
+        this.addonLocked = extendStreak(this.addonLocked, this.now(), err.pid);
         this.log.warn(
           { pid: err.pid },
-          'addon sync skipped: the state folder is locked; will retry',
+          'addon sync skipped: another uploader keeps the state folder locked; will retry',
         );
         if (manual)
           this.toast('Addon update skipped: another uploader is busy. Try again in a minute.');
@@ -541,6 +637,7 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
         });
       }
     }
+    this.scheduleNextAddon();
     await this.loadAddonState();
     this.changed();
   }
@@ -556,7 +653,8 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       ...(result.recovered?.length ? { recovered: result.recovered.length } : {}),
       ...(result.error ? { err: result.error } : {}),
     };
-    if (result.status === 'error') this.log.warn(fields, 'addon sync failed');
+    if (result.status === 'error')
+      this.log.warn(fields, `addon sync failed (retry #${this.addonFailures} soon)`);
     else this.log.info(fields, `addon sync: ${result.status}`);
 
     if (result.status === 'installed' || result.recovered?.length) {
