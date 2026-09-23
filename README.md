@@ -123,15 +123,18 @@ pnpm --filter @forever-ledger/server token:revoke 3
 
 API (all but health need `Authorization: Bearer <token>`):
 
-| Route                                    | What                                                                             |
-| ---------------------------------------- | -------------------------------------------------------------------------------- |
-| `GET /v1/health`                         | Liveness + DB check                                                              |
-| `POST /v1/ingest`                        | Idempotent batch upsert; returns acknowledged record keys + content hashes       |
-| `GET /v1/runs/summary?build=`            | Per dungeon: runs, median/best clear, XP/min (mob vs quest), deaths, boss splits |
-| `GET /v1/quests/xp?build=`               | Offered vs paid XP per quest                                                     |
-| `GET /v1/items/:id`                      | Item snapshots per build, drop sources, quest rewards, class/spec fit            |
-| `GET /v1/drops/rates?build=`             | Per npc + item: corpses looted, dropped, rate, stack quantity, avg copper/corpse |
-| `GET /v1/export?format=json\|csv&table=` | Full dump for offline analysis (times in America/Chicago)                        |
+| Route                                            | What                                                                             |
+| ------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `GET /v1/health`                                 | Liveness + DB check                                                              |
+| `POST /v1/ingest`                                | Idempotent batch upsert; returns acknowledged record keys + content hashes       |
+| `GET /v1/runs/summary?build=`                    | Per dungeon: runs, median/best clear, XP/min (mob vs quest), deaths, boss splits |
+| `GET /v1/quests/xp?build=`                       | Offered vs paid XP per quest                                                     |
+| `GET /v1/items/:id`                              | Item snapshots per build, drop sources, quest rewards, class/spec fit            |
+| `GET /v1/drops/rates?build=`                     | Per npc + item: corpses looted, dropped, rate, stack quantity, avg copper/corpse |
+| `GET /v1/professions/recipes?skillLine=&build=`  | Recipes: reagents, output, difficulty thresholds seen, learned by / via          |
+| `GET /v1/professions/sources?itemId=\|recipeId=` | Trainers (cost, rank), vendors (price, stock), Recipe-class item drops           |
+| `GET /v1/professions/gathering?build=`           | Per node (0 = fishing): opens, min rank, zones, top loot per open                |
+| `GET /v1/export?format=json\|csv&table=`         | Full dump for offline analysis (times in America/Chicago)                        |
 
 ## 🏷️ Releasing
 

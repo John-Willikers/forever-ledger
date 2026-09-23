@@ -1,7 +1,7 @@
 import { contentHash, recordKey, RECORD_KINDS } from '@forever-ledger/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { revokeToken, mintToken } from '../src/index.js';
-import { batchFromFixture, startServer } from './helpers.js';
+import { batchFromFixture, schema4Batch, startServer } from './helpers.js';
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 
@@ -40,22 +40,6 @@ function schema3Batch(session: string, account: string) {
             }
           : r,
       ),
-    },
-  };
-}
-
-/** The hand-written schema 4 fixture as one SavedVariables session of `account`. */
-function schema4Batch(session: string, account: string) {
-  const b = batchFromFixture('professions-v4.lua', account);
-  const r = b.records;
-  return {
-    ...b,
-    meta: { ...b.meta, session },
-    records: {
-      ...r,
-      crafts: r.crafts.map((c) => ({ ...c, session })),
-      nodes: r.nodes.map((n) => ({ ...n, session })),
-      nodeLoot: r.nodeLoot.map((l) => ({ ...l, session })),
     },
   };
 }
