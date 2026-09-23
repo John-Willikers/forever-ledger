@@ -11,6 +11,8 @@ const SEGMENT_RE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 const RESERVED_RE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 const STORED = 0;
 const DEFLATE = 8;
+/** The only .toc allowed, relative to the addon folder. */
+const TOC_PATH = `${ADDON_NAME}.toc`;
 
 /** Splits an entry name into its path inside the addon folder; throws unless every segment is safe. */
 function addonPath(name: string, isDir: boolean): string {
@@ -66,7 +68,8 @@ export function verifyAddonZip(
     }
     unpacked += Math.max(f.size, f.originalSize);
     if (unpacked > MAX_ADDON_BYTES) throw new AddonZipError('addon is too large when unpacked');
-    // Entries whose data adds up to more than the zip itself must share bytes.
+    // Coarse guard only: entries whose data adds up to more than the zip itself must share bytes. Overlaps that
+    // stay under the zip's length slip past it; the `unpacked` counter above is what bounds memory.
     packed += f.size;
     if (packed > zip.byteLength) throw new AddonZipError('addon zip has overlapping entries');
     declared.set(f.name, f.originalSize);
@@ -95,11 +98,15 @@ export function verifyAddonZip(
     if (folded.has(key))
       throw new AddonZipError(`entries collide on case-insensitive disks: ${name}`);
     if (dirs.has(key)) throw new AddonZipError(`${name} is both a file and a directory`);
+    // WoW prefers flavor tocs (ForeverLedger_Vanilla.toc, -Classic.toc, …) over the one we verify.
+    if (key.endsWith('.toc') && path !== TOC_PATH) {
+      throw new AddonZipError(`unexpected .toc in addon zip: ${name}`);
+    }
     folded.add(key);
     files.set(path, data);
   }
 
-  const toc = files.get(`${ADDON_NAME}.toc`);
+  const toc = files.get(TOC_PATH);
   if (!toc) throw new AddonZipError(`addon zip has no ${ADDON_NAME}/${ADDON_NAME}.toc`);
   const v = tocVersion(strFromU8(toc));
   if (v !== expected.version) {

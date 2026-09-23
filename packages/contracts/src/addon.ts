@@ -7,7 +7,8 @@ export const ADDON_REPO = 'John-Willikers/forever-ledger';
 export const ADDON_DOWNLOAD_PREFIX = `https://github.com/${ADDON_REPO}/releases/download/`;
 export const MAX_ADDON_BYTES = 5 * 1024 * 1024;
 
-const VERSION_RE = /^\d+\.\d+\.\d+$/;
+/** x.y.z, no leading zeros, each part at most 9 digits. */
+const VERSION_RE = /^(0|[1-9]\d{0,8})(\.(0|[1-9]\d{0,8})){2}$/;
 export const isAddonVersion = (v: string) => VERSION_RE.test(v);
 export const addonTag = (version: string) => `addon-v${version}`;
 export const addonAssetName = (version: string) => `${ADDON_NAME}-${version}.zip`;

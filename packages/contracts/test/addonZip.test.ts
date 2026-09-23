@@ -98,6 +98,20 @@ describe('verifyAddonZip', () => {
     expect(() => verifyAddonZip(z, { version: '0.2.3', sha256: sha(z) })).toThrow(/version/);
   });
 
+  it.each([
+    ['ForeverLedger/ForeverLedger_Vanilla.toc'],
+    ['ForeverLedger/ForeverLedger-Classic.toc'],
+    ['ForeverLedger/ForeverLedger_Mainline.TOC'],
+    ['ForeverLedger/sub/Other.toc'],
+  ])('rejects an extra .toc %s', (name) => {
+    const z = zip({
+      [TOC_NAME]: TOC,
+      [name]: '## Interface: 16001\n## Version: 9.9.9\nEvil.lua\n',
+      'ForeverLedger/Evil.lua': '-- evil',
+    });
+    expect(verify(z)).toThrow(/unexpected \.toc/);
+  });
+
   it('rejects a zip without a .toc', () => {
     expect(verify(zip({ 'ForeverLedger/ForeverLedger.lua': '-- lua' }))).toThrow(/toc/);
   });

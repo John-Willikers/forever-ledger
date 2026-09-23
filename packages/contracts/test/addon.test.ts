@@ -26,6 +26,9 @@ describe('addon versions', () => {
     expect(isAddonVersion('0.2')).toBe(false);
     expect(isAddonVersion('0.2.1-beta')).toBe(false);
     expect(isAddonVersion('../0.2.1')).toBe(false);
+    expect(isAddonVersion('10.0.0')).toBe(true);
+    expect(isAddonVersion('1.02.0')).toBe(false);
+    expect(isAddonVersion('1234567890.0.0')).toBe(false);
   });
 
   it('reads ## Version from a .toc', () => {
