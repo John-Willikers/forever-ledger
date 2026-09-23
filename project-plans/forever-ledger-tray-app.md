@@ -34,11 +34,11 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Timestam
 
 - ✅ 1.1 contracts: `compareVersions`, `tocVersion`, `AddonManifest` schema, names — 2026-09-23 01:28 CDT (b34acd4)
 - ✅ 1.2 contracts: `verifyAddonZip` (sha, zip-slip, size, `.toc` version) — 2026-09-23 01:28 CDT (28056c4, hardened after 2 review rounds: 03c40c5, 633871c; 63 tests)
-- 🟡 1.3 uploader: `fetchManifest` client
-- 🟡 1.4 uploader: `installAddon` / `rollbackAddon` / `readInstalledVersion`
-- 🟡 1.5 uploader: `syncAddon` orchestrator + pause-after-rollback state
-- ⬜ 1.6 uploader: `addon-sync` CLI command
-- ⬜ 1.7 uploader: `startWatch` `onEvent` hook + `trigger()`
+- ✅ 1.3 uploader: `fetchManifest` client — 2026-09-23 01:56 CDT (6968487)
+- ✅ 1.4 uploader: `installAddon` / `rollbackAddon` / `readInstalledVersion` — 2026-09-23 01:56 CDT (a2d4d82; crash-safe after review: a23687d, 0af5c43 — swap marker, recoverAddon, Windows-patient renames)
+- ✅ 1.5 uploader: `syncAddon` orchestrator + pause-after-rollback state — 2026-09-23 01:56 CDT (0ceeb0f, da6a5a1; mutex, build from upload state; 218 tests)
+- 🟡 1.6 uploader: `addon-sync` CLI command
+- 🟡 1.7 uploader: `startWatch` `onEvent` hook + `trigger()`
 
 ### 🗄️ Phase 2 — Server
 
@@ -756,8 +756,8 @@ return newest ? toManifest(newest) : null;
 `toManifest(r)` → `{ addon: ADDON_NAME, version, url, sha256, size }`.
 
 Route: `GET /v1/addon/manifest` with `preHandler: requireToken(db)` (import from `routes/analysis.ts`); `build` query
-→ positive integer or null (reuse the `buildFilter` idea); `null` result → 404 `{ error: 'no addon release
-published' }`.
+→ positive integer or null (reuse the `buildFilter` idea); `null` result → 404 `{ error: NO_ADDON_RELEASE }` —
+**import the constant from contracts**: the uploader treats a 404 as "no release" only when the body matches it.
 
 Tests: 401 without token; 404 with no releases; newest active wins (`0.2.10` over `0.2.9`); yanked skipped; pin
 covering the build wins; newer pin beats older overlapping pin; pin to a yanked version ignored; no `build` param
@@ -1057,7 +1057,9 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
 
 Rules: `onEvent` pass-start → `uploading = true`; pass-end → `uploading = false`, refresh `accounts` via
 `collectStatus`; fatal → `fatal`. Addon sync runs at start and every `addonIntervalMs` when `autoUpdateAddon`;
-`installed` → toast `ForeverLedger <v> installed — type /reload in game to use it`. `LockedError` → `fatal = 'The
+`installed` (or a non-empty `recovered`) → toast `ForeverLedger <v> installed — type /reload in game to use it`.
+The uploader already serializes `syncAddon`/`rollbackAddonEverywhere` with an in-process mutex; call only those
+(the low-level install functions are no longer exported). `LockedError` → `fatal = 'The
 uploader CLI is already running (forever-ledger watch). Stop it, then reopen this app.'`. An `error` addon status
 that has lasted over an hour → one toast. Every state change emits `change`.
 
