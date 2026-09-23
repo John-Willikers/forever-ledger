@@ -1,14 +1,8 @@
 export const PACKAGE = 'uploader';
 
-export {
-  addonsDirFor,
-  installAddon,
-  isAddonLinked,
-  readInstalledVersion,
-  recoverAddon,
-  rollbackAddon,
-} from './addonInstall.js';
-export type { InstallDeps } from './addonInstall.js';
+// Only read-only helpers here: install/rollback/recover go through syncAddon and rollbackAddonEverywhere, which
+// serialize them.
+export { addonsDirFor, readInstalledVersion } from './addonInstall.js';
 export { AddonSyncError, fetchManifest } from './addonManifest.js';
 export type { ManifestOptions } from './addonManifest.js';
 export { readAddonSyncState, rollbackAddonEverywhere, syncAddon } from './addonSync.js';

@@ -1,5 +1,14 @@
 import { createHash } from 'node:crypto';
-import { lstat, mkdir, readdir, rename as fsRename, symlink, writeFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  readdir,
+  rename as fsRename,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { addonDownloadUrl, MAX_ADDON_BYTES, NO_ADDON_RELEASE } from '@forever-ledger/contracts';
 import type { AddonManifest } from '@forever-ledger/contracts';
@@ -288,6 +297,7 @@ describe('recovering an interrupted install', () => {
   async function halfInstalled() {
     await installAddon(addonsDir, release('0.2.1').files);
     await mkdir(join(addonsDir, '.ForeverLedger.new'));
+    await writeFile(join(addonsDir, '.ForeverLedger.swap'), '');
     await fsRename(join(addonsDir, 'ForeverLedger'), join(addonsDir, 'ForeverLedger.bak'));
   }
 
@@ -295,8 +305,9 @@ describe('recovering an interrupted install', () => {
     await halfInstalled();
     await writeState({ pausedWhileRecommended: '0.2.2' });
     const r = await sync();
-    expect(r).toMatchObject({ status: 'no-release', installed: '0.2.1' });
+    expect(r).toMatchObject({ status: 'no-release', installed: '0.2.1', recovered: [addonsDir] });
     expect(await readInstalledVersion(addonsDir)).toBe('0.2.1');
+    expect((await sync()).recovered).toBeUndefined();
   });
 
   it('restores .bak while paused', async () => {
@@ -316,6 +327,19 @@ describe('recovering an interrupted install', () => {
       },
     });
     expect(r).toMatchObject({ status: 'error', installed: '0.2.1' });
+  });
+
+  it('does not bring back an addon the user removed from an otherwise unused flavor', async () => {
+    const other = flavorAddons('_classic_');
+    await mkdir(join(env.wowPath, '_classic_', 'WTF'), { recursive: true });
+    await installAddon(other, release('0.2.0').files);
+    await installAddon(other, release('0.2.1').files);
+    await rm(join(other, 'ForeverLedger'), { recursive: true });
+    server.recommend('0.2.1');
+    const r = await sync();
+    expect(r.addonsDirs).toEqual([addonsDir]);
+    expect(r.recovered).toBeUndefined();
+    expect(await readdir(other)).toEqual(['ForeverLedger.bak']);
   });
 });
 
@@ -434,18 +458,39 @@ describe('concurrent runs', () => {
 
 describe('client build', () => {
   it('uses the build recorded by the upload pass instead of parsing SavedVariables', async () => {
-    await env.writeSv(await readFixture('session-v1.lua'), 'ACC1'); // meta.build 61600
+    // Whole seconds: utimes can't reproduce a sub-millisecond mtime exactly.
+    const readAt = new Date('2026-09-01T12:00:00Z');
+    const file = await env.writeSv(await readFixture('session-v1.lua'), 'ACC1'); // meta.build 61600
+    await utimes(file, readAt, readAt);
     // The upload pass records the build even when the server is down.
     await runUploadPass({
       config: { ...config, serverUrl: 'http://127.0.0.1:9' },
       read: FAST_READ,
     });
-    expect((await StateStore.open(config.stateDir)).peek('ACC1')?.build).toBe(61600);
+    expect((await StateStore.open(config.stateDir)).peek('ACC1')).toMatchObject({
+      build: 61600,
+      buildMtimeMs: readAt.getTime(),
+    });
 
-    await env.writeSv('not lua at all', 'ACC1'); // parsing it now would lose the build
+    // Same mtime as when the pass read it: the recorded build is used and the file is not parsed.
+    await env.writeSv('not lua at all', 'ACC1');
+    await utimes(file, readAt, readAt);
     server.recommend('0.2.1');
     const r = await sync();
     expect(r.build).toBe(61600);
     expect(server.manifestUrls).toEqual([`${SERVER}/v1/addon/manifest?build=61600`]);
+  });
+
+  it('re-reads SavedVariables that changed since the upload pass recorded the build', async () => {
+    await env.writeSv(await readFixture('session-v1.lua'), 'ACC1'); // meta.build 61600
+    await runUploadPass({
+      config: { ...config, serverUrl: 'http://127.0.0.1:9' },
+      read: FAST_READ,
+    });
+    await env.writeSv(SV, 'ACC1'); // the game patched: meta.build 69913
+    const later = new Date(Date.now() + 60_000);
+    await utimes(env.svFile('ACC1'), later, later);
+    server.recommend('0.2.1');
+    expect((await sync()).build).toBe(69913);
   });
 });

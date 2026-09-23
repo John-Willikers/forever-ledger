@@ -1,4 +1,5 @@
 import {
+  chmod,
   lstat,
   mkdir,
   mkdtemp,
@@ -100,7 +101,8 @@ describe('addon install', () => {
     await expect(
       installAddon(dir, files('0.2.2'), { rename: failingRename(2, 3) }),
     ).rejects.toThrow('busy#2');
-    expect(await readdir(dir)).toEqual(['ForeverLedger.bak']);
+    // The swap marker stays so the next sync knows this .bak is to be restored.
+    expect((await readdir(dir)).sort()).toEqual(['.ForeverLedger.swap', 'ForeverLedger.bak']);
 
     expect(await recoverAddon(dir)).toBe('0.2.1');
     expect(await readInstalledVersion(dir)).toBe('0.2.1');
@@ -134,6 +136,7 @@ describe('addon install', () => {
     await installAddon(dir, files('0.2.1'));
     await installAddon(dir, files('0.2.2'));
     await expect(rollbackAddon(dir, { rename: failingRename(2) })).rejects.toThrow(/busy/);
+    expect((await readdir(dir)).sort()).toEqual(['ForeverLedger', 'ForeverLedger.bak']);
     expect(await readInstalledVersion(dir)).toBe('0.2.2');
     expect(await readInstalledVersion(dir, 'ForeverLedger.bak')).toBe('0.2.1');
   });
@@ -166,13 +169,50 @@ describe('recoverAddon', () => {
     expect(await readInstalledVersion(dir)).toBe('0.2.2');
   });
 
-  it('replaces a folder without a valid .toc by the .bak', async () => {
+  /** What a crash in the middle of a swap leaves: the marker, plus whatever the renames got to. */
+  const interruptedSwap = () => writeFile(join(dir, '.ForeverLedger.swap'), '');
+
+  it('replaces a folder without a valid .toc by the .bak after an interrupted swap', async () => {
     await installAddon(dir, files('0.2.1'));
     await installAddon(dir, files('0.2.2'));
     await writeFile(join(dir, 'ForeverLedger', 'ForeverLedger.toc'), '## Title: x\n');
+    await interruptedSwap();
     expect(await recoverAddon(dir)).toBe('0.2.1');
     expect(await readInstalledVersion(dir)).toBe('0.2.1');
     expect(await readdir(dir)).toEqual(['ForeverLedger']);
+  });
+
+  it('restores a missing folder after an interrupted swap', async () => {
+    await installAddon(dir, files('0.2.1'));
+    await installAddon(dir, files('0.2.2'));
+    await rm(join(dir, 'ForeverLedger'), { recursive: true });
+    await interruptedSwap();
+    expect(await recoverAddon(dir)).toBe('0.2.1');
+    expect(await readdir(dir)).toEqual(['ForeverLedger']);
+  });
+
+  it('does not undo a deliberate uninstall (no swap marker)', async () => {
+    await installAddon(dir, files('0.2.1'));
+    await installAddon(dir, files('0.2.2'));
+    await rm(join(dir, 'ForeverLedger'), { recursive: true });
+    expect(await recoverAddon(dir)).toBeUndefined();
+    expect(await readdir(dir)).toEqual(['ForeverLedger.bak']);
+  });
+
+  it('never trashes a folder whose .toc it cannot read', async (ctx) => {
+    if (process.platform === 'win32' || process.getuid?.() === 0) return ctx.skip();
+    await installAddon(dir, files('0.2.1'));
+    await installAddon(dir, files('0.2.2'));
+    await interruptedSwap();
+    const tocPath = join(dir, 'ForeverLedger', 'ForeverLedger.toc');
+    await chmod(tocPath, 0);
+    try {
+      await expect(recoverAddon(dir)).rejects.toMatchObject({ code: 'EACCES' });
+    } finally {
+      await chmod(tocPath, 0o644);
+    }
+    expect(await readInstalledVersion(dir)).toBe('0.2.2');
+    expect(await readInstalledVersion(dir, 'ForeverLedger.bak')).toBe('0.2.1');
   });
 
   it('does nothing without a .bak', async () => {

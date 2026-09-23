@@ -19,6 +19,8 @@ export interface InstallDeps {
 const STAGING = `.${ADDON_NAME}.new`;
 const BAK = `${ADDON_NAME}.bak`;
 const TRASH_PREFIX = `.${ADDON_NAME}.trash-`;
+/** Present only while a swap runs (or after one was interrupted): tells recoverAddon the .bak is to be restored. */
+const MARKER = `.${ADDON_NAME}.swap`;
 /** Side folders an interrupted run can leave behind (`.old` is the pre-trash name). */
 const isLeftover = (name: string) =>
   name === STAGING || name === `.${ADDON_NAME}.old` || name.startsWith(TRASH_PREFIX);
@@ -91,6 +93,24 @@ async function refuseLinked(addonsDir: string) {
     throw new Error(`${join(addonsDir, ADDON_NAME)} is a link; not replacing it`);
 }
 
+const beginSwap = (addonsDir: string) => writeFile(join(addonsDir, MARKER), '', { flush: true });
+
+/**
+ * Drops the swap marker, unless the swap moved the current folder away and left no working addon behind: then the
+ * marker stays so the next sync's recoverAddon restores the .bak.
+ */
+async function endSwap(
+  addonsDir: string,
+  movedCurrent: boolean,
+  discard: (path: string) => Promise<void>,
+) {
+  const working = await readInstalledVersion(addonsDir).then(
+    (v) => v !== undefined,
+    () => false,
+  );
+  if (working || !movedCurrent) await discard(join(addonsDir, MARKER));
+}
+
 async function sweepLeftovers(addonsDir: string, discard: (path: string) => Promise<void>) {
   let names: string[];
   try {
@@ -132,26 +152,31 @@ export async function installAddon(
 
   const hadOld = await exists(target);
   let oldBak: string | undefined;
+  await beginSwap(addonsDir);
   try {
-    if (hadOld) {
-      if (await exists(bak)) {
-        oldBak = trashPath(addonsDir);
-        await rename(bak, oldBak);
+    try {
+      if (hadOld) {
+        if (await exists(bak)) {
+          oldBak = trashPath(addonsDir);
+          await rename(bak, oldBak);
+        }
+        await rename(target, bak);
       }
-      await rename(target, bak);
+    } catch (err) {
+      if (oldBak) await restore('older .bak back', () => rename(oldBak as string, bak));
+      await discard(staging);
+      throw err;
     }
-  } catch (err) {
-    if (oldBak) await restore('older .bak back', () => rename(oldBak as string, bak));
-    await discard(staging);
-    throw err;
-  }
-  try {
-    await rename(staging, target);
-  } catch (err) {
-    if (hadOld) await restore('current folder back', () => rename(bak, target));
-    if (oldBak) await restore('older .bak back', () => rename(oldBak as string, bak));
-    await discard(staging);
-    throw err;
+    try {
+      await rename(staging, target);
+    } catch (err) {
+      if (hadOld) await restore('current folder back', () => rename(bak, target));
+      if (oldBak) await restore('older .bak back', () => rename(oldBak as string, bak));
+      await discard(staging);
+      throw err;
+    }
+  } finally {
+    await endSwap(addonsDir, hadOld, discard);
   }
   if (oldBak) await discard(oldBak);
 }
@@ -167,28 +192,39 @@ export async function rollbackAddon(addonsDir: string, deps: InstallDeps = {}): 
 
   const old = trashPath(addonsDir);
   const hadCurrent = await exists(target);
-  if (hadCurrent) await rename(target, old);
+  await beginSwap(addonsDir);
   try {
-    await rename(bak, target);
-  } catch (err) {
-    if (hadCurrent) await restore('current folder back', () => rename(old, target));
-    throw err;
+    if (hadCurrent) await rename(target, old);
+    try {
+      await rename(bak, target);
+    } catch (err) {
+      if (hadCurrent) await restore('current folder back', () => rename(old, target));
+      throw err;
+    }
+  } finally {
+    await endSwap(addonsDir, hadCurrent, discard);
   }
   if (hadCurrent) await discard(old);
   return version;
 }
 
 /**
- * Heals an install interrupted between its renames: when AddOns/ForeverLedger is missing or has no readable version
- * but ForeverLedger.bak has one, moves the .bak back. Returns the restored version, or undefined when nothing was
- * needed. Linked folders are never touched.
+ * Heals a swap interrupted between its renames: when the swap marker is present, AddOns/ForeverLedger is missing or
+ * its .toc has no version, and ForeverLedger.bak has one, moves the .bak back. Without the marker a missing folder
+ * is a deliberate uninstall and is left alone; any other read error (EACCES…) is thrown, so a folder we cannot read
+ * is never replaced. Returns the restored version, or undefined when nothing was done. Links are never touched.
  */
 export async function recoverAddon(
   addonsDir: string,
   deps: InstallDeps = {},
 ): Promise<string | undefined> {
   if (await isAddonLinked(addonsDir)) return undefined;
-  if (await readInstalledVersion(addonsDir).catch(() => undefined)) return undefined;
+  if (!(await exists(join(addonsDir, MARKER)))) return undefined;
+  if (await readInstalledVersion(addonsDir)) {
+    // A swap that finished but could not delete its marker.
+    await resolveDeps(deps).discard(join(addonsDir, MARKER));
+    return undefined;
+  }
   if (!(await readInstalledVersion(addonsDir, BAK))) return undefined;
   const restored = await rollbackAddon(addonsDir, deps);
   deps.logger?.warn({ dir: addonsDir, version: restored }, 'restored addon from ForeverLedger.bak');

@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ADDON_NAME, MAX_ADDON_BYTES, verifyAddonZip } from '@forever-ledger/contracts';
 import {
@@ -50,6 +51,8 @@ export interface AddonSyncResult {
   build?: number;
   /** AddOns folders this sync manages. */
   addonsDirs: string[];
+  /** AddOns folders restored from ForeverLedger.bak this run (an interrupted swap): WoW needs a /reload. */
+  recovered?: string[];
   /** AddOns folders left alone because ForeverLedger there is a link (a developer checkout). */
   skipped?: string[];
   /** Epoch seconds. */
@@ -148,25 +151,39 @@ async function targetDirs(
   );
 }
 
-/** Highest build the upload pass recorded for these accounts, if any. */
+/** The build the upload pass recorded for this file, unless the file changed since (or nothing was recorded). */
 async function recordedBuild(
-  config: Config,
-  files: SavedVariablesFile[],
+  store: StateStore | undefined,
+  sv: SavedVariablesFile,
+): Promise<number | undefined> {
+  const a = store?.peek(sv.account);
+  if (a?.build === undefined || a.buildMtimeMs === undefined) return undefined;
+  const mtimeMs = await stat(sv.file).then(
+    (st) => st.mtimeMs,
+    () => undefined,
+  );
+  return mtimeMs !== undefined && mtimeMs <= a.buildMtimeMs ? a.build : undefined;
+}
+
+/** `meta.build` parsed from a SavedVariables file (slow for big files); undefined when unreadable. */
+async function parsedBuild(
+  sv: SavedVariablesFile,
+  read: ReadOptions | undefined,
   logger: Logger,
 ): Promise<number | undefined> {
   try {
-    const store = await StateStore.open(config.stateDir);
-    const builds = files.map((f) => store.peek(f.account)?.build).filter((b) => b !== undefined);
-    return builds.length ? Math.max(...builds) : undefined;
+    const { value } = await readSavedVariable(sv.file, { ...read, logger });
+    const build = isObj(value) && isObj(value.meta) ? value.meta.build : undefined;
+    if (typeof build === 'number' && Number.isInteger(build) && build >= 0) return build;
   } catch (err) {
-    logger.debug({ err: errorMessage(err) }, 'no recorded client build');
-    return undefined;
+    logger.debug({ file: sv.file, err: errorMessage(err) }, 'no client build from this file');
   }
+  return undefined;
 }
 
 /**
- * Highest `meta.build` among the SavedVariables files. Uses what the upload pass recorded; parses the files (slow
- * for big ones) only before the first upload pass. Files that can't be read are skipped.
+ * Highest `meta.build` among the SavedVariables files. Uses what the upload pass recorded and parses a file only
+ * when nothing was recorded for it or it changed since.
  */
 async function clientBuild(
   config: Config,
@@ -174,18 +191,14 @@ async function clientBuild(
   read: ReadOptions | undefined,
   logger: Logger,
 ): Promise<number | undefined> {
-  const recorded = await recordedBuild(config, files, logger);
-  if (recorded !== undefined) return recorded;
+  const store = await StateStore.open(config.stateDir).catch((err: unknown) => {
+    logger.debug({ err: errorMessage(err) }, 'no recorded client build');
+    return undefined;
+  });
   let best: number | undefined;
   for (const sv of files) {
-    try {
-      const { value } = await readSavedVariable(sv.file, { ...read, logger });
-      const build = isObj(value) && isObj(value.meta) ? value.meta.build : undefined;
-      if (typeof build === 'number' && Number.isInteger(build) && build >= 0)
-        best = Math.max(best ?? build, build);
-    } catch (err) {
-      logger.debug({ file: sv.file, err: errorMessage(err) }, 'no client build from this file');
-    }
+    const build = (await recordedBuild(store, sv)) ?? (await parsedBuild(sv, read, logger));
+    if (build !== undefined) best = Math.max(best ?? build, build);
   }
   return best;
 }
@@ -222,15 +235,20 @@ async function download(url: string, fetchImpl: FetchLike): Promise<Uint8Array> 
   return Buffer.concat(chunks);
 }
 
-/** Puts ForeverLedger.bak back wherever an interrupted install left no working addon. Never throws. */
-async function recoverAll(dirs: string[], deps: InstallDeps, logger: Logger) {
+/**
+ * Puts ForeverLedger.bak back wherever an interrupted swap left no working addon. Returns the folders restored.
+ * Never throws.
+ */
+async function recoverAll(dirs: string[], deps: InstallDeps, logger: Logger): Promise<string[]> {
+  const recovered: string[] = [];
   for (const dir of dirs) {
     try {
-      await recoverAddon(dir, deps);
+      if (await recoverAddon(dir, deps)) recovered.push(dir);
     } catch (err) {
       logger.warn({ dir, err: errorMessage(err) }, 'cannot restore addon from ForeverLedger.bak');
     }
   }
+  return recovered;
 }
 
 /**
@@ -266,11 +284,12 @@ async function runSync(
   try {
     const found = await discoverAddons(config, wowPath);
     // Before the pause check and any network call, so it heals offline and paused installs too.
-    await recoverAll(
+    const recovered = await recoverAll(
       found.dirs.map((d) => d.addonsDir),
       deps,
       logger,
     );
+    if (recovered.length) result.recovered = recovered;
     result.addonsDirs = await targetDirs(wowPath, found);
     result.build = await clientBuild(config, found.files, opts.read, logger);
 

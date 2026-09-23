@@ -10,6 +10,8 @@ export interface AccountState {
   file?: string;
   /** Client build (`meta.build`) of the last SavedVariables parsed; addon sync asks the server for it. */
   build?: number;
+  /** mtimeMs of the SavedVariables file `build` was read from; a newer file may carry a newer build. */
+  buildMtimeMs?: number;
   /** Epoch ms of the last 2xx from /v1/ingest. */
   lastSuccessAt?: number;
   lastError?: { at: number; message: string };
@@ -93,10 +95,11 @@ export class StateStore {
     await this.save();
   }
 
-  async setBuild(name: string, build: number): Promise<void> {
+  async setBuild(name: string, build: number, mtimeMs: number): Promise<void> {
     const a = this.account(name);
-    if (a.build === build) return;
+    if (a.build === build && a.buildMtimeMs === mtimeMs) return;
     a.build = build;
+    a.buildMtimeMs = mtimeMs;
     await this.save();
   }
 
