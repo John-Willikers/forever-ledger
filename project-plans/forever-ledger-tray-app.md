@@ -51,7 +51,7 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Timestam
 
 - ✅ 3.1 `scripts/check-addon-version.ts` + tests — 2026-09-23 02:07 CDT (024f317; also `--zip` verifies the release zip)
 - ✅ 3.2 `.github/workflows/addon-release.yml` — 2026-09-23 02:07 CDT (2b9b67d; tag via env)
-- ⬜ 3.3 First release `addon-v0.2.1` → `addon publish 0.2.1` → manifest returns it
+- ✅ 3.3 First release `addon-v0.2.1` → `addon publish 0.2.1` → manifest returns it — 2026-09-23 02:09 CDT (release run 35830126937; sha256 d3dc9190…; e2e `addon-sync` on the VPS installed 0.2.1 into a `_classic_beta_` tree, second run up to date)
 
 ### 🖥️ Phase 4 — Desktop app
 
