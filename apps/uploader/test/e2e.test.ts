@@ -142,6 +142,42 @@ describe('upload-once end to end (mock server implementing the ingest contract)'
     expect(server.ingestRequests).toBe(requests);
   });
 
+  it('schema 4: two sessions with identical craft counts are both uploaded', async () => {
+    const sv = (session: string) =>
+      `ForeverLedgerDB = {
+	["meta"] = { ["schemaVersion"] = 4, ["addonVersion"] = "0.3.0", ["build"] = 69977, ["session"] = "${session}" },
+	["crafts"] = { [69977] = { [2963] = { ["casts"] = 3, ["qty"] = 3, ["procs"] = 0, ["skillUps"] = 1 } } },
+	["recipes"] = { [2963] = { ["id"] = 2963, ["name"] = "Bolt of Linen Cloth", ["skillLineID"] = 197 } },
+}
+`;
+    server = await startMockServer();
+    await env.writeSv(sv('1790100000-aaaa'));
+    expect((await pass(server.url)).ok).toBe(true);
+    await env.writeSv(sv('1790100600-bbbb'));
+    expect((await pass(server.url)).ok).toBe(true);
+    // The recipe is the same static fact in both sessions, so only the first carries it.
+    expect(server.receivedKeys).toEqual([
+      'recipe:2963',
+      'craft:2963:69977:1790100000-aaaa',
+      'craft:2963:69977:1790100600-bbbb',
+    ]);
+    expect(server.batches.map((b) => b.schemaVersion)).toEqual([4, 4]);
+    expect(server.batches[1]?.records.crafts).toEqual([
+      {
+        recipeId: 2963,
+        build: 69977,
+        session: '1790100600-bbbb',
+        casts: 3,
+        qty: 3,
+        procs: 0,
+        skillUps: 1,
+      },
+    ]);
+    const requests = server.ingestRequests;
+    expect((await pass(server.url)).ok).toBe(true);
+    expect(server.ingestRequests).toBe(requests);
+  });
+
   it('bad token → 401 stops the pass with a clear message', async () => {
     await env.writeSv(await readFixture('session-v1.lua'));
     server = await startMockServer({ token: 'another-token' });

@@ -42,3 +42,19 @@ export function batchFromFixture(
   // The batch carries the file's own schema major, as the uploader sends it.
   return structuredClone({ schemaVersion: meta.schemaVersion, uploaderId, account, meta, records });
 }
+
+/** The hand-written schema 4 fixture (professions-v4.lua) as one SavedVariables session of `account`. */
+export function schema4Batch(session: string, account: string) {
+  const b = batchFromFixture('professions-v4.lua', account);
+  const r = b.records;
+  return {
+    ...b,
+    meta: { ...b.meta, session },
+    records: {
+      ...r,
+      crafts: r.crafts.map((c) => ({ ...c, session })),
+      nodes: r.nodes.map((n) => ({ ...n, session })),
+      nodeLoot: r.nodeLoot.map((l) => ({ ...l, session })),
+    },
+  };
+}

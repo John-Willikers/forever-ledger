@@ -29,6 +29,13 @@
       "when": 1790194747669,
       "tag": "0003_schema3_sessions_corpses_run_loot",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790202021609,
+      "tag": "0004_professions",
+      "breakpoints": true
     }
   ]
 }

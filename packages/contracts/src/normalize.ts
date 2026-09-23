@@ -1,17 +1,30 @@
 import type { z } from 'zod';
 import {
+  ApiSample,
   Character,
   Corpse,
+  Craft,
   Drop,
+  GatherNode,
   Item,
   ItemBuildSnapshot,
   Meta,
+  NodeLoot,
   Quest,
   QuestObservation,
+  Recipe,
+  RecipeDifficulty,
+  RecipeLearned,
+  RecipeSnapshot,
+  RecipeStatus,
   Run,
   isSupportedSchemaVersion,
+  Skill,
+  SkillUp,
   SUPPORTED_SCHEMA_VERSIONS,
+  Trainer,
   TurnIn,
+  Vendor,
 } from './schemas.js';
 import type { Records, RecordKind } from './schemas.js';
 
@@ -93,6 +106,26 @@ function toGroupLoot(v: unknown) {
   return { ...rest, itemId: itemID };
 }
 
+/** Rename `<x>ID` fields to `<x>Id` (one level), the contracts spelling. */
+function idsToCamel(v: unknown) {
+  if (!isObj(v)) return v;
+  const out: Obj = {};
+  for (const [k, x] of Object.entries(v)) out[k.endsWith('ID') ? `${k.slice(0, -2)}Id` : k] = x;
+  return out;
+}
+
+/** Node spots `{ [mapID] = { "x,y", ... } }` → `[{ mapId, points: [[x, y], ...] }]`; unreadable points are skipped. */
+function toSpots(v: unknown) {
+  return entries(v).map(([mapId, pts]) => ({
+    mapId: num(mapId),
+    points: list(pts)
+      .map((p) => (typeof p === 'string' ? p.split(',').map(Number) : []))
+      .filter((xy): xy is [number, number] => xy.length === 2 && xy.every(Number.isFinite))
+      // The addon caps spots at 50 per map; a longer list keeps its first 50 instead of losing the node.
+      .slice(0, 50),
+  }));
+}
+
 function splitCharKey(key: string) {
   const i = key.indexOf('-');
   return i < 0 ? { name: key, realm: '' } : { name: key.slice(0, i), realm: key.slice(i + 1) };
@@ -119,6 +152,19 @@ export function normalize(db: unknown): Normalized {
     itemSnapshots: [],
     drops: [],
     corpses: [],
+    skills: [],
+    skillUps: [],
+    recipes: [],
+    recipeSnapshots: [],
+    recipeStatus: [],
+    recipeDifficulty: [],
+    recipesLearned: [],
+    crafts: [],
+    nodes: [],
+    nodeLoot: [],
+    trainers: [],
+    vendors: [],
+    apiSamples: [],
     runs: [],
   };
   // Schema 3 sessions; schema 1/2 files are one running total per file, keyed by session ''.
@@ -178,7 +224,8 @@ export function normalize(db: unknown): Normalized {
     if (!isObj(it)) continue;
     const itemId = num(iid);
     const { byBuild, id: _id, ...fields } = it;
-    add('items', Item, `items.${iid}`, { ...fields, itemId });
+    // Schema 4 adds classID / subclassID.
+    add('items', Item, `items.${iid}`, { ...(idsToCamel(fields) as Obj), itemId });
     for (const [b, snap] of entries(byBuild)) {
       if (!isObj(snap)) continue;
       add('itemSnapshots', ItemBuildSnapshot, `items.${iid}.byBuild.${b}`, {
@@ -217,6 +264,147 @@ export function normalize(db: unknown): Normalized {
         copper: c.copper ?? 0,
       });
     }
+  }
+
+  // Schema 4: professions. Older files simply have none of these tables.
+  for (const [char, byLine] of entries(db.skills)) {
+    for (const [line, sk] of entries(byLine)) {
+      if (!isObj(sk)) continue;
+      add('skills', Skill, `skills.${char}.${line}`, {
+        ...(idsToCamel(sk) as Obj),
+        char,
+        skillLineId: num(line),
+      });
+    }
+  }
+
+  list(db.skillUps).forEach((u, i) => {
+    if (isObj(u)) add('skillUps', SkillUp, `skillUps.${i + 1}`, idsToCamel(u));
+  });
+
+  for (const [rid, rec] of entries(db.recipes)) {
+    if (!isObj(rec)) continue;
+    const recipeId = num(rid);
+    const { byBuild, id: _id, ...fields } = rec;
+    add('recipes', Recipe, `recipes.${rid}`, { ...(idsToCamel(fields) as Obj), recipeId });
+    for (const [b, snap] of entries(byBuild)) {
+      if (!isObj(snap)) continue;
+      const { reagents, ...rest } = snap;
+      add('recipeSnapshots', RecipeSnapshot, `recipes.${rid}.byBuild.${b}`, {
+        ...(idsToCamel(rest) as Obj),
+        recipeId,
+        build: num(b),
+        reagents: list(reagents).map(idsToCamel),
+      });
+    }
+  }
+
+  for (const [b, byChar] of entries(db.recipeSeen)) {
+    for (const [char, byRecipe] of entries(byChar)) {
+      for (const [rid, seen] of entries(byRecipe)) {
+        if (!isObj(seen)) continue;
+        const path = `recipeSeen.${b}.${char}.${rid}`;
+        const ids = { recipeId: num(rid), build: num(b), char };
+        const { byDifficulty, ...status } = seen;
+        add('recipeStatus', RecipeStatus, path, { ...status, ...ids });
+        for (const [difficulty, range] of entries(byDifficulty)) {
+          if (!isObj(range)) continue;
+          add('recipeDifficulty', RecipeDifficulty, `${path}.byDifficulty.${difficulty}`, {
+            ...ids,
+            difficulty,
+            minRank: range.minRank,
+            maxRank: range.maxRank,
+          });
+        }
+      }
+    }
+  }
+
+  list(db.learned).forEach((l, i) => {
+    if (isObj(l)) add('recipesLearned', RecipeLearned, `learned.${i + 1}`, idsToCamel(l));
+  });
+
+  // Per-session counters: a counter the addon never bumped reads as 0.
+  for (const [b, byRecipe] of entries(db.crafts)) {
+    for (const [rid, c] of entries(byRecipe)) {
+      if (!isObj(c)) continue;
+      add('crafts', Craft, `crafts.${b}.${rid}`, {
+        recipeId: num(rid),
+        build: num(b),
+        session,
+        casts: c.casts ?? 0,
+        qty: c.qty ?? 0,
+        procs: c.procs ?? 0,
+        skillUps: c.skillUps ?? 0,
+      });
+    }
+  }
+
+  for (const [b, byObject] of entries(db.nodes)) {
+    for (const [oid, n] of entries(byObject)) {
+      if (!isObj(n)) continue;
+      const { spots, ...rest } = n;
+      add('nodes', GatherNode, `nodes.${b}.${oid}`, {
+        ...(idsToCamel(rest) as Obj),
+        objectId: num(oid),
+        build: num(b),
+        session,
+        opened: n.opened ?? 0,
+        spots: toSpots(spots),
+      });
+    }
+  }
+
+  for (const [iid, byBuild] of entries(db.nodeLoot)) {
+    for (const [b, byObject] of entries(byBuild)) {
+      for (const [oid, l] of entries(byObject)) {
+        if (!isObj(l)) continue;
+        add('nodeLoot', NodeLoot, `nodeLoot.${iid}.${b}.${oid}`, {
+          itemId: num(iid),
+          objectId: num(oid),
+          build: num(b),
+          session,
+          count: l.n,
+          quantity: l.qty,
+        });
+      }
+    }
+  }
+
+  for (const [b, byNpc] of entries(db.trainers)) {
+    for (const [npc, t] of entries(byNpc)) {
+      if (!isObj(t)) continue;
+      const { services, ...rest } = t;
+      add('trainers', Trainer, `trainers.${b}.${npc}`, {
+        ...(idsToCamel(rest) as Obj),
+        npcId: num(npc),
+        build: num(b),
+        services: list(services).map(idsToCamel),
+      });
+    }
+  }
+
+  for (const [b, byNpc] of entries(db.vendors)) {
+    for (const [npc, v] of entries(byNpc)) {
+      if (!isObj(v)) continue;
+      const { items, ...rest } = v;
+      add('vendors', Vendor, `vendors.${b}.${npc}`, {
+        ...rest,
+        npcId: num(npc),
+        build: num(b),
+        items: list(items).map(idsToCamel),
+      });
+    }
+  }
+
+  for (const [api, s] of entries(db.apiSamples)) {
+    if (!isObj(s)) continue;
+    add('apiSamples', ApiSample, `apiSamples.${api}`, {
+      api,
+      build: s.build,
+      time: s.time,
+      sample: s.sample,
+    });
   }
 
   list(db.runs).forEach((r, i) => {

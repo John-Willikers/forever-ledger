@@ -1,20 +1,21 @@
 import { z } from 'zod';
 
 /** SavedVariables / upload schema major. Bump together with `SCHEMA_VERSION` in the addon. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * Schema majors this code reads. Each one is additive, so older files and queued older batches stay valid:
  * 2 adds `turnIns[].choice` (addon 0.2.3); 3 adds `meta.session`, `dropQty`, `corpses` and run loot details
- * (addon 0.2.4).
+ * (addon 0.2.4); 4 adds professions — skills, recipes, crafts, gathering nodes, trainers, vendors, API samples and
+ * `items[].classID/subclassID` (addon 0.3.0).
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4] as const;
 export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
 
 export const isSupportedSchemaVersion = (v: unknown): v is SchemaVersion =>
   (SUPPORTED_SCHEMA_VERSIONS as readonly unknown[]).includes(v);
 
-const schemaVersion = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+const schemaVersion = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]);
 
 /** Schema 3 `meta.session`: `<epoch>-<4 hex>`, one per SavedVariables table. '' for older files. */
 const session = z.string().max(64);
@@ -139,6 +140,9 @@ export const Item = z.object({
   type: z.string().optional(),
   subtype: z.string().optional(),
   equipLoc: z.string().optional(),
+  /** Schema 4: C_Item.GetItemInfo returns 12/13 (class 9 = Recipe). */
+  classId: nonNegInt.optional(),
+  subclassId: nonNegInt.optional(),
 });
 export type Item = z.infer<typeof Item>;
 
@@ -181,6 +185,202 @@ export const Corpse = z.object({
   copper: nonNegInt,
 });
 export type Corpse = z.infer<typeof Corpse>;
+
+// ---------------------------------------------------------------------------------------------------------------
+// Schema 4: professions. Field names are the addon's with `ID` spelled `Id` (professions plan, appendix).
+// ---------------------------------------------------------------------------------------------------------------
+
+/** One skill line of a character, as last seen. */
+export const Skill = z.object({
+  char: charKey,
+  skillLineId: nonNegInt,
+  name: z.string(),
+  rank: nonNegInt,
+  maxRank: nonNegInt,
+  modifier: int.optional(),
+  parentId: nonNegInt.optional(),
+  lastSeen: epochSecs,
+});
+export type Skill = z.infer<typeof Skill>;
+
+/** A rank change of a skill line; `recipeId` is the craft or gather within 5 s before it, if any. */
+export const SkillUp = z.object({
+  char: charKey,
+  skillLineId: nonNegInt,
+  from: nonNegInt,
+  to: nonNegInt,
+  build,
+  time: epochSecs,
+  recipeId: nonNegInt.optional(),
+});
+export type SkillUp = z.infer<typeof SkillUp>;
+
+/** Static recipe facts. The server keeps known fields when a later upload leaves them blank. */
+export const Recipe = z.object({
+  recipeId: nonNegInt,
+  name: z.string(),
+  skillLineId: nonNegInt.optional(),
+  categoryId: nonNegInt.optional(),
+});
+export type Recipe = z.infer<typeof Recipe>;
+
+export const RecipeReagent = z.object({
+  itemId: nonNegInt,
+  qty: nonNegInt,
+});
+export type RecipeReagent = z.infer<typeof RecipeReagent>;
+
+/** A recipe's schematic in one build. */
+export const RecipeSnapshot = z.object({
+  recipeId: nonNegInt,
+  build,
+  outputItemId: nonNegInt.optional(),
+  qtyMin: nonNegInt.optional(),
+  qtyMax: nonNegInt.optional(),
+  reagents: z.array(RecipeReagent).max(100),
+  maxTrivial: nonNegInt.optional(),
+  sourceText: z.string().max(2000).optional(),
+});
+export type RecipeSnapshot = z.infer<typeof RecipeSnapshot>;
+
+/**
+ * Lower-cased Enum.TradeskillRelativeDifficulty key (`optimal`, `medium`, `easy`, `trivial`), or the raw number as a
+ * string when the enum is missing.
+ */
+const difficulty = z.string().min(1).max(32);
+
+/** What a character's recipe list showed for one recipe, the last time it was scanned in a build. */
+export const RecipeStatus = z.object({
+  recipeId: nonNegInt,
+  build,
+  char: charKey,
+  learned: z.boolean(),
+  difficulty: difficulty.optional(),
+  rank: nonNegInt.optional(),
+  seenAt: epochSecs,
+});
+export type RecipeStatus = z.infer<typeof RecipeStatus>;
+
+/** Skill ranks at which a character saw a recipe at one difficulty; over time they give the colour thresholds. */
+export const RecipeDifficulty = z.object({
+  recipeId: nonNegInt,
+  build,
+  char: charKey,
+  difficulty,
+  minRank: nonNegInt,
+  maxRank: nonNegInt,
+});
+export type RecipeDifficulty = z.infer<typeof RecipeDifficulty>;
+
+/** NEW_RECIPE_LEARNED. `via` is `trainer:<npcID>`, `item:<itemID>` or `unknown`. */
+export const RecipeLearned = z.object({
+  char: charKey,
+  recipeId: nonNegInt,
+  build,
+  time: epochSecs,
+  via: z.string().min(1).max(64),
+});
+export type RecipeLearned = z.infer<typeof RecipeLearned>;
+
+/** Craft counters of one recipe for one SavedVariables session (set, never added, like drops). */
+export const Craft = z.object({
+  recipeId: nonNegInt,
+  build,
+  session,
+  casts: nonNegInt,
+  qty: nonNegInt,
+  procs: nonNegInt,
+  skillUps: nonNegInt,
+});
+export type Craft = z.infer<typeof Craft>;
+
+export const NodeSpots = z.object({
+  mapId: int,
+  /** Player positions (0–100 map coordinates) when the node was looted; the addon keeps ≤ 50 per map. */
+  points: z.array(z.tuple([z.number(), z.number()])).max(50),
+});
+export type NodeSpots = z.infer<typeof NodeSpots>;
+
+/** Gathering counters of one game object for one session. Fishing is object 0. */
+export const GatherNode = z.object({
+  objectId: nonNegInt,
+  build,
+  session,
+  opened: nonNegInt,
+  name: z.string().optional(),
+  /** Lowest gathering skill rank seen looting it this session. */
+  rankMin: nonNegInt.optional(),
+  skillLineId: nonNegInt.optional(),
+  spots: z.array(NodeSpots).max(500),
+});
+export type GatherNode = z.infer<typeof GatherNode>;
+
+/** Per session: loot windows of an object that held the item (`count`) and their total stack quantity. */
+export const NodeLoot = z.object({
+  itemId: nonNegInt,
+  objectId: nonNegInt,
+  build,
+  session,
+  count: nonNegInt,
+  quantity: nonNegInt,
+});
+export type NodeLoot = z.infer<typeof NodeLoot>;
+
+export const TrainerService = z.object({
+  name: z.string(),
+  /** GetTrainerServiceInfo type, e.g. 'available', 'unavailable', 'used'. */
+  type: z.string().max(32).optional(),
+  cost: nonNegInt.optional(),
+  skill: z.string().optional(),
+  skillRank: nonNegInt.optional(),
+  level: nonNegInt.optional(),
+  itemId: nonNegInt.optional(),
+});
+export type TrainerService = z.infer<typeof TrainerService>;
+
+/** A profession trainer's services in one build; the latest scan replaces the row. */
+export const Trainer = z.object({
+  npcId: nonNegInt,
+  build,
+  name: z.string().optional(),
+  loc: Location.optional(),
+  skillLineId: nonNegInt.optional(),
+  seenAt: epochSecs,
+  services: z.array(TrainerService).max(1000),
+});
+export type Trainer = z.infer<typeof Trainer>;
+
+export const VendorItem = z.object({
+  itemId: nonNegInt,
+  price: nonNegInt.optional(),
+  stack: nonNegInt.optional(),
+  /** -1 = unlimited. */
+  numAvailable: int.optional(),
+  currencyId: nonNegInt.optional(),
+  /** MerchantItemInfo.hasExtendedCost (a number is tolerated too). */
+  extendedCost: z.union([z.boolean(), z.number()]).optional(),
+});
+export type VendorItem = z.infer<typeof VendorItem>;
+
+/** A vendor's items in one build; the latest scan replaces the row. */
+export const Vendor = z.object({
+  npcId: nonNegInt,
+  build,
+  name: z.string().optional(),
+  loc: Location.optional(),
+  seenAt: epochSecs,
+  items: z.array(VendorItem).max(1000),
+});
+export type Vendor = z.infer<typeof Vendor>;
+
+/** The first result of a client API in a build (a trimmed table), so real field names can be checked server-side. */
+export const ApiSample = z.object({
+  api: z.string().min(1).max(128),
+  build,
+  time: epochSecs,
+  sample: z.json(),
+});
+export type ApiSample = z.infer<typeof ApiSample>;
 
 export const RunBoss = z.object({
   id: int.optional(),
@@ -271,6 +471,19 @@ export const Records = z.object({
   itemSnapshots: z.array(ItemBuildSnapshot).default([]),
   drops: z.array(Drop).default([]),
   corpses: z.array(Corpse).default([]),
+  skills: z.array(Skill).default([]),
+  skillUps: z.array(SkillUp).default([]),
+  recipes: z.array(Recipe).default([]),
+  recipeSnapshots: z.array(RecipeSnapshot).default([]),
+  recipeStatus: z.array(RecipeStatus).default([]),
+  recipeDifficulty: z.array(RecipeDifficulty).default([]),
+  recipesLearned: z.array(RecipeLearned).default([]),
+  crafts: z.array(Craft).default([]),
+  nodes: z.array(GatherNode).default([]),
+  nodeLoot: z.array(NodeLoot).default([]),
+  trainers: z.array(Trainer).default([]),
+  vendors: z.array(Vendor).default([]),
+  apiSamples: z.array(ApiSample).default([]),
   runs: z.array(Run).default([]),
 });
 export type Records = z.infer<typeof Records>;

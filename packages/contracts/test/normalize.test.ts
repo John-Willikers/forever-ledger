@@ -4,9 +4,11 @@ import { parseSavedVariables } from '@forever-ledger/lua-sv-parser';
 import { describe, expect, it } from 'vitest';
 import {
   contentHash,
+  isSupportedSchemaVersion,
   normalize,
   RECORD_KINDS,
   recordKey,
+  SCHEMA_VERSION,
   UnsupportedSchemaError,
   UploadBatch,
 } from '../src/index.js';
@@ -100,8 +102,8 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 4, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 4 is not supported \(expected 1 or 2 or 3\)/,
+    expect(() => normalize({ meta: { schemaVersion: 5, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 5 is not supported \(expected 1 or 2 or 3 or 4\)/,
     );
   });
 
@@ -194,14 +196,14 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(t2).toEqual(v1.records.turnIns[0]);
   });
 
-  it('accepts schema 1 and 2 upload batches, not 4', () => {
+  it('accepts schema 1 and 2 upload batches, not 5', () => {
     const batch = { uploaderId: 'pc-1', account: 'A', meta: v2.meta, records: v2.records };
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 2 }).success).toBe(true);
     expect(
       UploadBatch.safeParse({ ...batch, schemaVersion: 1, meta: v1.meta, records: v1.records })
         .success,
     ).toBe(true);
-    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 4 }).success).toBe(false);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 5 }).success).toBe(false);
   });
 });
 
@@ -358,6 +360,266 @@ describe('normalize — schema 3 (addon 0.2.4)', () => {
     });
     expect(batch.records.drops[0]!.session).toBe('');
     expect(batch.records.corpses).toEqual([]);
+  });
+});
+
+describe('normalize — schema 4 professions (hand-written professions-v4.lua)', () => {
+  const { meta, records, problems } = normalize(load('professions-v4.lua'));
+  const S = '1790100000-c0de';
+  const build = 69977;
+  const char = 'Thibodeaux-Bayou';
+
+  it('reads every professions table without problems', () => {
+    expect(problems).toEqual([]);
+    expect(meta).toMatchObject({ schemaVersion: 4, addonVersion: '0.3.0', session: S });
+    expect(SCHEMA_VERSION).toBe(4);
+    expect(isSupportedSchemaVersion(4)).toBe(true);
+  });
+
+  it('skills and skill-ups', () => {
+    expect(records.skills).toEqual([
+      { char, skillLineId: 186, name: 'Mining', rank: 31, maxRank: 75, lastSeen: 1790100900 },
+      {
+        char,
+        skillLineId: 197,
+        name: 'Tailoring',
+        rank: 12,
+        maxRank: 75,
+        modifier: 0,
+        parentId: 0,
+        lastSeen: 1790100900,
+      },
+    ]);
+    expect(records.skillUps).toEqual([
+      { char, skillLineId: 197, from: 11, to: 12, build, time: 1790100420, recipeId: 2963 },
+      { char, skillLineId: 186, from: 30, to: 31, build, time: 1790100700 },
+    ]);
+  });
+
+  it('recipes, per-build snapshots with reagents, status, difficulty ranges and learn events', () => {
+    expect(records.recipes).toEqual([
+      { recipeId: 2963, name: 'Bolt of Linen Cloth', skillLineId: 197, categoryId: 1001 },
+      { recipeId: 7629, name: 'Blue Linen Vest', skillLineId: 197 },
+    ]);
+    expect(records.recipeSnapshots).toEqual([
+      {
+        recipeId: 2963,
+        build,
+        outputItemId: 2996,
+        qtyMin: 1,
+        qtyMax: 1,
+        reagents: [{ itemId: 2589, qty: 2 }],
+        maxTrivial: 25,
+      },
+      {
+        recipeId: 7629,
+        build,
+        outputItemId: 6240,
+        qtyMin: 1,
+        qtyMax: 1,
+        reagents: [
+          { itemId: 2996, qty: 3 },
+          { itemId: 2320, qty: 1 },
+        ],
+        sourceText: 'Pattern: Blue Linen Vest',
+      },
+    ]);
+    expect(records.recipeStatus).toEqual([
+      {
+        recipeId: 2963,
+        build,
+        char,
+        learned: true,
+        difficulty: 'optimal',
+        rank: 12,
+        seenAt: 1790100420,
+      },
+      { recipeId: 7629, build, char, learned: false, seenAt: 1790100420 },
+    ]);
+    expect(records.recipeDifficulty).toEqual([
+      { recipeId: 2963, build, char, difficulty: 'optimal', minRank: 1, maxRank: 12 },
+    ]);
+    expect(records.recipesLearned).toEqual([
+      { char, recipeId: 2963, build, time: 1790100200, via: 'trainer:1346' },
+      { char, recipeId: 7629, build, time: 1790100500, via: 'item:6270' },
+    ]);
+  });
+
+  it('per-session crafts, nodes (fishing = object 0) and node loot', () => {
+    expect(records.crafts).toEqual([
+      { recipeId: 2963, build, session: S, casts: 4, qty: 4, procs: 0, skillUps: 2 },
+    ]);
+    expect(records.nodes).toEqual([
+      {
+        objectId: 0,
+        build,
+        session: S,
+        opened: 2,
+        skillLineId: 356,
+        spots: [{ mapId: 1429, points: [[50, 60]] }],
+      },
+      {
+        objectId: 1731,
+        build,
+        session: S,
+        opened: 3,
+        name: 'Copper Vein',
+        rankMin: 29,
+        skillLineId: 186,
+        spots: [
+          {
+            mapId: 1429,
+            points: [
+              [45.1, 33.2],
+              [46, 34.5],
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(records.nodeLoot).toEqual([
+      { itemId: 2770, objectId: 1731, build, session: S, count: 3, quantity: 5 },
+      { itemId: 2835, objectId: 1731, build, session: S, count: 1, quantity: 1 },
+      { itemId: 6303, objectId: 0, build, session: S, count: 2, quantity: 2 },
+    ]);
+  });
+
+  it('trainers and vendors with their lists, loc kept as the addon wrote it', () => {
+    const loc = { zone: 'Stormwind City', subzone: 'The Canals', mapID: 1453 };
+    expect(records.trainers).toEqual([
+      {
+        npcId: 1346,
+        build,
+        name: 'Georgio Bolero',
+        loc: { ...loc, x: 43.4, y: 73.8 },
+        skillLineId: 197,
+        seenAt: 1790100150,
+        services: [
+          {
+            name: 'Bolt of Linen Cloth',
+            type: 'used',
+            cost: 0,
+            skill: 'Tailoring',
+            skillRank: 0,
+            level: 0,
+            itemId: 2996,
+          },
+          {
+            name: 'Brown Linen Shirt',
+            type: 'available',
+            cost: 50,
+            skill: 'Tailoring',
+            skillRank: 10,
+            level: 5,
+            itemId: 4344,
+          },
+        ],
+      },
+    ]);
+    expect(records.vendors).toEqual([
+      {
+        npcId: 1347,
+        build,
+        name: 'Alexandra Bolero',
+        loc: { ...loc, x: 43.2, y: 74.1 },
+        seenAt: 1790100160,
+        items: [
+          { itemId: 2320, price: 10, stack: 1, numAvailable: -1 },
+          { itemId: 6270, price: 200, stack: 1, numAvailable: 1, extendedCost: false },
+        ],
+      },
+    ]);
+  });
+
+  it('items gain classId / subclassId; API samples keep the raw table', () => {
+    expect(records.items.find((i) => i.itemId === 6270)).toMatchObject({
+      name: 'Pattern: Blue Linen Vest',
+      classId: 9,
+      subclassId: 2,
+    });
+    expect(records.itemSnapshots).toHaveLength(1);
+    expect(records.apiSamples).toEqual([
+      {
+        api: 'C_TradeSkillUI.GetRecipeInfo',
+        build,
+        time: 1790100400,
+        sample: {
+          recipeID: 2963,
+          name: 'Bolt of Linen Cloth',
+          learned: true,
+          relativeDifficulty: 0,
+          categoryID: 1001,
+        },
+      },
+      {
+        api: 'TRADE_SKILL_ITEM_CRAFTED_RESULT',
+        build,
+        time: 1790100420,
+        sample: [{ itemID: 2996, quantity: 1, multicraft: 0 }],
+      },
+    ]);
+  });
+
+  it('keys every record per the appendix; crafts, nodes and node loot carry the session', () => {
+    const keys = Object.fromEntries(
+      RECORD_KINDS.map((k) => [k, (records[k] as never[]).map((r) => recordKey(k, r))]),
+    );
+    expect(keys).toMatchObject({
+      skills: [`skill:${char}:186`, `skill:${char}:197`],
+      skillUps: [`skillup:${char}:197:1790100420:12`, `skillup:${char}:186:1790100700:31`],
+      recipes: ['recipe:2963', 'recipe:7629'],
+      recipeSnapshots: ['rsnap:2963:69977', 'rsnap:7629:69977'],
+      recipeStatus: [`rstat:2963:69977:${char}`, `rstat:7629:69977:${char}`],
+      recipeDifficulty: [`rdiff:2963:69977:${char}:optimal`],
+      recipesLearned: [`rlearn:${char}:2963:1790100200`, `rlearn:${char}:7629:1790100500`],
+      crafts: [`craft:2963:69977:${S}`],
+      nodes: [`node:0:69977:${S}`, `node:1731:69977:${S}`],
+      nodeLoot: [
+        `nloot:2770:1731:69977:${S}`,
+        `nloot:2835:1731:69977:${S}`,
+        `nloot:6303:0:69977:${S}`,
+      ],
+      trainers: ['trainer:1346:69977'],
+      vendors: ['vendor:1347:69977'],
+      apiSamples: [
+        'api:C_TradeSkillUI.GetRecipeInfo:69977',
+        'api:TRADE_SKILL_ITEM_CRAFTED_RESULT:69977',
+      ],
+    });
+    for (const kind of RECORD_KINDS) expect(new Set(keys[kind]).size).toBe(keys[kind]!.length);
+  });
+
+  it('builds a valid schema 4 upload batch; defaults and bad entries', () => {
+    const batch = UploadBatch.parse({
+      schemaVersion: 4,
+      uploaderId: 'pc-1',
+      account: 'A',
+      meta,
+      records,
+    });
+    expect(batch.records.vendors).toHaveLength(1);
+
+    const { records: r, problems: p } = normalize({
+      meta: { schemaVersion: 4, addonVersion: '0.3.0', build, session: S },
+      crafts: { [build]: { 1: { casts: 2 } } },
+      nodes: { [build]: { 5: { spots: { 1: ['1,2', 'junk', ...Array(60).fill('3,4')] } } } },
+      nodeLoot: { 9: { [build]: { 5: { n: 1 } } } },
+    });
+    expect(r.crafts).toEqual([
+      { recipeId: 1, build, session: S, casts: 2, qty: 0, procs: 0, skillUps: 0 },
+    ]);
+    expect(r.nodes[0]!.opened).toBe(0);
+    expect(r.nodes[0]!.spots[0]!.points).toHaveLength(50);
+    expect(r.nodes[0]!.spots[0]!.points[0]).toEqual([1, 2]);
+    expect(p).toEqual([
+      expect.objectContaining({ kind: 'nodeLoot', path: `nodeLoot.9.${build}.5` }),
+    ]);
+  });
+
+  it('schema 3 files have no professions records', () => {
+    const v3 = normalize(load('session-v3.lua'));
+    for (const kind of ['skills', 'recipes', 'crafts', 'nodes', 'trainers', 'apiSamples'] as const)
+      expect(v3.records[kind]).toEqual([]);
   });
 });
 

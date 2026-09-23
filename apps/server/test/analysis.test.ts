@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { toCsv } from '../src/routes/export.js';
-import { batchFromFixture, startServer } from './helpers.js';
+import { batchFromFixture, schema4Batch, startServer } from './helpers.js';
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 
@@ -181,8 +181,262 @@ describe('analysis and export routes', () => {
     expect(csv.body.split('\n')[0]).toBe(
       'id,questId,build,char,xp,money,level,turnedInAt,runId,choiceIndex,choiceItemId,updatedAt',
     );
+    expect((await get('/v1/export?format=csv&table=crafts')).body.split('\n')[0]).toBe(
+      'recipeId,build,uploaderId,account,session,casts,qty,procs,skillUps,updatedAt',
+    );
+    expect((await get('/v1/export?format=csv&table=trainers')).body.split('\n')[0]).toBe(
+      'npcId,build,name,loc,skillLineId,seenAt,services,updatedAt',
+    );
+    expect((await get('/v1/export?format=csv&table=recipe_difficulty')).statusCode).toBe(200);
+    expect(json.tables).toHaveProperty('api_samples');
     expect((await get('/v1/export?format=csv')).statusCode).toBe(400);
     expect((await get('/v1/export?table=api_tokens')).statusCode).toBe(400);
+  });
+});
+
+describe('profession routes', () => {
+  let s: Server;
+  const get = (url: string, headers: Record<string, string> = s.auth) =>
+    s.app.inject({ method: 'GET', url, headers });
+  const build = 69977;
+  const S1 = '1790100000-c0de';
+  const S2 = '1790100900-d00d';
+  const other = 'Boudreaux-Bayou';
+
+  beforeAll(async () => {
+    s = await startServer();
+    // The fixture twice (two sessions of one account, identical counts), with the recipe item dropping once per
+    // session; then a second character's recipe scan with its own difficulty ranges.
+    for (const session of [S1, S2]) {
+      const b = schema4Batch(session, 'PROF1');
+      b.records.drops = [{ itemId: 6270, build, npcId: 1234, session, count: 1, quantity: 1 }];
+      const res = await s.app.inject({
+        method: 'POST',
+        url: '/v1/ingest',
+        headers: s.auth,
+        payload: b,
+      });
+      expect(res.statusCode).toBe(200);
+    }
+    const b = schema4Batch('1790101800-beef', 'PROF2');
+    b.records = {
+      ...b.records,
+      recipeStatus: [
+        {
+          recipeId: 2963,
+          build,
+          char: other,
+          learned: true,
+          difficulty: 'medium',
+          rank: 40,
+          seenAt: 1790101900,
+        },
+      ],
+      recipeDifficulty: [
+        { recipeId: 2963, build, char: other, difficulty: 'optimal', minRank: 5, maxRank: 20 },
+        { recipeId: 2963, build, char: other, difficulty: 'medium', minRank: 26, maxRank: 40 },
+      ],
+      recipesLearned: [],
+      crafts: [],
+      nodes: [],
+      nodeLoot: [],
+    };
+    const res = await s.app.inject({
+      method: 'POST',
+      url: '/v1/ingest',
+      headers: s.auth,
+      payload: b,
+    });
+    expect(res.statusCode).toBe(200);
+  });
+  afterAll(async () => {
+    await s?.stop();
+  });
+
+  it('require a token', async () => {
+    for (const url of [
+      '/v1/professions/recipes',
+      '/v1/professions/sources?recipeId=2963',
+      '/v1/professions/gathering',
+    ])
+      expect((await get(url, {})).statusCode).toBe(401);
+  });
+
+  it('lists recipes with schematics, difficulty thresholds and how they were learned', async () => {
+    const res = await get(`/v1/professions/recipes?skillLine=197&build=${build}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      {
+        recipeId: 7629,
+        name: 'Blue Linen Vest',
+        skillLineId: 197,
+        categoryId: null,
+        learnedBy: 1,
+        learnedVia: [{ via: 'item:6270', count: 1 }],
+        builds: [
+          {
+            build,
+            outputItemId: 6240,
+            outputItemName: null,
+            qtyMin: 1,
+            qtyMax: 1,
+            reagents: [
+              { itemId: 2996, name: 'Bolt of Linen Cloth', qty: 3 },
+              { itemId: 2320, name: null, qty: 1 },
+            ],
+            maxTrivial: null,
+            sourceText: 'Pattern: Blue Linen Vest',
+            difficulty: [],
+          },
+        ],
+      },
+      {
+        recipeId: 2963,
+        name: 'Bolt of Linen Cloth',
+        skillLineId: 197,
+        categoryId: 1001,
+        learnedBy: 2,
+        learnedVia: [{ via: 'trainer:1346', count: 1 }],
+        builds: [
+          {
+            build,
+            outputItemId: 2996,
+            outputItemName: 'Bolt of Linen Cloth',
+            qtyMin: 1,
+            qtyMax: 1,
+            reagents: [{ itemId: 2589, name: 'Linen Cloth', qty: 2 }],
+            maxTrivial: 25,
+            sourceText: null,
+            difficulty: [
+              { difficulty: 'optimal', minRank: 1, maxRank: 20, chars: 2 },
+              { difficulty: 'medium', minRank: 26, maxRank: 40, chars: 1 },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect((await get('/v1/professions/recipes')).json()).toHaveLength(2);
+    expect((await get('/v1/professions/recipes?skillLine=186')).json()).toEqual([]);
+    expect((await get('/v1/professions/recipes?build=1')).json()).toEqual([]);
+  });
+
+  it('finds recipe sources: vendors and drops of the recipe item', async () => {
+    const res = await get('/v1/professions/sources?recipeId=7629');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      recipeId: 7629,
+      recipes: [{ recipeId: 7629, name: 'Blue Linen Vest' }],
+      recipeItems: [{ itemId: 6270, name: 'Pattern: Blue Linen Vest' }],
+      trainers: [],
+      vendors: [
+        {
+          npcId: 1347,
+          npcName: 'Alexandra Bolero',
+          build,
+          loc: { zone: 'Stormwind City', subzone: 'The Canals', mapID: 1453, x: 43.2, y: 74.1 },
+          seenAt: expect.stringMatching(/^2026-.*-0[56]:00$/),
+          itemId: 6270,
+          itemName: 'Pattern: Blue Linen Vest',
+          price: 200,
+          stack: 1,
+          numAvailable: 1,
+          currencyId: null,
+          extendedCost: false,
+        },
+      ],
+      drops: [
+        {
+          itemId: 6270,
+          itemName: 'Pattern: Blue Linen Vest',
+          build,
+          npcId: 1234,
+          count: 2,
+          quantity: 2,
+          contributors: 2,
+        },
+      ],
+    });
+  });
+
+  it('finds trainers by recipe name or created item', async () => {
+    const byRecipe = (await get('/v1/professions/sources?recipeId=2963')).json();
+    expect(byRecipe.trainers).toEqual([
+      {
+        npcId: 1346,
+        npcName: 'Georgio Bolero',
+        build,
+        loc: { zone: 'Stormwind City', subzone: 'The Canals', mapID: 1453, x: 43.4, y: 73.8 },
+        skillLineId: 197,
+        seenAt: expect.stringMatching(/-0[56]:00$/),
+        service: 'Bolt of Linen Cloth',
+        type: 'used',
+        cost: 0,
+        skill: 'Tailoring',
+        skillRank: 0,
+        level: 0,
+        itemId: 2996,
+      },
+    ]);
+    expect(byRecipe).toMatchObject({ recipeItems: [], vendors: [], drops: [] });
+
+    // An item stands for the recipes creating it: the trainer's shirt service and the thread vendor.
+    const shirt = (await get('/v1/professions/sources?itemId=4344')).json();
+    expect(shirt.trainers).toEqual([
+      expect.objectContaining({
+        npcId: 1346,
+        service: 'Brown Linen Shirt',
+        cost: 50,
+        skillRank: 10,
+        level: 5,
+      }),
+    ]);
+    const thread = (await get('/v1/professions/sources?itemId=2320')).json();
+    expect(thread).toMatchObject({ itemId: 2320, recipes: [], trainers: [], drops: [] });
+    expect(thread.vendors).toEqual([
+      expect.objectContaining({ npcId: 1347, itemId: 2320, price: 10, numAvailable: -1 }),
+    ]);
+    // The recipe item itself leads to the recipe it teaches.
+    const pattern = (await get('/v1/professions/sources?itemId=6270')).json();
+    expect(pattern.recipes).toEqual([{ recipeId: 7629, name: 'Blue Linen Vest' }]);
+    expect(pattern.drops).toHaveLength(1);
+  });
+
+  it('validates sources parameters', async () => {
+    expect((await get('/v1/professions/sources')).statusCode).toBe(400);
+    expect((await get('/v1/professions/sources?itemId=1&recipeId=2')).statusCode).toBe(400);
+    expect((await get('/v1/professions/sources?recipeId=abc')).statusCode).toBe(400);
+    expect((await get('/v1/professions/sources?recipeId=99999')).statusCode).toBe(404);
+  });
+
+  it('summarises gathering per node: opens over sessions, rank, zones and loot per open', async () => {
+    const res = await get(`/v1/professions/gathering?build=${build}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      {
+        build,
+        objectId: 1731,
+        name: 'Copper Vein',
+        skillLineId: 186,
+        opens: 6,
+        rankMin: 29,
+        zones: [{ mapId: 1429, spots: 2 }],
+        loot: [
+          { itemId: 2770, name: null, count: 6, quantity: 10, perOpen: 1, qtyPerOpen: 1.6667 },
+          { itemId: 2835, name: null, count: 2, quantity: 2, perOpen: 0.3333, qtyPerOpen: 0.3333 },
+        ],
+      },
+      {
+        build,
+        objectId: 0,
+        name: null,
+        skillLineId: 356,
+        opens: 4,
+        rankMin: null,
+        zones: [{ mapId: 1429, spots: 1 }],
+        loot: [{ itemId: 6303, name: null, count: 4, quantity: 4, perOpen: 1, qtyPerOpen: 1 }],
+      },
+    ]);
+    expect((await get('/v1/professions/gathering?build=1')).json()).toEqual([]);
   });
 });
 
