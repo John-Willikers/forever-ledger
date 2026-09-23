@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { verifyBearer } from '../auth.js';
 import type { Db } from '../db/client.js';
+import { chicagoIso } from '../time.js';
 
 /** Read routes need any valid token: the data includes contributors' character names. */
 export function requireToken(db: Db) {
@@ -13,19 +14,27 @@ export function requireToken(db: Db) {
   };
 }
 
-/** `?build=` as a positive integer, else null (no filter). */
-export const buildFilter = (q: unknown) => {
-  const b = Number((q as { build?: string }).build);
-  return Number.isInteger(b) && b > 0 ? b : null;
+/** `?<key>=` as a positive integer, else null. */
+const positiveInt = (q: unknown, key: string) => {
+  const raw = (q as Record<string, string | undefined>)[key];
+  const n = Number(raw);
+  return raw !== undefined && Number.isInteger(n) && n > 0 ? n : null;
 };
+
+/** `?build=` as a positive integer, else null (no filter). */
+export const buildFilter = (q: unknown) => positiveInt(q, 'build');
 
 async function rows<T>(db: Db, query: ReturnType<typeof sql>) {
   const res = await db.execute(query);
   return res.rows as T[];
 }
 
+/** A JS number list as one `int[]` parameter (usable with `= any(...)`, empty included). */
+const intArray = (xs: number[]) => sql`${sql.param(xs)}::int[]`;
+
 export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
   const preHandler = requireToken(db);
+  registerProfessionRoutes(app, db, preHandler);
 
   /** Offered vs paid XP per quest and build. */
   app.get('/v1/quests/xp', { preHandler }, async (req) => {
@@ -142,7 +151,7 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
     );
   });
 
-  /** One item across builds: snapshots, drop sources, quest rewards and which specs want it. */
+  /** One item across builds: snapshots, drop and node-loot sources, quest rewards and which specs want it. */
   app.get<{ Params: { id: string } }>('/v1/items/:id', { preHandler }, async (req, reply) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return reply.status(400).send({ error: 'bad item id' });
@@ -172,12 +181,29 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
           from quest_reward_options o left join quests q on q.quest_id = o.quest_id
           where o.item_id = ${id} order by o.build desc, o.quest_id`,
     );
+    // Game objects (veins, herbs, chests, fishing = object 0) whose loot held it, summed over sessions.
+    const nodeSources = await rows(
+      db,
+      sql`
+      with l as (
+        select build, object_id, sum(count)::int as count, sum(quantity)::int as quantity
+        from node_loot where item_id = ${id} group by build, object_id
+      ), n as (
+        select build, object_id, mode() within group (order by name) as name, sum(opened)::int as opens
+        from nodes where (build, object_id) in (select build, object_id from l)
+        group by build, object_id
+      )
+      select l.build, l.object_id as "objectId", n.name, n.opens, l.count, l.quantity
+      from l left join n using (build, object_id)
+      order by l.build desc, l.count desc, l.object_id`,
+    );
     const latest = snapshots[0];
     const level = latest?.reqLevel ?? 20;
     return {
       ...item,
       snapshots,
       dropSources,
+      nodeSources,
       questRewards,
       specs: {
         rulesVersion: RULES_VERSION,
@@ -193,5 +219,286 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
         ),
       },
     };
+  });
+}
+
+/** Epoch seconds (selected as `extract(epoch from col)`) → America/Chicago ISO. */
+const iso = (secs: unknown) => (secs === null ? null : chicagoIso(Number(secs) * 1000));
+
+/** Schema 4 profession routes: recipes, where recipes and items come from, gathering nodes. */
+function registerProfessionRoutes(
+  app: FastifyInstance,
+  db: Db,
+  preHandler: ReturnType<typeof requireToken>,
+) {
+  /**
+   * Recipes (optionally of one skill line / build) with, per build, the schematic (output item, quantity range,
+   * reagents with item names) and the observed difficulty thresholds: per difficulty the lowest and highest skill rank
+   * any character saw it at. `learnedBy` counts characters that know it; `learnedVia` counts learn events by source.
+   */
+  app.get('/v1/professions/recipes', { preHandler }, async (req) => {
+    const skillLine = positiveInt(req.query, 'skillLine');
+    const build = buildFilter(req.query);
+    const inScope = sql`(select recipe_id from recipes
+      where ${skillLine}::int is null or skill_line_id = ${skillLine}::int)`;
+    const inBuild = sql`(${build}::int is null or build = ${build}::int)`;
+
+    const recipes = await rows<{ recipeId: number }>(
+      db,
+      sql`
+      select recipe_id as "recipeId", name, skill_line_id as "skillLineId", category_id as "categoryId"
+      from recipes
+      where recipe_id in ${inScope}
+        and (${build}::int is null
+             or recipe_id in (select recipe_id from recipe_snapshots where build = ${build}::int)
+             or recipe_id in (select recipe_id from recipe_status where build = ${build}::int))
+      order by skill_line_id nulls last, name, recipe_id`,
+    );
+    const snapshots = await rows<{ recipeId: number; build: number }>(
+      db,
+      sql`
+      select s.recipe_id as "recipeId", s.build,
+             s.output_item_id as "outputItemId", o.name as "outputItemName",
+             s.qty_min as "qtyMin", s.qty_max as "qtyMax",
+             coalesce((
+               select jsonb_agg(jsonb_build_object(
+                        'itemId', (e.reagent->>'itemId')::int, 'name', i.name, 'qty', (e.reagent->>'qty')::int)
+                      order by e.ord)
+               from jsonb_array_elements(s.reagents) with ordinality as e(reagent, ord)
+               left join items i on i.item_id = (e.reagent->>'itemId')::int
+             ), '[]'::jsonb) as reagents,
+             s.max_trivial as "maxTrivial", s.source_text as "sourceText"
+      from recipe_snapshots s
+      left join items o on o.item_id = s.output_item_id
+      where s.recipe_id in ${inScope} and ${inBuild}
+      order by s.build desc`,
+    );
+    const thresholds = await rows<{ recipeId: number; build: number }>(
+      db,
+      sql`
+      select recipe_id as "recipeId", build, difficulty,
+             min(min_rank)::int as "minRank", max(max_rank)::int as "maxRank",
+             count(distinct char)::int as chars
+      from recipe_difficulty
+      where recipe_id in ${inScope} and ${inBuild}
+      group by recipe_id, build, difficulty
+      order by "minRank", difficulty`,
+    );
+    const learnedBy = await rows<{ recipeId: number; chars: number }>(
+      db,
+      sql`
+      select recipe_id as "recipeId", count(distinct char)::int as chars
+      from (
+        select recipe_id, char, build from recipe_status where learned
+        union
+        select recipe_id, char, build from recipes_learned
+      ) known
+      where recipe_id in ${inScope} and ${inBuild}
+      group by recipe_id`,
+    );
+    const via = await rows<{ recipeId: number; via: string; count: number }>(
+      db,
+      sql`
+      select recipe_id as "recipeId", via, count(*)::int as count
+      from recipes_learned
+      where recipe_id in ${inScope} and ${inBuild}
+      group by recipe_id, via
+      order by count desc, via`,
+    );
+
+    return recipes.map((r) => {
+      const builds = new Map<number, Record<string, unknown>>();
+      for (const { recipeId: _r, ...s } of snapshots.filter((x) => x.recipeId === r.recipeId))
+        builds.set(s.build, { ...s, difficulty: [] });
+      for (const { recipeId: _r, build: b, ...t } of thresholds.filter(
+        (x) => x.recipeId === r.recipeId,
+      )) {
+        if (!builds.has(b)) builds.set(b, { build: b, reagents: [], difficulty: [] });
+        (builds.get(b)!.difficulty as unknown[]).push(t);
+      }
+      return {
+        ...r,
+        learnedBy: learnedBy.find((x) => x.recipeId === r.recipeId)?.chars ?? 0,
+        learnedVia: via
+          .filter((x) => x.recipeId === r.recipeId)
+          .map(({ via: v, count }) => ({ via: v, count })),
+        builds: [...builds.values()].sort((a, b) => (b.build as number) - (a.build as number)),
+      };
+    });
+  });
+
+  /**
+   * Where a recipe (`?recipeId=`) or an item (`?itemId=`) comes from. An item stands for the recipes that create it or
+   * that it teaches (learned from it, or a Recipe-class item named "<Pattern|Plans|…>: <recipe name>"). Trainers:
+   * services named like the recipe or creating its output item. Vendors: listings of the recipe items (items the recipe
+   * was learned from, or Recipe-class items named "<Prefix>: <recipe name>"), or of the item itself. Drops: those items
+   * when they are Recipe-class (items.class_id = 9), from creatures (npcId) or game objects such as chests (objectId).
+   */
+  app.get('/v1/professions/sources', { preHandler }, async (req, reply) => {
+    const itemId = positiveInt(req.query, 'itemId');
+    const recipeId = positiveInt(req.query, 'recipeId');
+    if ((itemId === null) === (recipeId === null))
+      return reply.status(400).send({ error: 'pass exactly one of ?itemId= or ?recipeId=' });
+
+    const recipes = await rows<{ recipeId: number; name: string }>(
+      db,
+      sql`
+      select recipe_id as "recipeId", name from recipes
+      where recipe_id = ${recipeId}::int
+         or recipe_id in (select recipe_id from recipe_snapshots where output_item_id = ${itemId}::int)
+         or recipe_id in (select recipe_id from recipes_learned where via = 'item:' || ${itemId}::int)
+         or name = (select substring(i.name from position(': ' in i.name) + 2) from items i
+                    where i.item_id = ${itemId}::int and i.class_id = 9 and position(': ' in i.name) > 0)
+      order by recipe_id`,
+    );
+    if (recipeId !== null && recipes.length === 0)
+      return reply.status(404).send({ error: 'recipe not seen yet' });
+    const ids = recipes.map((r) => r.recipeId);
+    const names = recipes.map((r) => r.name);
+    const self = itemId === null ? [] : [itemId];
+
+    const outputs = (
+      await rows<{ itemId: number }>(
+        db,
+        sql`select distinct output_item_id as "itemId" from recipe_snapshots
+            where recipe_id = any(${intArray(ids)}) and output_item_id is not null`,
+      )
+    ).map((o) => o.itemId);
+    const recipeItems = await rows<{ itemId: number; name: string | null }>(
+      db,
+      sql`
+      with taught as (
+        select substring(via from 6)::int as item_id from recipes_learned
+        where recipe_id = any(${intArray(ids)}) and via ~ '^item:[0-9]+$'
+        union
+        select item_id from items
+        where class_id = 9 and exists (
+          select 1 from unnest(${sql.param(names)}::text[]) as n(name)
+          where right(items.name, length(n.name) + 2) = ': ' || n.name)
+      )
+      select t.item_id as "itemId", i.name from taught t left join items i using (item_id)
+      order by t.item_id`,
+    );
+    const sold = [...new Set([...recipeItems.map((i) => i.itemId), ...self])];
+
+    const trainers = await rows<Record<string, unknown>>(
+      db,
+      sql`
+      select t.npc_id as "npcId", t.name as "npcName", t.build, t.loc, t.skill_line_id as "skillLineId",
+             extract(epoch from t.seen_at) as "seenAt",
+             svc->>'name' as service, svc->>'type' as type, (svc->>'cost')::int as cost,
+             svc->>'skill' as skill, (svc->>'skillRank')::int as "skillRank", (svc->>'level')::int as level,
+             (svc->>'itemId')::int as "itemId"
+      from trainers t
+      cross join lateral jsonb_array_elements(t.services) as svc
+      where svc->>'name' = any(${sql.param(names)}::text[])
+         or (svc->>'itemId')::int = any(${intArray([...outputs, ...self])})
+      order by t.build desc, t.npc_id, service`,
+    );
+    const vendors = await rows<Record<string, unknown>>(
+      db,
+      sql`
+      select v.npc_id as "npcId", v.name as "npcName", v.build, v.loc,
+             extract(epoch from v.seen_at) as "seenAt",
+             (it->>'itemId')::int as "itemId", i.name as "itemName",
+             (it->>'price')::int as price, (it->>'stack')::int as stack,
+             (it->>'numAvailable')::int as "numAvailable", (it->>'currencyId')::int as "currencyId",
+             it->'extendedCost' as "extendedCost"
+      from vendors v
+      cross join lateral jsonb_array_elements(v.items) as it
+      left join items i on i.item_id = (it->>'itemId')::int
+      where (it->>'itemId')::int = any(${intArray(sold)})
+      order by v.build desc, v.npc_id, "itemId"`,
+    );
+    const drops = await rows(
+      db,
+      sql`
+      select d.item_id as "itemId", i.name as "itemName", d.build, d.npc_id as "npcId", null::int as "objectId",
+             sum(d.count)::int as count, sum(d.quantity)::int as quantity, count(*)::int as contributors
+      from drops d
+      join items i on i.item_id = d.item_id and i.class_id = 9
+      where d.item_id = any(${intArray(sold)})
+      group by d.item_id, i.name, d.build, d.npc_id
+      union all
+      select l.item_id, i.name, l.build, null::int, l.object_id,
+             sum(l.count)::int, sum(l.quantity)::int, count(*)::int
+      from node_loot l
+      join items i on i.item_id = l.item_id and i.class_id = 9
+      where l.item_id = any(${intArray(sold)})
+      group by l.item_id, i.name, l.build, l.object_id
+      order by build desc, count desc, "npcId" nulls last, "objectId"`,
+    );
+
+    return {
+      ...(recipeId === null ? { itemId } : { recipeId }),
+      recipes,
+      recipeItems,
+      trainers: trainers.map((t) => ({ ...t, seenAt: iso(t.seenAt) })),
+      vendors: vendors.map((v) => ({ ...v, seenAt: iso(v.seenAt) })),
+      drops,
+    };
+  });
+
+  /**
+   * Gathering per build and game object (object 0 = fishing): the name most sessions gave it, opens summed over
+   * sessions, uploaders and accounts, the lowest skill rank seen, the maps it was gathered on (distinct spots) and the top 10 loot items with count and
+   * stack quantity per open.
+   */
+  app.get('/v1/professions/gathering', { preHandler }, async (req) => {
+    const build = buildFilter(req.query);
+    const inBuild = sql`(${build}::int is null or build = ${build}::int)`;
+
+    const nodes = await rows<{ build: number; objectId: number }>(
+      db,
+      sql`
+      select build, object_id as "objectId", mode() within group (order by name) as name,
+             max(skill_line_id) as "skillLineId",
+             sum(opened)::int as opens, min(rank_min)::int as "rankMin"
+      from nodes
+      where ${inBuild}
+      group by build, object_id
+      order by build desc, opens desc, "objectId"`,
+    );
+    const zones = await rows<{ build: number; objectId: number; mapId: number; spots: number }>(
+      db,
+      sql`
+      select n.build, n.object_id as "objectId", (spot->>'mapId')::int as "mapId",
+             count(distinct point)::int as spots
+      from nodes n
+      cross join lateral jsonb_array_elements(n.spots) as spot
+      left join lateral jsonb_array_elements(spot->'points') as point on true
+      where ${inBuild}
+      group by n.build, n.object_id, "mapId"
+      order by spots desc, "mapId"`,
+    );
+    const loot = await rows<{ build: number; objectId: number }>(
+      db,
+      sql`
+      with opens as (
+        select build, object_id, sum(opened) as opens from nodes where ${inBuild} group by build, object_id
+      ), totals as (
+        select build, object_id, item_id, sum(count)::int as count, sum(quantity)::int as quantity
+        from node_loot where ${inBuild}
+        group by build, object_id, item_id
+      ), ranked as (
+        select t.*, o.opens, row_number() over (
+          partition by t.build, t.object_id order by t.count desc, t.quantity desc, t.item_id) as pos
+        from totals t left join opens o using (build, object_id)
+      )
+      select r.build, r.object_id as "objectId", r.item_id as "itemId", i.name,
+             r.count, r.quantity,
+             round(r.count::numeric / nullif(r.opens, 0), 4)::float8 as "perOpen",
+             round(r.quantity::numeric / nullif(r.opens, 0), 4)::float8 as "qtyPerOpen"
+      from ranked r left join items i on i.item_id = r.item_id
+      where r.pos <= 10
+      order by r.pos`,
+    );
+
+    type Keyed = { build: number; objectId: number };
+    const of = <T extends Keyed>(list: T[], n: Keyed) =>
+      list
+        .filter((x) => x.build === n.build && x.objectId === n.objectId)
+        .map(({ build: _b, objectId: _o, ...rest }) => rest);
+    return nodes.map((n) => ({ ...n, zones: of(zones, n), loot: of(loot, n) }));
   });
 }

@@ -1,4 +1,5 @@
 import type { AccountStatus, AddonSyncResult } from '@forever-ledger/uploader/lib';
+import type { DiagnosticsStatus } from './diagnostics.js';
 
 export type TrayState = 'idle' | 'uploading' | 'queued' | 'error';
 
@@ -18,12 +19,15 @@ export interface Snapshot {
   addonPausedFor?: string;
   appVersion: string;
   appUpdateReady?: string;
+  /** Error reports: on/off, waiting events, last accepted report. */
+  diagnostics: DiagnosticsStatus;
   settings: {
     wowPath?: string;
     serverUrl?: string;
     tokenSet: boolean;
     startWithWindows: boolean;
     autoUpdateAddon: boolean;
+    sendErrorReports: boolean;
   };
 }
 

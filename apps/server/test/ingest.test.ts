@@ -1,7 +1,7 @@
 import { contentHash, recordKey, RECORD_KINDS } from '@forever-ledger/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { revokeToken, mintToken } from '../src/index.js';
-import { batchFromFixture, startServer } from './helpers.js';
+import { batchFromFixture, schema4Batch, startServer } from './helpers.js';
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 
@@ -44,6 +44,22 @@ function schema3Batch(session: string, account: string) {
   };
 }
 
+const PROFESSION_TABLES = [
+  'skills',
+  'skill_ups',
+  'recipes',
+  'recipe_snapshots',
+  'recipe_status',
+  'recipe_difficulty',
+  'recipes_learned',
+  'crafts',
+  'nodes',
+  'node_loot',
+  'trainers',
+  'vendors',
+  'api_samples',
+];
+
 const TABLES = [
   'builds',
   'characters',
@@ -58,6 +74,7 @@ const TABLES = [
   'runs',
   'run_bosses',
   'run_party',
+  ...PROFESSION_TABLES,
 ];
 
 describe('ingest API (real Postgres)', () => {
@@ -291,11 +308,327 @@ describe('ingest API (real Postgres)', () => {
     ]);
   });
 
+  describe('schema 4 professions', () => {
+    const S1 = '1790100000-c0de';
+    const S2 = '1790100900-d00d';
+    const acct = 'ACCOUNT-V4';
+    const q = (text: string, params: unknown[] = []) =>
+      s.database.pool.query(text, params).then((res) => res.rows);
+
+    it('stores every professions kind', async () => {
+      const batch = schema4Batch(S1, acct);
+      expect(batch.schemaVersion).toBe(4);
+      const res = await post(batch);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().acknowledged).toContainEqual({
+        key: `craft:2963:69977:${S1}`,
+        hash: contentHash(batch.records.crafts[0]),
+      });
+      const c = await counts();
+      expect(Object.fromEntries(PROFESSION_TABLES.map((t) => [t, c[t]]))).toEqual({
+        skills: 2,
+        skill_ups: 2,
+        recipes: 2,
+        recipe_snapshots: 2,
+        recipe_status: 2,
+        recipe_difficulty: 1,
+        recipes_learned: 2,
+        crafts: 1,
+        nodes: 2,
+        node_loot: 3,
+        trainers: 1,
+        vendors: 1,
+        api_samples: 2,
+      });
+
+      expect(
+        await q(
+          `select char, skill_line_id, name, rank, max_rank, modifier, parent_id,
+                  extract(epoch from last_seen)::int as last_seen
+           from skills where skill_line_id = 197`,
+        ),
+      ).toEqual([
+        {
+          char: 'Thibodeaux-Bayou',
+          skill_line_id: 197,
+          name: 'Tailoring',
+          rank: 12,
+          max_rank: 75,
+          modifier: 0,
+          parent_id: 0,
+          last_seen: 1790100900,
+        },
+      ]);
+      expect(
+        await q(
+          `select skill_line_id, from_rank, to_rank, build, recipe_id from skill_ups order by skill_line_id`,
+        ),
+      ).toEqual([
+        { skill_line_id: 186, from_rank: 30, to_rank: 31, build: 69977, recipe_id: null },
+        { skill_line_id: 197, from_rank: 11, to_rank: 12, build: 69977, recipe_id: 2963 },
+      ]);
+      expect(await q(`select * from recipes where recipe_id = 2963`)).toEqual([
+        expect.objectContaining({
+          recipe_id: 2963,
+          name: 'Bolt of Linen Cloth',
+          skill_line_id: 197,
+          category_id: 1001,
+        }),
+      ]);
+      expect(
+        await q(
+          `select output_item_id, qty_min, qty_max, reagents, max_trivial, source_text
+           from recipe_snapshots where recipe_id = 7629 and build = 69977`,
+        ),
+      ).toEqual([
+        {
+          output_item_id: 6240,
+          qty_min: 1,
+          qty_max: 1,
+          reagents: [
+            { itemId: 2996, qty: 3 },
+            { itemId: 2320, qty: 1 },
+          ],
+          max_trivial: null,
+          source_text: 'Pattern: Blue Linen Vest',
+        },
+      ]);
+      expect(
+        await q(
+          `select recipe_id, learned, difficulty, rank from recipe_status order by recipe_id`,
+        ),
+      ).toEqual([
+        { recipe_id: 2963, learned: true, difficulty: 'optimal', rank: 12 },
+        { recipe_id: 7629, learned: false, difficulty: null, rank: null },
+      ]);
+      expect(await q(`select difficulty, min_rank, max_rank from recipe_difficulty`)).toEqual([
+        { difficulty: 'optimal', min_rank: 1, max_rank: 12 },
+      ]);
+      expect(await q(`select recipe_id, via from recipes_learned order by recipe_id`)).toEqual([
+        { recipe_id: 2963, via: 'trainer:1346' },
+        { recipe_id: 7629, via: 'item:6270' },
+      ]);
+      expect(
+        await q(
+          `select recipe_id, session, casts, qty, procs, skill_ups from crafts where account = $1`,
+          [acct],
+        ),
+      ).toEqual([{ recipe_id: 2963, session: S1, casts: 4, qty: 4, procs: 0, skill_ups: 2 }]);
+      expect(
+        await q(
+          `select object_id, opened, name, rank_min, skill_line_id, spots from nodes
+           where account = $1 order by object_id`,
+          [acct],
+        ),
+      ).toEqual([
+        {
+          object_id: 0,
+          opened: 2,
+          name: null,
+          rank_min: null,
+          skill_line_id: 356,
+          spots: [{ mapId: 1429, points: [[50, 60]] }],
+        },
+        {
+          object_id: 1731,
+          opened: 3,
+          name: 'Copper Vein',
+          rank_min: 29,
+          skill_line_id: 186,
+          spots: [
+            {
+              mapId: 1429,
+              points: [
+                [45.1, 33.2],
+                [46, 34.5],
+              ],
+            },
+          ],
+        },
+      ]);
+      expect(
+        await q(
+          `select item_id, object_id, count, quantity from node_loot where account = $1 order by item_id`,
+          [acct],
+        ),
+      ).toEqual([
+        { item_id: 2770, object_id: 1731, count: 3, quantity: 5 },
+        { item_id: 2835, object_id: 1731, count: 1, quantity: 1 },
+        { item_id: 6303, object_id: 0, count: 2, quantity: 2 },
+      ]);
+      const [trainer] = await q(`select * from trainers`);
+      expect(trainer).toMatchObject({
+        npc_id: 1346,
+        build: 69977,
+        name: 'Georgio Bolero',
+        skill_line_id: 197,
+        loc: batch.records.trainers[0]!.loc,
+        services: batch.records.trainers[0]!.services,
+      });
+      const [vendor] = await q(`select * from vendors`);
+      expect(vendor).toMatchObject({
+        npc_id: 1347,
+        name: 'Alexandra Bolero',
+        items: batch.records.vendors[0]!.items,
+      });
+      expect(await q(`select api, build, sample from api_samples order by api`)).toEqual(
+        batch.records.apiSamples.map((a) => ({ api: a.api, build: a.build, sample: a.sample })),
+      );
+      expect(
+        await q(`select item_id, class_id, subclass_id from items where item_id = 6270`),
+      ).toEqual([{ item_id: 6270, class_id: 9, subclass_id: 2 }]);
+      expect(await q(`select build from builds where build = 69977`)).toHaveLength(1);
+    });
+
+    it('is idempotent for professions', async () => {
+      const before = await counts();
+      expect((await post(schema4Batch(S1, acct))).statusCode).toBe(200);
+      expect(await counts()).toEqual(before);
+    });
+
+    it('two sessions with identical craft and gathering counts are both kept', async () => {
+      expect((await post(schema4Batch(S2, acct))).statusCode).toBe(200);
+      expect(
+        await q(
+          `select session, casts, qty from crafts where account = $1 and recipe_id = 2963 order by session`,
+          [acct],
+        ),
+      ).toEqual([
+        { session: S1, casts: 4, qty: 4 },
+        { session: S2, casts: 4, qty: 4 },
+      ]);
+      expect(
+        await q(
+          `select sum(opened)::int as opened from nodes where account = $1 and object_id = 1731`,
+          [acct],
+        ),
+      ).toEqual([{ opened: 6 }]);
+      expect(
+        await q(
+          `select sum(count)::int as n, sum(quantity)::int as qty from node_loot
+           where account = $1 and item_id = 2770`,
+          [acct],
+        ),
+      ).toEqual([{ n: 6, qty: 10 }]);
+    });
+
+    it('widens difficulty ranges across sessions and never rolls skills or status back', async () => {
+      const b = schema4Batch('1790200000-0001', acct);
+      const later = {
+        ...b,
+        records: {
+          ...b.records,
+          skills: b.records.skills.map((sk) => ({
+            ...sk,
+            rank: sk.rank + 5,
+            lastSeen: 1790200000,
+          })),
+          recipeStatus: b.records.recipeStatus.map((st) => ({
+            ...st,
+            difficulty: 'medium',
+            rank: 30,
+            seenAt: 1790200000,
+          })),
+          recipeDifficulty: [
+            { ...b.records.recipeDifficulty[0]!, minRank: 5, maxRank: 25 },
+            { ...b.records.recipeDifficulty[0]!, difficulty: 'medium', minRank: 26, maxRank: 30 },
+          ],
+        },
+      };
+      expect((await post(later)).statusCode).toBe(200);
+      // The first session again (older lastSeen / seenAt): ranks stay, ranges stay wide.
+      expect((await post(schema4Batch(S1, 'ACCOUNT-V4-OLD'))).statusCode).toBe(200);
+
+      expect(await q(`select skill_line_id, rank from skills order by skill_line_id`)).toEqual([
+        { skill_line_id: 186, rank: 36 },
+        { skill_line_id: 197, rank: 17 },
+      ]);
+      expect(await q(`select difficulty, rank from recipe_status where recipe_id = 2963`)).toEqual([
+        { difficulty: 'medium', rank: 30 },
+      ]);
+      expect(
+        await q(
+          `select difficulty, min_rank, max_rank from recipe_difficulty where recipe_id = 2963
+           order by difficulty`,
+        ),
+      ).toEqual([
+        { difficulty: 'medium', min_rank: 26, max_rank: 30 },
+        { difficulty: 'optimal', min_rank: 1, max_rank: 25 },
+      ]);
+    });
+
+    it('keeps known recipe and item class fields; replaces trainer and vendor lists', async () => {
+      const b = schema4Batch('1790300000-0002', acct);
+      const next = {
+        ...b,
+        records: {
+          ...b.records,
+          recipes: [{ recipeId: 2963, name: 'Bolt of Linen Cloth' }],
+          items: [{ itemId: 6270, name: 'Pattern: Blue Linen Vest' }],
+          trainers: [
+            { ...b.records.trainers[0]!, services: b.records.trainers[0]!.services.slice(1) },
+          ],
+          vendors: [{ ...b.records.vendors[0]!, name: undefined, items: [{ itemId: 2320 }] }],
+        },
+      };
+      expect((await post(next)).statusCode).toBe(200);
+      expect(
+        await q(`select skill_line_id, category_id from recipes where recipe_id = 2963`),
+      ).toEqual([{ skill_line_id: 197, category_id: 1001 }]);
+      expect(await q(`select class_id from items where item_id = 6270`)).toEqual([{ class_id: 9 }]);
+      expect(await q(`select services from trainers`)).toEqual([
+        { services: b.records.trainers[0]!.services.slice(1) },
+      ]);
+      expect(await q(`select name, items from vendors`)).toEqual([
+        { name: null, items: [{ itemId: 2320 }] },
+      ]);
+    });
+
+    it('merges an incomplete trainer scan by name; never lets an older scan overwrite a trainer or vendor', async () => {
+      const b = schema4Batch('1790300000-0003', acct);
+      const [bolt, shirt] = b.records.trainers[0]!.services;
+      const trainer = (seenAt: number, complete: boolean | undefined, services: unknown[]) => ({
+        ...b.records,
+        trainers: [{ ...b.records.trainers[0]!, seenAt, complete, services }],
+      });
+      const send = (records: unknown) => post({ ...b, records });
+      // Full list first, then a filtered scan: the shirt was bought, a belt is new, the bolt is only hidden.
+      expect((await send(trainer(1790300000, true, [bolt, shirt]))).statusCode).toBe(200);
+      const belt = { name: 'Linen Belt', type: 'available', cost: 80 };
+      expect(
+        (await send(trainer(1790300100, false, [{ ...shirt, type: 'used' }, belt]))).statusCode,
+      ).toBe(200);
+      expect(await q(`select complete, services from trainers`)).toEqual([
+        { complete: true, services: [bolt, { ...shirt, type: 'used' }, belt] },
+      ]);
+      // A scan without the flag (older addon data) merges too.
+      expect((await send(trainer(1790300200, undefined, [belt]))).statusCode).toBe(200);
+      expect((await q(`select services from trainers`))[0]!.services).toHaveLength(3);
+      // An older upload arriving late changes nothing; a newer complete scan replaces the list.
+      expect((await send(trainer(1790200000, true, [belt]))).statusCode).toBe(200);
+      expect((await q(`select services from trainers`))[0]!.services).toHaveLength(3);
+      expect((await send(trainer(1790300300, true, [belt]))).statusCode).toBe(200);
+      expect(await q(`select complete, services from trainers`)).toEqual([
+        { complete: true, services: [belt] },
+      ]);
+
+      const vendor = (seenAt: number, items: unknown[]) => ({
+        ...b.records,
+        vendors: [{ ...b.records.vendors[0]!, seenAt, items }],
+      });
+      expect((await send(vendor(1790300000, [{ itemId: 2321 }]))).statusCode).toBe(200);
+      expect((await send(vendor(1790100000, [{ itemId: 9999 }]))).statusCode).toBe(200);
+      expect(await q(`select items from vendors`)).toEqual([{ items: [{ itemId: 2321 }] }]);
+    });
+  });
+
   it('rejects unknown schema versions with 409 and malformed batches with 400', async () => {
     const batch = batchFromFixture('session-v1.lua');
-    const res409 = await post({ ...batch, schemaVersion: 4 });
+    const res409 = await post({ ...batch, schemaVersion: 5 });
     expect(res409.statusCode).toBe(409);
-    expect(res409.json().error).toMatch(/accepts 1, 2, 3/);
+    expect(res409.json().error).toMatch(
+      /unsupported schemaVersion 5; this server accepts 1, 2, 3, 4$/,
+    );
     const bad = structuredClone(batch) as unknown as { records: { runs: { start: unknown }[] } };
     bad.records.runs[0]!.start = 'yesterday';
     const res = await post(bad);

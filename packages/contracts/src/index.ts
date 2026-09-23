@@ -5,3 +5,4 @@ export type { Normalized, NormalizeProblem } from './normalize.js';
 export * from './rules/classRules.js';
 export * from './addon.js';
 export { AddonZipError, verifyAddonZip } from './addonZip.js';
+export * from './diagnostics.js';

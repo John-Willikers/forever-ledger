@@ -234,7 +234,11 @@ export async function flushQueue(ctx: Ctx, opts: FlushOptions): Promise<FlushRes
               ? `record ${qb.entries[0]?.key} is too large for the server (${res.message})`
               : `server rejected record ${qb.entries[0]?.key}: ${res.message}`;
           log.error({ batch: id }, message);
-          await queue.reject(account, id, { status: res.status, message: res.message });
+          await queue.reject(account, id, {
+            status: res.status,
+            message: res.message,
+            ...(res.kind === 'rejected' && res.issues ? { issues: res.issues } : {}),
+          });
           await state.markRejected(account, qb.entries);
           await state.setError(account, message);
           out.rejected++;

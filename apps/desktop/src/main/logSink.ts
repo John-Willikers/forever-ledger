@@ -13,6 +13,19 @@ export interface LogSinkOptions {
   onError?: (message: string) => void;
 }
 
+/** A WARN/ERROR/FATAL line: its level and the text after the level. */
+export interface ProblemLine {
+  level: 'warn' | 'error' | 'fatal';
+  text: string;
+}
+
+/** `[2026-09-23 05:22:10 CDT] WARN  addon sync failed err=x` → `{ level: 'warn', text: 'addon sync failed err=x' }`. */
+export function parseProblemLine(line: string): ProblemLine | undefined {
+  const m = /^\[[^\]]*\] (WARN|ERROR|FATAL) +([\s\S]*?)\s*$/.exec(line);
+  if (!m?.[1] || !m[2]) return undefined;
+  return { level: m[1].toLowerCase() as ProblemLine['level'], text: m[2] };
+}
+
 /** `forever-ledger.log` → `forever-ledger.1.log`. */
 export const rotatedPath = (file: string) => file.replace(/(\.log)?$/, '.1.log');
 
@@ -28,6 +41,7 @@ export class LogSink {
   private readonly keep: number;
   private readonly maxBytes: number;
   private readonly listeners = new Set<(line: string) => void>();
+  private readonly problemListeners = new Set<(p: ProblemLine) => void>();
   private size = 0;
   private reported = new Set<string>();
 
@@ -64,6 +78,17 @@ export class LogSink {
     this.lines.push(trimmed);
     if (this.lines.length > this.keep) this.lines.splice(0, this.lines.length - this.keep);
     for (const l of this.listeners) l(trimmed);
+    if (this.problemListeners.size) {
+      const problem = parseProblemLine(trimmed);
+      if (problem)
+        for (const l of this.problemListeners) {
+          try {
+            l(problem);
+          } catch (err) {
+            this.report('problem listener failed', err);
+          }
+        }
+    }
   }
 
   /** The last `keep` lines, oldest first, without trailing newlines. */
@@ -74,6 +99,12 @@ export class LogSink {
   onLine(listener: (line: string) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Called for every WARN/ERROR/FATAL line (the error reports). Listener exceptions are reported once, not thrown. */
+  onProblem(listener: (p: ProblemLine) => void): () => void {
+    this.problemListeners.add(listener);
+    return () => this.problemListeners.delete(listener);
   }
 
   close(): Promise<void> {

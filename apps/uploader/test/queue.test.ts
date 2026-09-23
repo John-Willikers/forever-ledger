@@ -149,7 +149,15 @@ describe('offline queue', () => {
     const hasPoison = (b: UploadBatch) =>
       b.records.runs.some((r) => recordKey('runs', r) === poison);
     const { fetchImpl } = stubFetch((_n, b) =>
-      hasPoison(b) ? { status: 400, body: { message: 'bad run' } } : 'ack',
+      hasPoison(b)
+        ? {
+            status: 400,
+            body: {
+              message: 'bad run',
+              issues: [{ path: 'records.runs.0.start', message: 'Invalid input' }],
+            },
+          }
+        : 'ack',
     );
     const res = await pass(fetchImpl);
     const total = res.files[0]!.records;
@@ -166,9 +174,13 @@ describe('offline queue', () => {
     const [file] = await readdir(dir);
     const rejected = JSON.parse(await readFile(join(dir, file!), 'utf8')) as {
       entries: { key: string }[];
-      rejected: { status: number; message: string };
+      rejected: { status: number; message: string; issues?: unknown };
     };
     expect(rejected.rejected).toMatchObject({ status: 400, message: '400 bad run' });
+    // The server's validation issues are kept for the tray app's error reports.
+    expect(rejected.rejected.issues).toEqual([
+      { path: 'records.runs.0.start', message: 'Invalid input' },
+    ]);
     expect(rejected.entries.map((e) => e.key)).toEqual([poison]);
 
     // Same content again: not re-queued. Changed content: tried again.

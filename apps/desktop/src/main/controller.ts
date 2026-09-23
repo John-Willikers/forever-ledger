@@ -1,26 +1,36 @@
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
-import { LockedError, resolveConfig } from '@forever-ledger/uploader/lib';
+import { release } from 'node:os';
+import { FatalUploadError, LockedError, resolveConfig } from '@forever-ledger/uploader/lib';
 import type {
   AccountStatus,
   AddonSyncResult,
   Config,
   ConfigFile,
+  FetchLike,
   Logger,
   PassResult,
   WatchEvent,
   WatchHandle,
 } from '@forever-ledger/uploader/lib';
 import type * as UploaderLib from '@forever-ledger/uploader/lib';
+import { DiagnosticsReporter } from './diagnostics.js';
+import type { DiagnosticInput, LogProblem } from './diagnostics.js';
 import type { Snapshot } from './state.js';
 
 /** App preferences kept outside the uploader config (the CLI doesn't use them). */
 export interface Prefs {
   startWithWindows: boolean;
   autoUpdateAddon: boolean;
+  /** Send warnings and errors on this PC to the server (sanitized); see README "Error reports". */
+  sendErrorReports: boolean;
 }
 
-export const DEFAULT_PREFS: Prefs = { startWithWindows: true, autoUpdateAddon: true };
+export const DEFAULT_PREFS: Prefs = {
+  startWithWindows: true,
+  autoUpdateAddon: true,
+  sendErrorReports: true,
+};
 export const DEFAULT_SERVER_URL = 'https://ledger.willikers.dev';
 
 /** The parts of `@forever-ledger/uploader/lib` the controller uses (tests pass fakes). */
@@ -36,6 +46,7 @@ export type UploaderApi = Pick<
   | 'syncAddon'
   | 'rollbackAddonEverywhere'
   | 'readAddonSyncState'
+  | 'summarizeRejected'
 >;
 
 export interface ControllerDeps {
@@ -67,6 +78,12 @@ export interface ControllerDeps {
   pid?: number;
   /** A pass shows as "uploading" only once it has run this long (default 750 ms; no tray flicker while offline). */
   uploadingDelayMs?: number;
+  /** For error reports (tests pass a fake). */
+  fetchImpl?: FetchLike;
+  /** Reported with each error report (default `<process.platform> <os.release()>`). */
+  platform?: string;
+  /** How often new error reports are sent (default 5 min). */
+  diagnosticsIntervalMs?: number;
 }
 
 export interface SettingsInput {
@@ -75,6 +92,7 @@ export interface SettingsInput {
   serverUrl?: string;
   startWithWindows?: boolean;
   autoUpdateAddon?: boolean;
+  sendErrorReports?: boolean;
 }
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -160,6 +178,10 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
   private addonErrorSince?: number;
   private addonErrorToasted = false;
 
+  private readonly diagnostics: DiagnosticsReporter;
+  /** Batches in rejected/ at the last report (undefined: not looked yet this run). */
+  private rejectedReported?: number;
+
   constructor(private readonly deps: ControllerDeps) {
     super();
     this.now = deps.now ?? Date.now;
@@ -169,6 +191,22 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
     this.addonErrorRedAfterMs = deps.addonErrorRedAfterMs ?? 15 * 60_000;
     this.addonErrorToastAfterMs = deps.addonErrorToastAfterMs ?? 60 * 60_000;
     this.addonRetryMs = deps.addonRetryMs ?? [60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000];
+    this.diagnostics = new DiagnosticsReporter({
+      appVersion: deps.appVersion,
+      platform: deps.platform ?? `${process.platform} ${release()}`,
+      target: () => {
+        const c = this.config;
+        return c?.token && c.serverUrl
+          ? { serverUrl: c.serverUrl, token: c.token, uploaderId: c.uploaderId }
+          : undefined;
+      },
+      enabled: () => this.deps.prefs.get().sendErrorReports,
+      logger: deps.logger,
+      now: this.now,
+      fetchImpl: deps.fetchImpl,
+      intervalMs: deps.diagnosticsIntervalMs,
+      onChange: () => this.changed(),
+    });
   }
 
   private get log() {
@@ -189,6 +227,7 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
         },
         'Forever Ledger started',
       );
+      this.diagnostics.start();
       await this.startWatching();
       this.scheduleAddon(true);
       this.changed();
@@ -199,6 +238,7 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
   async stop(): Promise<void> {
     this.stopped = true;
     this.clearAddonTimer();
+    this.diagnostics.stop();
     await this.serial(() => this.stopWatching());
     if (this.addonRun) await Promise.race([this.addonRun, delay(5_000)]);
     this.log.info('Forever Ledger stopped');
@@ -218,12 +258,14 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       addonPausedFor: this.addonPausedFor,
       appVersion: this.deps.appVersion,
       appUpdateReady: this.appUpdateReady,
+      diagnostics: this.diagnostics.status(),
       settings: {
         wowPath: this.config?.wowPath,
         serverUrl: this.config?.serverUrl ?? DEFAULT_SERVER_URL,
         tokenSet: Boolean(this.config?.token),
         startWithWindows: prefs.startWithWindows,
         autoUpdateAddon: prefs.autoUpdateAddon,
+        sendErrorReports: prefs.sendErrorReports,
       },
     };
   }
@@ -299,13 +341,16 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       const prefs: Prefs = {
         startWithWindows: input.startWithWindows ?? oldPrefs.startWithWindows,
         autoUpdateAddon: input.autoUpdateAddon ?? oldPrefs.autoUpdateAddon,
+        sendErrorReports: input.sendErrorReports ?? oldPrefs.sendErrorReports,
       };
       const prefsChanged =
         prefs.startWithWindows !== oldPrefs.startWithWindows ||
-        prefs.autoUpdateAddon !== oldPrefs.autoUpdateAddon;
+        prefs.autoUpdateAddon !== oldPrefs.autoUpdateAddon ||
+        prefs.sendErrorReports !== oldPrefs.sendErrorReports;
       if (prefsChanged) {
         this.deps.prefs.set(prefs);
         this.log.info({ ...prefs }, 'preferences saved');
+        if (!prefs.sendErrorReports) this.diagnostics.clear();
       }
 
       const wowPath = input.wowPath?.trim() || undefined;
@@ -349,6 +394,19 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       }
       this.changed();
     });
+  }
+
+  /** A WARN/ERROR/FATAL line from the log (main.ts wires the LogSink here). */
+  noteLogProblem(p: LogProblem): void {
+    this.diagnostics.noteLogLine(p);
+  }
+
+  /**
+   * A problem outside the controller (app self-update, a crash). `match`: the text its log line contains, so that line
+   * isn't reported a second time.
+   */
+  reportProblem(input: DiagnosticInput, match?: string): void {
+    this.diagnostics.record(input, match);
   }
 
   setAppUpdateReady(version: string): void {
@@ -508,6 +566,16 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
             this.log.debug(summary, 'nothing to upload yet');
           else this.log.info(summary, 'upload pass finished');
         }
+        for (const f of e.result.files) {
+          // A file WoW is still writing is read again on its next change: not a problem.
+          if (!f.error || f.error.includes('still being written')) continue;
+          this.diagnostics.record({
+            level: 'error',
+            source: 'parse',
+            message: f.error,
+            detail: { account: f.account },
+          });
+        }
         void this.refreshAccounts();
         break;
       case 'pass-error':
@@ -518,6 +586,15 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
             this.uploadLocked = extendStreak(this.uploadLocked, this.now(), e.error.pid);
         } else {
           this.passError = e.error.message;
+          if (!(e.error instanceof FatalUploadError))
+            this.diagnostics.record(
+              {
+                level: 'error',
+                source: 'uploader',
+                message: `upload pass failed: ${e.error.message}`,
+              },
+              e.error.message,
+            );
         }
         void this.refreshAccounts();
         break;
@@ -529,6 +606,15 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
           e.error.code === 'unauthorized'
             ? 'The server rejected the upload token. Paste a new token in Settings; queued data is kept.'
             : e.error.message;
+        this.diagnostics.record(
+          {
+            level: 'fatal',
+            source: 'uploader',
+            message: `uploads stopped: ${this.fatal}`,
+            detail: { code: e.error.code },
+          },
+          e.error.message,
+        );
         this.toast(`Uploads stopped: ${this.fatal}`);
         break;
     }
@@ -543,6 +629,29 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       this.changed();
     } catch (err) {
       this.log.debug({ err: errorMessage(err) }, 'cannot read upload status');
+      return;
+    }
+    await this.reportRejected(config);
+  }
+
+  /** Error report about batches parked in rejected/, once per run and whenever there are more of them. */
+  private async reportRejected(config: Config) {
+    const total = this.accounts.reduce((n, a) => n + a.rejectedBatches, 0);
+    const before = this.rejectedReported ?? 0;
+    this.rejectedReported = total;
+    if (total <= before) return;
+    try {
+      const summary = await this.deps.uploader.summarizeRejected(config.stateDir);
+      if (summary.total === 0) return;
+      this.diagnostics.record({
+        level: 'error',
+        source: 'rejected',
+        // No count in the message: a later summary merges into a pending one (and replaces its detail).
+        message: 'records the server refused are parked in rejected/',
+        detail: summary,
+      });
+    } catch (err) {
+      this.log.debug({ err: errorMessage(err) }, 'cannot read rejected/');
     }
   }
 
@@ -657,9 +766,23 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       ...(result.recovered?.length ? { recovered: result.recovered.length } : {}),
       ...(result.error ? { err: result.error } : {}),
     };
-    if (result.status === 'error')
+    if (result.status === 'error') {
+      this.diagnostics.record(
+        {
+          level: 'error',
+          source: 'addon-sync',
+          message: `addon sync failed: ${result.error ?? 'unknown error'}`,
+          detail: {
+            installed: result.installed,
+            recommended: result.recommended,
+            build: result.build,
+            folders: result.addonsDirs.length,
+          },
+        },
+        result.error,
+      );
       this.log.warn(fields, `addon sync failed (retry #${this.addonFailures} soon)`);
-    else this.log.info(fields, `addon sync: ${result.status}`);
+    } else this.log.info(fields, `addon sync: ${result.status}`);
 
     if (result.status === 'installed' || result.recovered?.length) {
       const version = result.installed ?? result.recommended ?? '';

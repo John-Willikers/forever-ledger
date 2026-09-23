@@ -63,7 +63,7 @@ export function sanitizeSettings(raw: unknown): WindowSettings {
     const v = r[k];
     if (typeof v === 'string' && v.length <= 4096) out[k] = v;
   }
-  for (const k of ['startWithWindows', 'autoUpdateAddon'] as const) {
+  for (const k of ['startWithWindows', 'autoUpdateAddon', 'sendErrorReports'] as const) {
     const v = r[k];
     if (typeof v === 'boolean') out[k] = v;
   }

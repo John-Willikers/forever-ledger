@@ -9,12 +9,14 @@ describe('sanitizeSettings', () => {
         token: 'flt_x',
         startWithWindows: false,
         autoUpdateAddon: true,
+        sendErrorReports: false,
       }),
     ).toEqual({
       wowPath: 'C:/WoW',
       token: 'flt_x',
       startWithWindows: false,
       autoUpdateAddon: true,
+      sendErrorReports: false,
     });
   });
 
@@ -25,6 +27,7 @@ describe('sanitizeSettings', () => {
         stateDir: '/x',
         token: 5,
         startWithWindows: 'yes',
+        sendErrorReports: 1,
         wowPath: 'x'.repeat(5_000),
       }),
     ).toEqual({});

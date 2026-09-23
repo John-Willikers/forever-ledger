@@ -1,8 +1,11 @@
+import type { DiagnosticsReport } from '@forever-ledger/contracts';
 import { FatalUploadError, LockedError, silentLogger } from '@forever-ledger/uploader/lib';
 import type {
   AccountStatus,
   AddonSyncResult,
   ConfigFile,
+  FetchLike,
+  RejectedSummary,
   PassResult,
   WatchEvent,
   WatchHandle,
@@ -68,7 +71,12 @@ interface FakeWatch extends WatchHandle {
 
 function setup(opts: { file?: ConfigFile; prefs?: Partial<Prefs> } = {}) {
   let file: ConfigFile | undefined = 'file' in opts ? opts.file : FULL;
-  let prefs: Prefs = { startWithWindows: true, autoUpdateAddon: true, ...opts.prefs };
+  let prefs: Prefs = {
+    startWithWindows: true,
+    autoUpdateAddon: true,
+    sendErrorReports: true,
+    ...opts.prefs,
+  };
   const watches: FakeWatch[] = [];
   const lockHolder: { pid?: number } = {};
 
@@ -100,7 +108,20 @@ function setup(opts: { file?: ConfigFile; prefs?: Partial<Prefs> } = {}) {
     syncAddon: vi.fn(async () => syncResult()),
     rollbackAddonEverywhere: vi.fn(async () => '0.2.0'),
     readAddonSyncState: vi.fn(async () => ({})),
+    summarizeRejected: vi.fn(async (): Promise<RejectedSummary> => ({ total: 0, accounts: [] })),
   };
+
+  // Error reports go to this fake server, never the network.
+  const reports: { url: string; auth?: string; body: DiagnosticsReport }[] = [];
+  const fetchImpl = vi.fn<FetchLike>(async (url, init) => {
+    const body = JSON.parse(String(init?.body)) as DiagnosticsReport;
+    reports.push({
+      url: String(url),
+      auth: (init?.headers as Record<string, string>).authorization,
+      body,
+    });
+    return new Response(JSON.stringify({ accepted: body.events.length }), { status: 200 });
+  });
 
   let now = 1_790_000_000_000;
   const deps: ControllerDeps = {
@@ -116,6 +137,8 @@ function setup(opts: { file?: ConfigFile; prefs?: Partial<Prefs> } = {}) {
     otherLockRetryMs: 10,
     readRawConfig: vi.fn(async () => ({})),
     pid: 1,
+    fetchImpl,
+    platform: 'win32 10.0.22631',
   };
   const controller = new LedgerController(deps);
   const changes: Snapshot[] = [];
@@ -133,6 +156,10 @@ function setup(opts: { file?: ConfigFile; prefs?: Partial<Prefs> } = {}) {
     getPrefs: () => prefs,
     advance: (ms: number) => (now += ms),
     deps,
+    fetchImpl,
+    reports,
+    /** Every event sent so far. */
+    events: () => reports.flatMap((r) => r.body.events),
   };
 }
 
@@ -631,5 +658,215 @@ describe('LedgerController', () => {
     expect(t.watches[0]?.close).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(5_000);
     expect(t.uploader.syncAddon).toHaveBeenCalledTimes(1);
+  });
+
+  describe('error reports', () => {
+    const FIVE_MIN = 5 * 60_000;
+    /** Moves the controller's clock and the fake timers together. */
+    const elapse = async (t: ReturnType<typeof setup>, ms: number) => {
+      t.advance(ms);
+      await vi.advanceTimersByTimeAsync(ms);
+    };
+
+    it('sends a fatal upload error 10 s later, with the app version and platform', async () => {
+      const t = setup();
+      await t.controller.start();
+      await flush();
+      const w = t.watches[0] as FakeWatch;
+      w.emit({ type: 'fatal', error: new FatalUploadError('unauthorized', 'bad token flt_test') });
+      expect(t.controller.snapshot().diagnostics).toMatchObject({ enabled: true, pending: 1 });
+      await elapse(t, 10_000);
+      expect(t.reports).toHaveLength(1);
+      const r = t.reports[0]!;
+      expect(r.url).toBe('https://ledger.example/v1/diagnostics');
+      expect(r.auth).toBe('Bearer flt_test');
+      expect(r.body).toMatchObject({
+        uploaderId: 'u1',
+        appVersion: '0.1.0',
+        platform: 'win32 10.0.22631',
+      });
+      expect(r.body.events).toEqual([
+        expect.objectContaining({
+          level: 'fatal',
+          source: 'uploader',
+          message: expect.stringMatching(/rejected the upload token/),
+          detail: { code: 'unauthorized' },
+        }),
+      ]);
+      const s = t.controller.snapshot().diagnostics;
+      expect(s.pending).toBe(0);
+      expect(s.lastSentAt).toBe(1_790_000_010_000);
+    });
+
+    it('reports pass errors, parse failures and addon sync failures every 5 minutes', async () => {
+      const t = setup();
+      t.uploader.syncAddon.mockResolvedValue(syncResult({ status: 'error', error: 'HTTP 502' }));
+      await t.controller.start();
+      await flush();
+      const w = t.watches[0] as FakeWatch;
+      w.emit({ type: 'pass-error', error: new Error('state.json is corrupt') });
+      // Another uploader holding the lock is routine: not reported.
+      w.emit({ type: 'pass-error', error: new LockedError(OTHER_PID) });
+      w.emit({
+        type: 'pass-end',
+        result: {
+          ...passResult,
+          files: [
+            {
+              account: 'ACC1',
+              file: '/wow/sv.lua',
+              ok: false,
+              error: 'could not parse /wow/sv.lua: unexpected symbol',
+              records: 0,
+              problems: 0,
+              queuedRecords: 0,
+              queuedBatches: 0,
+            },
+            {
+              account: 'ACC2',
+              file: '/wow/sv2.lua',
+              ok: false,
+              error:
+                '/wow/sv2.lua is still being written (truncated); will retry on the next change',
+              records: 0,
+              problems: 0,
+              queuedRecords: 0,
+              queuedBatches: 0,
+            },
+          ],
+        },
+      });
+      await flush();
+      expect(t.reports).toHaveLength(0);
+      await elapse(t, FIVE_MIN);
+      expect(t.reports).toHaveLength(1);
+      expect(t.events().map((e) => [e.level, e.source, e.message])).toEqual([
+        ['error', 'addon-sync', 'addon sync failed: HTTP 502'],
+        ['error', 'uploader', 'upload pass failed: state.json is corrupt'],
+        ['error', 'parse', 'could not parse /wow/sv.lua: unexpected symbol'],
+      ]);
+      expect(t.events()[0]?.detail).toMatchObject({ installed: '0.2.1' });
+      expect(t.events()[2]?.detail).toEqual({ account: 'ACC1' });
+    });
+
+    it('reports warn/error log lines, but not ones about a problem it already reported', async () => {
+      const t = setup();
+      t.uploader.syncAddon.mockResolvedValue(syncResult({ status: 'error', error: 'HTTP 502' }));
+      await t.controller.start();
+      await flush();
+      t.controller.noteLogProblem({
+        level: 'warn',
+        text: 'addon sync failed (retry #1 soon) status=error err="HTTP 502"',
+      });
+      t.controller.noteLogProblem({ level: 'error', text: 'cannot save prefs file=x' });
+      await elapse(t, FIVE_MIN);
+      expect(t.events().map((e) => [e.source, e.message])).toEqual([
+        ['addon-sync', 'addon sync failed: HTTP 502'],
+        ['tray', 'cannot save prefs file=x'],
+      ]);
+    });
+
+    it('reports an updater error or a crash from the app', async () => {
+      const t = setup();
+      await t.controller.start();
+      t.controller.reportProblem(
+        { level: 'error', source: 'updater', message: 'app update check failed: 404' },
+        '404',
+      );
+      await elapse(t, FIVE_MIN);
+      expect(t.events()).toEqual([
+        expect.objectContaining({ source: 'updater', message: 'app update check failed: 404' }),
+      ]);
+    });
+
+    it('summarizes batches parked in rejected/ when their number grows', async () => {
+      const t = setup();
+      const summary: RejectedSummary = {
+        total: 2,
+        accounts: [
+          {
+            account: 'ACC1',
+            batches: 2,
+            sample: [
+              {
+                at: 1_790_000_000,
+                status: 400,
+                message: '400 invalid UploadBatch',
+                issues: [{ path: 'records.quests.0.level', message: 'Expected number' }],
+                records: [{ kind: 'quests', key: 'quest:5' }],
+              },
+            ],
+          },
+        ],
+      };
+      t.uploader.summarizeRejected.mockResolvedValue(summary);
+      t.uploader.collectStatus.mockResolvedValue([account({ rejectedBatches: 2 })]);
+      await t.controller.start();
+      await flush();
+      const w = t.watches[0] as FakeWatch;
+      w.emit({ type: 'pass-end', result: passResult });
+      await flush();
+      expect(t.uploader.summarizeRejected).toHaveBeenCalledTimes(1);
+      expect(t.uploader.summarizeRejected).toHaveBeenCalledWith('/cfg/state');
+      await elapse(t, FIVE_MIN);
+      expect(t.events()).toEqual([
+        {
+          at: expect.any(Number),
+          level: 'error',
+          source: 'rejected',
+          message: 'records the server refused are parked in rejected/',
+          detail: summary,
+        },
+      ]);
+
+      // Same number again: nothing new. One more: reported again.
+      w.emit({ type: 'pass-end', result: passResult });
+      await flush();
+      expect(t.uploader.summarizeRejected).toHaveBeenCalledTimes(1);
+      t.uploader.collectStatus.mockResolvedValue([account({ rejectedBatches: 3 })]);
+      w.emit({ type: 'pass-end', result: passResult });
+      await flush();
+      expect(t.uploader.summarizeRejected).toHaveBeenCalledTimes(2);
+    });
+
+    it('never sends without a token', async () => {
+      const t = setup({ file: { ...FULL, token: undefined } });
+      await t.controller.start();
+      t.controller.noteLogProblem({ level: 'fatal', text: 'cannot load the config' });
+      await elapse(t, FIVE_MIN);
+      expect(t.fetchImpl).not.toHaveBeenCalled();
+      expect(t.controller.snapshot().diagnostics.pending).toBe(1);
+    });
+
+    it('"Send error reports" off: saved in prefs, nothing collected, pending dropped', async () => {
+      const t = setup();
+      await t.controller.start();
+      await flush();
+      t.controller.noteLogProblem({ level: 'error', text: 'something broke' });
+      expect(t.controller.snapshot().diagnostics.pending).toBe(1);
+      await t.controller.saveSettings({ sendErrorReports: false });
+      expect(t.getPrefs().sendErrorReports).toBe(false);
+      expect(t.controller.snapshot().settings.sendErrorReports).toBe(false);
+      expect(t.controller.snapshot().diagnostics).toEqual({ enabled: false, pending: 0 });
+      t.controller.noteLogProblem({ level: 'error', text: 'something else broke' });
+      (t.watches[0] as FakeWatch).emit({
+        type: 'fatal',
+        error: new FatalUploadError('unauthorized', 'x'),
+      });
+      await elapse(t, FIVE_MIN);
+      expect(t.fetchImpl).not.toHaveBeenCalled();
+
+      await t.controller.saveSettings({ sendErrorReports: true });
+      expect(t.controller.snapshot().diagnostics.enabled).toBe(true);
+    });
+
+    it('stop() stops sending', async () => {
+      const t = setup();
+      await t.controller.start();
+      t.controller.noteLogProblem({ level: 'error', text: 'something broke' });
+      await t.controller.stop();
+      await elapse(t, FIVE_MIN);
+      expect(t.fetchImpl).not.toHaveBeenCalled();
+    });
   });
 });

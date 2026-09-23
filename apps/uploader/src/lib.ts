@@ -29,8 +29,8 @@ export {
   toEntries,
 } from './batches.js';
 export type { BatchHeader, ChunkOptions, DiffResult, Entry } from './batches.js';
-export { checkHealth, postBatch } from './client.js';
-export type { FetchLike, PostResult } from './client.js';
+export { checkHealth, postBatch, postDiagnostics } from './client.js';
+export type { DiagnosticsPostResult, FetchLike, PostResult, ValidationIssue } from './client.js';
 export {
   defaultConfigPath,
   loadConfig,
@@ -42,6 +42,13 @@ export {
   validateConfigFile,
 } from './config.js';
 export type { Config, ConfigFile } from './config.js';
+export { sanitize, sanitizeJson, summarizeRejected } from './diagnostics.js';
+export type {
+  RejectedSample,
+  RejectedSummary,
+  SanitizeJsonOptions,
+  SanitizeOptions,
+} from './diagnostics.js';
 export { discoverSavedVariables, SV_FILE_NAME } from './discover.js';
 export type { Discovery, SavedVariablesFile } from './discover.js';
 export { ConfigError, FatalUploadError } from './errors.js';

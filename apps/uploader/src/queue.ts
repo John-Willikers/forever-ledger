@@ -22,8 +22,15 @@ export interface QueuedBatch {
   batch: UploadBatch;
 }
 
+/** Why the server refused a batch; `issues` are its validation issues, when it sent them. */
+export interface RejectReason {
+  status?: number;
+  message: string;
+  issues?: { path: string; message: string }[];
+}
+
 export interface RejectedBatch extends Partial<QueuedBatch> {
-  rejected: { at: number; status?: number; message: string };
+  rejected: { at: number } & RejectReason;
 }
 
 let seq = 0;
@@ -113,12 +120,7 @@ export class Queue {
   }
 
   /** Moves a batch the server will never accept to `rejected/<account>/`, with the reason. */
-  async reject(
-    account: string,
-    id: string,
-    reason: { status?: number; message: string },
-    now = Date.now(),
-  ): Promise<void> {
+  async reject(account: string, id: string, reason: RejectReason, now = Date.now()): Promise<void> {
     let body: Partial<QueuedBatch>;
     try {
       body = await this.read(account, id);

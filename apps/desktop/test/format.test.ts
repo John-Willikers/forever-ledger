@@ -5,6 +5,7 @@ import {
   accountLine,
   addonLine,
   chicagoTime,
+  diagnosticsLine,
   ipcErrorMessage,
   uploadsLine,
 } from '../src/renderer/format.js';
@@ -29,7 +30,13 @@ const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
   uploading: false,
   accounts: [account()],
   appVersion: '0.1.0',
-  settings: { tokenSet: true, startWithWindows: true, autoUpdateAddon: true },
+  diagnostics: { enabled: true, pending: 0 },
+  settings: {
+    tokenSet: true,
+    startWithWindows: true,
+    autoUpdateAddon: true,
+    sendErrorReports: true,
+  },
   ...over,
 });
 
@@ -131,5 +138,30 @@ describe('ipcErrorMessage', () => {
       ),
     ).toBe('bad url');
     expect(ipcErrorMessage('plain')).toBe('plain');
+  });
+});
+
+describe('diagnosticsLine', () => {
+  const at = (d: Snapshot['diagnostics'], now = SEP_23_0522_CDT + 3_600_000) =>
+    diagnosticsLine(snap({ diagnostics: d }), now);
+
+  it('shows the time of the last report today and what is waiting', () => {
+    expect(at({ enabled: true, pending: 0, lastSentAt: SEP_23_0522_CDT })).toBe(
+      'Error reports: last sent 05:22 CDT · 0 pending',
+    );
+    expect(at({ enabled: true, pending: 3, lastSentAt: SEP_23_0522_CDT + 12 * 3_600_000 })).toBe(
+      'Error reports: last sent 17:22 CDT · 3 pending',
+    );
+  });
+
+  it('shows the date for a report sent on another day', () => {
+    expect(at({ enabled: true, pending: 1, lastSentAt: JAN_15_1205_CST }, SEP_23_0522_CDT)).toBe(
+      'Error reports: last sent Jan 15, 2026 12:05 PM CST · 1 pending',
+    );
+  });
+
+  it('says when nothing was sent yet or reports are off', () => {
+    expect(at({ enabled: true, pending: 2 })).toBe('Error reports: none sent yet · 2 pending');
+    expect(at({ enabled: false, pending: 0 })).toBe('Error reports: off');
   });
 });

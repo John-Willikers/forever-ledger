@@ -142,6 +142,78 @@ describe('upload-once end to end (mock server implementing the ingest contract)'
     expect(server.ingestRequests).toBe(requests);
   });
 
+  it('schema 4: two sessions with identical craft counts are both uploaded', async () => {
+    const sv = (session: string) =>
+      `ForeverLedgerDB = {
+	["meta"] = { ["schemaVersion"] = 4, ["addonVersion"] = "0.3.0", ["build"] = 69977, ["session"] = "${session}" },
+	["crafts"] = { [69977] = { [2963] = { ["casts"] = 3, ["qty"] = 3, ["procs"] = 0, ["skillUps"] = 1 } } },
+	["recipes"] = { [2963] = { ["id"] = 2963, ["name"] = "Bolt of Linen Cloth", ["skillLineID"] = 197 } },
+}
+`;
+    server = await startMockServer();
+    await env.writeSv(sv('1790100000-aaaa'));
+    expect((await pass(server.url)).ok).toBe(true);
+    await env.writeSv(sv('1790100600-bbbb'));
+    expect((await pass(server.url)).ok).toBe(true);
+    // The recipe is the same static fact in both sessions, so only the first carries it.
+    expect(server.receivedKeys).toEqual([
+      'recipe:2963',
+      'craft:2963:69977:1790100000-aaaa',
+      'craft:2963:69977:1790100600-bbbb',
+    ]);
+    expect(server.batches.map((b) => b.schemaVersion)).toEqual([4, 4]);
+    expect(server.batches[1]?.records.crafts).toEqual([
+      {
+        recipeId: 2963,
+        build: 69977,
+        session: '1790100600-bbbb',
+        casts: 3,
+        qty: 3,
+        procs: 0,
+        skillUps: 1,
+      },
+    ]);
+    const requests = server.ingestRequests;
+    expect((await pass(server.url)).ok).toBe(true);
+    expect(server.ingestRequests).toBe(requests);
+  });
+
+  it("schema 4: the real addon's session-v4.lua uploads every record, every professions kind included", async () => {
+    await env.writeSv(await readFixture('session-v4.lua'));
+    const { records } = normalize(await loadFixtureDb('session-v4.lua'));
+    const total = toEntries(records).length;
+
+    server = await startMockServer();
+    const first = await pass(server.url);
+    expect(first.ok).toBe(true);
+    expect(first.flush).toMatchObject({ acked: total, pendingBatches: 0, errors: [] });
+    expect(server.receivedKeys).toHaveLength(total);
+    expect(server.batches.every((b) => b.schemaVersion === 4)).toBe(true);
+    const received = (kind: keyof typeof records) =>
+      server!.batches.reduce((n, b) => n + b.records[kind].length, 0);
+    for (const kind of [
+      'skills',
+      'skillUps',
+      'recipes',
+      'recipeSnapshots',
+      'recipeStatus',
+      'recipeDifficulty',
+      'recipesLearned',
+      'crafts',
+      'nodes',
+      'nodeLoot',
+      'trainers',
+      'vendors',
+      'apiSamples',
+    ] as const)
+      expect(received(kind), kind).toBeGreaterThanOrEqual(1);
+
+    // Unchanged file: nothing more is sent.
+    const requests = server.ingestRequests;
+    expect((await pass(server.url)).ok).toBe(true);
+    expect(server.ingestRequests).toBe(requests);
+  });
+
   it('bad token → 401 stops the pass with a clear message', async () => {
     await env.writeSv(await readFixture('session-v1.lua'));
     server = await startMockServer({ token: 'another-token' });
