@@ -56,6 +56,30 @@ main {
   gap: 12px;
 }
 
+main,
+#setup {
+  margin-bottom: 12px;
+}
+
+.note {
+  color: var(--muted);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+
+.flavors li {
+  list-style: none;
+  margin: 4px 0;
+}
+
+.flavors button.chosen {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);

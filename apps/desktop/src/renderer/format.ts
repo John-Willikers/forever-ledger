@@ -43,7 +43,9 @@ export function addonLine(s: Snapshot): string {
   const forBuild = a.build !== undefined ? ` for build ${a.build}` : '';
   switch (a.status) {
     case 'error':
-      return `${installed} · last check failed`;
+      return s.addonRetrying
+        ? `${installed} · couldn't check for updates, retrying shortly`
+        : `${installed} · last check failed`;
     case 'no-release':
       return `${installed} · no release published yet`;
     case 'paused':

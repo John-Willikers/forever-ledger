@@ -59,6 +59,7 @@
         <h2>Addon</h2>
         <p id="addon-line" class="line"></p>
         <p id="addon-detail" class="muted"></p>
+        <p id="addon-note" class="note" hidden></p>
         <p id="addon-error" class="error" hidden></p>
         <div class="actions">
           <button id="addon-update" type="button">Update now</button>
@@ -118,12 +119,12 @@
           <button id="open-logs" type="button">Open logs folder</button>
         </div>
       </section>
-
-      <section class="card" data-card="activity">
-        <h2>Activity</h2>
-        <ol id="log" class="log"></ol>
-      </section>
     </main>
+
+    <section class="card" data-card="activity">
+      <h2>Activity</h2>
+      <ol id="log" class="log"></ol>
+    </section>
     <script src="renderer.js"></script>
   </body>
 </html>

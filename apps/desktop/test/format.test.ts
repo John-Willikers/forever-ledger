@@ -91,6 +91,14 @@ describe('addonLine', () => {
     expect(addonLine(snap({ addon: addon({ status: 'error', error: 'HTTP 502' }) }))).toBe(
       'Not installed · last check failed',
     );
+    expect(
+      addonLine(
+        snap({
+          addon: addon({ status: 'error', installed: '0.2.1', error: 'HTTP 502' }),
+          addonRetrying: true,
+        }),
+      ),
+    ).toBe("0.2.1 installed · couldn't check for updates, retrying shortly");
     expect(addonLine(snap({ addon: addon({ status: 'no-release', installed: '0.2.1' }) }))).toBe(
       '0.2.1 installed · no release published yet',
     );

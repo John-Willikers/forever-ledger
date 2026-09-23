@@ -1,4 +1,4 @@
-import type { WowFolderPick } from '../main/ipc.js';
+import type { WowFlavor, WowFolderPick } from '../main/ipc.js';
 import type { Snapshot } from '../main/state.js';
 import { accountLine, addonLine, chicagoTime, ipcErrorMessage, uploadsLine } from './format.js';
 
@@ -57,20 +57,58 @@ function pickSummary(pick: WowFolderPick): string[] {
     : ['No ForeverLedger data here yet; that is fine for a first run.'];
 }
 
+const flavorLabel = (f: WowFlavor) =>
+  f.accounts.length
+    ? `${f.name} (${f.accounts.join(', ')})`
+    : `${f.name} (no ForeverLedger data yet)`;
+
+/**
+ * Shows what a folder pick found in the list `listId`. With several game flavors, one button per flavor; `onChoose`
+ * gets the chosen flavor folder (or the picked folder when there is only one flavor).
+ */
+function showPick(listId: string, pick: WowFolderPick, onChoose: (path: string) => void) {
+  const list = el(listId);
+  if (!pick.flavors || pick.flavors.length < 2) {
+    list.classList.remove('flavors');
+    setList(listId, pickSummary(pick));
+    onChoose(pick.path);
+    return;
+  }
+  list.classList.add('flavors');
+  const intro = document.createElement('li');
+  intro.textContent = 'Several game versions here. Which one do you play with the addon?';
+  const buttons = pick.flavors.map((f) => {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = flavorLabel(f);
+    b.addEventListener('click', () => {
+      for (const other of list.querySelectorAll('button')) other.classList.remove('chosen');
+      b.classList.add('chosen');
+      onChoose(f.path);
+    });
+    li.append(b);
+    return li;
+  });
+  list.replaceChildren(intro, ...buttons);
+}
+
 // ---- setup ----
 let setupWowPath: string | undefined;
-el('setup-pick').addEventListener('click', () => {
-  void api.pickWowFolder().then((pick) => {
-    if (!pick) return;
-    setupWowPath = pick.path;
-    setText('setup-wow', pick.path);
-    setList('setup-found', pickSummary(pick));
+action('setup-pick', 'setup-error', async () => {
+  const pick = await api.pickWowFolder();
+  if (!pick) return;
+  setupWowPath = undefined;
+  setText('setup-wow', pick.path);
+  showPick('setup-found', pick, (path) => {
+    setupWowPath = path;
+    setText('setup-wow', path);
   });
 });
 action('setup-save', 'setup-error', async () => {
   const token = el<HTMLInputElement>('setup-token').value.trim();
   const wowPath = setupWowPath ?? current?.settings.wowPath;
-  if (!wowPath) throw new Error('Choose your World of Warcraft folder first.');
+  if (!wowPath) throw new Error('Choose your World of Warcraft folder (and game version) first.');
   if (!token && !current?.settings.tokenSet) throw new Error('Paste your upload token.');
   await api.saveSettings({ wowPath, token });
   el<HTMLInputElement>('setup-token').value = '';
@@ -86,8 +124,12 @@ action('open-logs', 'settings-error', () => api.openLogs());
 action('set-pick', 'settings-error', async () => {
   const pick = await api.pickWowFolder();
   if (!pick) return;
-  setList('set-found', pickSummary(pick));
-  await api.saveSettings({ wowPath: pick.path });
+  showPick('set-found', pick, (path) => {
+    setOptional('settings-error', undefined);
+    api
+      .saveSettings({ wowPath: path })
+      .catch((err: unknown) => setOptional('settings-error', ipcErrorMessage(err)));
+  });
 });
 action('set-token-save', 'settings-error', async () => {
   const input = el<HTMLInputElement>('set-token');
@@ -145,7 +187,10 @@ function render(s: Snapshot) {
   if (s.addon?.skipped?.length) detail.push('A linked developer copy is left alone');
   if (!s.settings.autoUpdateAddon) detail.push('Automatic updates are off');
   setText('addon-detail', detail.join(' · '));
-  setOptional('addon-error', s.addon?.status === 'error' ? s.addon.error : undefined);
+  // A fresh failure is shown neutrally while it is retried; red once it persists.
+  const addonError = s.addon?.status === 'error' ? s.addon.error : undefined;
+  setOptional('addon-error', s.addonRetrying ? undefined : addonError);
+  setOptional('addon-note', s.addonRetrying ? addonError : undefined);
 
   // App
   setText(

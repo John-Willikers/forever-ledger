@@ -44,7 +44,8 @@ GitHub's "latest release" (which `electron-updater` reads) is always an app rele
 
 - **First run:** pick the WoW: Forever folder (the uploader's discovery lists the accounts it finds), paste the token
   (server URL pre-filled), install the addon if missing, then hide to the tray. Same config file as the CLI; the
-  uploader's lock keeps the CLI `watch` and the app from running together.
+  uploader's lock is taken per upload pass (and around addon sync), so the CLI `watch` and the app can both run:
+  their passes take turns, and the app warns only if another uploader keeps the lock for over 10 minutes.
 - **Tray:** 🟢 idle · 🔵 uploading · 🟡 batches queued · 🔴 needs attention. Menu: Open, Upload now, Check for updates,
   Pause uploads, Open logs folder, Quit.
 - **Window (four cards):** Uploads (last success in America/Chicago, records acked, batches queued, last error) ·
@@ -69,7 +70,8 @@ GitHub's "latest release" (which `electron-updater` reads) is always an app rele
      overlapping entries) is ≤ 5 MB, and each entry unpacks to its declared size;
    - the `.toc` Version equals the manifest version.
    - The manifest URL must be exactly `…/releases/download/addon-v<version>/ForeverLedger-<version>.zip` in our repo.
-   - Any failure: install nothing, report 🔴, retry next cycle.
+   - Any failure: install nothing and retry after 1, 2, 5 and 10 minutes, then every 30; shown as "retrying" and
+     🔴 only once it has failed for 15 minutes.
 4. Swap: extract to `AddOns/.ForeverLedger.new` → rename `ForeverLedger` → `ForeverLedger.bak` (replacing an older
    `.bak`) → rename `.ForeverLedger.new` → `ForeverLedger`. Renames retry on Windows' transient EPERM/EBUSY; if the
    last rename fails, the `.bak` is renamed back.
