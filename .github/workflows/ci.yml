@@ -1,4 +1,3 @@
-# Inactive until the repo is pushed to GitHub at launch (alpha works on local master).
 name: ci
 on: [push, pull_request]
 jobs:

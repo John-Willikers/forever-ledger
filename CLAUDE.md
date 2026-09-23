@@ -16,7 +16,8 @@ Plan and live progress: `project-plans/forever-ledger-m0-m5.md`.
 
 ## Workflow
 
-- Alpha: commit straight to `master`. Branch → PR → merge starts at launch.
+- Public repo `John-Willikers/forever-ledger`. Work on a branch → PR → merge to `master` (alpha direct commits ended
+  2026-09-23).
 - Git identity (personal project): `John-Willikers <harlanbmiltonjr@gmail.com>`.
 - Times shown to humans (logs, CSV, API text) are America/Chicago. Stored as `timestamptz` / epoch seconds.
 - `pnpm check` must pass before commit (eslint + prettier + luacheck + typecheck + Lua harness + vitest).
