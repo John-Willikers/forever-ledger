@@ -199,96 +199,99 @@ end
 -- first candidate name that is present; `need` does the same and notes a miss. The first table each API returns on a
 -- build is kept in db.apiSamples (trimmed), so the real field names can be checked on the server.
 local ATTRIBUTE_WINDOW = 5 -- seconds: a skill-up or learned recipe belongs to a craft or item use this recent
-local SCAN_GAP = 2         -- seconds between two scans of the same window (profession, trainer, vendor)
-local SAMPLE_KEYS, SAMPLE_DEPTH, SAMPLE_STR = 60, 2, 200
--- sample = { ["api:firstName"] = "firstName|otherName" } for required reads where no candidate name was present
-local MISSES_API = "ForeverLedger.fieldMisses"
+local field, sample, sampleReturns, need, throttled
+do
+  local SCAN_GAP = 2         -- seconds between two scans of the same window (profession, trainer, vendor)
+  local SAMPLE_KEYS, SAMPLE_DEPTH, SAMPLE_STR = 60, 2, 200
+  -- sample = { ["api:firstName"] = "firstName|otherName" } for required reads where no candidate name was present
+  local MISSES_API = "ForeverLedger.fieldMisses"
 
-local function field(t, ...)
-  if type(t) ~= "table" then return nil end
-  for i = 1, select("#", ...) do
-    local v = t[(select(i, ...))]
-    if v ~= nil then return v end
+  function field(t, ...)
+    if type(t) ~= "table" then return nil end
+    for i = 1, select("#", ...) do
+      local v = t[(select(i, ...))]
+      if v ~= nil then return v end
+    end
+    return nil -- one value, always: callers pass this straight to tonumber()
   end
-  return nil -- one value, always: callers pass this straight to tonumber()
-end
 
--- Keeps one sample per API per build: depth <= 2, <= 60 keys per table, strings <= 200 chars, functions and
--- userdata dropped; a deeper table becomes the string "<table>".
-local function trimSample(v, depth)
-  local tv = type(v)
-  if tv == "string" then return #v > SAMPLE_STR and v:sub(1, SAMPLE_STR) or v end
-  if tv == "boolean" then return v end
-  if tv == "number" then
-    if v ~= v or v == math.huge or v == -math.huge then return tostring(v) end
+  -- Keeps one sample per API per build: depth <= 2, <= 60 keys per table, strings <= 200 chars, functions and
+  -- userdata dropped; a deeper table becomes the string "<table>".
+  local function trimSample(v, depth)
+    local tv = type(v)
+    if tv == "string" then return #v > SAMPLE_STR and v:sub(1, SAMPLE_STR) or v end
+    if tv == "boolean" then return v end
+    if tv == "number" then
+      if v ~= v or v == math.huge or v == -math.huge then return tostring(v) end
+      return v
+    end
+    if tv ~= "table" then return nil end
+    if depth > SAMPLE_DEPTH then return "<table>" end
+    local out, n = {}, 0
+    for k, x in pairs(v) do
+      if n >= SAMPLE_KEYS then break end
+      local tk = type(k)
+      if tk == "string" or (tk == "number" and k == floor(k)) then
+        local y = trimSample(x, depth + 1)
+        if y ~= nil then out[k] = y; n = n + 1 end
+      end
+    end
+    return out
+  end
+
+  local function sampled(api)
+    local s = db and db.apiSamples[api]
+    return s ~= nil and s.build == build
+  end
+
+  function sample(api, value)
+    if not db or sampled(api) then return end
+    if type(value) ~= "table" then
+      if value == nil then return end
+      value = { value }
+    end
+    if next(value) == nil then return end -- an empty table says nothing about field names
+    db.apiSamples[api] = { build = build, time = now(), sample = trimSample(value, 1) }
+  end
+
+  -- Several return values, kept by position.
+  function sampleReturns(api, ...)
+    if not db or sampled(api) or select("#", ...) == 0 then return end
+    sample(api, { ... })
+  end
+
+  function need(api, t, ...)
+    local v = field(t, ...)
+    if v == nil and type(t) == "table" and db then
+      local m = db.apiSamples[MISSES_API]
+      if not m or m.build ~= build then
+        m = { build = build, time = now(), sample = {} }
+        db.apiSamples[MISSES_API] = m
+      end
+      local n = 0
+      for _ in pairs(m.sample) do n = n + 1 end
+      local key = api .. ":" .. tostring((...))
+      if not m.sample[key] and n < SAMPLE_KEYS then m.sample[key] = table.concat({ ... }, "|") end
+    end
     return v
   end
-  if tv ~= "table" then return nil end
-  if depth > SAMPLE_DEPTH then return "<table>" end
-  local out, n = {}, 0
-  for k, x in pairs(v) do
-    if n >= SAMPLE_KEYS then break end
-    local tk = type(k)
-    if tk == "string" or (tk == "number" and k == floor(k)) then
-      local y = trimSample(x, depth + 1)
-      if y ~= nil then out[k] = y; n = n + 1 end
+
+  -- A window scan at most every SCAN_GAP seconds. A request inside the gap runs once when it ends (C_Timer), so the
+  -- last state of the window is still read; `fn` returning true asks for another pass (work left over).
+  local lastScan, scanQueued = {}, {}
+  function throttled(key, fn)
+    local wait = SCAN_GAP - (now() - (lastScan[key] or -SCAN_GAP))
+    if wait > 0 then
+      if not scanQueued[key] and C_Timer and C_Timer.After then
+        scanQueued[key] = true
+        C_Timer.After(wait, function() scanQueued[key] = nil; throttled(key, fn) end)
+      end
+      return
     end
+    lastScan[key] = now()
+    local ok, more = pcall(fn)
+    if ok and more then throttled(key, fn) end
   end
-  return out
-end
-
-local function sampled(api)
-  local s = db and db.apiSamples[api]
-  return s ~= nil and s.build == build
-end
-
-local function sample(api, value)
-  if not db or sampled(api) then return end
-  if type(value) ~= "table" then
-    if value == nil then return end
-    value = { value }
-  end
-  if next(value) == nil then return end -- an empty table says nothing about field names
-  db.apiSamples[api] = { build = build, time = now(), sample = trimSample(value, 1) }
-end
-
--- Several return values, kept by position.
-local function sampleReturns(api, ...)
-  if not db or sampled(api) or select("#", ...) == 0 then return end
-  sample(api, { ... })
-end
-
-local function need(api, t, ...)
-  local v = field(t, ...)
-  if v == nil and type(t) == "table" and db then
-    local m = db.apiSamples[MISSES_API]
-    if not m or m.build ~= build then
-      m = { build = build, time = now(), sample = {} }
-      db.apiSamples[MISSES_API] = m
-    end
-    local n = 0
-    for _ in pairs(m.sample) do n = n + 1 end
-    local key = api .. ":" .. tostring((...))
-    if not m.sample[key] and n < SAMPLE_KEYS then m.sample[key] = table.concat({ ... }, "|") end
-  end
-  return v
-end
-
--- A window scan at most every SCAN_GAP seconds. A request inside the gap runs once when it ends (C_Timer), so the
--- last state of the window is still read; `fn` returning true asks for another pass (work left over).
-local lastScan, scanQueued = {}, {}
-local function throttled(key, fn)
-  local wait = SCAN_GAP - (now() - (lastScan[key] or -SCAN_GAP))
-  if wait > 0 then
-    if not scanQueued[key] and C_Timer and C_Timer.After then
-      scanQueued[key] = true
-      C_Timer.After(wait, function() scanQueued[key] = nil; throttled(key, fn) end)
-    end
-    return
-  end
-  lastScan[key] = now()
-  local ok, more = pcall(fn)
-  if ok and more then throttled(key, fn) end
 end
 
 ---------------------------------------------------------------- professions: skills
@@ -997,122 +1000,124 @@ end
 -- db.nodes / db.nodeLoot, no longer to drops of npc 0. Creatures, skinned ones included, stay drops of their npc.
 -- A node counts once per GUID per session. Its skill line is the one of a gather spell that finished in the last
 -- 5 s (fishing: always Fishing), and rankMin the lowest rank of that skill seen when opening it.
-local FISHING_LINE = 356
-local SPOT_CAP = 50 -- spots kept per node per map
--- The gather spells GatherMate-style addons use (Mining, Herb Gathering, Skinning, Fishing); other spells match by
--- the client's (localized) name of these or the enUS name.
-local GATHER_SPELLS = { [2575] = 186, [2366] = 182, [8613] = 393, [7620] = FISHING_LINE }
-local GATHER_NAMES_ENUS = { mining = 186, ["herb gathering"] = 182, herbalism = 182, skinning = 393, fishing = 356 }
-local gatherCache = {} -- [spellID] = skillLineID or false
-local gatherNames      -- [lower-cased spell name] = skillLineID
-local seenNode = {}    -- [guid or fishing-window key] = true once counted in db.nodes
-local lastGather       -- { skillLineID =, at = }
-local fishingOpens = 0
+local gather = { fishingOpens = 0 } -- last = { skillLineID =, at = }: the last gather cast
+local gatherSkill, isFishingLoot, nodeObject, openNode, addNodeLoot
+do
+  local FISHING_LINE = 356
+  local SPOT_CAP = 50 -- spots kept per node per map
+  -- The gather spells GatherMate-style addons use (Mining, Herb Gathering, Skinning, Fishing); other spells match by
+  -- the client's (localized) name of these or the enUS name.
+  local GATHER_SPELLS = { [2575] = 186, [2366] = 182, [8613] = 393, [7620] = FISHING_LINE }
+  local GATHER_NAMES_ENUS = { mining = 186, ["herb gathering"] = 182, herbalism = 182, skinning = 393, fishing = 356 }
+  local gatherCache = {} -- [spellID] = skillLineID or false
+  local gatherNames      -- [lower-cased spell name] = skillLineID
+  local seenNode = {}    -- [guid or fishing-window key] = true once counted in db.nodes
 
-local function spellName(spellID)
-  if C_Spell and C_Spell.GetSpellInfo then
-    local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
-    if ok and type(info) == "table" then return field(info, "name") end
-  end
-  if GetSpellInfo then
-    local ok, name = pcall(GetSpellInfo, spellID)
-    if ok then return name end
-  end
-end
-
--- The skill line a finished player spell gathers with, or nil.
-local function gatherSkill(spellID)
-  spellID = tonumber(spellID)
-  if not spellID then return nil end
-  if gatherCache[spellID] == nil then
-    if not gatherNames then
-      gatherNames = {}
-      for name, line in pairs(GATHER_NAMES_ENUS) do gatherNames[name] = line end
-      for id, line in pairs(GATHER_SPELLS) do
-        local name = spellName(id)
-        if type(name) == "string" then gatherNames[name:lower()] = line end
-      end
+  local function spellName(spellID)
+    if C_Spell and C_Spell.GetSpellInfo then
+      local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
+      if ok and type(info) == "table" then return field(info, "name") end
     end
-    local name = GATHER_SPELLS[spellID] == nil and spellName(spellID) or nil
-    gatherCache[spellID] = GATHER_SPELLS[spellID] or (type(name) == "string" and gatherNames[name:lower()]) or false
+    if GetSpellInfo then
+      local ok, name = pcall(GetSpellInfo, spellID)
+      if ok then return name end
+    end
   end
-  return gatherCache[spellID] or nil
-end
 
-local function isFishingLoot()
-  if not IsFishingLoot then return false end
-  local ok, yes = pcall(IsFishingLoot)
-  return ok and yes and true or false
-end
+  -- The skill line a finished player spell gathers with, or nil.
+  function gatherSkill(spellID)
+    spellID = tonumber(spellID)
+    if not spellID then return nil end
+    if gatherCache[spellID] == nil then
+      if not gatherNames then
+        gatherNames = {}
+        for name, line in pairs(GATHER_NAMES_ENUS) do gatherNames[name] = line end
+        for id, line in pairs(GATHER_SPELLS) do
+          local name = spellName(id)
+          if type(name) == "string" then gatherNames[name:lower()] = line end
+        end
+      end
+      local name = GATHER_SPELLS[spellID] == nil and spellName(spellID) or nil
+      gatherCache[spellID] = GATHER_SPELLS[spellID] or (type(name) == "string" and gatherNames[name:lower()]) or false
+    end
+    return gatherCache[spellID] or nil
+  end
 
--- The object a loot source counts for: 0 in a fishing window, the GameObject id otherwise, nil for anything else.
-local function nodeObject(guid, fishing)
-  if fishing then return 0 end
-  local kind, id = guidSource(guid)
-  if kind == "object" then return id end
-end
+  function isFishingLoot()
+    if not IsFishingLoot then return false end
+    local ok, yes = pcall(IsFishingLoot)
+    return ok and yes and true or false
+  end
 
--- The world tooltip's first line, when it shows a world object (owned by UIParent, not a unit, item or spell).
-local function tooltipObjectName()
-  local tt = GameTooltip
-  if not tt or not tt:IsShown() or tt:GetOwner() ~= UIParent then return nil end
-  if (tt.GetUnit and tt:GetUnit()) or (tt.GetItem and tt:GetItem()) or (tt.GetSpell and tt:GetSpell()) then
-    return nil
+  -- The object a loot source counts for: 0 in a fishing window, the GameObject id otherwise, nil for anything else.
+  function nodeObject(guid, fishing)
+    if fishing then return 0 end
+    local kind, id = guidSource(guid)
+    if kind == "object" then return id end
   end
-  local text = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
-  if type(text) == "string" and text ~= "" then return text:sub(1, 100) end
-end
 
-local function addSpot(n, loc)
-  if not loc.mapID or not loc.x or not loc.y then return end
-  local list = n.spots[loc.mapID] or {}
-  n.spots[loc.mapID] = list
-  if #list >= SPOT_CAP then return end
-  for _, spot in ipairs(list) do
-    local x, y = spot:match("^([%d.]+),([%d.]+)$")
-    x, y = tonumber(x), tonumber(y)
-    if x and y and (x - loc.x) ^ 2 + (y - loc.y) ^ 2 <= 1 then return end -- within 1 map unit: the same spot
+  -- The world tooltip's first line, when it shows a world object (owned by UIParent, not a unit, item or spell).
+  local function tooltipObjectName()
+    local tt = GameTooltip
+    if not tt or not tt:IsShown() or tt:GetOwner() ~= UIParent then return nil end
+    if (tt.GetUnit and tt:GetUnit()) or (tt.GetItem and tt:GetItem()) or (tt.GetSpell and tt:GetSpell()) then
+      return nil
+    end
+    local text = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
+    if type(text) == "string" and text ~= "" then return text:sub(1, 100) end
   end
-  list[#list + 1] = format("%.1f,%.1f", loc.x, loc.y)
-end
 
-local function openNode(key, objectID)
-  if not key or seenNode[key] then return end
-  seenNode[key] = true
-  local byObject = db.nodes[build] or {}
-  db.nodes[build] = byObject
-  local n = byObject[objectID]
-  if not n then
-    n = { opened = 0, spots = {} }
-    byObject[objectID] = n
+  local function addSpot(n, loc)
+    if not loc.mapID or not loc.x or not loc.y then return end
+    local list = n.spots[loc.mapID] or {}
+    n.spots[loc.mapID] = list
+    if #list >= SPOT_CAP then return end
+    for _, spot in ipairs(list) do
+      local x, y = spot:match("^([%d.]+),([%d.]+)$")
+      x, y = tonumber(x), tonumber(y)
+      if x and y and (x - loc.x) ^ 2 + (y - loc.y) ^ 2 <= 1 then return end -- within 1 map unit: the same spot
+    end
+    list[#list + 1] = format("%.1f,%.1f", loc.x, loc.y)
   end
-  n.opened = n.opened + 1
-  added()
-  local g = lastGather and now() - lastGather.at <= ATTRIBUTE_WINDOW and lastGather or nil
-  local line = objectID == 0 and FISHING_LINE or (g and g.skillLineID)
-  if line then
-    n.skillLineID = line
-    local rank = skillRank(line)
-    if rank and (not n.rankMin or rank < n.rankMin) then n.rankMin = rank end
-  end
-  if not n.name and objectID ~= 0 then
-    local ok, name = pcall(tooltipObjectName)
-    if ok then n.name = name end
-  end
-  addSpot(n, where())
-end
 
-local function addNodeLoot(itemID, objectID, qty)
-  local byBuild = db.nodeLoot[itemID] or {}
-  db.nodeLoot[itemID] = byBuild
-  local byObject = byBuild[build] or {}
-  byBuild[build] = byObject
-  local e = byObject[objectID]
-  if not e then
-    e = { n = 0, qty = 0 }
-    byObject[objectID] = e
+  function openNode(key, objectID)
+    if not key or seenNode[key] then return end
+    seenNode[key] = true
+    local byObject = db.nodes[build] or {}
+    db.nodes[build] = byObject
+    local n = byObject[objectID]
+    if not n then
+      n = { opened = 0, spots = {} }
+      byObject[objectID] = n
+    end
+    n.opened = n.opened + 1
+    added()
+    local g = gather.last and now() - gather.last.at <= ATTRIBUTE_WINDOW and gather.last or nil
+    local line = objectID == 0 and FISHING_LINE or (g and g.skillLineID)
+    if line then
+      n.skillLineID = line
+      local rank = skillRank(line)
+      if rank and (not n.rankMin or rank < n.rankMin) then n.rankMin = rank end
+    end
+    if not n.name and objectID ~= 0 then
+      local ok, name = pcall(tooltipObjectName)
+      if ok then n.name = name end
+    end
+    addSpot(n, where())
   end
-  e.n, e.qty = e.n + 1, e.qty + qty
+
+  function addNodeLoot(itemID, objectID, qty)
+    local byBuild = db.nodeLoot[itemID] or {}
+    db.nodeLoot[itemID] = byBuild
+    local byObject = byBuild[build] or {}
+    byBuild[build] = byObject
+    local e = byObject[objectID]
+    if not e then
+      e = { n = 0, qty = 0 }
+      byObject[objectID] = e
+    end
+    e.n, e.qty = e.n + 1, e.qty + qty
+  end
 end
 
 ---------------------------------------------------------------- loot
@@ -1237,8 +1242,8 @@ local function onLootOpened()
   local fishing = isFishingLoot()
   local fishingKey
   if fishing then
-    fishingOpens = fishingOpens + 1
-    fishingKey = "fishing#" .. fishingOpens
+    gather.fishingOpens = gather.fishingOpens + 1
+    fishingKey = "fishing#" .. gather.fishingOpens
   end
   for i = 1, (GetNumLootItems() or 0) do
     local sources = lootSources(i)
@@ -1436,171 +1441,174 @@ end
 -- CRAFT_WINDOW seconds apart are one craft: a cast joins a craft that has no cast yet, a quantity replaces one from
 -- a less trusted source (result event over chat line). A cast counts as a craft when UnitCastingInfo called it a
 -- tradeskill cast, the spell is a known recipe, or TRADE_SKILL_CRAFT_BEGIN named it. Totals are per session.
-local CRAFT_WINDOW = 3
-local BEGIN_TTL = 60   -- seconds a TRADE_SKILL_CRAFT_BEGIN recipe stays the current one
-local CAST_MEMORY = 200 -- castGUIDs remembered before the lists are cleared
-local craftBegin       -- { recipeID =, at = }
-local lastCraft        -- { recipeID =, at =, castGUID =, qty =, qtyRank =, proc =, chat = }
-local tradeCasts, castSeen, castCount = {}, {}, 0
+local onPlayerCastStart, onPlayerCastSucceeded, onCraftBegin, onCraftedResult, onCreateLine
+do
+  local CRAFT_WINDOW = 3
+  local BEGIN_TTL = 60   -- seconds a TRADE_SKILL_CRAFT_BEGIN recipe stays the current one
+  local CAST_MEMORY = 200 -- castGUIDs remembered before the lists are cleared
+  local craftBegin       -- { recipeID =, at = }
+  local lastCraft        -- { recipeID =, at =, castGUID =, qty =, qtyRank =, proc =, chat = }
+  local tradeCasts, castSeen, castCount = {}, {}, 0
 
-local function craftRec(recipeID)
-  local byRecipe = db.crafts[build] or {}
-  db.crafts[build] = byRecipe
-  local c = byRecipe[recipeID]
-  if not c then
-    c = { casts = 0, qty = 0, procs = 0, skillUps = 0 }
-    byRecipe[recipeID] = c
+  local function craftRec(recipeID)
+    local byRecipe = db.crafts[build] or {}
+    db.crafts[build] = byRecipe
+    local c = byRecipe[recipeID]
+    if not c then
+      c = { casts = 0, qty = 0, procs = 0, skillUps = 0 }
+      byRecipe[recipeID] = c
+    end
+    return c
   end
-  return c
-end
 
-local function newCraft(recipeID)
-  local c = craftRec(recipeID)
-  c.casts = c.casts + 1
-  added()
-  lastCraft = { recipeID = recipeID, at = now() }
-  if craftBegin and craftBegin.recipeID == recipeID then craftBegin.at = now() end
-  return lastCraft
-end
-
-local function recentCraft()
-  local k = lastCraft
-  if k and now() - k.at <= CRAFT_WINDOW then return k end
-end
-
-local function beganRecipe()
-  local b = craftBegin
-  if b and now() - b.at <= BEGIN_TTL then return b.recipeID end
-end
-
-local function recipeSnap(recipeID)
-  local r = db.recipes[recipeID]
-  return r and r.byBuild and r.byBuild[build]
-end
-
-local function recipeByOutput(itemID)
-  for id, r in pairs(db.recipes) do
-    local snap = r.byBuild and r.byBuild[build]
-    if snap and snap.outputItemID == itemID then return id end
+  local function newCraft(recipeID)
+    local c = craftRec(recipeID)
+    c.casts = c.casts + 1
+    added()
+    lastCraft = { recipeID = recipeID, at = now() }
+    if craftBegin and craftBegin.recipeID == recipeID then craftBegin.at = now() end
+    return lastCraft
   end
-end
 
--- rank: 2 crafted-result event, 1 chat line. A proc is multicraft, or more than the recipe's quantityMax.
-local function setCraftQty(k, qty, rank, proc)
-  if (k.qtyRank or 0) >= rank then return end
-  local c = craftRec(k.recipeID)
-  c.qty = c.qty + qty - (k.qty or 0)
-  k.qty, k.qtyRank = qty, rank
-  local snap = recipeSnap(k.recipeID)
-  proc = (proc or (snap and snap.qtyMax and qty > snap.qtyMax)) and true or false
-  if proc ~= (k.proc or false) then
-    c.procs = c.procs + (proc and 1 or -1)
-    k.proc = proc
+  local function recentCraft()
+    local k = lastCraft
+    if k and now() - k.at <= CRAFT_WINDOW then return k end
   end
-end
 
-local function rememberCast(list, castGUID, value)
-  castCount = castCount + 1
-  if castCount > CAST_MEMORY then
-    wipe(tradeCasts); wipe(castSeen)
-    castCount = 0
+  local function beganRecipe()
+    local b = craftBegin
+    if b and now() - b.at <= BEGIN_TTL then return b.recipeID end
   end
-  list[castGUID] = value
-end
 
-local function onPlayerCastStart(castGUID, spellID)
-  if not UnitCastingInfo then return end
-  local n, r = packed(UnitCastingInfo("player"))
-  if n == 0 then return end
-  sampleReturns("UnitCastingInfo", unpack(r, 1, n))
-  -- name, displayName, texture, startTimeMs, endTimeMs, isTradeskill, castID, notInterruptible, castingSpellID
-  local id = castGUID or r[7]
-  if r[6] and id then rememberCast(tradeCasts, id, tonumber(r[9]) or spellID) end
-end
-
-local function onPlayerCastSucceeded(castGUID, spellID)
-  spellID = tonumber(spellID)
-  if not spellID then return end
-  local line = gatherSkill(spellID)
-  if line then
-    lastGather = { skillLineID = line, at = now() }
-    return
+  local function recipeSnap(recipeID)
+    local r = db.recipes[recipeID]
+    return r and r.byBuild and r.byBuild[build]
   end
-  if castGUID and castSeen[castGUID] then return end
-  if not ((castGUID and tradeCasts[castGUID]) or db.recipes[spellID] or beganRecipe() == spellID) then return end
-  if castGUID then rememberCast(castSeen, castGUID, true) end
-  local k = recentCraft()
-  if k and not k.castGUID and k.recipeID == spellID then
-    k.castGUID = castGUID or true
-    return
-  end
-  newCraft(spellID).castGUID = castGUID or true
-end
 
-local function onCraftBegin(recipeSpellID)
-  sampleReturns("TRADE_SKILL_CRAFT_BEGIN", recipeSpellID)
-  local id = tonumber(recipeSpellID)
-  if id then craftBegin = { recipeID = id, at = now() } end
-end
-
-local function onCraftedResult(data)
-  if type(data) ~= "table" then return end
-  local api = "TRADE_SKILL_ITEM_CRAFTED_RESULT"
-  sample(api, data)
-  local k = recentCraft()
-  local itemID = tonumber(field(data, "itemID"))
-  local recipeID = tonumber(field(data, "recipeID", "recipeSpellID")) or (k and k.recipeID) or beganRecipe()
-    or (itemID and recipeByOutput(itemID))
-  if not recipeID then return end
-  if not k or k.recipeID ~= recipeID or (k.qtyRank or 0) >= 2 then k = newCraft(recipeID) end
-  local extra = tonumber(field(data, "multicraft", "multicraftQuantity")) or 0
-  setCraftQty(k, tonumber(need(api, data, "quantity", "count")) or 1, 2, extra > 0)
-  if itemID then scanItemOnce(itemID) end
-end
-
-local CREATE_LINES = {
-  { "LOOT_ITEM_CREATED_SELF_MULTIPLE", "You create: %sx%d." },
-  { "LOOT_ITEM_CREATED_SELF", "You create: %s." },
-}
-local createPatterns
-
-local function onCreateLine(text)
-  if type(text) ~= "string" then return end
-  if not createPatterns then
-    createPatterns = {}
-    for _, l in ipairs(CREATE_LINES) do
-      local g = _G[l[1]]
-      createPatterns[#createPatterns + 1] = formatPattern(type(g) == "string" and g or l[2])
+  local function recipeByOutput(itemID)
+    for id, r in pairs(db.recipes) do
+      local snap = r.byBuild and r.byBuild[build]
+      if snap and snap.outputItemID == itemID then return id end
     end
   end
-  for _, p in ipairs(createPatterns) do
-    local args = matchLine(p, text)
-    if args then
-      local itemID = idFromLink(args[1])
-      if not itemID then return end
-      local k = recentCraft()
-      local snap = k and recipeSnap(k.recipeID)
-      if snap and snap.outputItemID and snap.outputItemID ~= itemID then k = nil end
-      if not k or k.chat then
-        local recipeID = recipeByOutput(itemID)
-        if not recipeID then return end -- not a known recipe's output (conjured food, ...)
-        k = newCraft(recipeID)
-      end
-      k.chat = true
-      setCraftQty(k, tonumber(args[2]) or 1, 1, false)
+
+  -- rank: 2 crafted-result event, 1 chat line. A proc is multicraft, or more than the recipe's quantityMax.
+  local function setCraftQty(k, qty, rank, proc)
+    if (k.qtyRank or 0) >= rank then return end
+    local c = craftRec(k.recipeID)
+    c.qty = c.qty + qty - (k.qty or 0)
+    k.qty, k.qtyRank = qty, rank
+    local snap = recipeSnap(k.recipeID)
+    proc = (proc or (snap and snap.qtyMax and qty > snap.qtyMax)) and true or false
+    if proc ~= (k.proc or false) then
+      c.procs = c.procs + (proc and 1 or -1)
+      k.proc = proc
+    end
+  end
+
+  local function rememberCast(list, castGUID, value)
+    castCount = castCount + 1
+    if castCount > CAST_MEMORY then
+      wipe(tradeCasts); wipe(castSeen)
+      castCount = 0
+    end
+    list[castGUID] = value
+  end
+
+  function onPlayerCastStart(castGUID, spellID)
+    if not UnitCastingInfo then return end
+    local n, r = packed(UnitCastingInfo("player"))
+    if n == 0 then return end
+    sampleReturns("UnitCastingInfo", unpack(r, 1, n))
+    -- name, displayName, texture, startTimeMs, endTimeMs, isTradeskill, castID, notInterruptible, castingSpellID
+    local id = castGUID or r[7]
+    if r[6] and id then rememberCast(tradeCasts, id, tonumber(r[9]) or spellID) end
+  end
+
+  function onPlayerCastSucceeded(castGUID, spellID)
+    spellID = tonumber(spellID)
+    if not spellID then return end
+    local line = gatherSkill(spellID)
+    if line then
+      gather.last = { skillLineID = line, at = now() }
       return
     end
+    if castGUID and castSeen[castGUID] then return end
+    if not ((castGUID and tradeCasts[castGUID]) or db.recipes[spellID] or beganRecipe() == spellID) then return end
+    if castGUID then rememberCast(castSeen, castGUID, true) end
+    local k = recentCraft()
+    if k and not k.castGUID and k.recipeID == spellID then
+      k.castGUID = castGUID or true
+      return
+    end
+    newCraft(spellID).castGUID = castGUID or true
   end
-end
 
--- A skill-up within 5 s of a craft (and not after a gather) belongs to that craft's recipe.
-onSkillUp = function(e)
-  local k = lastCraft
-  if not k or now() - k.at > ATTRIBUTE_WINDOW then return end
-  if lastGather and lastGather.at > k.at then return end
-  e.recipeID = k.recipeID
-  local c = craftRec(k.recipeID)
-  c.skillUps = c.skillUps + (e.to - e.from)
+  function onCraftBegin(recipeSpellID)
+    sampleReturns("TRADE_SKILL_CRAFT_BEGIN", recipeSpellID)
+    local id = tonumber(recipeSpellID)
+    if id then craftBegin = { recipeID = id, at = now() } end
+  end
+
+  function onCraftedResult(data)
+    if type(data) ~= "table" then return end
+    local api = "TRADE_SKILL_ITEM_CRAFTED_RESULT"
+    sample(api, data)
+    local k = recentCraft()
+    local itemID = tonumber(field(data, "itemID"))
+    local recipeID = tonumber(field(data, "recipeID", "recipeSpellID")) or (k and k.recipeID) or beganRecipe()
+      or (itemID and recipeByOutput(itemID))
+    if not recipeID then return end
+    if not k or k.recipeID ~= recipeID or (k.qtyRank or 0) >= 2 then k = newCraft(recipeID) end
+    local extra = tonumber(field(data, "multicraft", "multicraftQuantity")) or 0
+    setCraftQty(k, tonumber(need(api, data, "quantity", "count")) or 1, 2, extra > 0)
+    if itemID then scanItemOnce(itemID) end
+  end
+
+  local CREATE_LINES = {
+    { "LOOT_ITEM_CREATED_SELF_MULTIPLE", "You create: %sx%d." },
+    { "LOOT_ITEM_CREATED_SELF", "You create: %s." },
+  }
+  local createPatterns
+
+  function onCreateLine(text)
+    if type(text) ~= "string" then return end
+    if not createPatterns then
+      createPatterns = {}
+      for _, l in ipairs(CREATE_LINES) do
+        local g = _G[l[1]]
+        createPatterns[#createPatterns + 1] = formatPattern(type(g) == "string" and g or l[2])
+      end
+    end
+    for _, p in ipairs(createPatterns) do
+      local args = matchLine(p, text)
+      if args then
+        local itemID = idFromLink(args[1])
+        if not itemID then return end
+        local k = recentCraft()
+        local snap = k and recipeSnap(k.recipeID)
+        if snap and snap.outputItemID and snap.outputItemID ~= itemID then k = nil end
+        if not k or k.chat then
+          local recipeID = recipeByOutput(itemID)
+          if not recipeID then return end -- not a known recipe's output (conjured food, ...)
+          k = newCraft(recipeID)
+        end
+        k.chat = true
+        setCraftQty(k, tonumber(args[2]) or 1, 1, false)
+        return
+      end
+    end
+  end
+
+  -- A skill-up within 5 s of a craft (and not after a gather) belongs to that craft's recipe.
+  onSkillUp = function(e)
+    local k = lastCraft
+    if not k or now() - k.at > ATTRIBUTE_WINDOW then return end
+    if gather.last and gather.last.at > k.at then return end
+    e.recipeID = k.recipeID
+    local c = craftRec(k.recipeID)
+    c.skillUps = c.skillUps + (e.to - e.from)
+  end
 end
 
 ---------------------------------------------------------------- schema
