@@ -618,6 +618,18 @@ describe('normalize — schema 4 professions (hand-written professions-v4.lua)',
     ]);
   });
 
+  it('drops an API sample over 16 KB of JSON, keeping the others', () => {
+    const { records: r, problems: p } = normalize({
+      meta: { schemaVersion: 4, addonVersion: '0.3.0', build, session: S },
+      apiSamples: {
+        small: { build, time: 1790100000, sample: { a: 1 } },
+        huge: { build, time: 1790100000, sample: { text: 'x'.repeat(16 * 1024) } },
+      },
+    });
+    expect(r.apiSamples.map((a) => a.api)).toEqual(['small']);
+    expect(p).toEqual([expect.objectContaining({ kind: 'apiSamples', path: 'apiSamples.huge' })]);
+  });
+
   it('schema 3 files have no professions records', () => {
     const v3 = normalize(load('session-v3.lua'));
     for (const kind of ['skills', 'recipes', 'crafts', 'nodes', 'trainers', 'apiSamples'] as const)

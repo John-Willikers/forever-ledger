@@ -350,6 +350,7 @@ describe('profession routes', () => {
           itemName: 'Pattern: Blue Linen Vest',
           build,
           npcId: 1234,
+          objectId: null,
           count: 2,
           quantity: 2,
           contributors: 2,
@@ -399,6 +400,54 @@ describe('profession routes', () => {
     const pattern = (await get('/v1/professions/sources?itemId=6270')).json();
     expect(pattern.recipes).toEqual([{ recipeId: 7629, name: 'Blue Linen Vest' }]);
     expect(pattern.drops).toHaveLength(1);
+  });
+
+  it('finds a recipe item by name, chests that held it, and node loot on the item page', async () => {
+    const other = 70002;
+    const b = schema4Batch('1790103600-bbbb', 'PROF4');
+    for (const kind of Object.keys(b.records) as (keyof typeof b.records)[])
+      (b.records[kind] as unknown[]) = [];
+    const session = '1790103600-bbbb';
+    b.records = {
+      ...b.records,
+      recipes: [{ recipeId: 2661, name: 'Copper Chain Belt', skillLineId: 164 }],
+      items: [{ itemId: 2881, name: 'Plans: Copper Chain Belt', classId: 9, subclassId: 4 }],
+      nodes: [
+        { objectId: 2843, build: other, session, opened: 3, name: 'Battered Chest', spots: [] },
+      ],
+      nodeLoot: [{ itemId: 2881, objectId: 2843, build: other, session, count: 1, quantity: 1 }],
+    };
+    const res = await s.app.inject({
+      method: 'POST',
+      url: '/v1/ingest',
+      headers: s.auth,
+      payload: b,
+    });
+    expect(res.statusCode).toBe(200);
+
+    // No one learned it from the plans yet: "Plans: Copper Chain Belt" still names the recipe.
+    const plans = (await get('/v1/professions/sources?itemId=2881')).json();
+    expect(plans.recipes).toEqual([{ recipeId: 2661, name: 'Copper Chain Belt' }]);
+    expect(plans.recipeItems).toEqual([{ itemId: 2881, name: 'Plans: Copper Chain Belt' }]);
+    expect(plans.drops).toEqual([
+      {
+        itemId: 2881,
+        itemName: 'Plans: Copper Chain Belt',
+        build: other,
+        npcId: null,
+        objectId: 2843,
+        count: 1,
+        quantity: 1,
+        contributors: 1,
+      },
+    ]);
+    const byRecipe = (await get('/v1/professions/sources?recipeId=2661')).json();
+    expect(byRecipe.drops).toEqual(plans.drops);
+
+    const item = (await get('/v1/items/2881')).json();
+    expect(item.nodeSources).toEqual([
+      { build: other, objectId: 2843, name: 'Battered Chest', opens: 3, count: 1, quantity: 1 },
+    ]);
   });
 
   it('validates sources parameters', async () => {

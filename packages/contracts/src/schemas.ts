@@ -377,12 +377,19 @@ export const Vendor = z.object({
 });
 export type Vendor = z.infer<typeof Vendor>;
 
+/** Largest API sample accepted, as UTF-8 JSON; a bigger one is dropped (that record only). */
+export const API_SAMPLE_MAX_BYTES = 16 * 1024;
+
 /** The first result of a client API in a build (a trimmed table), so real field names can be checked server-side. */
 export const ApiSample = z.object({
   api: z.string().min(1).max(128),
   build,
   time: epochSecs,
-  sample: z.json(),
+  sample: z
+    .json()
+    .refine((v) => new TextEncoder().encode(JSON.stringify(v)).length <= API_SAMPLE_MAX_BYTES, {
+      message: `sample is over ${API_SAMPLE_MAX_BYTES} bytes of JSON`,
+    }),
 });
 export type ApiSample = z.infer<typeof ApiSample>;
 

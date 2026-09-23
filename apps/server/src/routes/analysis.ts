@@ -151,7 +151,7 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
     );
   });
 
-  /** One item across builds: snapshots, drop sources, quest rewards and which specs want it. */
+  /** One item across builds: snapshots, drop and node-loot sources, quest rewards and which specs want it. */
   app.get<{ Params: { id: string } }>('/v1/items/:id', { preHandler }, async (req, reply) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return reply.status(400).send({ error: 'bad item id' });
@@ -181,12 +181,29 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
           from quest_reward_options o left join quests q on q.quest_id = o.quest_id
           where o.item_id = ${id} order by o.build desc, o.quest_id`,
     );
+    // Game objects (veins, herbs, chests, fishing = object 0) whose loot held it, summed over sessions.
+    const nodeSources = await rows(
+      db,
+      sql`
+      with l as (
+        select build, object_id, sum(count)::int as count, sum(quantity)::int as quantity
+        from node_loot where item_id = ${id} group by build, object_id
+      ), n as (
+        select build, object_id, mode() within group (order by name) as name, sum(opened)::int as opens
+        from nodes where (build, object_id) in (select build, object_id from l)
+        group by build, object_id
+      )
+      select l.build, l.object_id as "objectId", n.name, n.opens, l.count, l.quantity
+      from l left join n using (build, object_id)
+      order by l.build desc, l.count desc, l.object_id`,
+    );
     const latest = snapshots[0];
     const level = latest?.reqLevel ?? 20;
     return {
       ...item,
       snapshots,
       dropSources,
+      nodeSources,
       questRewards,
       specs: {
         rulesVersion: RULES_VERSION,
@@ -312,9 +329,10 @@ function registerProfessionRoutes(
 
   /**
    * Where a recipe (`?recipeId=`) or an item (`?itemId=`) comes from. An item stands for the recipes that create it or
-   * that it teaches. Trainers: services named like the recipe or creating its output item. Vendors: listings of the
-   * recipe items (items the recipe was learned from, or Recipe-class items named "<Pattern|Plans|…>: <recipe name>"),
-   * or of the item itself. Drops: those items when they are Recipe-class (items.class_id = 9).
+   * that it teaches (learned from it, or a Recipe-class item named "<Pattern|Plans|…>: <recipe name>"). Trainers:
+   * services named like the recipe or creating its output item. Vendors: listings of the recipe items (items the recipe
+   * was learned from, or Recipe-class items named "<Prefix>: <recipe name>"), or of the item itself. Drops: those items
+   * when they are Recipe-class (items.class_id = 9), from creatures (npcId) or game objects such as chests (objectId).
    */
   app.get('/v1/professions/sources', { preHandler }, async (req, reply) => {
     const itemId = positiveInt(req.query, 'itemId');
@@ -329,6 +347,8 @@ function registerProfessionRoutes(
       where recipe_id = ${recipeId}::int
          or recipe_id in (select recipe_id from recipe_snapshots where output_item_id = ${itemId}::int)
          or recipe_id in (select recipe_id from recipes_learned where via = 'item:' || ${itemId}::int)
+         or name = (select substring(i.name from position(': ' in i.name) + 2) from items i
+                    where i.item_id = ${itemId}::int and i.class_id = 9 and position(': ' in i.name) > 0)
       order by recipe_id`,
     );
     if (recipeId !== null && recipes.length === 0)
@@ -393,13 +413,20 @@ function registerProfessionRoutes(
     const drops = await rows(
       db,
       sql`
-      select d.item_id as "itemId", i.name as "itemName", d.build, d.npc_id as "npcId",
+      select d.item_id as "itemId", i.name as "itemName", d.build, d.npc_id as "npcId", null::int as "objectId",
              sum(d.count)::int as count, sum(d.quantity)::int as quantity, count(*)::int as contributors
       from drops d
       join items i on i.item_id = d.item_id and i.class_id = 9
       where d.item_id = any(${intArray(sold)})
       group by d.item_id, i.name, d.build, d.npc_id
-      order by d.build desc, count desc, d.npc_id`,
+      union all
+      select l.item_id, i.name, l.build, null::int, l.object_id,
+             sum(l.count)::int, sum(l.quantity)::int, count(*)::int
+      from node_loot l
+      join items i on i.item_id = l.item_id and i.class_id = 9
+      where l.item_id = any(${intArray(sold)})
+      group by l.item_id, i.name, l.build, l.object_id
+      order by build desc, count desc, "npcId" nulls last, "objectId"`,
     );
 
     return {
