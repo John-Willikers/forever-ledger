@@ -751,6 +751,32 @@ return function(H)
     H.eq(c.env.ForeverLedgerDB.nodes[B][1731].opened, 1)
   end)
 
+  H.test("gathering: the gather cast's target name (UNIT_SPELLCAST_SENT) names the node before the tooltip", function()
+    local c = gatherer(H) -- the tooltip says "Copper Vein"
+    mine(c, VEIN, nil, "Tin Vein")
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.nodes[B][1731].name, "Tin Vein")
+    mine(c, VEIN2, nil, "") -- no target name: the tooltip, but a known name is kept
+    H.eq(d.nodes[B][1731].name, "Tin Vein")
+    c.fire("UNIT_SPELLCAST_SENT", "player", "Kobold Vermin", "Cast-X", 133) -- not a gather spell
+    c.fire("UNIT_SPELLCAST_SENT", "target", "Mithril Deposit", "Cast-Y", 2575) -- not the player
+    mine(c, "GameObject-0-1-0-1-1732-0000N01")
+    H.eq(d.nodes[B][1732].name, "Copper Vein", "no matching SENT: the tooltip")
+    c.fire("UNIT_SPELLCAST_SENT", "player", "Silverleaf", "Cast-Other", 2575) -- another cast's target
+    mine(c, "GameObject-0-1-0-1-1733-0000N01")
+    H.eq(d.nodes[B][1733].name, "Copper Vein", "a SENT for another castGUID is not this cast's")
+  end)
+
+  H.test("gathering: a chest opened right after mining is not that vein's harvest or skill", function()
+    local c = gatherer(H)
+    mine(c, VEIN, nil, "Copper Vein")
+    lootNode(c, { { itemID = 2589, sourceGUID = "GameObject-0-1-0-1-2843-0000C01" } })
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.nodes[B][2843].opened, 1)
+    H.eq(d.nodes[B][2843].skillLineID, nil)
+    H.eq(d.nodes[B][2843].name, "Copper Vein", "the tooltip")
+  end)
+
   H.test("gathering: skinning a creature stays drops of that npc; its corpse is not counted twice", function()
     local c = gatherer(H)
     local mob = "Creature-0-1-0-1-1234-0000A01"

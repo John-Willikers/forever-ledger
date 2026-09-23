@@ -153,11 +153,14 @@ local function lootNode(c, slots)
   c.fire("LOOT_CLOSED")
   c.world.loot = {}
 end
--- One gather cast (a new castGUID each time) on `guid`, then its loot window.
+-- One gather cast (a new castGUID each time) on `guid`, then its loot window. `target` is the name
+-- UNIT_SPELLCAST_SENT gives the cast's target (not sent when nil).
 local casts = 0
-local function mine(c, guid, spell)
+local function mine(c, guid, spell, target)
   casts = casts + 1
-  c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-" .. guid .. "-" .. casts, spell or 2575)
+  local castGUID = "Cast-" .. guid .. "-" .. casts
+  if target then c.fire("UNIT_SPELLCAST_SENT", "player", target, castGUID, spell or 2575) end
+  c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", castGUID, spell or 2575)
   lootNode(c, { { itemID = 2770, sourceGUID = guid, quantity = 2 } })
 end
 

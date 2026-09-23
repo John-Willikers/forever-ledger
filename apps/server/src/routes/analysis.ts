@@ -413,8 +413,8 @@ function registerProfessionRoutes(
   });
 
   /**
-   * Gathering per build and game object (object 0 = fishing): opens summed over sessions, uploaders and accounts, the
-   * lowest skill rank seen, the maps it was gathered on (distinct spots) and the top 10 loot items with count and
+   * Gathering per build and game object (object 0 = fishing): the name most sessions gave it, opens summed over
+   * sessions, uploaders and accounts, the lowest skill rank seen, the maps it was gathered on (distinct spots) and the top 10 loot items with count and
    * stack quantity per open.
    */
   app.get('/v1/professions/gathering', { preHandler }, async (req) => {
@@ -424,7 +424,8 @@ function registerProfessionRoutes(
     const nodes = await rows<{ build: number; objectId: number }>(
       db,
       sql`
-      select build, object_id as "objectId", max(name) as name, max(skill_line_id) as "skillLineId",
+      select build, object_id as "objectId", mode() within group (order by name) as name,
+             max(skill_line_id) as "skillLineId",
              sum(opened)::int as opens, min(rank_min)::int as "rankMin"
       from nodes
       where ${inBuild}

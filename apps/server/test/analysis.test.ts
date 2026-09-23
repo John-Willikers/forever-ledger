@@ -438,6 +438,34 @@ describe('profession routes', () => {
     ]);
     expect((await get('/v1/professions/gathering?build=1')).json()).toEqual([]);
   });
+
+  it('names a node by the name most sessions saw, not the greatest string', async () => {
+    const other = 70001;
+    const b = schema4Batch('1790102700-aaaa', 'PROF3');
+    const node = (session: string, name: string) => ({
+      objectId: 1731,
+      build: other,
+      session,
+      opened: 1,
+      name,
+      spots: [],
+    });
+    b.records = {
+      ...b.records,
+      nodes: [node('S-a', 'Copper Vein'), node('S-b', 'Tin Vein'), node('S-c', 'Copper Vein')],
+    };
+    for (const kind of Object.keys(b.records) as (keyof typeof b.records)[])
+      if (kind !== 'nodes') (b.records[kind] as unknown[]) = [];
+    const res = await s.app.inject({
+      method: 'POST',
+      url: '/v1/ingest',
+      headers: s.auth,
+      payload: b,
+    });
+    expect(res.statusCode).toBe(200);
+    const nodes = (await get(`/v1/professions/gathering?build=${other}`)).json();
+    expect(nodes).toMatchObject([{ objectId: 1731, name: 'Copper Vein', opens: 3 }]);
+  });
 });
 
 describe("the real addon's schema 4 session (session-v4.lua)", () => {

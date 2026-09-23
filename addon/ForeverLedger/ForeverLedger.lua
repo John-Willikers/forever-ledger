@@ -1002,8 +1002,11 @@ end
 -- loot, so a GUID opened after a gather cast that no other node used yet is a new harvest. Objects opened without a
 -- gather cast (chests, ...) count once per GUID per session. Its skill line is the one of a gather spell that finished
 -- in the last 5 s (fishing: always Fishing), and rankMin the lowest rank of that skill seen when opening it.
-local gather = { fishingOpens = 0, seq = 0 } -- seq: bumped on every gather cast; last = { skillLineID =, at =, seq = }
-local gatherSkill, isFishingLoot, nodeObject, openNode, addNodeLoot
+-- The node's name is the target UNIT_SPELLCAST_SENT gave its gather cast, else the world tooltip's first line.
+-- seq: bumped on every gather cast; last = { skillLineID =, at =, seq =, name = }; sent = { castGUID =, spellID =,
+-- name =, at = } from the last player gather UNIT_SPELLCAST_SENT.
+local gather = { fishingOpens = 0, seq = 0 }
+local gatherSkill, isFishingLoot, nodeObject, openNode, addNodeLoot, onGatherSent, noteGatherCast
 do
   local FISHING_LINE = 356
   local SPOT_CAP = 50 -- spots kept per node per map
@@ -1088,22 +1091,42 @@ do
     if g and now() - g.at <= ATTRIBUTE_WINDOW then return g end
   end
 
-  -- The harvest a loot window of `key` belongs to ("<key>#<gather seq>") and whether it is a new one.
+  -- The harvest a loot window of `key` belongs to ("<key>#<gather seq>"), whether it is a new one, and the gather
+  -- cast it came from (a recent cast no other node used yet).
   local function harvestOf(key)
     local g = recentGather()
-    local seq = g and (seqNode[g.seq] == nil or seqNode[g.seq] == key) and g.seq or nil
+    if g and seqNode[g.seq] ~= nil and seqNode[g.seq] ~= key then g = nil end
     local prev = seenNode[key]
-    if prev ~= nil and (seq == nil or seq == prev) then return key .. "#" .. prev, false end
-    seq = seq or 0
+    if prev ~= nil and (g == nil or g.seq == prev) then return key .. "#" .. prev, false end
+    local seq = g and g.seq or 0
     seenNode[key] = seq
-    if seq > 0 then seqNode[seq] = key end
-    return key .. "#" .. seq, true
+    if g then seqNode[seq] = key end
+    return key .. "#" .. seq, true, g
+  end
+
+  -- UNIT_SPELLCAST_SENT(unit, target, castGUID, spellID) of a player gather spell: the target is the node's name.
+  function onGatherSent(target, castGUID, spellID)
+    if not gatherSkill(spellID) or type(target) ~= "string" or target == "" then return end
+    gather.sent = { castGUID = castGUID, spellID = tonumber(spellID), name = target:sub(1, 100), at = now() }
+  end
+
+  -- A player gather cast finished: the next node opened is its harvest.
+  function noteGatherCast(line, castGUID, spellID)
+    local s = gather.sent
+    local name
+    if s and now() - s.at <= ATTRIBUTE_WINDOW and s.spellID == spellID
+       and (s.castGUID == castGUID or not s.castGUID or not castGUID) then
+      name = s.name
+    end
+    gather.sent = nil
+    gather.seq = gather.seq + 1
+    gather.last = { skillLineID = line, at = now(), seq = gather.seq, name = name }
   end
 
   -- Counts the object's harvest if it is a new one; returns the harvest key its loot is deduplicated by.
   function openNode(key, objectID)
     if not key then return end
-    local harvest, new = harvestOf(key)
+    local harvest, new, g = harvestOf(key)
     if not new then return harvest end
     local byObject = db.nodes[build] or {}
     db.nodes[build] = byObject
@@ -1114,14 +1137,15 @@ do
     end
     n.opened = n.opened + 1
     added()
-    local g = recentGather()
     local line = objectID == 0 and FISHING_LINE or (g and g.skillLineID)
     if line then
       n.skillLineID = line
       local rank = skillRank(line)
       if rank and (not n.rankMin or rank < n.rankMin) then n.rankMin = rank end
     end
-    if not n.name and objectID ~= 0 then
+    if objectID ~= 0 and g and g.name then
+      n.name = g.name
+    elseif objectID ~= 0 and not n.name then
       local ok, name = pcall(tooltipObjectName)
       if ok then n.name = name end
     end
@@ -1558,11 +1582,7 @@ do
     spellID = tonumber(spellID)
     if not spellID then return end
     local line = gatherSkill(spellID)
-    if line then
-      gather.seq = gather.seq + 1
-      gather.last = { skillLineID = line, at = now(), seq = gather.seq }
-      return
-    end
+    if line then return noteGatherCast(line, castGUID, spellID) end
     if castGUID and castSeen[castGUID] then return end
     if not ((castGUID and tradeCasts[castGUID]) or db.recipes[spellID] or beganRecipe() == spellID) then return end
     if castGUID then rememberCast(castSeen, castGUID, true) end
@@ -1848,6 +1868,9 @@ function handlers.MERCHANT_UPDATE() if merchantNpc then throttled("vendor", scan
 function handlers.MERCHANT_CLOSED() merchantNpc = nil end
 function handlers.UNIT_SPELLCAST_START(unit, castGUID, spellID)
   if unit == "player" then pcall(onPlayerCastStart, castGUID, spellID) end
+end
+function handlers.UNIT_SPELLCAST_SENT(unit, target, castGUID, spellID)
+  if unit == "player" then pcall(onGatherSent, target, castGUID, spellID) end
 end
 function handlers.UNIT_SPELLCAST_SUCCEEDED(unit, castGUID, spellID)
   if unit ~= "player" then return end
