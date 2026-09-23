@@ -57,11 +57,11 @@ Status legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Timestam
 
 - ✅ 4.1 Scaffold `apps/desktop` (esbuild, electron-builder, icons) — 2026-09-23 02:05 CDT (198fd11; Electron 44, `./lib` export, 962 KB bundle)
 - ✅ 4.2 `deriveTrayState` + tests — 2026-09-23 02:05 CDT (cc2a467)
-- 🟡 4.3 `LedgerController` (no Electron imports) + tests
-- 🟡 4.4 Electron main: single instance, tray, window, IPC, login item, updater, toasts
-- 🟡 4.5 Preload + renderer (setup view + four cards)
-- ⬜ 4.6 Playwright Electron smoke test
-- ⬜ 4.7 `app-release.yml` + Windows smoke job in CI
+- ✅ 4.3 `LedgerController` (no Electron imports) + tests — 2026-09-23 02:22 CDT (e83dc03, 80ac794; 30 tests)
+- ✅ 4.4 Electron main: single instance, tray, window, IPC, login item, updater, toasts — 2026-09-23 02:22 CDT (841e394; xvfb run: live upload + addon 0.2.1 installed + toast + CDT log)
+- ✅ 4.5 Preload + renderer (setup view + four cards) — 2026-09-23 02:22 CDT (68b08ee; + Activity log list)
+- 🟡 4.6 Playwright Electron smoke test — spec 5cfe141, waiting on Windows CI
+- 🟡 4.7 `app-release.yml` + Windows smoke job in CI — 5cfe141, waiting on Windows CI
 - ⬜ 4.8 First app release `v0.1.0`
 
 ### 🎁 Phase 5 — Wrap up
