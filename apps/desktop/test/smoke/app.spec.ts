@@ -1,10 +1,11 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron, expect, test } from '@playwright/test';
 
-const appDir = fileURLToPath(new URL('../..', import.meta.url));
+// resolve() drops the trailing separator: on Windows `...\\desktop\\"` would escape the closing quote of the argument.
+const appDir = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
 test('starts, shows the four cards and writes its log', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'fl-smoke-'));
