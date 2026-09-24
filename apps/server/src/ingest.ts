@@ -33,6 +33,7 @@ import {
   turnIns,
   vendors,
 } from './db/schema.js';
+import { regroupRuns } from './runGroups.js';
 import { fromEpoch } from './time.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -451,6 +452,8 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         groupLoot: run.groupLoot,
       })),
       [runs.id],
+      // The group is ingest's own column, assigned below: an upload never resets it.
+      { set: { groupId: sql`${runs.groupId}` } },
     );
     // A run's boss and party lists are replaced wholesale: a resumed run can gain bosses after upload.
     const runIds = r.runs.map((run) => run.id);
@@ -478,6 +481,8 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
           run.party.map((p, i) => ({ runId: run.id, slot: i + 1, class: p.class, level: p.level })),
         ),
       );
+      // One dungeon run uploaded by several party members is one group (after characters and parties are stored).
+      await regroupRuns(tx, runIds);
     }
 
     return raw!.id;

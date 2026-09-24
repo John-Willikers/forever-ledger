@@ -500,9 +500,17 @@ export const runs = pgTable(
     bossLoot: jsonb('boss_loot'),
     /** Schema 3: RunGroupLoot[] (CHAT_MSG_LOOT lines while grouped, by class). */
     groupLoot: jsonb('group_loot'),
+    /**
+     * The run group (one shared dungeon run uploaded by several characters): the id of the group's earliest run, its
+     * own id when nobody else's run matched. Set by ingest (src/runGroups.ts); null only before the startup backfill.
+     */
+    groupId: text('group_id'),
     updatedAt: updatedAt(),
   },
-  (t) => [index('runs_instance_idx').on(t.instanceId, t.build)],
+  (t) => [
+    index('runs_instance_idx').on(t.instanceId, t.build),
+    index('runs_group_idx').on(t.groupId),
+  ],
 );
 
 export const runBosses = pgTable(

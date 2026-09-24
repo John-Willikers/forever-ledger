@@ -1,15 +1,14 @@
-// Admin panel loot + dungeon reads (/admin/api/loot/*, /admin/api/items/:id, /admin/api/runs*, clear times): what the
-// /v1 routes don't answer for the Loot, Item, Dungeons and Run pages. Everything here is uploaded data: the panel
+// Admin panel loot reads (/admin/api/loot/*, /admin/api/items/:id): what the /v1 routes don't answer for the Loot and
+// Item pages (the Dungeons and Run pages read routes/adminRuns.ts). Everything here is uploaded data: the panel
 // renders it as text.
 import { sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { INT4_MAX } from '../addon.js';
 import type { Db } from '../db/client.js';
 import { chicagoIso } from '../time.js';
 import type { ReadGuard } from './analysis.js';
-import { buildFilter, int4Param } from './analysis.js';
-import { iso, rows } from './adminData.js';
+import { buildFilter } from './analysis.js';
+import { rows } from './adminData.js';
 import { locationOf } from './adminProfessions.js';
 import { learnRanks, recipesTaughtBy } from './adminRecipes.js';
 import {
@@ -26,9 +25,6 @@ const PAGE_DEFAULT = 50;
 const PAGE_MAX = 200;
 const OFFSET_MAX = 1_000_000;
 const TOP_ITEMS = 5;
-const RUN_ID_MAX = 256;
-/** Clear times listed per instance (fastest first). */
-const CLEAR_TIMES_MAX = 1000;
 /** Item qualities (Enum.ItemQuality: 0 poor … 8 WoW token). */
 const QUALITY_MAX = 8;
 
@@ -171,75 +167,6 @@ export function statDiffs(snapshots: Snapshot[]) {
   }
   return out;
 }
-
-const str = (v: unknown) => (typeof v === 'string' ? v : null);
-const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-const bool = (v: unknown) => (typeof v === 'boolean' ? v : null);
-const list = (v: unknown): Record<string, unknown>[] =>
-  Array.isArray(v)
-    ? v.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
-    : [];
-
-interface RunRow {
-  id: string;
-  build: number;
-  char: string;
-  char_class: string | null;
-  char_level: number | null;
-  instance: string | null;
-  instance_id: number;
-  difficulty: number | null;
-  max_players: number | null;
-  started_at: Date;
-  finished_at: Date | null;
-  end_reason: string | null;
-  active_secs: number | null;
-  away_secs: number;
-  xp_total: number;
-  quest_xp: number;
-  mob_xp: number | null;
-  deaths: number;
-  loot_method: string | null;
-  bosses_killed: number;
-  bosses_total: number;
-  loot_count: number;
-  party_count: number;
-}
-
-const runColumns = sql`
-  r.id, r.build, r.char, ch.class as char_class, r.char_level, r.instance, r.instance_id, r.difficulty,
-  r.max_players, r.started_at, r.finished_at, r.end_reason, r.active_secs, r.away_secs, r.xp_total, r.quest_xp,
-  r.mob_xp, r.deaths, r.loot_method,
-  (select count(*) filter (where killed) from run_bosses b where b.run_id = r.id)::int as bosses_killed,
-  (select count(*) from run_bosses b where b.run_id = r.id)::int as bosses_total,
-  (case when jsonb_typeof(r.loot) = 'array' then jsonb_array_length(r.loot) else 0 end)::int as loot_count,
-  (select count(*) from run_party p where p.run_id = r.id)::int as party_count`;
-
-/** A run's summary. `mobXp` is the recorded mob XP, else total minus quest XP (as /v1/runs/summary counts it). */
-const runSummary = (r: RunRow) => ({
-  id: r.id,
-  build: r.build,
-  char: r.char,
-  charClass: r.char_class,
-  charLevel: r.char_level,
-  instance: r.instance,
-  instanceId: r.instance_id,
-  difficulty: r.difficulty,
-  maxPlayers: r.max_players,
-  startedAt: chicagoIso(r.started_at),
-  finishedAt: iso(r.finished_at),
-  endReason: r.end_reason,
-  activeSecs: r.active_secs,
-  awaySecs: r.away_secs,
-  xpTotal: r.xp_total,
-  questXp: r.quest_xp,
-  mobXp: r.mob_xp ?? r.xp_total - r.quest_xp,
-  deaths: r.deaths,
-  lootMethod: r.loot_method,
-  bosses: { killed: r.bosses_killed, total: r.bosses_total },
-  loot: r.loot_count,
-  party: r.party_count,
-});
 
 export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler: ReadGuard) {
   /**
@@ -597,143 +524,4 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
       };
     },
   );
-
-  /** Runs, newest first: `?build=`, `?instance=` (instance id), `?limit=` / `?offset=`; `instances` for the filter. */
-  app.get('/admin/api/runs', { preHandler }, async (req) => {
-    const build = buildFilter(req.query);
-    const instance = int4Param(req.query, 'instance');
-    const { limit, offset } = pageParams(req.query);
-    const where = sql`(${build}::int is null or r.build = ${build}::int)
-      and (${instance}::int is null or r.instance_id = ${instance}::int)`;
-    const [page, count, instances] = await Promise.all([
-      rows<RunRow>(
-        db,
-        sql`
-        select ${runColumns}
-        from runs r left join characters ch on ch.key = r.char
-        where ${where}
-        order by r.started_at desc, r.id
-        limit ${limit} offset ${offset}`,
-      ),
-      rows<{ n: number }>(db, sql`select count(*)::int as n from runs r where ${where}`),
-      rows<{ instanceId: number; instance: string | null; runs: number }>(
-        db,
-        sql`select instance_id as "instanceId", max(instance) as instance, count(*)::int as runs
-            from runs group by instance_id order by instance nulls last, instance_id`,
-      ),
-    ]);
-    return { items: page.map(runSummary), total: count[0]?.n ?? 0, limit, offset, instances };
-  });
-
-  /** Clear times (active seconds) of finished runs per instance, fastest first; `?build=`. */
-  app.get('/admin/api/dungeons/clear-times', { preHandler }, async (req) => {
-    const build = buildFilter(req.query);
-    const rs = await rows<{
-      instance_id: number;
-      instance: string | null;
-      runs: { id: string; build: number; activeSecs: number }[];
-    }>(
-      db,
-      sql`
-      select instance_id, max(instance) as instance,
-             (array_agg(jsonb_build_object('id', id, 'build', build, 'activeSecs', active_secs)
-                        order by active_secs, id))[1:${CLEAR_TIMES_MAX}] as runs
-      from runs
-      where finished_at is not null and active_secs > 0
-        and (${build}::int is null or build = ${build}::int)
-      group by instance_id
-      order by instance nulls last, instance_id`,
-    );
-    return rs.map((r) => ({ instanceId: r.instance_id, instance: r.instance, runs: r.runs }));
-  });
-
-  /** One run: summary, boss timeline, loot and boss/group loot with item names, party classes and levels. */
-  app.get<{ Params: { id: string } }>('/admin/api/runs/:id', { preHandler }, async (req, reply) => {
-    const id = req.params.id;
-    if (id.length === 0 || id.length > RUN_ID_MAX)
-      return reply.status(400).send({ error: 'bad run id' });
-    const [run] = await rows<RunRow & { loot: unknown; boss_loot: unknown; group_loot: unknown }>(
-      db,
-      sql`
-      select ${runColumns}, r.loot, r.boss_loot, r.group_loot
-      from runs r left join characters ch on ch.key = r.char
-      where r.id = ${id}`,
-    );
-    if (!run) return reply.status(404).send({ error: 'no such run' });
-    const [bosses, party] = await Promise.all([
-      rows<{
-        ord: number;
-        encounterId: number | null;
-        name: string | null;
-        killed: boolean;
-        atSecs: number;
-      }>(
-        db,
-        sql`select ord, encounter_id as "encounterId", name, killed, at_secs as "atSecs"
-            from run_bosses where run_id = ${id} order by ord`,
-      ),
-      rows<{ slot: number; class: string | null; level: number | null }>(
-        db,
-        sql`select slot, class, level from run_party where run_id = ${id} order by slot`,
-      ),
-    ]);
-    const loot = list(run.loot).map((l) => ({ itemId: num(l.itemID), npcId: num(l.npcID) }));
-    const bossLoot = list(run.boss_loot);
-    const groupLoot = list(run.group_loot);
-    const items = await itemInfo(
-      db,
-      [
-        ...loot.map((l) => l.itemId),
-        ...bossLoot.map((b) => num(b.itemId)),
-        ...groupLoot.map((g) => num(g.itemId)),
-      ].filter((n): n is number => n !== null && n <= INT4_MAX),
-    );
-    const names = await npcNames(
-      db,
-      [...new Set(loot.map((l) => l.npcId))].filter(
-        (n): n is number => n !== null && n <= INT4_MAX,
-      ),
-    );
-    const item = (itemId: number | null) => {
-      const known = itemId === null ? undefined : items.get(itemId);
-      return { itemId, name: known?.name ?? null, quality: known?.quality ?? null };
-    };
-    const { bosses: _b, loot: _l, party: _p, ...summary } = runSummary(run);
-    return {
-      ...summary,
-      bosses,
-      loot: loot.map((l) => ({
-        ...item(l.itemId),
-        npcId: l.npcId,
-        npcName: (l.npcId === null ? undefined : names.get(l.npcId)) ?? null,
-      })),
-      bossLoot: bossLoot.map((b) => {
-        const encounterId = num(b.encounterId);
-        return {
-          encounterId,
-          bossName:
-            bosses.find((x) => x.encounterId !== null && x.encounterId === encounterId)?.name ??
-            null,
-          ...item(num(b.itemId)),
-          qty: num(b.qty),
-          winnerClass: str(b.winnerClass),
-          winnerIsSelf: bool(b.winnerIsSelf),
-          allPassed: bool(b.allPassed),
-          rolls: list(b.rolls).map((r) => ({
-            class: str(r.class),
-            roll: num(r.roll),
-            state: str(r.state),
-          })),
-        };
-      }),
-      groupLoot: groupLoot.map((g) => ({
-        ...item(num(g.itemId)),
-        qty: num(g.qty),
-        by: str(g.by),
-        class: str(g.class),
-        won: bool(g.won),
-      })),
-      party,
-    };
-  });
 }

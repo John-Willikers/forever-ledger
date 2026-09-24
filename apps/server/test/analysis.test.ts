@@ -64,6 +64,7 @@ describe('analysis and export routes', () => {
       instance: 'The Deadmines',
       build: 61582,
       runs: 1,
+      members: 1,
       bestActiveSecs: 930,
       xpPerMinute: 280.6,
       mobXpPerMinute: 225.8,
