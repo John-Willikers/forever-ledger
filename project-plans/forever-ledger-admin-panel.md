@@ -102,7 +102,30 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   crafts + gathering-map (no /v1 answer for crafts or spot points); Chart.tsx untouched (scatter/legend
   registered by the page); page CSS in `pages/professions/professions.css`; gathering defaults to all builds merged
   (build picker).
-- ⬜ 6 🧪 Builds
+- ✅ 6 🧪 Builds — 2026-09-23 22:17 — `b3fcff0` server, `17f1252` test fixtures, `0837a02` page (branch
+  `feat/admin-builds`, not deployed). New `routes/adminBuilds.ts` (admin session only): `/admin/api/builds` (newest
+  build first: version, interface, first/last seen CDT, uploads by client build, characters seen in its records, counts
+  of items/quests/recipes/vendors/trainers/looted npcs/API samples) and `/admin/api/build-diff?from=&to=` for entities
+  seen in both builds: items (ilvl, req level, sell price, stats via `statDiffs`, tooltip lines added/removed), quests
+  (max XP/money offered on detail/complete/log, reward options added/removed/count changed), recipes (reagents
+  added/removed/qty, output item, qty min/max, max trivial), vendors (listings added/removed, price/stack/extended-cost
+  changes), trainers (services by name added/removed, cost/skill/skill rank/level/item changes, `complete` flags) and
+  drop rates (the `/v1/drops/rates` session rules; npcs looted ≥ `?minCorpses=` (5) times in both; a missing drop in
+  one build is rate 0; `belowThreshold` counts the rest). Each list capped at `?limit=` (≤ 500) with its total;
+  only-in-from/to counted with a 50-entry sample. Defaults: the two newest builds by number; a missing `to` is the
+  newest other build, a missing `from` the newest older than `to`. 400 junk/equal builds, 404 unknown build. Page:
+  compare card (URL-kept from/to/tab/minCorpses, swap), tiles per category (changed · in both · only in each), tabs
+  with old → new rows and a delta colored for the player, item/quest/mob links, only-in samples, empty states
+  (nothing overlaps vs nothing changed), builds timeline with "vs previous". Tests: 20 server (14 real Postgres: every
+  category, reverse direction, caps, defaults, validation, authz 401/403/200, junk jsonb; 6 helper units), 15 admin
+  unit (deltas, tones, build pairing, every mapper, overlap/tiles); `pnpm check` green (745 vitest, 179 Lua).
+  Notes/deviations: jsonb (stats, tooltip, reagents, vendor items, trainer services) is type-checked in JS rather than
+  with `sqlJson` casts (no casts run, so no cast errors; SQL only pre-filters rows with `is distinct from`); quest XP
+  and money compare only when both builds recorded a value, and reward options only when both builds saw a stage
+  showing them (an accept-only build isn't "all rewards removed"); a vendor price delta is shown only when the stack
+  is the same; `ratesCtes`/`npcNames`/`itemInfo` exported from `adminLoot.ts`; recipes, vendors and trainers have no
+  detail page to link to (shown as text with their id). Live data today: only 69977 has records, so the page shows
+  the "nothing observed in both builds" state until a second build is played.
 - 🟡 7 🚀 Deploy — Phase 1 live 20:45 CDT 2026-09-23: nginx /admin/ + HSTS + no-query auth log, PM2 reloaded from ecosystem (BNET env), migration 0008 applied, pm2 saved. ✅ First admin login 20:47 CDT: user #1 JohnWilliker#1292 role=admin (pinned to account id)
 - ✅ 🧾 Recipe details + vendor→item links — 2026-09-23 22:30 CDT — `81f3017` server, `2d06f2c` admin (branch
   `feat/admin-recipe-details`, not deployed). `GET /admin/api/professions/recipes/:recipeId` (`?build=`, newest by

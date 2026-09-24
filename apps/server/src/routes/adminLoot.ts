@@ -51,7 +51,7 @@ const intArray = (xs: number[]) => sql`${sql.param(xs)}::int[]`;
  * legacy '' session). `c` has corpses and copper per build and npc (`npcs`: a predicate on `npc_id`), `d` the drops
  * per build, npc and item of those npcs.
  */
-const ratesCtes = (build: number | null, npcs: SQL) => sql`
+export const ratesCtes = (build: number | null, npcs: SQL) => sql`
   c as (
     select build, npc_id, sum(count)::int as corpses, sum(copper)::bigint as copper
     from corpses
@@ -114,7 +114,7 @@ const npcNamesCte = (ids: SQL) => sql`
     group by npc_id
   )`;
 
-async function npcNames(db: Db, ids: number[]) {
+export async function npcNames(db: Db, ids: number[]) {
   if (ids.length === 0) return new Map<number, string>();
   const rs = await rows<{ npc_id: number; name: string }>(
     db,
@@ -123,7 +123,7 @@ async function npcNames(db: Db, ids: number[]) {
   return new Map(rs.map((r) => [r.npc_id, r.name]));
 }
 
-async function itemInfo(db: Db, ids: number[]) {
+export async function itemInfo(db: Db, ids: number[]) {
   if (ids.length === 0) return new Map<number, { name: string; quality: number | null }>();
   const rs = await rows<{ item_id: number; name: string; quality: number | null }>(
     db,

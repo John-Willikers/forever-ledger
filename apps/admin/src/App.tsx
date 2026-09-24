@@ -45,6 +45,9 @@ const RunPage = lazy(() =>
 const ProfessionsPage = lazy(() =>
   import('./pages/professions/ProfessionsPage').then((m) => ({ default: m.ProfessionsPage })),
 );
+const BuildsPage = lazy(() =>
+  import('./pages/builds/BuildsPage').then((m) => ({ default: m.BuildsPage })),
+);
 const VendorsPage = lazy(() =>
   import('./pages/vendors/VendorsPage').then((m) => ({ default: m.VendorsPage })),
 );
@@ -60,6 +63,7 @@ const PAGES: Readonly<Record<string, () => ReactElement>> = {
   dungeons: () => <DungeonsPage />,
   professions: () => <ProfessionsPage />,
   vendors: () => <VendorsPage />,
+  builds: () => <BuildsPage />,
 };
 
 /** Detail pages reached from a listing (not in the sidebar). */

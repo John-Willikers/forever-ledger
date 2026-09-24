@@ -1,0 +1,56 @@
+/* ---- Builds page ---- */
+
+:root {
+  --delta-good: var(--ok);
+  --delta-bad: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --delta-bad: #ff8a80;
+  }
+}
+
+.builds-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.delta {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.delta.good {
+  color: var(--delta-good);
+  font-weight: 600;
+}
+
+.delta.bad {
+  color: var(--delta-bad);
+  font-weight: 600;
+}
+
+.delta.neutral {
+  color: var(--muted);
+}
+
+table.data .old {
+  color: var(--muted);
+}
+
+.change-cell .pill {
+  margin-right: 0;
+}
+
+.only-in h3 {
+  font-size: 0.9rem;
+}
+
+.only-in-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  columns: 2 14rem;
+  font-size: 0.9rem;
+}
