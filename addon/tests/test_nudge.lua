@@ -162,6 +162,6 @@ return function(H)
     table.sort(meta)
     H.eq(table.concat(meta, ","),
       "addonVersion,build,buildDate,interface,lastChar,schemaVersion,session,version")
-    H.eq(d.meta.schemaVersion, 4)
+    H.eq(d.meta.schemaVersion, 5)
   end)
 end

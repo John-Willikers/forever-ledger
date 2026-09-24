@@ -28,20 +28,24 @@ local function statusCount(c)
   end
 end
 
-local FIXTURE = "../../fixtures/synthetic/session-v4.lua"
+local FIXTURE_V4 = "../../fixtures/synthetic/session-v4.lua"
+local FIXTURE_V5 = "../../fixtures/synthetic/session-v5.lua"
+local ADDON_0_3_2 = "legacy/ForeverLedger-0.3.2.lua" -- last schema 4 release, writes session-v4
 
 -- The schema 4 fixture: the shared play session (quests, loot, a dungeon run), then a profession session that
 -- touches every appendix table: skills and a skill-up, a trainer (a recipe learned there), a vendor, the profession
 -- window (one client field missing), crafts with a proc, a recipe learned from a pattern, a mined vein and fishing.
-local function v4Session(H)
+-- `v5` (the schema 5 fixture) adds NPC subtitles to the trainer and a Forever recipe vendor whose pattern costs an
+-- item and a currency.
+local function profSession(H, addon, v5)
   local c = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true, skillLines = P.gatherLines(),
                     bags = { [0] = { [1] = 2598 } } })
-  c.load(ADDON)
+  c.load(addon)
   S.play(c, "ForeverLedger")
   local w = c.world
   c.advance(60)
 
-  atTrainer(c)
+  atTrainer(c, nil, nil, v5 and "<Tailoring Trainer>" or nil)
   c.fire("NEW_RECIPE_LEARNED", LINEN_SHIRT, nil, LINEN_SHIRT) -- (recipeID, recipeLevel, baseRecipeID): a nil gap
   c.fire("TRAINER_CLOSED")
   w.npc, w.trainer = nil, nil
@@ -88,6 +92,12 @@ local function v4Session(H)
   lootNode(c, { { itemID = 6303, sourceGUID = BOBBER } })
   w.fishing = false
   c.advance(30)
+  if v5 then
+    P.atRecipeVendor(c, "Tailoring")
+    c.fire("MERCHANT_CLOSED")
+    w.npc, w.merchant = nil, nil
+    c.advance(30)
+  end
   c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "UseAction()") -- reaches the server in the errors sample
   return c.env.ForeverLedgerDB
 end
@@ -1329,6 +1339,205 @@ return function(H)
     H.eq(c2.env.ForeverLedgerDB.vendors[B][1347].items[2].itemID, 2598, "the id from the item link")
   end)
 
+  ---------------------------------------------------------------- vendor costs and NPC titles (schema 5)
+  local RECIPE_VENDOR_NPC = 248196
+
+  H.test("vendor costs: an extended cost keeps its items and currencies; price stays the gold part", function()
+    local c = session(H)
+    P.atRecipeVendor(c)
+    local d = c.env.ForeverLedgerDB
+    local v = d.vendors[B][RECIPE_VENDOR_NPC]
+    H.eq(v.name, "Beneris")
+    local pattern = v.items[1]
+    H.eq(pattern.itemID, 2598)
+    H.eq(pattern.price, 0)
+    H.eq(pattern.extendedCost, true)
+    H.eq(#pattern.costs, 2)
+    H.eq(pattern.costs[1].amount, 3)
+    H.eq(pattern.costs[1].itemID, 250001)
+    H.eq(pattern.costs[1].currencyID, nil)
+    H.eq(pattern.costs[1].name, "Mark of the Barrens", "the name from the item link")
+    H.eq(pattern.costs[2].amount, 25)
+    H.eq(pattern.costs[2].currencyID, P.HONOR)
+    H.eq(pattern.costs[2].itemID, nil)
+    H.eq(pattern.costs[2].name, "Honor Points")
+    H.ok(d.items[250001] and d.items[250001].byBuild[B], "the cost item is scanned so its name exists")
+    H.eq(d.apiSamples.GetMerchantItemCostInfo.sample[1], 2)
+    local item = d.apiSamples.GetMerchantItemCostItem.sample
+    H.eq(item[2], 3)
+    H.ok(item[3]:find("item:250001", 1, true), item[3])
+    local currency = d.apiSamples["GetMerchantItemCostItem:currency"].sample
+    H.eq(currency[2], 25)
+    H.eq(currency[4], "Honor Points")
+    H.eq(d.apiSamples.GetMerchantCurrencies.sample[1], P.HONOR)
+  end)
+
+  H.test("vendor costs: plain gold items have no costs and are not asked for any", function()
+    local c = session(H)
+    atVendor(c, { merchantItem(2320, 10), merchantItem(2996, 0, { hasExtendedCost = true, currencyID = 1901 }) })
+    local items = c.env.ForeverLedgerDB.vendors[B][1347].items
+    H.eq(items[1].costs, nil)
+    H.eq(items[2].costs, nil, "an extended cost the client lists no entries for")
+    H.eq(c.world.calls.GetMerchantItemCostInfo, 1, "only the extended-cost item")
+    H.eq(c.env.ForeverLedgerDB.apiSamples.GetMerchantItemCostItem, nil)
+  end)
+
+  H.test("vendor costs: without hasExtendedCost the listed costs are still read; rescans keep them", function()
+    local c = session(H)
+    local stock = P.recipeVendorStock()
+    stock[1].info.hasExtendedCost = nil
+    atVendor(c, stock, P.RECIPE_VENDOR)
+    local v = c.env.ForeverLedgerDB.vendors[B][RECIPE_VENDOR_NPC]
+    H.eq(#v.items[1].costs, 2)
+    H.eq(v.items[1].extendedCost, nil)
+    H.eq(v.items[2].costs, nil)
+    c.advance(5)
+    c.fire("MERCHANT_UPDATE")
+    H.eq(#c.env.ForeverLedgerDB.vendors[B][RECIPE_VENDOR_NPC].items[1].costs, 2)
+  end)
+
+  H.test("vendor costs: a cost with no item, currency or name is skipped; at most 10 costs", function()
+    local c = session(H)
+    local many = {}
+    for i = 1, 12 do many[i] = { itemID = 2589, amount = i } end
+    atVendor(c, { merchantItem(2598, 0, { hasExtendedCost = true, costs = many }),
+                  merchantItem(2572, 0, { hasExtendedCost = true, costs = { { itemID = 424242, amount = 1 } } }) })
+    local items = c.env.ForeverLedgerDB.vendors[B][1347].items
+    H.eq(#items[1].costs, 10)
+    H.eq(items[2].costs, nil, "an item the client does not know: no link, no id")
+  end)
+
+  H.test("titles: a vendor's and a trainer's subtitle, without the surrounding <>", function()
+    local c = session(H)
+    P.atRecipeVendor(c, "Enchanting")
+    atTrainer(c, nil, nil, "<Tailoring Trainer>")
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.vendors[B][RECIPE_VENDOR_NPC].title, "Enchanting")
+    H.eq(d.trainers[B][1103].title, "Tailoring Trainer")
+    c.fire("MERCHANT_CLOSED")
+    c.advance(5)
+    atVendor(c, nil, nil, "|cffffffff<Blacksmithing Supplies>|r")
+    H.eq(d.vendors[B][1347].title, "Blacksmithing Supplies", "colour codes are dropped")
+    H.eq(d.apiSamples["C_TooltipInfo.GetUnit"].sample.guid, P.RECIPE_VENDOR)
+    H.eq(d.apiSamples["C_TooltipInfo.GetUnit:line"].sample.leftText, "Enchanting")
+    c.advance(5)
+    c.fire("MERCHANT_UPDATE")
+    H.eq(d.vendors[B][1347].title, "Blacksmithing Supplies", "a rescan keeps the title read when the window opened")
+    c.fire("MERCHANT_CLOSED")
+    c.fire("TRAINER_CLOSED")
+    c.advance(5)
+    c.env.C_TooltipInfo.GetUnit = function() return nil end -- tooltip data not ready this time
+    atVendor(c, nil, nil, "Blacksmithing Supplies")
+    atTrainer(c, nil, nil, "Tailoring Trainer")
+    H.eq(d.vendors[B][1347].title, "Blacksmithing Supplies", "an open without a title keeps the known one")
+    H.eq(d.trainers[B][1103].title, "Tailoring Trainer")
+  end)
+
+  H.test("titles: an NPC with only a level line has no title", function()
+    local c = session(H)
+    atVendor(c)
+    atTrainer(c)
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.vendors[B][1347].title, nil)
+    H.eq(d.trainers[B][1103].title, nil)
+    local fr = session(H, { globalStrings = { TOOLTIP_UNIT_LEVEL = "Niveau %s",
+                                              TOOLTIP_UNIT_LEVEL_TYPE = "Niveau %s %s",
+                                              UNIT_LEVEL_TEMPLATE = "Niveau %d", LEVEL = "Niveau" } })
+    atVendor(fr)
+    fr.world.npc.levelLine = "Niveau 30 Humanoïde"
+    fr.advance(5)
+    fr.fire("MERCHANT_SHOW")
+    H.eq(fr.env.ForeverLedgerDB.vendors[B][1347].title, nil, "the client's own level template")
+    local bare = session(H, { missing = { TOOLTIP_UNIT_LEVEL = true, TOOLTIP_UNIT_LEVEL_TYPE = true,
+                                          UNIT_LEVEL_TEMPLATE = true, LEVEL = true } })
+    atVendor(bare)
+    H.eq(bare.env.ForeverLedgerDB.vendors[B][1347].title, nil, "no templates: a leading \"Level \"")
+    local elite = session(H)
+    elite.world.npc = { name = "Beneris", guid = P.RECIPE_VENDOR,
+                        lines = { { leftText = "Beneris" }, { leftText = "Level ?? Elite" } } }
+    elite.world.merchant = { items = P.recipeVendorStock() }
+    elite.fire("MERCHANT_SHOW")
+    H.eq(elite.env.ForeverLedgerDB.vendors[B][RECIPE_VENDOR_NPC].title, nil)
+  end)
+
+  H.test("titles: the target's tooltip when the npc unit has none", function()
+    local c = session(H)
+    atVendor(c)
+    c.world.npc = { name = "Beneris", guid = P.RECIPE_VENDOR, title = "Enchanting", tooltipUnit = "target",
+                    targeted = true }
+    c.world.merchant = { items = P.recipeVendorStock() }
+    c.advance(5)
+    c.fire("MERCHANT_SHOW")
+    H.eq(c.env.ForeverLedgerDB.vendors[B][RECIPE_VENDOR_NPC].title, "Enchanting")
+    local asked = c.world.calls["C_TooltipInfo.GetUnit"]
+    c.world.npc.targeted = false
+    c.fire("MERCHANT_CLOSED")
+    c.advance(5)
+    c.fire("MERCHANT_SHOW")
+    H.eq(c.world.calls["C_TooltipInfo.GetUnit"], asked + 1, "another target is not asked")
+  end)
+
+  H.test("vendor costs and titles: missing, erroring or odd APIs are guarded", function()
+    local c = session(H, { missing = { C_TooltipInfo = true, GetMerchantItemCostInfo = true,
+                                       GetMerchantItemCostItem = true, GetMerchantCurrencies = true } })
+    P.atRecipeVendor(c, "Enchanting")
+    atTrainer(c, nil, nil, "Tailoring Trainer")
+    local d = c.env.ForeverLedgerDB
+    local v = d.vendors[B][RECIPE_VENDOR_NPC]
+    H.eq(#v.items, 2)
+    H.eq(v.items[1].costs, nil)
+    H.eq(v.title, nil)
+    H.eq(d.trainers[B][1103].title, nil)
+    H.eq(#d.trainers[B][1103].services, 3)
+
+    local e = session(H)
+    e.env.C_TooltipInfo.GetUnit = function() error("GetUnit exploded") end
+    e.env.GetMerchantItemCostItem = function() error("GetMerchantItemCostItem exploded") end
+    P.atRecipeVendor(e, "Enchanting")
+    atTrainer(e, nil, nil, "Tailoring Trainer")
+    local ed = e.env.ForeverLedgerDB
+    H.eq(#ed.vendors[B][RECIPE_VENDOR_NPC].items, 2, "the vendor is still recorded")
+    H.eq(ed.vendors[B][RECIPE_VENDOR_NPC].items[1].costs, nil)
+    H.eq(ed.trainers[B][1103].title, nil)
+    local errs = ed.apiSamples["ForeverLedger.errors"].sample
+    H.ok(errs.npcTitle and errs.npcTitle.msg:find("GetUnit exploded", 1, true), "noted")
+    H.ok(errs.merchantCosts and errs.merchantCosts.msg:find("exploded", 1, true), "noted")
+
+    local moved = session(H)
+    moved.env.GetMerchantItemCostItem = function() -- link and name in other places
+      return "Honor Points", 25, "|cff00aa00|Hcurrency:1901:0|h[Honor Points]|h|r", 463446
+    end
+    P.atRecipeVendor(moved)
+    H.eq(moved.env.ForeverLedgerDB.vendors[B][RECIPE_VENDOR_NPC].items[1].costs[1].currencyID, P.HONOR)
+    H.eq(moved.env.ForeverLedgerDB.vendors[B][RECIPE_VENDOR_NPC].items[1].costs[1].name, "Honor Points")
+
+    local odd = session(H)
+    odd.env.C_TooltipInfo.GetUnit = function() return { lines = "nope" } end
+    P.atRecipeVendor(odd, "Enchanting")
+    H.eq(odd.env.ForeverLedgerDB.vendors[B][RECIPE_VENDOR_NPC].title, nil)
+    local short = session(H)
+    short.env.C_TooltipInfo.GetUnit = function() return { lines = { { leftText = "Beneris" } } } end
+    P.atRecipeVendor(short)
+    H.eq(short.env.ForeverLedgerDB.vendors[B][RECIPE_VENDOR_NPC].title, nil, "a name alone")
+    local renamed = session(H)
+    renamed.env.C_TooltipInfo.GetUnit = function()
+      return { lines = { { leftText = "Beneris" }, { text = "Enchanting" } } }
+    end
+    P.atRecipeVendor(renamed)
+    local rd = renamed.env.ForeverLedgerDB
+    H.eq(rd.vendors[B][RECIPE_VENDOR_NPC].title, "Enchanting", "an alternative field name")
+    H.eq(rd.apiSamples["ForeverLedger.fieldMisses"], nil)
+    local unnamed = session(H)
+    unnamed.env.C_TooltipInfo.GetUnit = function()
+      return { lines = { { leftText = "Beneris" }, { rightText = "Enchanting" } } }
+    end
+    P.atRecipeVendor(unnamed)
+    local ud = unnamed.env.ForeverLedgerDB
+    H.eq(ud.vendors[B][RECIPE_VENDOR_NPC].title, nil)
+    H.eq(ud.apiSamples["ForeverLedger.fieldMisses"].sample["C_TooltipInfo.GetUnit:leftText"], "leftText|text",
+      "a line without a text field is noted")
+  end)
+
   ---------------------------------------------------------------- errors
   local function errors(c)
     local e = c.env.ForeverLedgerDB.apiSamples["ForeverLedger.errors"]
@@ -1461,9 +1670,9 @@ return function(H)
       table.concat(c.world.printed, "\n"))
   end)
   ---------------------------------------------------------------- schema 4 fixture
-  H.test("professions: session-v4 fixture fills every schema 4 table from one real session", function()
-    local d = v4Session(H)
-    H.writeFile(FIXTURE, H.serialize("ForeverLedgerDB", d))
+  H.test("professions: session-v4 fixture (0.3.2) fills every schema 4 table from one real session", function()
+    local d = profSession(H, ADDON_0_3_2)
+    H.writeFile(FIXTURE_V4, H.serialize("ForeverLedgerDB", d))
     H.eq(d.meta.schemaVersion, 4)
     for _, k in ipairs({ "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
                          "trainers", "vendors", "apiSamples", "quests", "turnIns", "runs", "drops", "corpses" }) do
@@ -1493,5 +1702,30 @@ return function(H)
     H.eq(learned[1], LINEN_SHIRT)
     H.eq(learned[2], nil, "a nil gap")
     H.eq(learned[3], LINEN_SHIRT)
+  end)
+
+  H.test("professions: session-v5 fixture adds vendor costs and NPC titles", function()
+    local d = profSession(H, ADDON, true)
+    H.writeFile(FIXTURE_V5, H.serialize("ForeverLedgerDB", d))
+    H.eq(d.meta.schemaVersion, 5)
+    for _, k in ipairs({ "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
+                         "trainers", "vendors", "apiSamples", "quests", "turnIns", "runs", "drops", "corpses" }) do
+      H.ok(next(d[k]) ~= nil, k)
+    end
+    H.eq(d.trainers[B][1103].title, "Tailoring Trainer")
+    H.eq(d.vendors[B][1347].title, nil, "a vendor with only a level line")
+    local v = d.vendors[B][248196]
+    H.eq(v.title, "Tailoring")
+    H.eq(v.items[1].price, 0)
+    H.eq(#v.items[1].costs, 2)
+    H.eq(v.items[1].costs[1].itemID, 250001)
+    H.eq(v.items[1].costs[2].currencyID, P.HONOR)
+    H.eq(v.items[2].costs, nil)
+    H.eq(d.items[250001].name, "Mark of the Barrens")
+    for _, api in ipairs({ "C_TooltipInfo.GetUnit", "C_TooltipInfo.GetUnit:line", "GetMerchantItemCostInfo",
+                           "GetMerchantItemCostItem", "GetMerchantItemCostItem:currency",
+                           "GetMerchantCurrencies" }) do
+      H.ok(d.apiSamples[api], api)
+    end
   end)
 end

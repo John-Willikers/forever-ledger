@@ -368,7 +368,8 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
 
     // Trainer and vendor lists: a newer scan wins, an older SavedVariables session uploaded late changes nothing. A
     // trainer scan that saw only part of the list (a type filter off, a collapsed header) merges its services into the
-    // stored list by name: known names are updated in place, new ones appended.
+    // stored list by name: known names are updated in place, new ones appended. The NPC's title (schema 5) is kept
+    // when a newer scan has none (an older addon, or a tooltip that was not ready).
     const mergedServices = sql`(
       select coalesce(jsonb_agg(coalesce(n.svc, o.svc) order by o.ord), '[]'::jsonb)
       from jsonb_array_elements(${trainers.services}) with ordinality as o(svc, ord)
@@ -397,6 +398,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
           services: sql`case when excluded.complete then excluded.services else ${mergedServices} end`,
           complete: sql`excluded.complete or ${trainers.complete}`,
           skillLineId: sql`coalesce(excluded.skill_line_id, ${trainers.skillLineId})`,
+          title: sql`coalesce(excluded.title, ${trainers.title})`,
         },
       },
     );
@@ -405,7 +407,10 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       vendors,
       r.vendors.map((v) => ({ ...v, seenAt: fromEpoch(v.seenAt)! })),
       [vendors.npcId, vendors.build],
-      { setWhere: notOlder(vendors.seenAt) },
+      {
+        setWhere: notOlder(vendors.seenAt),
+        set: { title: sql`coalesce(excluded.title, ${vendors.title})` },
+      },
     );
     await upsert(
       tx,

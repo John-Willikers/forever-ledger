@@ -43,6 +43,9 @@ read_globals = {
   "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq", "GetTrainerServiceItemLink", "GetTrainerServiceSkillLine",
   "GetTrainerServiceTypeFilter",
   "GetMerchantNumItems", "GetMerchantItemID", "GetMerchantItemLink", "GetItemSpell",
+  "GetMerchantItemCostInfo", "GetMerchantItemCostItem", "GetMerchantCurrencies",
+  -- NPC subtitles (unit tooltips) and the level-line templates
+  "C_TooltipInfo", "TOOLTIP_UNIT_LEVEL", "TOOLTIP_UNIT_LEVEL_TYPE", "UNIT_LEVEL_TEMPLATE", "LEVEL",
 }
 
 -- The test harness defines WoW stubs as globals on purpose.

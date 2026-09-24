@@ -517,6 +517,53 @@ function H.new(worldOverrides)
       return m and world.items[m.itemID] and itemLink(m.itemID, world.items[m.itemID]) or nil
     end
     env.C_MerchantFrame = { GetItemInfo = function(i) local m = stock(i); return m and copy(m.info) end }
+    -- Extended costs (items and currencies paid besides gold): world.merchant.items[i].costs =
+    -- { { itemID=, amount= } or { currencyID=, amount=, name= }, ... }. GetMerchantItemCostInfo returns the count;
+    -- GetMerchantItemCostItem the retail order texture, value, link, currencyName (currencies only).
+    local function costs(i) return (stock(i) or {}).costs or {} end
+    env.GetMerchantItemCostInfo = function(i)
+      called("GetMerchantItemCostInfo")
+      return #costs(i)
+    end
+    env.GetMerchantItemCostItem = function(i, j)
+      local c = costs(i)[j]
+      if not c then return end
+      if c.currencyID then
+        return 463446, c.amount, "|cff00aa00|Hcurrency:" .. c.currencyID .. ":0|h[" .. c.name .. "]|h|r", c.name
+      end
+      local it = world.items[c.itemID]
+      return 133784, c.amount, it and itemLink(c.itemID, it) or nil, nil
+    end
+    env.GetMerchantCurrencies = function() return unpack((world.merchant or {}).currencies or {}) end
+    -- Unit tooltips: C_TooltipInfo.GetUnit(unit, hideStatus) -> TooltipData for the NPC of an open window. Line 1 is
+    -- the name, line 2 the NPC's subtitle (world.npc.title) when it has one, then the level line
+    -- (world.npc.levelLine). world.npc.lines replaces the lines; world.npc.tooltipUnit = "target": only the target
+    -- unit has a tooltip (world.npc.targeted makes UnitGUID("target") the NPC).
+    local strs = world.globalStrings or {}
+    env.TOOLTIP_UNIT_LEVEL = strs.TOOLTIP_UNIT_LEVEL or "Level %s"
+    env.TOOLTIP_UNIT_LEVEL_TYPE = strs.TOOLTIP_UNIT_LEVEL_TYPE or "Level %s %s"
+    env.UNIT_LEVEL_TEMPLATE = strs.UNIT_LEVEL_TEMPLATE or "Level %d"
+    env.LEVEL = strs.LEVEL or "Level"
+    local unitGUID = env.UnitGUID
+    env.UnitGUID = function(u)
+      if u == "target" and world.npc and world.npc.targeted then return world.npc.guid end
+      return unitGUID(u)
+    end
+    env.C_TooltipInfo = {
+      GetUnit = function(unit, hideStatus)
+        called("C_TooltipInfo.GetUnit")
+        local npc = world.npc
+        if not npc or unit ~= (npc.tooltipUnit or "npc") then return nil end
+        assert(hideStatus == true, "C_TooltipInfo.GetUnit(unit, true)")
+        local lines = npc.lines and copy(npc.lines)
+        if not lines then
+          lines = { { leftText = npc.name, type = 2, leftColor = { r = 1, g = 1, b = 1 } } }
+          if npc.title then lines[#lines + 1] = { leftText = npc.title, type = 0 } end
+          lines[#lines + 1] = { leftText = npc.levelLine or "Level 30 Humanoid", type = 0 }
+        end
+        return { type = 2, guid = npc.guid, dataInstanceID = 7, lines = lines }
+      end,
+    }
   end
   if world.professionAPI then installProfessionAPI() end
 

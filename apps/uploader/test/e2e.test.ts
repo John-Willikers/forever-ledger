@@ -214,6 +214,32 @@ describe('upload-once end to end (mock server implementing the ingest contract)'
     expect(server.ingestRequests).toBe(requests);
   });
 
+  it("schema 5: the real addon's session-v5.lua uploads vendor costs and NPC titles as schema 5", async () => {
+    await env.writeSv(await readFixture('session-v5.lua'));
+    const { records } = normalize(await loadFixtureDb('session-v5.lua'));
+    const total = toEntries(records).length;
+
+    server = await startMockServer();
+    const first = await pass(server.url);
+    expect(first.ok).toBe(true);
+    expect(first.flush).toMatchObject({ acked: total, pendingBatches: 0, errors: [] });
+    expect(server.receivedKeys).toHaveLength(total);
+    expect(server.batches.every((b) => b.schemaVersion === 5)).toBe(true);
+    const vendors = server.batches.flatMap((b) => b.records.vendors);
+    const beneris = vendors.find((v) => v.npcId === 248196);
+    expect(beneris).toMatchObject({ title: 'Tailoring' });
+    expect(beneris!.items[0]!.costs).toEqual([
+      { amount: 3, itemId: 250001, name: 'Mark of the Barrens' },
+      { amount: 25, currencyId: 1901, name: 'Honor Points' },
+    ]);
+    const trainers = server.batches.flatMap((b) => b.records.trainers);
+    expect(trainers).toEqual([expect.objectContaining({ title: 'Tailoring Trainer' })]);
+
+    const requests = server.ingestRequests;
+    expect((await pass(server.url)).ok).toBe(true);
+    expect(server.ingestRequests).toBe(requests);
+  });
+
   it('bad token → 401 stops the pass with a clear message', async () => {
     await env.writeSv(await readFixture('session-v1.lua'));
     server = await startMockServer({ token: 'another-token' });

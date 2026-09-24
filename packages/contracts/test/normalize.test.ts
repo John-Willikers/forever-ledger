@@ -25,6 +25,7 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
     ['session-v3.lua', 3],
     ['session-migrated.lua', 3],
     ['session-v4.lua', 4],
+    ['session-v5.lua', 5],
   ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
@@ -103,8 +104,8 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 5, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 5 is not supported \(expected 1 or 2 or 3 or 4\)/,
+    expect(() => normalize({ meta: { schemaVersion: 6, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 6 is not supported \(expected 1 or 2 or 3 or 4 or 5\)/,
     );
   });
 
@@ -197,14 +198,15 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(t2).toEqual(v1.records.turnIns[0]);
   });
 
-  it('accepts schema 1 and 2 upload batches, not 5', () => {
+  it('accepts schema 1 and 2 upload batches, not 6', () => {
     const batch = { uploaderId: 'pc-1', account: 'A', meta: v2.meta, records: v2.records };
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 2 }).success).toBe(true);
     expect(
       UploadBatch.safeParse({ ...batch, schemaVersion: 1, meta: v1.meta, records: v1.records })
         .success,
     ).toBe(true);
-    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 5 }).success).toBe(false);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 5 }).success).toBe(true);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 6 }).success).toBe(false);
   });
 });
 
@@ -373,7 +375,6 @@ describe('normalize — schema 4 professions (hand-written professions-v4.lua)',
   it('reads every professions table without problems', () => {
     expect(problems).toEqual([]);
     expect(meta).toMatchObject({ schemaVersion: 4, addonVersion: '0.3.0', session: S });
-    expect(SCHEMA_VERSION).toBe(4);
     expect(isSupportedSchemaVersion(4)).toBe(true);
   });
 
@@ -717,6 +718,100 @@ describe('normalize — schema 4 from the real addon (session-v4.lua)', () => {
     expect(byApi.get('C_TradeSkillUI.GetRecipeSchematic:reagentSlot')).toMatchObject({
       quantityRequired: 2,
     });
+  });
+});
+
+describe('normalize — schema 5 vendor costs and NPC titles (session-v5.lua)', () => {
+  const { meta, records, problems } = normalize(load('session-v5.lua'));
+  const v4 = normalize(load('session-v4.lua'));
+
+  it('validates with no problems as schema 5; schema 5 is the current major', () => {
+    expect(problems).toEqual([]);
+    expect(meta).toMatchObject({ schemaVersion: 5, addonVersion: '0.3.3' });
+    expect(SCHEMA_VERSION).toBe(5);
+    expect(isSupportedSchemaVersion(5)).toBe(true);
+    expect(isSupportedSchemaVersion(6)).toBe(false);
+    for (const kind of RECORD_KINDS) {
+      const keys = (records[kind] as never[]).map((r) => recordKey(kind, r));
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+    expect(
+      UploadBatch.safeParse({ schemaVersion: 5, uploaderId: 'pc-1', account: 'A', meta, records })
+        .success,
+    ).toBe(true);
+  });
+
+  it('vendor items keep extended costs (itemID/currencyID -> itemId/currencyId); price stays the gold part', () => {
+    const beneris = records.vendors.find((v) => v.npcId === 248196);
+    expect(beneris).toMatchObject({ name: 'Beneris', title: 'Tailoring' });
+    expect(beneris!.items).toEqual([
+      {
+        itemId: 2598,
+        price: 0,
+        stack: 1,
+        numAvailable: -1,
+        extendedCost: true,
+        costs: [
+          { amount: 3, itemId: 250001, name: 'Mark of the Barrens' },
+          { amount: 25, currencyId: 1901, name: 'Honor Points' },
+        ],
+      },
+      { itemId: 2320, price: 10, stack: 5, numAvailable: -1, extendedCost: false },
+    ]);
+    const bolero = records.vendors.find((v) => v.npcId === 1347);
+    expect(bolero!.title).toBeUndefined();
+    expect(bolero!.items.every((i) => i.costs === undefined)).toBe(true);
+    expect(records.items.find((i) => i.itemId === 250001)).toMatchObject({
+      name: 'Mark of the Barrens',
+    });
+  });
+
+  it('trainers keep their title', () => {
+    expect(records.trainers).toEqual([
+      expect.objectContaining({ npcId: 1103, title: 'Tailoring Trainer' }),
+    ]);
+  });
+
+  it('samples the new client APIs', () => {
+    const apis = records.apiSamples.map((s) => s.api);
+    for (const api of [
+      'C_TooltipInfo.GetUnit',
+      'C_TooltipInfo.GetUnit:line',
+      'GetMerchantItemCostInfo',
+      'GetMerchantItemCostItem',
+      'GetMerchantItemCostItem:currency',
+      'GetMerchantCurrencies',
+    ])
+      expect(apis).toContain(api);
+  });
+
+  it('schema 4 files have no titles or costs', () => {
+    expect(v4.problems).toEqual([]);
+    for (const v of v4.records.vendors) {
+      expect(v.title).toBeUndefined();
+      expect(v.items.every((i) => i.costs === undefined)).toBe(true);
+    }
+    expect(v4.records.trainers.every((t) => t.title === undefined)).toBe(true);
+  });
+
+  it('a cost without an amount, or an over-long title, is a problem for that vendor only', () => {
+    const { records: r, problems: p } = normalize({
+      meta: { schemaVersion: 5, addonVersion: '0.3.3', build: 69977, session: 'S' },
+      vendors: {
+        69977: {
+          1: { seenAt: 1, items: [{ itemID: 1, costs: [{ itemID: 2 }] }] },
+          2: { seenAt: 1, title: 'x'.repeat(300), items: [] },
+          3: {
+            seenAt: 1,
+            title: 'Enchanting',
+            items: [{ itemID: 1, costs: [{ amount: 1, currencyID: 7 }] }],
+          },
+        },
+      },
+    });
+    expect(r.vendors.map((v) => v.npcId)).toEqual([3]);
+    expect(r.vendors[0]!.items[0]!.costs).toEqual([{ amount: 1, currencyId: 7 }]);
+    expect(p.map((x) => x.path)).toEqual(['vendors.69977.1', 'vendors.69977.2']);
   });
 });
 

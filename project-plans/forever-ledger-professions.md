@@ -48,6 +48,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   differs) → service `type` held the icon id and headers weren't detected → fixed in addon 0.3.1 (type read by value).
   Note: C_SkillInfo lists each profession twice (base line + "Classic" child with parentSkillLineID) — correct data;
   routes should fold children into the parent.
+- ✅ 10 💰 Vendor costs + NPC titles (schema 5) — 19:50 CDT (branch `feat/vendor-costs`: 9062b67 addon, a903c58
+  contracts/server/uploader + migration 0007_npc_titles, 5c6c4e9 addon 0.3.3, 4653523 tray 0.1.4; 179 Lua / 462
+  vitest). Live finding (build 69977, addon 0.3.1): Forever's Barrens recipe vendors (npc 248196–248201) sell every
+  recipe for 0 copper with `hasExtendedCost = true`; NPCs show a subtitle ("Enchanting", "<Blacksmithing Supplies>").
+  Addon reads `GetMerchantItemCostInfo/CostItem` (+ `GetMerchantCurrencies`) and line 2 of
+  `C_TooltipInfo.GetUnit("npc", true)`; retail field names are guesses until the new `apiSamples` rows arrive.
+  Migration dry run clean (newest backup: 0004–0007; live copy: 0007 only; old rows/columns unchanged). Not yet
+  released: rollout server → tray v0.1.4 → addon 0.3.3.
 
 > Execution note: two parallel lanes in separate worktrees — lane A = phases 1, 6, 7 (TypeScript), lane B = phases
 > 2–4 (Lua). Phase 5 happens after both merge, since the fixtures feed the contracts tests.
@@ -123,17 +131,29 @@ db.nodes[build][objectID] = { opened=, name=, rankMin=, skillLineID=, spots = { 
   -- opened counts harvests: a GUID opened after a new gather cast is a new harvest (veins/herbs give 2-3), without a
   -- gather cast once per GUID; name = the gather cast's UNIT_SPELLCAST_SENT target, else the world tooltip
 db.nodeLoot[itemID][build][objectID] = { n=, qty= }                                             -- per session
-db.trainers[build][npcID] = { name=, loc=, skillLineID=, seenAt=, complete=,
+db.trainers[build][npcID] = { name=, title=, loc=, skillLineID=, seenAt=, complete=,
   services = { { name=, type=, cost=, skill=, skillRank=, level=, itemID= }, ... } }
   -- complete = true when the scan saw every service (all type filters on, headers expanded); an incomplete scan merges
   -- its services into the stored list by name instead of replacing it
-db.vendors[build][npcID] = { name=, loc=, seenAt=,
-  items = { { itemID=, price=, stack=, numAvailable=, currencyID=, extendedCost= }, ... } }
+db.vendors[build][npcID] = { name=, title=, loc=, seenAt=,
+  items = { { itemID=, price=, stack=, numAvailable=, currencyID=, extendedCost=,
+              costs = { { amount=, itemID=, currencyID=, name= }, ... } }, ... } }
+  -- schema 5 (addon 0.3.3), additive:
+  -- title = the subtitle under the NPC's name without "<>" (line 2 of C_TooltipInfo.GetUnit("npc", true), else the
+  --   target's when it is the same NPC), read at MERCHANT_SHOW / TRAINER_SHOW; nil when line 2 is the level line
+  --   (client TOOLTIP_UNIT_LEVEL / _TYPE / UNIT_LEVEL_TEMPLATE / LEVEL prefix, else "Level "); an open that reads no
+  --   title keeps the stored one
+  -- costs = the extended cost (GetMerchantItemCostInfo / GetMerchantItemCostItem: texture, value, link,
+  --   currencyName), only when hasExtendedCost is true or absent and the client lists ≥ 1 cost; ≤ 10 per item;
+  --   itemID from an item link, currencyID from |Hcurrency:ID|h, name = currencyName or the link's [name]; cost
+  --   items are scanned once per build; price stays the gold part
 db.items[itemID].classID / .subclassID                                                           -- new optional fields
 db.apiSamples[api] = { build=, time=, sample= }   -- api e.g. "C_TradeSkillUI.GetRecipeInfo"; sample = the returned table,
                                                   -- depth ≤ 2, ≤ 60 keys, strings ≤ 200 chars, functions/userdata dropped;
                                                   -- contracts reject a sample over 16 KB of JSON (that record only)
 db.apiSamples["ForeverLedger.fieldMisses"].sample = { ["api:firstName"] = "firstName|otherName" }   -- required reads that found no name
+-- schema 5 samples: "C_TooltipInfo.GetUnit" (+ ":line" = line 2), "GetMerchantItemCostInfo",
+-- "GetMerchantItemCostItem" (item cost) / "GetMerchantItemCostItem:currency", "GetMerchantCurrencies"
 db.apiSamples["ForeverLedger.errors"].sample = { [place] = { msg=, count=, last= } }   -- per build, ≤ 40 places, msg ≤ 200 chars:
   -- place = handler/function name, "scan:<window>", "event:<EVENT>", "blocked:<fn>" / "forbidden:<fn>"
   -- (ADDON_ACTION_* blamed on ForeverLedger) or "warning:<text>" (LUA_WARNING naming the addon)
@@ -155,13 +175,16 @@ db.apiSamples["ForeverLedger.errors"].sample = { [place] = { msg=, count=, last=
 | `crafts` | recipeId, build, session, casts, qty, procs, skillUps | `craft:recipeId:build` + session suffix |
 | `nodes` | objectId, build, session, opened, name?, rankMin?, skillLineId?, spots[{mapId, points[[x,y]]}] | `node:objectId:build` + session suffix |
 | `nodeLoot` | itemId, objectId, build, session, count, quantity | `nloot:itemId:objectId:build` + session suffix |
-| `trainers` | npcId, build, name?, loc?, skillLineId?, seenAt, complete?, services[{name, type?, cost?, skill?, skillRank?, level?, itemId?}] | `trainer:npcId:build` |
-| `vendors` | npcId, build, name?, loc?, seenAt, items[{itemId, price?, stack?, numAvailable?, currencyId?, extendedCost?}] | `vendor:npcId:build` |
+| `trainers` | npcId, build, name?, title? (schema 5), loc?, skillLineId?, seenAt, complete?, services[{name, type?, cost?, skill?, skillRank?, level?, itemId?}] | `trainer:npcId:build` |
+| `vendors` | npcId, build, name?, title? (schema 5), loc?, seenAt, items[{itemId, price?, stack?, numAvailable?, currencyId?, extendedCost?, costs?[{amount, itemId?, currencyId?, name?}] (schema 5, ≤ 10)}] | `vendor:npcId:build` |
 | `apiSamples` | api, build, time, sample (json) | `api:api:build` |
 | `items` (existing) | + classId?, subclassId? | unchanged |
 
 Server tables (snake_case): `skills`, `skill_ups`, `recipes` (keepKnown), `recipe_snapshots` (reagents jsonb),
 `recipe_status`, `recipe_difficulty`, `recipes_learned`, `crafts` / `nodes` / `node_loot` (PK includes uploader_id,
 account, session like `drops`/`corpses`; nodes.spots jsonb), `trainers` / `vendors` (services/items/loc jsonb, row
-replaced by a newer scan; `trainers.complete` boolean — an incomplete scan merges services by name, migration 0005),
-`api_samples` (sample jsonb), `items.class_id/subclass_id`.
+replaced by a newer scan; `trainers.complete` boolean — an incomplete scan merges services by name, migration 0005;
+`trainers.title` / `vendors.title` nullable text, a newer scan without a title keeps the stored one, migration
+0007_npc_titles; vendor item `costs` live in the items jsonb), `api_samples` (sample jsonb), `items.class_id/subclass_id`.
+`/v1/professions/sources` returns `npcTitle` for trainers and vendors and each vendor listing's `costs` (null when
+none; cost items named from `items` when known). Schema 5 is accepted with 1–4; 6 gets 409.
