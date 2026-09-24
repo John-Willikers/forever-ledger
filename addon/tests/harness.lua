@@ -641,6 +641,13 @@ function H.new(worldOverrides)
   if world.bags and not env.C_Container then
     env.C_Container = { GetContainerItemID = function(bag, slot) return (world.bags[bag] or {})[slot] end }
   end
+  -- world.bagLocks = { [bag] = { [slot] = true | false } } adds C_Container.GetContainerItemInfo(bag, slot).isLocked.
+  if world.bagLocks and env.C_Container then
+    env.C_Container.GetContainerItemInfo = function(bag, slot)
+      local id = (world.bags[bag] or {})[slot]
+      if id then return { itemID = id, isLocked = (world.bagLocks[bag] or {})[slot] or false } end
+    end
+  end
 
   -- frame:RegisterUnitEvent(ev, unit, ...): the event only reaches the frame for those units (its first argument).
   -- world.noUnitEvents: a client without it. (Added here, not in CreateFrame above, so harness line numbers that the

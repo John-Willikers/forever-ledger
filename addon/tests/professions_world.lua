@@ -227,10 +227,14 @@ end
 -- Item GUIDs as GetLootSourceInfo would name an opened item; one GUID per stack (both clams share CLAM_GUID).
 local BOTTLE_GUID = "Item-1-0-4000000A0000B077"
 local CLAM_GUID = "Item-1-0-4000000A0000C1A0"
--- A loot window of an opened item: LOOT_OPENED(autoLoot, isFromItem), then LOOT_CLOSED.
-local function openItem(c, slots, isFromItem)
+-- A loot window of an opened item: LOOT_OPENED(autoLoot, isFromItem), LOOT_SLOT_CLEARED for each slot taken, then
+-- LOOT_CLOSED. `left` = { [slot] = true } for slots left behind (bags full); nil takes everything.
+local function openItem(c, slots, isFromItem, left)
   c.world.loot = slots
   c.fire("LOOT_OPENED", false, isFromItem)
+  for i = 1, #slots do
+    if not (left and left[i]) then c.fire("LOOT_SLOT_CLEARED", i) end
+  end
   c.fire("LOOT_CLOSED")
   c.world.loot = {}
 end

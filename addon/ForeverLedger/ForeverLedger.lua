@@ -1550,22 +1550,45 @@ end
 -- item (clam, lockbox, Message in a Bottle, ...). Its container is C_Item.GetItemIDByGUID of that GUID, else the item
 -- of the last bag ITEM_LOCK_CHANGED within 3 s, else 0 (unknown container). Session totals like drops:
 -- db.containers[containerID][build] = { opened =, copper = }, db.containerLoot[itemID][build][containerID] = opens
--- that held the item, db.containerQty[itemID][build][containerID] = quantity. Each window is one open ("open#n"): a
--- stack of clams shares one item GUID. Container loot never goes to drops, corpses or run loot.
-local LOCK_WINDOW = 3 -- seconds: an ITEM_LOCK_CHANGED this recent names the opened item
-local lastLock        -- { itemID =, at = } from the last bag ITEM_LOCK_CHANGED that read an item
-local containerOpens = 0
+-- that held the item, db.containerQty[itemID][build][containerID] = quantity. Each open has its own key ("open#n"):
+-- a stack of clams shares one item GUID. Container loot never goes to drops, corpses or run loot. Disenchanting,
+-- prospecting and milling windows (isFromItem, an Item- GUID of the processed item) land here too, keyed by the
+-- processed item.
+--
+-- One open can take several windows: with full bags the player takes some items, the container stays in the bags with
+-- the rest, and opening it again shows only those. `box` remembers the last container window: its slots, which of
+-- them LOOT_SLOT_CLEARED emptied, and what this open already counted. When LOOT_CLOSED leaves slots behind, the next
+-- container window within REOPEN_WINDOW, from the same GUID (or, without one, the same known container id), holding
+-- only leftovers of it, continues that open: no new open, and items already counted are not counted again. A second
+-- LOOT_OPENED before LOOT_CLOSED is the same window.
+--
+-- Bookkeeping in one table (the main chunk is near Lua 5.1's 200-locals limit).
+local ct = {
+  LOCK_WINDOW = 3,     -- seconds: an ITEM_LOCK_CHANGED this recent names the opened item
+  REOPEN_WINDOW = 900, -- seconds: leftovers reopened this soon after LOOT_CLOSED continue the same open
+  lastLock = nil,      -- { itemID =, at = } from the last bag lock that read an item; cleared once used
+  opens = 0,
+  slotClears = false,  -- a LOOT_SLOT_CLEARED arrived this session, so "slot not cleared" means left behind
+  box = nil,           -- { key =, guid =, containerID =, slots = { [i] = itemID | "money" }, cleared = { [i] },
+                       --   counted = { [itemID] = true }, money =, closedAt =, left = { [itemID | "money"] } }
+}
 
+-- ITEM_LOCK_CHANGED fires on lock and unlock; an unlock (the slot reads isLocked = false) names nothing.
 local function onItemLock(bag, slot)
   if slot == nil or not (C_Container and C_Container.GetContainerItemID) then return end -- nil slot: equipment
+  if C_Container.GetContainerItemInfo then
+    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+    if ok and type(info) == "table" and info.isLocked == false then return end
+  end
   local ok, itemID = pcall(C_Container.GetContainerItemID, bag, slot)
   itemID = ok and tonumber(itemID)
-  if itemID then lastLock = { itemID = itemID, at = now() } end
+  if itemID then ct.lastLock = { itemID = itemID, at = now() } end
 end
 
 local function isItemGUID(guid) return type(guid) == "string" and guid:sub(1, 5) == "Item-" end
 
--- The opened item's id for a container window (0 when unknown) and how it was found; nil for any other window.
+-- The opened item's id for a container window (0 when unknown), how it was found and its Item- GUID (when the client
+-- gives one); nil for any other window. An item lock names one container only: it is used up here.
 local function containerOf(isFromItem, n)
   local itemGUID
   for i = 1, n do
@@ -1575,13 +1598,15 @@ local function containerOf(isFromItem, n)
     if itemGUID then break end
   end
   if not isFromItem and not itemGUID then return nil end
+  local lock = ct.lastLock
+  ct.lastLock = nil
   if itemGUID and C_Item and C_Item.GetItemIDByGUID then
     local ok, id = pcall(C_Item.GetItemIDByGUID, itemGUID)
     id = ok and tonumber(id)
-    if id and id > 0 then return id, "guid" end
+    if id and id > 0 then return id, "guid", itemGUID end
   end
-  if lastLock and now() - lastLock.at <= LOCK_WINDOW then return lastLock.itemID, "lock" end
-  return 0, "none"
+  if lock and now() - lock.at <= ct.LOCK_WINDOW then return lock.itemID, "lock", itemGUID end
+  return 0, "none", itemGUID
 end
 
 local function containerRec(containerID)
@@ -1595,31 +1620,88 @@ local function containerRec(containerID)
   return c
 end
 
-local function lootContainer(containerID, via, isFromItem, n)
-  containerOpens = containerOpens + 1
-  local open = "open#" .. containerOpens
-  local c = containerRec(containerID)
-  c.opened = c.opened + 1
-  added()
-  if containerID > 0 then scanItemOnce(containerID) end
-  if GetLootSourceInfo and n > 0 then -- the GUID shape of an opened item on this client (slot 1's returns)
-    local count, r = packed(pcall(GetLootSourceInfo, 1))
-    local returns = {}
-    if r[1] then
-      for j = 2, count do returns[j - 1] = r[j] end
-    end
-    sample("GetLootSourceInfo:container", { isFromItem = isFromItem and true or false, containerID = containerID,
-                                            via = via, returns = returns })
+-- What slot i of the open window holds: its item id, "money", or nil (empty or unreadable).
+function ct.slotContent(i)
+  if slotType(i) == MONEY_SLOT then return "money" end
+  return idFromLink(GetLootSlotLink(i))
+end
+
+-- LOOT_CLOSED (or another loot window replacing it): keep `box` only when the window left slots behind. Without any
+-- LOOT_SLOT_CLEARED this session the client may not send it: then every window counts as fully looted.
+function ct.closeBox()
+  local box = ct.box
+  if not box or box.closedAt then return end
+  box.closedAt = now()
+  local left, any = {}, false
+  for i, what in pairs(box.slots) do
+    if not box.cleared[i] then left[what], any = true, true end
   end
+  if any and ct.slotClears then box.left = left else ct.box = nil end
+end
+
+-- Does this container window continue `box`? "same": LOOT_OPENED again before LOOT_CLOSED. "reopen": the leftovers
+-- again: same GUID (else the same known container id), soon enough, and nothing in it that was not left behind.
+function ct.continues(containerID, guid, n)
+  local box = ct.box
+  if not box then return nil end
+  if not box.closedAt then -- no LOOT_CLOSED since: the same window (a used-up item lock now reads 0)
+    if containerID == box.containerID or containerID == 0 or (guid and guid == box.guid) then return "same" end
+    return nil
+  end
+  if box.containerID ~= containerID or not box.left or now() - box.closedAt > ct.REOPEN_WINDOW then return nil end
+  if box.guid or guid then
+    if box.guid ~= guid then return nil end
+  elseif containerID == 0 then
+    return nil
+  end
+  for i = 1, n do
+    local what = ct.slotContent(i)
+    if what and not box.left[what] then return nil end
+  end
+  return "reopen"
+end
+
+local function lootContainer(containerID, via, isFromItem, n, guid)
+  local cont = ct.continues(containerID, guid, n)
+  local box = ct.box
+  if cont then
+    containerID = box.containerID
+    box.closedAt, box.left, box.slots = nil, nil, {}
+    if cont == "reopen" then box.cleared = {} end -- a new window numbers its slots afresh
+  else
+    ct.opens = ct.opens + 1
+    box = { key = "open#" .. ct.opens, guid = guid, containerID = containerID, slots = {}, cleared = {},
+            counted = {}, money = false }
+    ct.box = box
+  end
+  local c = containerRec(containerID)
+  if not cont then
+    c.opened = c.opened + 1
+    added()
+    if containerID > 0 then scanItemOnce(containerID) end
+    if GetLootSourceInfo and n > 0 then -- the GUID shape of an opened item on this client (slot 1's returns)
+      local count, r = packed(pcall(GetLootSourceInfo, 1))
+      local returns = {}
+      if r[1] then
+        for j = 2, count do returns[j - 1] = r[j] end
+      end
+      sample("GetLootSourceInfo:container", { isFromItem = isFromItem and true or false, containerID = containerID,
+                                              via = via, returns = returns })
+    end
+  end
+  local counted = box.counted -- items an earlier window of this open already counted (count and quantity)
+  local fresh = {}
   for i = 1, n do
     local sources = lootSources(i)
     if slotType(i) == MONEY_SLOT then
+      box.slots[i] = "money"
       local copper = 0
       for _, src in ipairs(sources) do
         if src.qty and src.qty > 0 then copper = copper + floor(src.qty) end
       end
       if copper > 0 then
-        c.copper = c.copper + copper
+        if not box.money then c.copper = c.copper + copper end
+        box.money = true
       elseif GetMoney then -- no amount: whatever GetMoney gains next is this container's money
         local ok, before = pcall(GetMoney)
         if ok and type(before) == "number" then pendingMoney = { container = containerID, before = before } end
@@ -1628,23 +1710,28 @@ local function lootContainer(containerID, via, isFromItem, n)
       local link = GetLootSlotLink(i)
       local id = idFromLink(link)
       if id then
-        local qty = slotQuantity(i)
-        if not qty then
-          qty = 0
-          for _, src in ipairs(sources) do qty = qty + ((src.qty and src.qty > 0) and src.qty or 0) end
-          if qty == 0 then qty = 1 end
+        box.slots[i] = id
+        if not counted[id] then
+          local qty = slotQuantity(i)
+          if not qty then
+            qty = 0
+            for _, src in ipairs(sources) do qty = qty + ((src.qty and src.qty > 0) and src.qty or 0) end
+            if qty == 0 then qty = 1 end
+          end
+          local key = box.key .. ":" .. id
+          if not seenLoot[key] then -- the same item in two slots of one open is one open that held it
+            seenLoot[key] = true
+            addTo(db.containerLoot, id, build, containerID, 1)
+            added()
+          end
+          addTo(db.containerQty, id, build, containerID, qty)
+          scanItem(id, link)
+          fresh[id] = true
         end
-        local key = open .. ":" .. id
-        if not seenLoot[key] then -- the same item in two slots of one open is one open that held it
-          seenLoot[key] = true
-          addTo(db.containerLoot, id, build, containerID, 1)
-          added()
-        end
-        addTo(db.containerQty, id, build, containerID, qty)
-        scanItem(id, link)
       end
     end
   end
+  for id in pairs(fresh) do counted[id] = true end
 end
 
 local function onLootOpened(_, isFromItem)
@@ -1652,9 +1739,10 @@ local function onLootOpened(_, isFromItem)
   local fishing = isFishingLoot()
   local n = GetNumLootItems() or 0
   if not fishing then
-    local containerID, via = containerOf(isFromItem, n)
-    if containerID then return lootContainer(containerID, via, isFromItem, n) end
+    local containerID, via, guid = containerOf(isFromItem, n)
+    if containerID then return lootContainer(containerID, via, isFromItem, n, guid) end
   end
+  ct.closeBox() -- another kind of window: a container window still marked open is over
   local fishingKey, harvests = nil, {}
   if fishing then
     gather.fishingOpens = gather.fishingOpens + 1
@@ -1673,6 +1761,16 @@ local function onLootOpened(_, isFromItem)
       lootItem(i, sources, fishing, fishingKey, harvests)
     end
   end
+end
+
+function ct.onLootSlotCleared(slot)
+  ct.slotClears = true
+  if ct.box and not ct.box.closedAt and slot then ct.box.cleared[slot] = true end
+end
+
+function ct.onLootClosed()
+  if pendingMoney then pendingMoney.untilAt = now() + MONEY_WAIT end
+  ct.closeBox()
 end
 
 local function onPlayerMoney()
@@ -2191,7 +2289,8 @@ end
 function handlers.PLAYER_XP_UPDATE() onXP() end
 function handlers.LOOT_OPENED(autoLoot, isFromItem) safely("onLootOpened", onLootOpened, autoLoot, isFromItem) end
 function handlers.ITEM_LOCK_CHANGED(bag, slot) safely("onItemLock", onItemLock, bag, slot) end
-function handlers.LOOT_CLOSED() if pendingMoney then pendingMoney.untilAt = now() + MONEY_WAIT end end
+function handlers.LOOT_SLOT_CLEARED(slot) safely("onLootSlotCleared", ct.onLootSlotCleared, slot) end
+function handlers.LOOT_CLOSED() safely("onLootClosed", ct.onLootClosed) end
 function handlers.PLAYER_MONEY() safely("onPlayerMoney", onPlayerMoney) end
 -- safely (pcall): loot bookkeeping reads client tables whose shape we only know from API docs; it must never error in
 -- play. Failures are noted in apiSamples["ForeverLedger.errors"].

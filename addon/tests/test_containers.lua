@@ -190,6 +190,149 @@ return function(H)
     H.eq(d.apiSamples["ForeverLedger.errors"], nil)
   end)
 
+  ---------------------------------------------------------------- one open, several windows
+  local MEAT2 = { itemID = CLAM_MEAT, sourceGUID = CLAM_GUID, quantity = 2 }
+  local PEARL1 = { itemID = PEARL, sourceGUID = CLAM_GUID }
+  local COIN = { money = 30, sourceGUID = CLAM_GUID }
+
+  H.test("containers: bags full, one item taken, the clam reopened: one open, no item counted twice", function()
+    local c = session(H)
+    openItem(c, { MEAT2, PEARL1, COIN }, true, { [2] = true }) -- the pearl stays behind (bags full)
+    c.advance(60)
+    openItem(c, { PEARL1 }, true) -- the same clam again: only the pearl is left
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.containers[CLAM][B].opened, 1)
+    H.eq(d.containers[CLAM][B].copper, 30)
+    H.eq(d.containerLoot[CLAM_MEAT][B][CLAM], 1)
+    H.eq(d.containerQty[CLAM_MEAT][B][CLAM], 2)
+    H.eq(d.containerLoot[PEARL][B][CLAM], 1)
+    H.eq(d.containerQty[PEARL][B][CLAM], 1)
+    openItem(c, { MEAT2 }, true) -- everything was taken: the next clam of the stack is a new open
+    H.eq(d.containers[CLAM][B].opened, 2)
+    H.eq(d.containerLoot[CLAM_MEAT][B][CLAM], 2)
+    H.eq(d.containerQty[CLAM_MEAT][B][CLAM], 4)
+  end)
+
+  H.test("containers: leftovers reopened twice, money left behind too, still one open", function()
+    local c = session(H)
+    c.fire("LOOT_SLOT_CLEARED", 1) -- an earlier loot this session: the client sends slot clears
+    openItem(c, { MEAT2, PEARL1, COIN }, true, { [1] = true, [2] = true, [3] = true }) -- nothing taken
+    openItem(c, { MEAT2, PEARL1, COIN }, true, { [2] = true })
+    openItem(c, { PEARL1 }, true)
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.containers[CLAM][B].opened, 1)
+    H.eq(d.containers[CLAM][B].copper, 30)
+    H.eq(d.containerQty[CLAM_MEAT][B][CLAM], 2)
+    H.eq(d.containerQty[PEARL][B][CLAM], 1)
+  end)
+
+  H.test("containers: full loot, then the next clam of the stack with the same contents: two opens", function()
+    local c = session(H)
+    openItem(c, { MEAT2 }, true)
+    openItem(c, { MEAT2 }, true)
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.containers[CLAM][B].opened, 2)
+    H.eq(d.containerLoot[CLAM_MEAT][B][CLAM], 2)
+    H.eq(d.containerQty[CLAM_MEAT][B][CLAM], 4)
+  end)
+
+  H.test("containers: a window holding anything that was not left behind is a new open", function()
+    local c = session(H)
+    openItem(c, { MEAT2, PEARL1 }, true, { [2] = true })
+    openItem(c, { MEAT2 }, true) -- the meat was taken last time: this is another clam of the stack
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.containers[CLAM][B].opened, 2)
+    H.eq(d.containerQty[CLAM_MEAT][B][CLAM], 4)
+  end)
+
+  H.test("containers: leftovers reopened after 15 min, or from another GUID, are a new open", function()
+    local c = session(H, { itemGUIDs = { [BOTTLE_GUID] = BOTTLE, [CLAM_GUID] = CLAM, ["Item-1-0-OTHER"] = CLAM } })
+    openItem(c, { MEAT2, PEARL1 }, true, { [2] = true })
+    c.advance(901)
+    openItem(c, { PEARL1 }, true)
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.containers[CLAM][B].opened, 2)
+    openItem(c, { MEAT2, PEARL1 }, true, { [2] = true })
+    openItem(c, { { itemID = PEARL, sourceGUID = "Item-1-0-OTHER" } }, true)
+    H.eq(d.containers[CLAM][B].opened, 4)
+    H.eq(d.containerLoot[PEARL][B][CLAM], 4)
+  end)
+
+  H.test("containers: LOOT_OPENED twice for one window counts once", function()
+    local c = session(H)
+    c.world.loot = { MEAT2, PEARL1, COIN }
+    c.fire("LOOT_OPENED", false, true)
+    c.fire("LOOT_SLOT_CLEARED", 1)
+    c.fire("LOOT_OPENED", false, true)
+    c.fire("LOOT_SLOT_CLEARED", 2)
+    c.fire("LOOT_SLOT_CLEARED", 3)
+    c.fire("LOOT_CLOSED")
+    c.world.loot = {}
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.containers[CLAM][B].opened, 1)
+    H.eq(d.containers[CLAM][B].copper, 30)
+    H.eq(d.containerLoot[CLAM_MEAT][B][CLAM], 1)
+    H.eq(d.containerQty[CLAM_MEAT][B][CLAM], 2)
+    H.eq(d.containerQty[PEARL][B][CLAM], 1)
+    openItem(c, { MEAT2 }, true) -- fully looted: the next one is new
+    H.eq(d.containers[CLAM][B].opened, 2)
+  end)
+
+  H.test("containers: item-lock route: LOOT_OPENED twice and a reopen of the leftovers stay one open", function()
+    local c = session(H, { itemGUIDs = false, bags = { [0] = { [3] = CLAM } }, missing = { GetLootSourceInfo = true } })
+    c.fire("ITEM_LOCK_CHANGED", 0, 3)
+    c.world.loot = { { itemID = CLAM_MEAT, quantity = 2 }, { itemID = PEARL } }
+    c.fire("LOOT_OPENED", false, true)
+    c.fire("LOOT_OPENED", false, true) -- the lock is used up; still the clam's window
+    c.fire("LOOT_SLOT_CLEARED", 1)
+    c.fire("LOOT_CLOSED")
+    c.advance(30)
+    c.fire("ITEM_LOCK_CHANGED", 0, 3) -- the leftover clam, used again
+    c.world.loot = { { itemID = PEARL } }
+    c.fire("LOOT_OPENED", false, true)
+    c.fire("LOOT_SLOT_CLEARED", 1)
+    c.fire("LOOT_CLOSED")
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.containers[CLAM][B].opened, 1)
+    H.eq(d.containers[0], nil)
+    H.eq(d.containerQty[CLAM_MEAT][B][CLAM], 2)
+    H.eq(d.containerQty[PEARL][B][CLAM], 1)
+  end)
+
+  H.test("containers: unknown containers (0) never merge across windows", function()
+    local c = session(H, { itemGUIDs = false, missing = { GetLootSourceInfo = true } })
+    c.fire("LOOT_SLOT_CLEARED", 9) -- the client sends slot clears
+    openItem(c, { { itemID = CLAM_MEAT }, { itemID = PEARL } }, true, { [2] = true })
+    openItem(c, { { itemID = PEARL } }, true)
+    H.eq(c.env.ForeverLedgerDB.containers[0][B].opened, 2)
+  end)
+
+  H.test("containers: a client that never sends LOOT_SLOT_CLEARED counts every window as an open", function()
+    local c = session(H)
+    for _ = 1, 2 do
+      c.world.loot = { MEAT2 }
+      c.fire("LOOT_OPENED", false, true)
+      c.fire("LOOT_CLOSED")
+    end
+    H.eq(c.env.ForeverLedgerDB.containers[CLAM][B].opened, 2)
+  end)
+
+  H.test("containers: an item lock names one container only, and an unlock names none", function()
+    local c = session(H, { itemGUIDs = false, bags = { [0] = { [3] = CLAM, [4] = BOTTLE } },
+                           bagLocks = { [0] = { [3] = true, [4] = false } },
+                           missing = { GetLootSourceInfo = true } })
+    c.fire("ITEM_LOCK_CHANGED", 0, 3)
+    openItem(c, { { itemID = CLAM_MEAT } }, true)
+    openItem(c, { { itemID = SCHEMATIC } }, true) -- within 3 s, but the clam's lock was used
+    local d = c.env.ForeverLedgerDB
+    H.eq(d.containers[CLAM][B].opened, 1)
+    H.eq(d.containers[0][B].opened, 1)
+    c.fire("ITEM_LOCK_CHANGED", 0, 4) -- the bottle's slot unlocking
+    openItem(c, { { itemID = SCHEMATIC } }, true)
+    H.eq(d.containers[BOTTLE], nil)
+    H.eq(d.containers[0][B].opened, 2)
+  end)
+
   H.test("containers: /fl shows opens; /fl reset wipes them", function()
     local c = session(H)
     bottle(c)
