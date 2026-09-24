@@ -27,9 +27,18 @@ const schemaVersion = z.union([
 /** Schema 3 `meta.session`: `<epoch>-<4 hex>`, one per SavedVariables table. '' for older files. */
 const session = z.string().max(64);
 
-const int = z.number().int();
+/** Postgres `integer` (int4) maximum. Ids, builds, counts and prices are stored (or read back) as int4. */
+export const INT4_MAX = 2_147_483_647;
+
+/** An int4: out of range is an invalid record (refused on its own, like any other), never a database error. */
+const int = z
+  .number()
+  .int()
+  .min(-INT4_MAX - 1)
+  .max(INT4_MAX);
 const nonNegInt = int.nonnegative();
-const epochSecs = nonNegInt;
+/** Epoch seconds are stored as timestamptz, not int4: no int4 cap (they pass it in 2038). */
+const epochSecs = z.number().int().nonnegative();
 const build = nonNegInt;
 /** `Name-Realm`, the addon's character key. */
 const charKey = z.string().min(1).max(128);
