@@ -274,12 +274,18 @@ function NodesCard({ item }: { item: ItemV1 }) {
   );
 }
 
-/** What the item held when opened (schema 6): per build, its opens and copper, then each item by chance per open. */
+/**
+ * What the item gave when opened, or disenchanted / prospected / milled (schema 6): per build, its opens and copper,
+ * then each item by chance per open.
+ */
 function ContentsCard({ extra }: { extra: ItemExtra }) {
   const builds = contentsByBuild(extra.contents);
   if (builds.length === 0) return null;
   return (
     <Card title="🎁 Contents">
+      <p className="small muted">
+        What opening this item (or disenchanting, prospecting or milling it) gave.
+      </p>
       {builds.map((b) => (
         <div key={b.build}>
           <p className="small">
@@ -325,16 +331,23 @@ function ContentsCard({ extra }: { extra: ItemExtra }) {
   );
 }
 
-/** Containers the item came out of (schema 6), linking to the container's page; container 0 is unnamed. */
+/**
+ * Items this item came out of (schema 6): containers opened, or items disenchanted / prospected / milled. Links to
+ * that item's page; container 0 is an opened item the client could not name.
+ */
 function OpenedFromCard({ extra }: { extra: ItemExtra }) {
-  if (extra.openedFrom.length === 0) return null;
+  const from = extra.openedFrom ?? [];
+  if (from.length === 0) return null;
   return (
-    <Card title="Opened from">
+    <Card title="Came from">
+      <p className="small muted">
+        Opening a container, or disenchanting, prospecting or milling an item.
+      </p>
       <div className="table-wrap">
         <table className="data compact">
           <thead>
             <tr>
-              <th>Container</th>
+              <th>Opened / processed item</th>
               <th>Build</th>
               <th>Opens</th>
               <th>Held it</th>
@@ -343,7 +356,7 @@ function OpenedFromCard({ extra }: { extra: ItemExtra }) {
             </tr>
           </thead>
           <tbody>
-            {extra.openedFrom.map((o) => (
+            {from.map((o) => (
               <tr key={`${o.build}-${o.containerId}`}>
                 <td>
                   <ItemName

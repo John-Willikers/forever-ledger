@@ -171,13 +171,20 @@ export interface OpenedFrom {
 export const containerLabel = (containerId: number, name: string | null | undefined) =>
   name ? name : containerId === 0 ? 'Unknown container' : `Item ${containerId}`;
 
-/** Contents per build, newest first: the build's opens and copper with the items it held (by chance). */
-export function contentsByBuild(contents: { opens: ContainerOpens[]; items: ContainerContent[] }) {
-  return [...contents.opens]
+/**
+ * Contents per build, newest first: the build's opens and copper with the items it held (by chance). A response
+ * without `contents` (or its lists) is empty, never an error.
+ */
+export function contentsByBuild(
+  contents:
+    { opens?: ContainerOpens[] | null; items?: ContainerContent[] | null } | null | undefined,
+) {
+  const items = contents?.items ?? [];
+  return [...(contents?.opens ?? [])]
     .sort((a, b) => b.build - a.build)
     .map((o) => ({
       ...o,
-      items: contents.items
+      items: items
         .filter((i) => i.build === o.build)
         .sort((a, b) => (b.chance ?? -1) - (a.chance ?? -1) || a.itemId - b.itemId),
     }));

@@ -167,6 +167,16 @@ describe('container loot', () => {
     expect(contentsByBuild({ opens: [], items: [] })).toEqual([]);
   });
 
+  it('treats a response without contents (an older server) as empty', () => {
+    expect(contentsByBuild(undefined)).toEqual([]);
+    expect(contentsByBuild(null)).toEqual([]);
+    expect(contentsByBuild({})).toEqual([]);
+    expect(contentsByBuild({ items: [] })).toEqual([]);
+    const opens = [{ build: 69913, opened: 2, copper: 0, avgCopper: 0 }];
+    expect(contentsByBuild({ opens })).toEqual([{ ...opens[0], items: [] }]);
+    expect(contentsByBuild({ opens, items: null })).toEqual([{ ...opens[0], items: [] }]);
+  });
+
   it('formats average quantities with up to 2 decimals', () => {
     expect(formatAvgQuantity(1)).toBe('1');
     expect(formatAvgQuantity(1.3333)).toBe('1.33');

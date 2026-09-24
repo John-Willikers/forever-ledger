@@ -115,10 +115,13 @@ export interface ItemExtra {
     fields: { field: string; from: number | null; to: number | null }[];
   }[];
   dropRates: DropRate[];
-  /** Schema 6: what the item held when opened (empty lists when it never was). */
-  contents: { opens: ContainerOpens[]; items: ContainerContent[] };
-  /** Schema 6: containers the item came out of. */
-  openedFrom: OpenedFrom[];
+  /**
+   * Schema 6: what the item gave when opened, or disenchanted / prospected / milled (empty lists when it never was).
+   * Missing from a server older than schema 6: treat as empty.
+   */
+  contents?: { opens?: ContainerOpens[]; items?: ContainerContent[] } | null;
+  /** Schema 6: items the item came out of, opened or processed (missing from an older server: empty). */
+  openedFrom?: OpenedFrom[] | null;
   vendors: {
     npcId: number;
     npcName: string | null;
