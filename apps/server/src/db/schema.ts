@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  customType,
   index,
   integer,
   jsonb,
@@ -13,6 +14,9 @@ import {
   text,
   timestamp,
 } from 'drizzle-orm/pg-core';
+
+/** Raw bytes (node-postgres reads and writes a Buffer). */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
 
 const tz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 const updatedAt = () => tz('updated_at').notNull().defaultNow();
@@ -591,4 +595,32 @@ export const ingestErrors = pgTable(
     receivedAt: tz('received_at').notNull().defaultNow(),
   },
   (t) => [index('ingest_errors_received_idx').on(t.receivedAt)],
+);
+
+/**
+ * Zone map images (admin uploads, exported with wow.export from the uploader's own client) per uiMapID, drawn under the
+ * panel's map points. `mime`, `width` and `height` come from the image header (server-checked), `build` is the client
+ * build the art came from when the uploader said so.
+ */
+export const zoneMaps = pgTable(
+  'zone_maps',
+  {
+    uiMapId: integer('ui_map_id').primaryKey(),
+    name: text('name'),
+    mime: text('mime', { enum: ['image/png', 'image/webp', 'image/jpeg'] }).notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    bytes: bytea('bytes').notNull(),
+    sha256: text('sha256').notNull(),
+    build: integer('build'),
+    uploadedBy: integer('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+    uploadedAt: tz('uploaded_at').notNull().defaultNow(),
+  },
+  (t) => [
+    check('zone_maps_mime_check', sql`${t.mime} in ('image/png', 'image/webp', 'image/jpeg')`),
+    check(
+      'zone_maps_size_check',
+      sql`${t.width} between 1 and 4096 and ${t.height} between 1 and 4096`,
+    ),
+  ],
 );

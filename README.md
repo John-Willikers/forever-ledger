@@ -252,6 +252,10 @@ Admin API (admin session; writes need `x-csrf-token`):
 | `POST /admin/api/tokens/:id/revoke`, `…/:id/owner`        | Revoke (idempotent); set owner `{ userId \| null }`                                               |
 | `POST /admin/api/tokens/:id/read`                         | Read scope `{ canRead: boolean }` (all data via the API/export)                                   |
 | `GET /admin/api/users`, `POST /admin/api/users/:id/role`  | Users with token counts; `{ role }` (409 for the last admin)                                      |
+| `GET /admin/api/maps`, `GET /admin/api/map-images`        | uiMapIDs with points (zone name, counts, image metadata); uploaded maps only                      |
+| `PUT /admin/api/maps/:uiMapId?build=&name=`               | Upload a zone map (raw PNG/WebP/JPEG body, ≤ 8 MB, ≤ 4096 px per side; see "Zone maps" below)     |
+| `DELETE /admin/api/maps/:uiMapId`                         | Remove an uploaded map                                                                            |
+| `GET /admin/maps/:uiMapId`                                | The image (admin session; `ETag` = sha256, `private, max-age=86400`)                              |
 
 Deploy: `pnpm install && pnpm build` (builds `apps/admin/dist` too), fill `deploy/.env`, copy the Nginx site
 (`deploy/nginx/ledger.willikers.dev.conf`) **and** its `log_format` snippet (`deploy/nginx/ledger-noquery-log.conf` →
