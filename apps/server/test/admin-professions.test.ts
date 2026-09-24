@@ -706,6 +706,8 @@ describe('admin professions, vendors and trainers (real Postgres)', () => {
               { amount: 3, itemId: 250001, name: 'Mark of the Barrens' },
               { amount: 25, currencyId: 1901, name: 'Honor Points' },
             ],
+            // Learned from it (recipes_learned via item:2598), and named "Pattern: Red Linen Robe".
+            teaches: { recipeId: 2389, name: 'Red Linen Robe' },
           },
           expect.objectContaining({
             itemId: 2320,
@@ -714,6 +716,7 @@ describe('admin professions, vendors and trainers (real Postgres)', () => {
             stack: 5,
             extendedCost: false,
             costs: null,
+            teaches: null,
           }),
         ],
       });
@@ -792,8 +795,14 @@ describe('admin professions, vendors and trainers (real Postgres)', () => {
           level: 5,
           itemId: 2568,
           itemName: 'Brown Linen Vest',
+          recipeId: 2393,
         },
-        expect.objectContaining({ name: 'Red Linen Robe', type: 'unavailable', itemId: 2572 }),
+        expect.objectContaining({
+          name: 'Red Linen Robe',
+          type: 'unavailable',
+          itemId: 2572,
+          recipeId: 2389,
+        }),
         {
           name: 'Journeyman Tailoring',
           type: 'used',
@@ -803,6 +812,7 @@ describe('admin professions, vendors and trainers (real Postgres)', () => {
           level: 10,
           itemId: null,
           itemName: null,
+          recipeId: null,
         },
       ]);
       expect((await json('/admin/api/trainers/1241')).complete).toBe(false);
