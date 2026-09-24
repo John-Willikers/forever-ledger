@@ -10,10 +10,12 @@ import type { ReadGuard } from './analysis.js';
 import { buildFilter } from './analysis.js';
 import { iso, rows } from './adminData.js';
 import { badRequest, idParam, textParam } from './shared.js';
-import { jarr, jint, jlen, jtext } from './sqlJson.js';
+import { jarr, jint, jlen, jnum, jtext } from './sqlJson.js';
 
 /** Longest zone name accepted with `?name=`. */
 export const MAP_NAME_MAX = 100;
+/** Most points one map's point list returns. */
+export const MAP_POINTS_MAX = 5000;
 /** Browsers keep a served map a day; the panel adds `?v=<sha256>` so a new upload shows at once. */
 const IMAGE_CACHE = 'private, max-age=86400';
 
@@ -190,6 +192,64 @@ export async function registerAdminMapsRoutes(
         sha256: r.sha256,
       })),
     };
+  });
+
+  /**
+   * The points our data has on one map (for the upload preview's alignment check): node spots (one per node type and
+   * spot, weight = sessions that recorded it), quest givers (detail/accept) and enders (complete) at the NPC's
+   * location (weight = observations), vendors and trainers at their newest location. Coordinates 0–100; malformed
+   * uploads are skipped. At most MAP_POINTS_MAX points.
+   */
+  app.get('/admin/api/maps/:uiMapId/points', { preHandler: requireAdmin }, async (req) => {
+    const uiMapId = idParam((req.params as { uiMapId: string }).uiMapId, 'map');
+    const xy = jnum;
+    const points = await rows<{
+      x: number;
+      y: number;
+      kind: string;
+      label: string;
+      weight: number;
+    }>(
+      db,
+      sql`select x, y, kind, label, weight from (
+        select x, y, 'node' as kind, label, count(*)::int as weight from (
+          select ${xy(sql`p.value->0`)} as x, ${xy(sql`p.value->1`)} as y,
+                 coalesce(nullif(n.name, ''), 'Object ' || n.object_id) as label
+          from nodes n,
+               jsonb_array_elements(${jarr(sql`n.spots`)}) s,
+               jsonb_array_elements(${jarr(sql`s.value->'points'`)}) p
+          where ${jint(sql`s.value->'mapId'`)} = ${uiMapId}
+        ) spots
+        group by x, y, label
+        union all
+        select x, y, kind, label, count(*)::int from (
+          select ${xy(sql`npc_loc->'x'`)} as x, ${xy(sql`npc_loc->'y'`)} as y,
+                 case when stage = 'complete' then 'ender' else 'giver' end as kind,
+                 coalesce(nullif(npc_name, ''), 'NPC ' || npc_id, 'NPC') as label
+          from quest_observations
+          where stage in ('detail', 'accept', 'complete') and ${jint(sql`npc_loc->'mapID'`)} = ${uiMapId}
+        ) q
+        group by x, y, kind, label
+        union all
+        select x, y, kind, label, 1 from (
+          select distinct on (kind, npc_id) kind, npc_id, x, y, label from (
+            select 'vendor' as kind, npc_id, seen_at, ${xy(sql`loc->'x'`)} as x, ${xy(sql`loc->'y'`)} as y,
+                   coalesce(nullif(name, ''), 'NPC ' || npc_id) as label, ${jint(sql`loc->'mapID'`)} as map_id
+            from vendors
+            union all
+            select 'trainer', npc_id, seen_at, ${xy(sql`loc->'x'`)}, ${xy(sql`loc->'y'`)},
+                   coalesce(nullif(name, ''), 'NPC ' || npc_id), ${jint(sql`loc->'mapID'`)}
+            from trainers
+          ) v
+          where map_id = ${uiMapId}
+          order by kind, npc_id, seen_at desc
+        ) npcs
+      ) all_points
+      where x between 0 and 100 and y between 0 and 100
+      order by kind, label, x, y
+      limit ${MAP_POINTS_MAX}`,
+    );
+    return { uiMapId, points };
   });
 
   // Uploads: the raw image is the body. In their own scope every content type reads as a Buffer (up to 8 MB), so an

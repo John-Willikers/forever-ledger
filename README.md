@@ -241,21 +241,22 @@ API samples with the addon's `ForeverLedger.errors` / `fieldMisses` reports firs
 tokens: mint with an owner and an optional "can read", assign owners, grant or take back read access, revoke).
 Admin API (admin session; writes need `x-csrf-token`):
 
-| Route                                                     | What                                                                                              |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `GET /admin/api/overview`                                 | KPIs, records by kind, builds, versions in use, 7-day health                                      |
-| `GET /admin/api/uploads?limit=&before=`                   | Recent uploads: token, owner, versions, counts per kind (no data)                                 |
-| `GET /admin/api/uploads/hourly?days=`                     | Uploads per hour (America/Chicago), empty hours included, ≤ 31 d                                  |
-| `GET /admin/api/characters`                               | Characters with the owners of the tokens that uploaded them                                       |
-| `GET /admin/api/api-samples`, `…/api-samples/:api?build=` | Client API samples (list without JSON; one sample)                                                |
-| `GET /admin/api/tokens`, `POST /admin/api/tokens`         | List (with `canRead`); mint `{ label, ownerUserId?, canRead? }` (plaintext in that response only) |
-| `POST /admin/api/tokens/:id/revoke`, `…/:id/owner`        | Revoke (idempotent); set owner `{ userId \| null }`                                               |
-| `POST /admin/api/tokens/:id/read`                         | Read scope `{ canRead: boolean }` (all data via the API/export)                                   |
-| `GET /admin/api/users`, `POST /admin/api/users/:id/role`  | Users with token counts; `{ role }` (409 for the last admin)                                      |
-| `GET /admin/api/maps`, `GET /admin/api/map-images`        | uiMapIDs with points (zone name, counts, image metadata); uploaded maps only                      |
-| `PUT /admin/api/maps/:uiMapId?build=&name=`               | Upload a zone map (raw PNG/WebP/JPEG body, ≤ 8 MB, ≤ 4096 px per side; see "Zone maps" below)     |
-| `DELETE /admin/api/maps/:uiMapId`                         | Remove an uploaded map                                                                            |
-| `GET /admin/maps/:uiMapId`                                | The image (admin session; `ETag` = sha256, `private, max-age=86400`)                              |
+| Route                                                     | What                                                                                               |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET /admin/api/overview`                                 | KPIs, records by kind, builds, versions in use, 7-day health                                       |
+| `GET /admin/api/uploads?limit=&before=`                   | Recent uploads: token, owner, versions, counts per kind (no data)                                  |
+| `GET /admin/api/uploads/hourly?days=`                     | Uploads per hour (America/Chicago), empty hours included, ≤ 31 d                                   |
+| `GET /admin/api/characters`                               | Characters with the owners of the tokens that uploaded them                                        |
+| `GET /admin/api/api-samples`, `…/api-samples/:api?build=` | Client API samples (list without JSON; one sample)                                                 |
+| `GET /admin/api/tokens`, `POST /admin/api/tokens`         | List (with `canRead`); mint `{ label, ownerUserId?, canRead? }` (plaintext in that response only)  |
+| `POST /admin/api/tokens/:id/revoke`, `…/:id/owner`        | Revoke (idempotent); set owner `{ userId \| null }`                                                |
+| `POST /admin/api/tokens/:id/read`                         | Read scope `{ canRead: boolean }` (all data via the API/export)                                    |
+| `GET /admin/api/users`, `POST /admin/api/users/:id/role`  | Users with token counts; `{ role }` (409 for the last admin)                                       |
+| `GET /admin/api/maps`, `GET /admin/api/map-images`        | uiMapIDs with points (zone name, counts, image metadata); uploaded maps only                       |
+| `PUT /admin/api/maps/:uiMapId?build=&name=`               | Upload a zone map (raw PNG/WebP/JPEG body, ≤ 8 MB, ≤ 4096 px per side; see "Zone maps" below)      |
+| `DELETE /admin/api/maps/:uiMapId`                         | Remove an uploaded map                                                                             |
+| `GET /admin/api/maps/:uiMapId/points`                     | Our points on one map (node spots, quest givers/enders, vendors, trainers), for the upload preview |
+| `GET /admin/maps/:uiMapId`                                | The image (admin session; `ETag` = sha256, `private, max-age=86400`)                               |
 
 Deploy: `pnpm install && pnpm build` (builds `apps/admin/dist` too), fill `deploy/.env`, copy the Nginx site
 (`deploy/nginx/ledger.willikers.dev.conf`) **and** its `log_format` snippet (`deploy/nginx/ledger-noquery-log.conf` →

@@ -168,6 +168,56 @@ describe('zone maps (real Postgres)', () => {
     });
   });
 
+  describe('points', () => {
+    interface Point {
+      x: number;
+      y: number;
+      kind: string;
+      label: string;
+      weight: number;
+    }
+    const pointsOf = async (id: number) => {
+      const res = await get(`/admin/api/maps/${id}/points`, admin);
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      return (res.json() as { uiMapId: number; points: Point[] }).points;
+    };
+
+    it('needs an admin session and a good id', async () => {
+      expect((await get('/admin/api/maps/1429/points')).statusCode).toBe(401);
+      expect((await get('/admin/api/maps/1429/points', member)).statusCode).toBe(403);
+      expect((await get('/admin/api/maps/abc/points', admin)).statusCode).toBe(400);
+      expect((await get('/admin/api/maps/0/points', admin)).statusCode).toBe(400);
+    });
+
+    it('returns node spots, quest givers/enders and vendors/trainers of one map', async () => {
+      const points = await pointsOf(1429);
+      const kinds = new Set(points.map((p) => p.kind));
+      expect([...kinds].sort()).toEqual(['ender', 'giver', 'node', 'trainer', 'vendor']);
+      for (const p of points) {
+        expect(p.x).toBeGreaterThanOrEqual(0);
+        expect(p.x).toBeLessThanOrEqual(100);
+        expect(p.y).toBeGreaterThanOrEqual(0);
+        expect(p.y).toBeLessThanOrEqual(100);
+        expect(p.weight).toBeGreaterThanOrEqual(1);
+        expect(typeof p.label).toBe('string');
+      }
+      // Node spots: one point per node type and spot, weighted by the sessions that recorded it (6 recorded spots).
+      const nodes = points.filter((p) => p.kind === 'node');
+      expect(nodes.reduce((n, p) => n + p.weight, 0)).toBe(6);
+      expect(points.find((p) => p.kind === 'giver')).toMatchObject({ x: 42.1, y: 65.9 });
+      expect(points.filter((p) => p.kind === 'trainer')).toHaveLength(1);
+    });
+
+    it('skips malformed spots and labels unnamed nodes by object id', async () => {
+      expect(await pointsOf(1411)).toEqual([
+        { x: 43.2, y: 68.5, kind: 'node', label: 'Object 9003', weight: 1 },
+        { x: 50, y: 50, kind: 'node', label: 'Object 9003', weight: 1 },
+      ]);
+      expect(await pointsOf(424242)).toEqual([]);
+    });
+  });
+
   describe('upload, serve, delete', () => {
     const formats = [
       ['image/png', png(1002, 668, (x, y) => [x % 256, y % 256, 90])],
