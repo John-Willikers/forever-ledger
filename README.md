@@ -153,7 +153,7 @@ pnpm --filter @forever-ledger/server token:list
 pnpm --filter @forever-ledger/server token:revoke 3
 ```
 
-API (all but health need `Authorization: Bearer <token>`):
+API (all but health need `Authorization: Bearer <token>`; the read routes also take an admin panel session):
 
 | Route                                            | What                                                                             |
 | ------------------------------------------------ | -------------------------------------------------------------------------------- |
@@ -176,6 +176,59 @@ same name and rank. The profession routes fold child lines into their base: `?sk
 the whole profession, recipes carry `profession: { skillLineId, name }` of the base next to their own `skillLineId`,
 gathering and trainer skill lines are the base (with `skillLineName`), and a rise recorded on both lines is one
 skill-up.
+
+## 🔐 Admin panel (ledger.willikers.dev/admin/)
+
+A React app served by the API at `/admin/`, behind Battle.net login. Admin-only for now: everyone else who logs in
+sees "not authorized yet". Plan: [`project-plans/forever-ledger-admin-panel.md`](project-plans/forever-ledger-admin-panel.md).
+
+**Register the Battle.net client** (once):
+
+1. Your Battle.net account needs an authenticator (Blizzard requires one to create API clients).
+2. [develop.battle.net](https://develop.battle.net/) → **API Access** → **Create Client**.
+3. Redirect URL: `https://ledger.willikers.dev/admin/auth/callback` (must match exactly). Service URL: optional.
+4. Put the client id and secret in `deploy/.env` (never in the repo):
+
+```bash
+BNET_CLIENT_ID=...
+BNET_CLIENT_SECRET=...
+ADMIN_BATTLETAGS="JohnWilliker#1292"      # quoted (# starts a comment); exact, case-sensitive; comma-separated
+COOKIE_SECRET=...                         # output of `openssl rand -hex 32`; signs cookies and CSRF tokens
+```
+
+| Variable             | Default                                            | What                                                                |
+| -------------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| `BNET_CLIENT_ID`     | unset → `/admin/auth/login` answers 503            | Battle.net OAuth client                                             |
+| `BNET_CLIENT_SECRET` | required with `BNET_CLIENT_ID`                     | Battle.net OAuth secret                                             |
+| `BNET_REDIRECT_URI`  | `https://ledger.willikers.dev/admin/auth/callback` | Must match the client's redirect URL                                |
+| `ADMIN_BATTLETAGS`   | empty                                              | BattleTags made admin when they log in                              |
+| `COOKIE_SECRET`      | required with `BNET_CLIENT_ID` (≥ 32 chars)        | Signs the session/state cookies and derives CSRF tokens             |
+| `COOKIE_INSECURE`    | off                                                | `1` drops the cookies' `Secure` flag — local http dev only          |
+| `ADMIN_DIST_DIR`     | `apps/admin/dist`                                  | Built SPA; `/admin/` answers 503 "admin panel not built" if missing |
+
+How it works: `/admin/auth/login` → Battle.net (`scope=openid`, signed `state` cookie) → `/admin/auth/callback`
+exchanges the code, reads the account id + BattleTag, and starts a 7-day sliding session (`fl_session` cookie:
+httpOnly, Secure, SameSite=Lax; the database keeps only its sha256). A listed BattleTag becomes `admin` on login;
+after that the account id pins the role, so a BattleTag change keeps it and `ADMIN_BATTLETAGS` can be emptied.
+The panel reads the `/v1/*` routes with its session and calls `/admin/api/*` (non-GET requests send the
+`x-csrf-token` from `/admin/auth/me`). Nginx proxies `/admin/` to the API like `/v1/`.
+
+Deploy: `pnpm install && pnpm build` (builds `apps/admin/dist` too), fill `deploy/.env`, copy the Nginx site
+(`deploy/nginx/ledger.willikers.dev.conf`), `sudo nginx -t && sudo systemctl reload nginx`,
+`pm2 restart forever-ledger-api --update-env`. The first login creates your user as admin.
+
+Local development:
+
+```bash
+# API on 127.0.0.1:3410 against a local Postgres; http, so no Secure cookies
+DATABASE_URL=postgres://... COOKIE_INSECURE=1 COOKIE_SECRET=$(openssl rand -hex 32) \
+  pnpm --filter @forever-ledger/server dev
+pnpm --filter @forever-ledger/admin dev    # Vite on http://localhost:5173/admin/, proxies /v1, /admin/api, /admin/auth
+```
+
+To log in locally, add `http://localhost:5173/admin/auth/callback` as a second redirect URL on the Battle.net
+client (if Blizzard accepts it for your client) and start the API with `BNET_CLIENT_ID`, `BNET_CLIENT_SECRET` and
+`BNET_REDIRECT_URI=http://localhost:5173/admin/auth/callback`. `LEDGER_API` points the Vite proxy elsewhere.
 
 ## 🏷️ Releasing
 

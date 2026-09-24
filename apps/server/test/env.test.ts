@@ -55,6 +55,11 @@ describe('readEnv admin settings', () => {
     );
   });
 
+  it('refuses BattleTags without their #number (an unquoted .env value loses it)', () => {
+    expect(() => readEnv({ ...base, ADMIN_BATTLETAGS: 'JohnWilliker' })).toThrow(/quote the value/);
+    expect(() => readEnv({ ...base, ADMIN_BATTLETAGS: 'A#1, B' })).toThrow(/"B"/);
+  });
+
   it('refuses a short COOKIE_SECRET', () => {
     expect(() => readEnv({ ...base, COOKIE_SECRET: 'short' })).toThrow(/COOKIE_SECRET/);
   });

@@ -42,13 +42,22 @@ function readAdminEnv(env: NodeJS.ProcessEnv) {
       redirectUri: env.BNET_REDIRECT_URI || DEFAULT_BNET_REDIRECT_URI,
     };
   }
+  const adminBattletags = (env.ADMIN_BATTLETAGS ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  for (const tag of adminBattletags) {
+    // An unquoted `Name#1234` in a .env file loses everything from `#` on (read as a comment).
+    if (!/^[^#\s]+#\d+$/.test(tag)) {
+      throw new Error(
+        `ADMIN_BATTLETAGS entry "${tag}" is not a BattleTag like Name#1234 (quote the value in deploy/.env)`,
+      );
+    }
+  }
   return {
     bnet,
     /** Exact BattleTags (case-sensitive, with #number) made admin on login. */
-    adminBattletags: (env.ADMIN_BATTLETAGS ?? '')
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean),
+    adminBattletags,
     cookieSecret,
     /** Local http development only: drops the Secure flag from cookies. */
     cookieInsecure: env.COOKIE_INSECURE === '1' || env.COOKIE_INSECURE === 'true',
