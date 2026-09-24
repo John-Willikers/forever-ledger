@@ -9,7 +9,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: { '/v1': api, '/admin/api': api, '/admin/auth': api },
+    // /admin/maps/<id> are the zone map images; /admin/maps itself is the Maps page (the SPA).
+    proxy: { '/v1': api, '/admin/api': api, '/admin/auth': api, '^/admin/maps/.+': api },
   },
   build: {
     outDir: 'dist',

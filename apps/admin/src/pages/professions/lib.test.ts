@@ -5,6 +5,7 @@ import {
   CATEGORICAL,
   difficultyBands,
   gatheringScatterOption,
+  gatherPoints,
   nodeLabel,
   percent,
   skillRankOption,
@@ -143,6 +144,14 @@ describe('gathering map', () => {
       },
     ],
   };
+
+  it('turns spots into zone map points, colored per node type (object id order), sized by opens', () => {
+    expect(gatherPoints(map)).toEqual([
+      { x: 50, y: 60, kind: 'Fishing', label: 'Fishing', weight: 2 },
+      { x: 45.1, y: 33.2, kind: 'Copper Vein', label: 'Copper Vein', weight: 1.5 },
+      { x: 46, y: 34.5, kind: 'Copper Vein', label: 'Copper Vein', weight: 1.5 },
+    ]);
+  });
 
   it('spotSize grows with opens and stays readable', () => {
     expect(spotSize(0)).toBe(8);

@@ -6,14 +6,15 @@ import { Chart, useChartPalette } from '../../components/Chart';
 import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Empty, QueryState } from '../../components/State';
+import { ZoneMap } from '../../components/ZoneMap';
 import { formatNumber, plural } from '../../lib/format';
 import './echarts';
-import { gatheringScatterOption, lootLine, nodeLabel, zoneLabel } from './lib';
+import { gatheringScatterOption, gatherPoints, lootLine, nodeLabel, zoneLabel } from './lib';
 import type { GatheringMap, GatheringNode, GatherMap } from './types';
 
 const numberFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 
-/** Gathering: node spots per zone on the map grid, then yield per harvest and the lowest rank seen per node type. */
+/** Gathering: node spots per zone on the zone map (or the grid), then yield per harvest and the lowest rank seen per node type. */
 export function GatheringCard() {
   const [build, setBuild] = useState<number | null>(null);
   const [mapId, setMapId] = useState<number | null>(null);
@@ -54,7 +55,7 @@ export function GatheringCard() {
           m.maps.length === 0 ? (
             <Empty>No gathering spots recorded{build === null ? '' : ` in build ${build}`}.</Empty>
           ) : (
-            <ZoneMap
+            <GatherZone
               maps={m.maps}
               current={m.maps.find((z) => z.mapId === mapId) ?? m.maps[0]!}
               onPick={setMapId}
@@ -78,7 +79,7 @@ export function GatheringCard() {
   );
 }
 
-function ZoneMap({
+function GatherZone({
   maps,
   current,
   onPick,
@@ -89,6 +90,8 @@ function ZoneMap({
 }) {
   const palette = useChartPalette();
   const spots = current.nodes.reduce((n, x) => n + x.spots.length, 0);
+  const points = gatherPoints(current);
+  const label = `Gathering spots in ${zoneLabel(current)}: ${plural(spots, 'spot')} of ${plural(current.nodes.length, 'node type')}`;
   return (
     <>
       <div className="filters">
@@ -104,10 +107,15 @@ function ZoneMap({
         </label>
       </div>
       <div className="gather-map">
-        <Chart
-          option={gatheringScatterOption(current, palette)}
-          height={440}
-          label={`Gathering spots in ${zoneLabel(current)}: ${plural(spots, 'spot')} of ${plural(current.nodes.length, 'node type')}`}
+        <ZoneMap
+          key={current.mapId}
+          uiMapId={current.mapId}
+          points={points}
+          label={label}
+          weightUnit="opens"
+          fallback={
+            <Chart option={gatheringScatterOption(current, palette)} height={440} label={label} />
+          }
         />
       </div>
       <p className="muted small">

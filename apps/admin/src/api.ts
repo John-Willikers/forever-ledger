@@ -71,6 +71,30 @@ export async function postJson<T>(
   return res.status === 204 ? null : ((await res.json()) as T);
 }
 
+/**
+ * PUT/DELETE (or any non-GET) with the CSRF header and an optional raw body (a File for uploads, sent as-is with its
+ * content type); resolves to the JSON body, or null for 204.
+ */
+export async function sendWithCsrf<T>(
+  method: 'PUT' | 'DELETE' | 'POST',
+  path: string,
+  csrf: string | null,
+  body?: Blob,
+): Promise<T | null> {
+  const res = await fetch(path, {
+    method,
+    credentials: 'same-origin',
+    headers: {
+      accept: 'application/json',
+      ...(csrf ? { 'x-csrf-token': csrf } : {}),
+      ...(body ? { 'content-type': body.type || 'application/octet-stream' } : {}),
+    },
+    body,
+  });
+  if (!res.ok) throw await errorOf(res);
+  return res.status === 204 ? null : ((await res.json()) as T);
+}
+
 export const ME_KEY = ['me'] as const;
 
 export function useMe() {

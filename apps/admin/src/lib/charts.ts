@@ -29,6 +29,19 @@ export const CHART_PALETTES: Readonly<Record<'light' | 'dark', ChartPalette>> = 
   },
 };
 
+/**
+ * Categorical series colors (fixed order, never cycled), light and dark steps validated for CVD separation on the
+ * panel's surfaces.
+ */
+export const SERIES_COLORS: Readonly<Record<'light' | 'dark', readonly string[]>> = {
+  light: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'],
+  dark: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
+};
+
+/** 'dark' for the dark chart palette, else 'light'. */
+export const paletteMode = (p: ChartPalette): 'light' | 'dark' =>
+  p.surface === CHART_PALETTES.dark.surface ? 'dark' : 'light';
+
 const tooltipStyle = (p: ChartPalette) => ({
   backgroundColor: p.surface,
   borderColor: p.grid,

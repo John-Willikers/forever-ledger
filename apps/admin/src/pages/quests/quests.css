@@ -111,7 +111,7 @@ table.data tr.row-mismatch td {
   min-width: 0;
 }
 
-.loc-plot figcaption {
+.loc-plot > figcaption {
   font-weight: 600;
   overflow-wrap: anywhere;
 }

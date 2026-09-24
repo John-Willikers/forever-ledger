@@ -33,6 +33,7 @@ export const NAV: readonly NavItem[] = [
     summary: 'Prices, recipe vendors, trainer catalogs.',
   },
   { path: 'builds', label: 'Builds', phase: 6, summary: 'What changed between client builds.' },
+  { path: 'maps', label: 'Maps', phase: 6, summary: 'Zone map art under the points.' },
   { path: 'health', label: 'Health', phase: 2, summary: 'Diagnostics, ingest errors, samples.' },
   { path: 'access', label: 'Access', phase: 2, summary: 'Users and upload tokens.' },
 ];

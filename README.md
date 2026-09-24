@@ -277,6 +277,27 @@ To log in locally, add `http://localhost:5173/admin/auth/callback` as a second r
 client (if Blizzard accepts it for your client) and start the API with `BNET_CLIENT_ID`, `BNET_CLIENT_SECRET` and
 `BNET_REDIRECT_URI=http://localhost:5173/admin/auth/callback`. `LEDGER_API` points the Vite proxy elsewhere.
 
+### 🗺️ Zone maps
+
+The panel draws our points (gathering spots, quest givers and enders, vendors, trainers) on the real in-game zone
+maps. The map art is exported **from your own game client** with [wow.export](https://github.com/Kruithne/wow.export)
+and uploaded by an admin on the **Maps** page; nothing changes for the tray app or the addon. Plan:
+[`project-plans/forever-ledger-zone-maps.md`](project-plans/forever-ledger-zone-maps.md).
+
+1. Download wow.export (github.com/Kruithne/wow.export/releases) on the gaming PC.
+2. Open it → **Open Local Installation** → pick the WoW: Forever folder → choose the `wow_classic_beta` 1.60.1 build.
+3. **Zones** tab → pick the zone (e.g. Durotar, The Barrens) → export as **PNG** (or WebP) at full size (1002×668).
+4. Admin panel → **Maps** → **Upload** on that zone's row → check the dots line up in the preview → Save.
+
+If a patch changes a zone's art, export it again and replace the upload (the client build is recorded for reference).
+How it lines up: the addon stores `C_Map.GetPlayerMapPosition` × 100 per uiMapID and the game draws a pin at canvas
+width · x, canvas height · y, so the panel overlays points at x % / y % of the image (an SVG with `viewBox 0 0 100 100`
+stretched over it). A map that isn't ≈ 1002:668 gets a warning. Uploads are PNG, WebP or JPEG only (checked by magic
+bytes, never SVG), ≤ 8 MB and ≤ 4096 px per side, stored in Postgres (`zone_maps`, so backups cover them) and served
+only to admin sessions. Views without an uploaded map keep the plain 0–100 grid with a link to the Maps page. The map
+art is Blizzard's: it stays in this private, login-only panel (personal, non-commercial use); never hotlink third-party
+map images. Deploy note: the Nginx site allows 8 MB bodies on `/admin/api/maps/` only (the site default is 6 MB).
+
 ## 🏷️ Releasing
 
 Addon (goes live only when published on the server):

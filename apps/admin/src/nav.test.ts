@@ -12,6 +12,7 @@ describe('NAV', () => {
       'Professions',
       'Vendors & trainers',
       'Builds',
+      'Maps',
       'Health',
       'Access',
     ]);

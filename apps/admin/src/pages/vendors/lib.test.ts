@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatLocation, listPath, skillReq, stockLabel, unitPrice } from './lib';
+import { formatLocation, listPath, npcMapPoint, skillReq, stockLabel, unitPrice } from './lib';
 
 describe('vendors & trainers helpers', () => {
   it('formats a location as zone · subzone (x, y)', () => {
@@ -43,5 +43,18 @@ describe('vendors & trainers helpers', () => {
     expect(
       listPath('trainers', { search: ' bolero & co ', title: 'Tailoring', foreverOnly: true }),
     ).toBe('/admin/api/trainers?limit=500&search=bolero+%26+co&title=Tailoring&foreverOnly=true');
+  });
+});
+
+describe('npcMapPoint', () => {
+  it('places an NPC on its uiMapID, or nothing without a map id and coordinates', () => {
+    const loc = { zone: 'Durotar', subzone: null, mapId: 1411, x: 43.2, y: 68.5 };
+    expect(npcMapPoint(loc, 'vendor', 'Duokna')).toEqual({
+      uiMapId: 1411,
+      point: { x: 43.2, y: 68.5, kind: 'vendor', label: 'Duokna' },
+    });
+    expect(npcMapPoint({ ...loc, mapId: null }, 'trainer', 'T')).toBeNull();
+    expect(npcMapPoint({ ...loc, x: null }, 'trainer', 'T')).toBeNull();
+    expect(npcMapPoint(null, 'trainer', 'T')).toBeNull();
   });
 });

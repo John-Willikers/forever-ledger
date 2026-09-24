@@ -1,4 +1,5 @@
 // Pure helpers for the Vendors & trainers page.
+import type { MapPoint } from '../../lib/zoneMap';
 import type { Location } from './types';
 
 const DASH = '—';
@@ -42,4 +43,14 @@ export function listPath(kind: 'vendors' | 'trainers', f: ListFilters) {
   if (f.title) q.set('title', f.title);
   if (f.foreverOnly) q.set('foreverOnly', 'true');
   return `/admin/api/${kind}?${q.toString()}`;
+}
+
+/** An NPC's location as one zone map point (with its uiMapID), or null without a map id and coordinates. */
+export function npcMapPoint(
+  loc: Location | null,
+  kind: 'vendor' | 'trainer',
+  label: string,
+): { uiMapId: number; point: MapPoint } | null {
+  if (!loc || loc.mapId === null || loc.x === null || loc.y === null) return null;
+  return { uiMapId: loc.mapId, point: { x: loc.x, y: loc.y, kind, label } };
 }

@@ -899,3 +899,131 @@ table.data td.changed {
 .mob-name {
   font-weight: 550;
 }
+
+/* ---- zone maps (components/ZoneMap.tsx) ---- */
+
+.zone-map {
+  margin: 0;
+  max-width: 44rem;
+}
+
+.zone-map-box {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+/* Markers at the map's edge and their tooltips may reach past the box. */
+.zone-map-box svg {
+  overflow: visible;
+}
+
+.zone-map-box.pending {
+  max-width: 44rem;
+}
+
+.zone-map-box img,
+.zone-map-box svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.zone-map-box img {
+  user-select: none;
+  border-radius: calc(var(--radius) - 1px);
+}
+
+.zone-map-grid line {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.zone-map-dot {
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+.zone-map-tip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  max-width: 18rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 1;
+}
+
+.zone-map-tip.left {
+  transform: translate(calc(-100% + 12px), calc(-100% - 12px));
+}
+
+.zone-map-tip.below {
+  transform: translate(-50%, 12px);
+}
+
+.zone-map-tip.left.below {
+  transform: translate(calc(-100% + 12px), 12px);
+}
+
+.zone-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+
+.zone-map-legend .swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+  vertical-align: -0.05rem;
+}
+
+.zone-map figcaption {
+  margin-top: 0.25rem;
+}
+
+.zone-map-fallback > p {
+  margin: 0.25rem 0 0;
+}
+
+.file-pick {
+  display: block;
+  margin-top: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.howto {
+  margin: 0 0 0.5rem;
+  padding-left: 1.4rem;
+}
+
+.howto li + li {
+  margin-top: 0.25rem;
+}
+
+.npc-map {
+  margin: 0 0 0.75rem;
+  max-width: 32rem;
+}
+
+.npc-map > summary {
+  cursor: pointer;
+  margin-bottom: 0.4rem;
+}
