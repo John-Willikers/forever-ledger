@@ -24,6 +24,14 @@ const HealthPage = lazy(() =>
 const AccessPage = lazy(() =>
   import('./pages/AccessPage').then((m) => ({ default: m.AccessPage })),
 );
+const QuestsPage = lazy(() =>
+  import('./pages/quests/QuestsPage').then((m) => ({ default: m.QuestsPage })),
+);
+const CharacterDetailPage = lazy(() =>
+  import('./pages/characters/CharacterDetailPage').then((m) => ({
+    default: m.CharacterDetailPage,
+  })),
+);
 
 /** Pages that have shipped; the rest show their placeholder until their phase lands. */
 const PAGES: Readonly<Record<string, () => ReactElement>> = {
@@ -31,6 +39,7 @@ const PAGES: Readonly<Record<string, () => ReactElement>> = {
   characters: () => <CharactersPage />,
   health: () => <HealthPage />,
   access: () => <AccessPage />,
+  quests: () => <QuestsPage />,
 };
 
 function pageFor(item: NavItem) {
@@ -59,6 +68,14 @@ const router = createBrowserRouter(
             ? { index: true, element: pageFor(item) }
             : { path: item.path, element: pageFor(item) },
         ),
+        {
+          path: 'characters/:key',
+          element: (
+            <Suspense fallback={<Loading />}>
+              <CharacterDetailPage />
+            </Suspense>
+          ),
+        },
         { path: '*', element: <NotFound /> },
       ],
     },
