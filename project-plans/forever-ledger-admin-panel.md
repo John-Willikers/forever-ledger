@@ -27,7 +27,11 @@ Research facts that shape the design (sources: community.developer.battle.net gu
 
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/Chicago.
 
-- 🟡 1 🔐 Auth + shell
+- ✅ 1 🔐 Auth + shell — 2026-09-23 20:22 — `25e2e4f` server, `f25a671` admin shell, `d626e69` README (branch
+  `feat/admin-auth-shell`). Migration 0008; Battle.net login + 7-day sliding sessions + CSRF; `requireReader` on
+  every `/v1` read (manifest/ingest stay bearer-only); `/admin/api/ping` (GET + POST as the CSRF probe); SPA served
+  at `/admin/` (503 until built). Notes: `ADMIN_BATTLETAGS` must be quoted in `deploy/.env` (unquoted `#` is a
+  comment; the server refuses a tag without `#number`); request logs redact `code`/`state`/tokens in URLs.
 - ⬜ 2 🏠 Overview + Health + Access
 - ⬜ 3 📜 Quests + 🧙 Characters
 - ⬜ 4 🎒 Loot + 🏰 Dungeons
