@@ -253,7 +253,7 @@ const iso = (secs: unknown) => (secs === null ? null : chicagoIso(Number(secs) *
  * are the same for every character, so the newest row of any character names them. Lines never seen in `skills` are
  * not listed: fold with `coalesce(b.base_id, <line>)`.
  */
-const skillBase = sql`skill_base as (
+export const skillBase = sql`skill_base as (
   with lines as (
     select distinct on (skill_line_id) skill_line_id as id, nullif(parent_id, 0) as parent_id, name
     from skills order by skill_line_id, last_seen desc
