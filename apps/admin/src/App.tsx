@@ -42,6 +42,12 @@ const DungeonsPage = lazy(() =>
 const RunPage = lazy(() =>
   import('./pages/dungeons/RunPage').then((m) => ({ default: m.RunPage })),
 );
+const ProfessionsPage = lazy(() =>
+  import('./pages/professions/ProfessionsPage').then((m) => ({ default: m.ProfessionsPage })),
+);
+const VendorsPage = lazy(() =>
+  import('./pages/vendors/VendorsPage').then((m) => ({ default: m.VendorsPage })),
+);
 
 /** Pages that have shipped; the rest show their placeholder until their phase lands. */
 const PAGES: Readonly<Record<string, () => ReactElement>> = {
@@ -52,6 +58,8 @@ const PAGES: Readonly<Record<string, () => ReactElement>> = {
   quests: () => <QuestsPage />,
   loot: () => <LootPage />,
   dungeons: () => <DungeonsPage />,
+  professions: () => <ProfessionsPage />,
+  vendors: () => <VendorsPage />,
 };
 
 /** Detail pages reached from a listing (not in the sidebar). */
