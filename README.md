@@ -225,8 +225,10 @@ again). The account id pins the user, so a BattleTag change keeps the role. `ADM
 grants admin — pinned to the account, not the tag.
 
 Deploy: `pnpm install && pnpm build` (builds `apps/admin/dist` too), fill `deploy/.env`, copy the Nginx site
-(`deploy/nginx/ledger.willikers.dev.conf`), `sudo nginx -t && sudo systemctl reload nginx`,
-`pm2 restart forever-ledger-api --update-env`. The first login creates your user as admin.
+(`deploy/nginx/ledger.willikers.dev.conf`) **and** its `log_format` snippet (`deploy/nginx/ledger-noquery-log.conf` →
+`/etc/nginx/conf.d/`, http level), `sudo nginx -t && sudo systemctl reload nginx`,
+`pm2 restart forever-ledger-api --update-env`. The first login creates your user as admin. Nginx sends HSTS (1 year)
+and logs `/admin/auth/` to `/var/log/nginx/ledger-auth.access.log` by path only (no OAuth codes or states).
 
 Local development:
 
