@@ -11,8 +11,10 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 1 🧩 Addon 0.3.4 (schema 6): container opens + contents, Lua harness tests, synthetic fixtures — 01:36 CDT
   (9c3cdd1; Lua harness 195 passed, +16: `test_containers.lua`, the session-v6 fixture, schema 5 → 6 migration;
   0.3.3 kept in `addon/tests/legacy` still writes session-v5 byte-identical)
-- 🟡 2 📐 Contracts: schema 6 records `containerOpens` + `containerLoot`, normalize, keys, int4 caps
-- 🟡 3 🗄️ Server: migration 0012, ingest upserts, admin item routes (contents / opened from)
+- ✅ 2 📐 Contracts: schema 6 records `containerOpens` + `containerLoot`, normalize, keys, int4 caps — 01:43 CDT
+  (e0acd7c, with the uploader and the server ingest half of phase 3; contracts 116 tests, uploader 153)
+- 🟡 3 🗄️ Server: migration 0012, ingest upserts, admin item routes (contents / opened from) — ingest in e0acd7c
+  (named PKs `container_opens_pk` / `container_loot_pk`: generated names pass Postgres' 63-byte limit)
 - ⬜ 4 🖥️ Admin UI: item page "Contents" (for containers) and "Opened from" (for their loot)
 - ⬜ 5 🔍 Review + `pnpm check` + CI green → merge
 - ⬜ 6 🚀 Rollout: server deploy (backup first) → tag `v0.1.5` → **owner confirms the App card shows 0.1.5** → tag
