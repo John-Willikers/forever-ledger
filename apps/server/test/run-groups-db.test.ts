@@ -1,10 +1,12 @@
 // Run groups against a real Postgres: two characters of one party upload the same Wailing Caverns run with their own
 // tokens (the live shape that showed up twice), ingest groups them, the reads count the group once and the run detail
-// merges both perspectives. Also the startup backfill for runs stored before migration 0010.
+// merges both perspectives. Also the startup backfill for runs stored before migration 0010, concurrent uploads, and
+// the search's round cap.
 import type { Run, UploadBatch } from '@forever-ledger/contracts';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mintToken } from '../src/index.js';
-import { backfillRunGroups } from '../src/runGroups.js';
+import { RUN_GROUPS_LOCK } from '../src/locks.js';
+import { backfillRunGroups, regroupRuns } from '../src/runGroups.js';
 import { createSession } from '../src/sessions.js';
 import { batchFromFixture, startServer } from './helpers.js';
 
@@ -19,6 +21,8 @@ const SAM = 'Sam Willikers-Classic Beta PvE';
 const VIC = 'Vic Vinny-Classic Beta PvE 2';
 const SAM_RUN = `${SAM}-${WC}-${T0}`;
 const VIC_RUN = `${VIC}-${WC}-${T0 + 1}`;
+/** Vic entering one second before Sam: the group is then named after Vic's run. */
+const VIC_EARLY = `${VIC}-${WC}-${T0 - 1}`;
 
 const BOSSES = [
   'Lady Anacondra',
@@ -110,15 +114,52 @@ function batch(who: 'sam' | 'vic', patch: Partial<Run> = {}): UploadBatch {
   };
 }
 
+/** Only the character and the run: a batch that shares no rows with another member's (not even a build row). */
+function minimalBatch(who: 'sam' | 'vic', patch: Partial<Run> = {}): UploadBatch {
+  const b = batch(who, patch);
+  const run = b.records.runs[0]!;
+  const empty = Object.fromEntries(Object.keys(b.records).map((k) => [k, []]));
+  return {
+    ...b,
+    meta: { ...b.meta, build: run.build },
+    records: { ...empty, characters: b.records.characters, runs: [run] } as UploadBatch['records'],
+  };
+}
+
 describe('run groups (real Postgres)', () => {
   let s: Server;
   let samAuth: { authorization: string };
   let vicAuth: { authorization: string };
   let cookies: Record<string, string>;
 
+  const post = (b: UploadBatch, headers: { authorization: string }) =>
+    s.app.inject({ method: 'POST', url: '/v1/ingest', headers, payload: b });
   const ingest = async (b: UploadBatch, headers: { authorization: string }) => {
-    const res = await s.app.inject({ method: 'POST', url: '/v1/ingest', headers, payload: b });
+    const res = await post(b, headers);
     expect(res.statusCode, res.body).toBe(200);
+  };
+  /** Waits until `n` backends are queued on the run-group advisory lock. */
+  const waitForLockWaiters = async (n: number) => {
+    for (let i = 0; i < 200; i++) {
+      const { rows } = await s.database.pool.query(
+        `select count(*)::int as n from pg_locks
+         where locktype = 'advisory' and not granted and objid::bigint = $1`,
+        [RUN_GROUPS_LOCK],
+      );
+      if (rows[0].n >= n) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error(`fewer than ${n} ingests waited on the run-group lock`);
+  };
+  /** Holds the run-group lock on its own connection until the returned release is called. */
+  const holdRunGroupLock = async () => {
+    const client = await s.database.pool.connect();
+    await client.query('begin');
+    await client.query('select pg_advisory_xact_lock($1)', [RUN_GROUPS_LOCK]);
+    return async () => {
+      await client.query('commit');
+      client.release();
+    };
   };
   const json = async (url: string) => {
     const res = await s.app.inject({ method: 'GET', url, cookies });
@@ -310,5 +351,101 @@ describe('run groups (real Postgres)', () => {
     expect((await json(`/admin/api/runs?build=${BUILD}`)).total).toBe(2);
     // Nothing left to do: a second backfill changes nothing.
     expect(await backfillRunGroups(s.database.db)).toBe(0);
+  });
+
+  it('never groups a solo run (empty party) with a party that lists its class and level', async () => {
+    await ingest(batch('sam'), samAuth);
+    await ingest(batch('vic', { party: [] }), vicAuth);
+    expect(await groupIds()).toEqual([
+      { id: SAM_RUN, group_id: SAM_RUN },
+      { id: VIC_RUN, group_id: VIC_RUN },
+    ]);
+  });
+
+  it('two members uploading at once (one a re-upload) both succeed and end up in one group', async () => {
+    await ingest(batch('sam'), samAuth);
+    const vicEarly = batch('vic', { id: VIC_EARLY, start: T0 - 1 });
+    const [a, b] = await Promise.all([post(batch('sam'), samAuth), post(vicEarly, vicAuth)]);
+    expect([a.statusCode, b.statusCode], `${a.body} ${b.body}`).toEqual([200, 200]);
+    expect(await groupIds()).toEqual([
+      { id: SAM_RUN, group_id: VIC_EARLY },
+      { id: VIC_EARLY, group_id: VIC_EARLY },
+    ]);
+  });
+
+  it('takes the run-group lock before writing runs, so interleaved ingests cannot deadlock', async () => {
+    // Stored: Vic (earlier) and Sam in one group named after Vic's run.
+    await ingest(minimalBatch('vic', { id: VIC_EARLY, start: T0 - 1 }), vicAuth);
+    await ingest(minimalBatch('sam'), samAuth);
+    expect((await groupIds()).map((r) => r.group_id)).toEqual([VIC_EARLY, VIC_EARLY]);
+    // B re-uploads Vic's run under another build (it leaves the group, so B must rewrite Sam's group id) and A
+    // re-uploads Sam's run. The batches share no rows, so only the run-group lock orders them. B queues on the lock
+    // first; before the fix A then upserted Sam's run (row lock) and queued, B got the lock and waited on Sam's row:
+    // a deadlock (40P01, a 500 for one of them).
+    const release = await holdRunGroupLock();
+    const pb = post(
+      minimalBatch('vic', { id: VIC_EARLY, start: T0 - 1, build: BUILD + 1 }),
+      vicAuth,
+    );
+    await waitForLockWaiters(1);
+    const pa = post(minimalBatch('sam'), samAuth);
+    await waitForLockWaiters(2);
+    await release();
+    const [a, b] = await Promise.all([pa, pb]);
+    expect([a.statusCode, b.statusCode], `${a.body} ${b.body}`).toEqual([200, 200]);
+    expect(await groupIds()).toEqual([
+      { id: SAM_RUN, group_id: SAM_RUN },
+      { id: VIC_EARLY, group_id: VIC_EARLY },
+    ]);
+  });
+
+  it('at the round cap, groups the explored runs with their partners but leaves the unexplored ones', async () => {
+    await ingest(batch('vic', { id: VIC_EARLY, start: T0 - 1 }), vicAuth);
+    await ingest(batch('sam'), samAuth);
+    await s.database.pool.query('update runs set group_id = null');
+    const warn = vi.fn();
+    // One round: Sam is explored, Vic (found in that round) is context only.
+    const changed = await s.database.db.transaction((tx) =>
+      regroupRuns(tx, [SAM_RUN], { maxRounds: 1, log: { warn } }),
+    );
+    expect(changed).toBe(1);
+    expect(await groupIds()).toEqual([
+      { id: SAM_RUN, group_id: VIC_EARLY },
+      { id: VIC_EARLY, group_id: null },
+    ]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toMatchObject({ maxRounds: 1, runs: 1, unexplored: 1 });
+    // Without the cap the rest is filled in, and nothing is logged.
+    await s.database.db.transaction((tx) => regroupRuns(tx, [SAM_RUN], { log: { warn } }));
+    expect((await groupIds()).map((r) => r.group_id)).toEqual([VIC_EARLY, VIC_EARLY]);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('run detail answers 404 when a regroup moves the whole group between its reads', async () => {
+    await ingest(batch('sam'), samAuth);
+    const db = s.database.db;
+    const execute = db.execute.bind(db);
+    const spy = vi.spyOn(db, 'execute').mockImplementation((async (
+      query: Parameters<typeof execute>[0],
+    ) => {
+      const res = await execute(query);
+      // Right after the group lookup, another transaction moves the run to another group.
+      const row = res.rows[0];
+      if (row !== undefined && 'gid' in row)
+        await s.database.pool.query(`update runs set group_id = 'elsewhere' where id = $1`, [
+          SAM_RUN,
+        ]);
+      return res;
+    }) as typeof db.execute);
+    try {
+      const res = await s.app.inject({
+        method: 'GET',
+        url: `/admin/api/runs/${encodeURIComponent(SAM_RUN)}`,
+        cookies,
+      });
+      expect(res.statusCode, res.body).toBe(404);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -336,6 +336,9 @@ export function registerAdminRunRoutes(app: FastifyInstance, db: Db, preHandler:
       where r.group_id = ${gid} or (r.group_id is null and r.id = ${gid})
       order by r.started_at, r.id`,
     );
+    // A regroup committed between the two reads can move every member out of `gid`.
+    const first = members[0];
+    if (first === undefined) return reply.status(404).send({ error: 'no such run' });
     const ids = members.map((m) => m.id);
     const [bossRows, partyRows] = await Promise.all([
       rows<Boss & { runId: string }>(
@@ -417,7 +420,6 @@ export function registerAdminRunRoutes(app: FastifyInstance, db: Db, preHandler:
     });
 
     const bosses = mergeBosses(perspectives.map((p) => p.bosses));
-    const first = members[0]!;
     // Raw query rows carry timestamps as text.
     const ms = (d: Date | string) => new Date(d).getTime();
     const finished = members.map((m) => m.finished_at).filter((d) => d !== null);

@@ -8,9 +8,6 @@ process.env.TZ ??= 'America/Chicago';
 const env = readEnv();
 const database = openDatabase(env.databaseUrl);
 await runMigrations(database.db);
-// Runs stored before migration 0010 have no run group yet; ingest groups every run it stores, so this is a no-op
-// (one indexed lookup) after the first start.
-const regrouped = await backfillRunGroups(database.db);
 
 const app = await buildApp({
   database,
@@ -19,7 +16,6 @@ const app = await buildApp({
   ingestPerMinute: env.ingestPerMinute,
   admin: env.admin,
 });
-if (regrouped > 0) app.log.info({ runs: regrouped }, 'run groups backfilled');
 app.log.info(
   {
     battleNetLogin: env.admin.bnet !== undefined,
@@ -39,3 +35,13 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 await app.listen({ host: env.host, port: env.port });
+
+// Runs stored before migration 0010 have no run group yet; ingest groups every run it stores, so this is a no-op
+// (one indexed lookup) after the first start. After listen, so it never holds up startup; a failure is logged and the
+// reads fall back to one group per ungrouped run until the next start.
+try {
+  const regrouped = await backfillRunGroups(database.db, { log: app.log });
+  if (regrouped > 0) app.log.info({ runs: regrouped }, 'run groups backfilled');
+} catch (err) {
+  app.log.error({ err }, 'run group backfill failed');
+}

@@ -5,6 +5,7 @@ import { and, eq, lt, ne, sql } from 'drizzle-orm';
 import { hashToken } from './auth.js';
 import type { Db } from './db/client.js';
 import { sessions, users } from './db/schema.js';
+import { BOOTSTRAP_LOCK } from './locks.js';
 
 export const SESSION_TTL_MS = 7 * 86_400_000;
 /** Absolute lifetime from login: sliding renewal never extends a session past this. */
@@ -38,9 +39,6 @@ export interface AdminPolicy {
   /** Battle.net account ids (`sub`) that are always admin. */
   adminBnetSubs?: readonly string[];
 }
-
-/** Serialises logins that may bootstrap the first admin (pg_advisory_xact_lock key). */
-const BOOTSTRAP_LOCK = 0x464c_4144; // "FLAD"
 
 /**
  * Creates the user on first login and refreshes the BattleTag on later ones (the `sub` is the identity). Roles:

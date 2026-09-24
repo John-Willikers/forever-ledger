@@ -74,11 +74,10 @@ describe('sameRun', () => {
     expect(sameRun(sam, { ...vic, charLevel: null })).toBe(false);
   });
 
-  it('accepts one-sided evidence when the other side recorded no party', () => {
-    expect(sameRun(sam, { ...vic, party: [] })).toBe(true);
-    expect(sameRun({ ...sam, party: [] }, vic)).toBe(true);
-    // One side empty and the other side does not list it.
-    expect(sameRun(sam, { ...vic, charClass: 'MAGE', party: [] })).toBe(false);
+  it('treats an empty party as solo: one-sided evidence never groups', () => {
+    // Every schema records the party at the start, so [] means Vic entered alone, even though Sam lists a warrior 20.
+    expect(sameRun(sam, { ...vic, party: [] })).toBe(false);
+    expect(sameRun({ ...sam, party: [] }, vic)).toBe(false);
     // Two solo runs are never the same run.
     expect(sameRun({ ...sam, party: [] }, { ...vic, party: [] })).toBe(false);
   });
@@ -109,6 +108,14 @@ describe('groupRuns', () => {
         [vic.id, sam.id],
       ]),
     );
+  });
+
+  it('keeps a solo player out of a party that happens to list their class and level', () => {
+    // A solo warrior 20 entering right after Sam's party: Sam lists a warrior 20, but the solo run lists nobody.
+    const solo = { ...vic, id: 'solo-warrior', char: 'Lone-Realm', startedAt: T0 + 20, party: [] };
+    const g = groupRuns([sam, solo, hunter]);
+    expect(g.get(solo.id)).toBe(solo.id);
+    expect(g.get(hunter.id)).toBe(sam.id);
   });
 
   it('keeps unmatched runs on their own', () => {

@@ -4,6 +4,7 @@
 // `backfillRunGroups` fills group_id for runs stored before migration 0010.
 import { sql } from 'drizzle-orm';
 import type { Db } from './db/client.js';
+import { RUN_GROUPS_LOCK } from './locks.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -37,14 +38,14 @@ function lists(a: GroupableRun, b: GroupableRun) {
 /**
  * Two runs are the same dungeon run seen by two characters: same instance and build, starts at most
  * GROUP_WINDOW_SECS apart, different characters, and each one's party (recorded at the start) lists the other's class
- * and level. A side that recorded no party at all gives no evidence either way: the other side's listing suffices.
+ * and level. The evidence must be mutual: every addon version (schema 1 on) records the party at the start, so an
+ * empty party means the character entered alone, and a solo run is never grouped on the other side's listing alone.
  */
 export function sameRun(a: GroupableRun, b: GroupableRun) {
   if (a.char === b.char) return false;
   if (a.instanceId !== b.instanceId || a.build !== b.build) return false;
   if (Math.abs(a.startedAt - b.startedAt) > GROUP_WINDOW_SECS) return false;
-  if (a.party.length === 0 && b.party.length === 0) return false;
-  return (a.party.length === 0 || lists(a, b)) && (b.party.length === 0 || lists(b, a));
+  return lists(a, b) && lists(b, a);
 }
 
 const earlier = (a: GroupableRun, b: GroupableRun) =>
@@ -86,7 +87,18 @@ export function groupRuns(runs: GroupableRun[]): Map<string, string> {
 }
 
 /** Rounds of candidate search (a chain of members is at most a raid long); a safety cap, never reached by real data. */
-const MAX_ROUNDS = 20;
+export const MAX_ROUNDS = 20;
+
+/** The part of a pino / Fastify logger regrouping uses. */
+export interface RegroupLog {
+  warn(obj: object, msg: string): void;
+}
+
+export interface RegroupOptions {
+  /** Candidate search rounds before giving up on the chain (tests lower it). */
+  maxRounds?: number;
+  log?: RegroupLog;
+}
 
 async function rowsOf<T>(tx: Tx | Db, query: ReturnType<typeof sql>) {
   return (await tx.execute(query)).rows as T[];
@@ -95,18 +107,30 @@ async function rowsOf<T>(tx: Tx | Db, query: ReturnType<typeof sql>) {
 const textArray = (xs: string[]) => sql`${sql.param(xs)}::text[]`;
 
 /**
- * Assigns group_id to the given runs and every stored run linked to them: runs of the same instance and build started
- * within the window of one of them (searched through runs_instance_idx), repeated until nothing new turns up, plus the
- * members of their current groups (a changed run can leave its group). Writes only group ids that change, so it is
- * idempotent; the group id is the earliest member's id, so a re-uploaded run keeps its group. Serialized with a
- * transaction-level advisory lock so two members' uploads arriving together still see each other.
+ * Takes the run-group lock for the rest of the transaction. Ingest takes it before its first runs write and
+ * `regroupRuns` again (re-entrant): taking it only after the runs upsert let two ingests lock a run row and the
+ * advisory lock in opposite orders (a deadlock).
  */
-export async function regroupRuns(tx: Tx | Db, runIds: string[]) {
+export async function lockRunGroups(tx: Tx | Db) {
+  await tx.execute(sql`select pg_advisory_xact_lock(${RUN_GROUPS_LOCK})`);
+}
+
+/**
+ * Assigns group_id to the given runs and every stored run linked to them: runs of the same instance and build started
+ * within the window of one of them (a range scan of runs_instance_idx on instance, build and start), repeated until
+ * nothing new turns up, plus the members of their current groups (a changed run can leave its group). Writes only
+ * group ids that change, so it is idempotent; the group id is the earliest member's id, so a re-uploaded run keeps
+ * its group. Serialized with a transaction-level advisory lock so two members' uploads arriving together still see
+ * each other. If the search hits `maxRounds` with runs still to explore, those runs are loaded as context (so the runs
+ * next to them see their partners) but their own group ids are left as stored, and a warning is logged.
+ */
+export async function regroupRuns(tx: Tx | Db, runIds: string[], opts: RegroupOptions = {}) {
   if (runIds.length === 0) return 0;
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('forever-ledger:run-groups'))`);
+  const maxRounds = opts.maxRounds ?? MAX_ROUNDS;
+  await lockRunGroups(tx);
   const known = new Set<string>();
   let frontier = [...new Set(runIds)];
-  for (let round = 0; frontier.length > 0 && round < MAX_ROUNDS; round++) {
+  for (let round = 0; frontier.length > 0 && round < maxRounds; round++) {
     for (const id of frontier) known.add(id);
     const found = await rowsOf<{ id: string }>(
       tx,
@@ -114,14 +138,22 @@ export async function regroupRuns(tx: Tx | Db, runIds: string[]) {
       with s as (select id, instance_id, build, started_at, group_id from runs where id = any(${textArray(frontier)}))
       select r.id from s join runs r
         on r.instance_id = s.instance_id and r.build = s.build
-       and r.started_at between s.started_at - make_interval(secs => ${GROUP_WINDOW_SECS})
-                            and s.started_at + make_interval(secs => ${GROUP_WINDOW_SECS})
+       and r.started_at >= s.started_at - make_interval(secs => ${GROUP_WINDOW_SECS})
+       and r.started_at <= s.started_at + make_interval(secs => ${GROUP_WINDOW_SECS})
       union
       select r.id from s join runs r on r.group_id = s.group_id`,
     );
     frontier = found.map((f) => f.id).filter((id) => !known.has(id));
   }
-  const ids = [...known];
+  // Runs found in the last round but never explored: their own partners are unknown, so they are context only.
+  const context = frontier;
+  if (context.length > 0) {
+    (opts.log ?? console).warn(
+      { maxRounds, runs: known.size, unexplored: context.length, sample: context.slice(0, 5) },
+      'run group search hit its round cap; runs at the edge keep their stored group',
+    );
+  }
+  const ids = [...known, ...context];
   const runs = await rowsOf<{
     id: string;
     char: string;
@@ -154,7 +186,7 @@ export async function regroupRuns(tx: Tx | Db, runIds: string[]) {
       party: r.party,
     })),
   );
-  const changed = runs.filter((r) => r.group_id !== groups.get(r.id));
+  const changed = runs.filter((r) => known.has(r.id) && r.group_id !== groups.get(r.id));
   if (changed.length === 0) return 0;
   await tx.execute(sql`
     update runs r set group_id = v.gid
@@ -165,7 +197,7 @@ export async function regroupRuns(tx: Tx | Db, runIds: string[]) {
 }
 
 /** Groups every run stored without a group id (runs from before migration 0010). Returns the runs updated. */
-export async function backfillRunGroups(db: Db) {
+export async function backfillRunGroups(db: Db, opts: RegroupOptions = {}) {
   return db.transaction(async (tx) => {
     const pending = await rowsOf<{ id: string }>(
       tx,
@@ -174,6 +206,7 @@ export async function backfillRunGroups(db: Db) {
     return regroupRuns(
       tx,
       pending.map((p) => p.id),
+      opts,
     );
   });
 }

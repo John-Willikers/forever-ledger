@@ -146,11 +146,13 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   item tooltip; `pnpm check` green (746 vitest, 179 Lua).
 - ✅ 🧩 Run groups (dedupe shared dungeon runs) — 2026-09-23 22:52 CDT — `83f48d1` server, `add2126` admin (branch
   `feat/run-groups`, not deployed). Live: Sam (druid 20) and Vic (warrior 20) uploaded one Wailing Caverns run twice.
-  Migration 0010 (additive): `runs.group_id` (the earliest member's run id, its own id when alone) + `runs_group_idx`.
+  Migration 0010 (additive): `runs.group_id` (the earliest member's run id, its own id when alone) + `runs_group_idx`;
+  `runs_instance_idx` widened to (instance, build, started_at) for the candidate range scan.
   Rule (`src/runGroups.ts`): same instance + build, starts ≤ 180 s apart, different characters, each party lists the
-  other's class + level (one side's evidence when the other recorded no party); transitive, closest starts merge
-  first, never two runs of one character in a group. Ingest regroups the stored runs + neighbours under an advisory
-  lock (idempotent, stable ids); the server backfills runs with no group at start (no CLI). Reads count groups:
+  other's class + level (mutual: every schema records the party, so an empty party is a solo run); transitive,
+  closest starts merge first, never two runs of one character in a group. Ingest takes the run-group advisory lock
+  (`src/locks.ts`) before its first runs write, then regroups the stored runs + neighbours (idempotent, stable ids);
+  the server backfills runs with no group right after it starts listening (no CLI; a failure is logged). Reads count groups:
   `/v1/runs/summary` `runs` + `members`, clear times and `/admin/api/runs` one row per group; clear time = median
   member active time (XP/min, deaths, level stay per character). `/admin/api/runs/:id` takes any member id: merged
   bosses (earliest time), boss loot deduped by encounter/item/winner class/loot list key with `winnerChar`, members'
@@ -238,3 +240,5 @@ Phase 1 + 2 is a usable MVP; later phases can ship as they're done.
 - Admin reads everything; later a member role could see only their own characters (owner filter already modeled).
 - Drop rates double-count a corpse two group members both opened (each addon counts it); run groups don't fix that.
   Needs corpse GUIDs in the addon (future).
+- Run groups match party members by class + level at the start, so someone who levels between two members' entries
+  (the party lists the old level, their own run the new `char_level`) is left ungrouped: it fails safe, as two runs.

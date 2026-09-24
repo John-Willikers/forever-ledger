@@ -146,7 +146,7 @@ export async function buildApp(opts: AppOptions) {
             .map((i) => ({ path: i.path.join('.'), message: i.message })),
         );
       }
-      const result = await ingestBatch(db, parsed.data, { tokenId });
+      const result = await ingestBatch(db, parsed.data, { tokenId, log: req.log });
       req.log.info(
         {
           batchId: result.batchId,

@@ -508,7 +508,8 @@ export const runs = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    index('runs_instance_idx').on(t.instanceId, t.build),
+    // Run grouping's candidate search is a start-time range within one instance and build.
+    index('runs_instance_idx').on(t.instanceId, t.build, t.startedAt),
     index('runs_group_idx').on(t.groupId),
   ],
 );

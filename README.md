@@ -147,8 +147,8 @@ pm2 start deploy/ecosystem.config.cjs         # runs migrations on start
 🧩 Run groups: when several party members upload the same dungeon run, ingest puts their runs in one group
 (`runs.group_id`, the earliest member's run id): same instance and build, starts at most 180 s apart, and each one's
 party lists the other's class and level. The dungeon reads count a group once; its clear time is the median of the
-members' active times. Runs stored before migration 0010 are grouped by a one-off backfill the server runs at start
-(any run with no `group_id`; a no-op afterwards), so a restart after deploying is all it takes.
+members' active times. Runs stored before migration 0010 are grouped by a one-off backfill the server runs once it
+is listening (any run with no `group_id`; a no-op afterwards), so a restart after deploying is all it takes.
 
 Tokens (one per contributor; only the hash is stored). A token has one of two scopes:
 
