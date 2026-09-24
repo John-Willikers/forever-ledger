@@ -16,7 +16,8 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 3 🗄️ Server: migration 0012, ingest upserts, admin item routes (contents / opened from) — 01:43 CDT
   (ingest in e0acd7c, `/admin/api/items/:id` `contents` + `openedFrom` in 5c8c646; named PKs `container_opens_pk` /
   `container_loot_pk`: generated names pass Postgres' 63-byte limit; both tables in `/v1/export`)
-- 🟡 4 🖥️ Admin UI: item page "Contents" (for containers) and "Opened from" (for their loot)
+- ✅ 4 🖥️ Admin UI: item page "Contents" (for containers) and "Opened from" (for their loot) — 01:45 CDT (f9c5cd9;
+  `pnpm check` green: Lua harness 195 passed, vitest 889 passed in 74 files, +16 over master's 873; admin builds)
 - ⬜ 5 🔍 Review + `pnpm check` + CI green → merge
 - ⬜ 6 🚀 Rollout: server deploy (backup first) → tag `v0.1.5` → **owner confirms the App card shows 0.1.5** → tag
   `addon-v0.3.4` → `addon-cli publish 0.3.4` → owner opens a Message in a Bottle (or any clam/lockbox) → verify
