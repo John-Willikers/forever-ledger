@@ -1,21 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { loginError } from './loginError';
+import { LOGIN_ERRORS, loginError } from './loginError';
 
 describe('loginError', () => {
-  it('reads ?error= from the query string', () => {
-    expect(loginError('?error=Battle.net+login+was+cancelled.')).toBe(
-      'Battle.net login was cancelled.',
+  it('maps the server’s fixed codes to fixed messages', () => {
+    expect(loginError('?error=state')).toBe(
+      'Your login expired or was started elsewhere. Please try again.',
     );
-    expect(loginError(new URLSearchParams({ error: 'x' }))).toBe('x');
+    expect(loginError('?error=cancelled')).toBe('Battle.net login was cancelled.');
+    expect(loginError('?error=failed')).toBe('Battle.net login failed. Please try again.');
+    expect(loginError(new URLSearchParams({ error: 'unauthorized' }))).toBe(
+      'This Battle.net account is not allowed to log in.',
+    );
+    expect(Object.keys(LOGIN_ERRORS).sort()).toEqual([
+      'cancelled',
+      'failed',
+      'state',
+      'unauthorized',
+    ]);
+  });
+
+  it('shows nothing for unknown values (never echoes the query string)', () => {
+    for (const search of [
+      '?error=Battle.net+login+was+cancelled.',
+      '?error=Your+account+was+hacked.+Call+555-0100',
+      '?error=%3Cscript%3Ealert(1)%3C%2Fscript%3E',
+      '?error=STATE',
+      '?error=state%20',
+      '?error=toString',
+      '?error=__proto__',
+      '?error=constructor',
+    ]) {
+      expect(loginError(search), search).toBeNull();
+    }
   });
 
   it('ignores empty or missing errors', () => {
     expect(loginError('')).toBeNull();
     expect(loginError('?error=')).toBeNull();
-    expect(loginError('?error=%20%20')).toBeNull();
-  });
-
-  it('caps the length', () => {
-    expect(loginError(`?error=${'a'.repeat(1000)}`)).toHaveLength(200);
+    expect(loginError('?other=state')).toBeNull();
   });
 });

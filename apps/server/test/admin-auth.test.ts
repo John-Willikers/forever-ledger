@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp, loggerOptions } from '../src/index.js';
 import type { AppOptions } from '../src/index.js';
 import { BNET_AUTHORIZE_URL, BNET_TOKEN_URL, BNET_USERINFO_URL } from '../src/bnet.js';
@@ -18,8 +18,8 @@ const COOKIE_SECRET = 'test-cookie-secret-0123456789abcdef0123456789';
 const ACCESS_TOKEN = 'bnet-access-token-SHOULD-NEVER-LEAK';
 const CODE = 'bnet-auth-code-SHOULD-NEVER-LEAK';
 const ADMIN_TAG = 'JohnWilliker#1292';
-const SESSION = 'fl_session';
-const STATE = 'fl_oauth_state';
+const SESSION = '__Host-fl_session';
+const STATE = '__Host-fl_oauth_state';
 
 /** A stand-in for oauth.battle.net: records calls, answers token + userinfo. */
 function fakeBattleNet() {
@@ -56,15 +56,22 @@ function fakeBattleNet() {
 const cookieOf = (res: { cookies: { name: string; value: string }[] }, name: string) =>
   res.cookies.find((c) => c.name === name);
 
+/** The `?error=` code of a callback redirect to the panel. */
+const errorCode = (res: { headers: Record<string, unknown> }) => {
+  const loc = new URL(String(res.headers.location), 'https://x.test');
+  expect(loc.pathname).toBe('/admin/');
+  return loc.searchParams.get('error');
+};
+
 /** Runs /login → Battle.net → /callback and returns the session cookie value (if any). */
-async function login(app: App, code = CODE) {
+async function login(app: App, cookies: Record<string, string> = {}) {
   const start = await app.inject({ method: 'GET', url: '/admin/auth/login' });
   const state = new URL(start.headers.location as string).searchParams.get('state')!;
   const stateCookie = cookieOf(start, STATE)!.value;
   const cb = await app.inject({
     method: 'GET',
-    url: `/admin/auth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
-    cookies: { [STATE]: stateCookie },
+    url: `/admin/auth/callback?code=${encodeURIComponent(CODE)}&state=${encodeURIComponent(state)}`,
+    cookies: { ...cookies, [STATE]: stateCookie },
   });
   return { cb, session: cookieOf(cb, SESSION)?.value };
 }
@@ -135,7 +142,9 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       expect(String(cookie.value).startsWith(`${state}.`)).toBe(true);
       expect(cookie.httpOnly).toBe(true);
       expect(cookie.secure).toBe(true);
-      expect(cookie.path).toBe('/admin/auth');
+      // __Host- prefix: Secure, Path=/, no Domain.
+      expect(cookie.path).toBe('/');
+      expect(cookie.domain).toBeUndefined();
       expect(cookie.maxAge).toBe(600);
       expect(String(cookie.sameSite).toLowerCase()).toBe('lax');
       // Battle.net's secret never goes to the browser.
@@ -157,6 +166,38 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         expect(quests.statusCode).toBe(200);
       } finally {
         await other.close();
+      }
+    });
+
+    it('uses plain cookie names without Secure under COOKIE_INSECURE (local http dev)', async () => {
+      const dev = await buildApp({
+        database: s.database,
+        admin: adminOptions({ cookieInsecure: true }),
+      });
+      try {
+        const start = await dev.inject({ method: 'GET', url: '/admin/auth/login' });
+        const state = new URL(start.headers.location as string).searchParams.get('state')!;
+        const stateCookie = cookieOf(start, 'fl_oauth_state') as Record<string, unknown>;
+        expect(stateCookie).toBeDefined();
+        expect(stateCookie.secure).toBeUndefined();
+        expect(cookieOf(start, STATE)).toBeUndefined();
+        const cb = await dev.inject({
+          method: 'GET',
+          url: `/admin/auth/callback?code=${CODE}&state=${state}`,
+          cookies: { fl_oauth_state: String(stateCookie.value) },
+        });
+        expect(cb.headers.location).toBe('/admin/');
+        const session = cookieOf(cb, 'fl_session') as Record<string, unknown>;
+        expect(session.secure).toBeUndefined();
+        expect(cookieOf(cb, SESSION)).toBeUndefined();
+        const who = await dev.inject({
+          method: 'GET',
+          url: '/admin/auth/me',
+          cookies: { fl_session: String(session.value) },
+        });
+        expect(who.json().user).toMatchObject({ battletag: ADMIN_TAG });
+      } finally {
+        await dev.close();
       }
     });
   });
@@ -192,8 +233,11 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       expect(cookie.path).toBe('/');
       expect(String(cookie.sameSite).toLowerCase()).toBe('lax');
       expect(cookie.maxAge).toBe(7 * 86400);
-      // The state cookie is cleared.
-      expect(cookieOf(cb, STATE)?.value).toBe('');
+      // The state cookie is single-use: cleared (same Path=/ and Secure, or the browser keeps it).
+      const cleared = cookieOf(cb, STATE) as Record<string, unknown>;
+      expect(cleared.value).toBe('');
+      expect(cleared.path).toBe('/');
+      expect(cleared.secure).toBe(true);
 
       const { rows: users } = await s.database.pool.query('select * from users');
       expect(users).toHaveLength(1);
@@ -227,7 +271,8 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         cookies: { [STATE]: stateCookie },
       });
       expect(cb.statusCode).toBe(302);
-      expect(cb.headers.location).toMatch(/^\/admin\/\?error=/);
+      expect(errorCode(cb)).toBe('state');
+      expect(cookieOf(cb, STATE)?.value).toBe(''); // cleared on failure too
       expect(cookieOf(cb, SESSION)).toBeUndefined();
       expect(bnet.calls).toHaveLength(0);
       expect(await s.count('sessions')).toBe(0);
@@ -243,11 +288,11 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
           cookies,
         });
         expect(cb.statusCode).toBe(302);
-        expect(cb.headers.location).toMatch(/^\/admin\/\?error=/);
+        expect(errorCode(cb)).toBe('state');
         expect(cookieOf(cb, SESSION)).toBeUndefined();
       }
       const noState = await app.inject({ method: 'GET', url: `/admin/auth/callback?code=${CODE}` });
-      expect(noState.headers.location).toMatch(/^\/admin\/\?error=/);
+      expect(errorCode(noState)).toBe('state');
       expect(bnet.calls).toHaveLength(0);
       expect(await s.count('sessions')).toBe(0);
     });
@@ -256,19 +301,20 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       bnet.state.tokenStatus = 400;
       const failed = await login(app);
       expect(failed.cb.statusCode).toBe(302);
-      expect(failed.cb.headers.location).toMatch(/^\/admin\/\?error=/);
+      expect(errorCode(failed.cb)).toBe('failed');
+      expect(cookieOf(failed.cb, STATE)?.value).toBe('');
       expect(failed.session).toBeUndefined();
 
       bnet.state.tokenStatus = 200;
       bnet.state.userinfoStatus = 500;
       const failedInfo = await login(app);
-      expect(failedInfo.cb.headers.location).toMatch(/^\/admin\/\?error=/);
+      expect(errorCode(failedInfo.cb)).toBe('failed');
       expect(failedInfo.session).toBeUndefined();
 
       bnet.state.userinfoStatus = 200;
       bnet.state.user = { sub: '1234' }; // no battletag
       const badInfo = await login(app);
-      expect(badInfo.cb.headers.location).toMatch(/^\/admin\/\?error=/);
+      expect(errorCode(badInfo.cb)).toBe('failed');
       expect(badInfo.session).toBeUndefined();
 
       const start = await app.inject({ method: 'GET', url: '/admin/auth/login' });
@@ -279,12 +325,86 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         cookies: { [STATE]: cookieOf(start, STATE)!.value },
       });
       expect(cancelled.statusCode).toBe(302);
-      const loc = new URL(cancelled.headers.location as string, 'https://x.test');
-      expect(loc.pathname).toBe('/admin/');
-      // A fixed message, never Battle.net's own text.
-      expect(loc.searchParams.get('error')).toBe('Battle.net login was cancelled.');
+      // A fixed code, never Battle.net's own text.
+      expect(cancelled.headers.location).toBe('/admin/?error=cancelled');
+
+      for (const query of ['error=server_error&error_description=boom', 'code=']) {
+        const again = await app.inject({ method: 'GET', url: '/admin/auth/login' });
+        const st = new URL(again.headers.location as string).searchParams.get('state')!;
+        const res = await app.inject({
+          method: 'GET',
+          url: `/admin/auth/callback?${query}&state=${st}`,
+          cookies: { [STATE]: cookieOf(again, STATE)!.value },
+        });
+        expect(res.headers.location, query).toBe('/admin/?error=failed');
+      }
       expect(await s.count('sessions')).toBe(0);
       expect(await s.count('users')).toBe(0);
+    });
+  });
+
+  describe('state', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('refuses a replayed state cookie once it is older than 600 s', async () => {
+      const start = await app.inject({ method: 'GET', url: '/admin/auth/login' });
+      const state = new URL(start.headers.location as string).searchParams.get('state')!;
+      const stateCookie = cookieOf(start, STATE)!.value;
+      // The browser would have dropped it (Max-Age=600); a replayed copy is refused server-side.
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 601_000 });
+      const cb = await app.inject({
+        method: 'GET',
+        url: `/admin/auth/callback?code=${CODE}&state=${state}`,
+        cookies: { [STATE]: stateCookie },
+      });
+      expect(errorCode(cb)).toBe('state');
+      expect(cookieOf(cb, SESSION)).toBeUndefined();
+      expect(bnet.calls).toHaveLength(0);
+    });
+
+    it('accepts a state cookie within 600 s', async () => {
+      const start = await app.inject({ method: 'GET', url: '/admin/auth/login' });
+      const state = new URL(start.headers.location as string).searchParams.get('state')!;
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 590_000 });
+      const cb = await app.inject({
+        method: 'GET',
+        url: `/admin/auth/callback?code=${CODE}&state=${state}`,
+        cookies: { [STATE]: cookieOf(start, STATE)!.value },
+      });
+      expect(cb.headers.location).toBe('/admin/');
+    });
+
+    it('refuses a signed state without its issued-at', async () => {
+      const state = 'a'.repeat(43);
+      const cb = await app.inject({
+        method: 'GET',
+        url: `/admin/auth/callback?code=${CODE}&state=${state}`,
+        cookies: { [STATE]: app.signCookie(state) },
+      });
+      expect(errorCode(cb)).toBe('state');
+      expect(bnet.calls).toHaveLength(0);
+    });
+  });
+
+  describe('session fixation', () => {
+    it('a new login deletes the session the browser already carried', async () => {
+      const first = await login(app);
+      expect(await s.count('sessions')).toBe(1);
+      const second = await login(app, { [SESSION]: first.session! });
+      expect(second.session).toBeDefined();
+      expect(second.session).not.toBe(first.session);
+      expect(await s.count('sessions')).toBe(1);
+      expect((await me(app, first.session)).json().user).toBeNull();
+      expect((await me(app, second.session)).json().user).not.toBeNull();
+    });
+
+    it('ignores a forged session cookie on login', async () => {
+      const first = await login(app);
+      const [raw] = first.session!.split('.');
+      await login(app, { [SESSION]: raw! });
+      expect(await s.count('sessions')).toBe(2);
     });
   });
 

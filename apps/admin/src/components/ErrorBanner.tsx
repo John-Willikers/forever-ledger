@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router';
 import { loginError } from '../loginError';
 
-/** Shows the server's `?error=` message (failed Battle.net login) until dismissed. */
+/** Shows the fixed message for the server's `?error=` code (failed Battle.net login) until dismissed. */
 export function ErrorBanner() {
   const [params, setParams] = useSearchParams();
   const message = loginError(params);

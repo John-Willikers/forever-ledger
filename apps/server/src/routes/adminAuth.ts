@@ -2,7 +2,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { CookieSerializeOptions } from '@fastify/cookie';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { verifyBearer } from '../auth.js';
+import { hashToken, verifyBearer } from '../auth.js';
 import { authorizeUrl, BnetError, fetchBnetUser } from '../bnet.js';
 import type { BnetConfig } from '../bnet.js';
 import type { Db } from '../db/client.js';
@@ -17,11 +17,24 @@ import {
 } from '../sessions.js';
 import type { ActiveSession } from '../sessions.js';
 
-export const SESSION_COOKIE = 'fl_session';
-export const STATE_COOKIE = 'fl_oauth_state';
-const STATE_PATH = '/admin/auth';
-const STATE_TTL_SECS = 600;
+/**
+ * Cookie names. Over https they carry the `__Host-` prefix (the browser then insists on Secure, Path=/ and no Domain,
+ * so a sibling subdomain can't plant or shadow them); COOKIE_INSECURE (local http dev) uses the plain names.
+ */
+export const cookieNames = (secure: boolean) =>
+  secure
+    ? { session: '__Host-fl_session', state: '__Host-fl_oauth_state' }
+    : { session: 'fl_session', state: 'fl_oauth_state' };
+
+/** A login must come back from Battle.net within this; the state carries its issued-at and is refused after. */
+export const STATE_TTL_SECS = 600;
 const PANEL = '/admin/';
+
+/**
+ * The only values of `?error=` on the panel redirect; the SPA maps each to a fixed message. `unauthorized` is
+ * reserved for refusing an account at login.
+ */
+export type LoginErrorCode = 'state' | 'cancelled' | 'failed' | 'unauthorized';
 
 export interface AdminAuthOptions {
   /** Battle.net client; without it /admin/auth/login answers 503. */
@@ -57,8 +70,18 @@ const safeEqual = (a: string, b: string) => {
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
-const failed = (reply: FastifyReply, message: string) =>
-  reply.redirect(`${PANEL}?${new URLSearchParams({ error: message }).toString()}`);
+const failed = (reply: FastifyReply, code: LoginErrorCode) =>
+  reply.redirect(`${PANEL}?error=${code}`);
+
+const nowSecs = () => Math.floor(Date.now() / 1000);
+
+/** The nonce of a signed-cookie state value `<nonce>.<issued-at>`, or null when malformed or too old. */
+function freshState(value: string): string | null {
+  const m = /^([A-Za-z0-9_-]{32,})\.(\d{1,12})$/.exec(value);
+  if (!m) return null;
+  const age = nowSecs() - Number(m[2]);
+  return age >= 0 && age <= STATE_TTL_SECS ? m[1]! : null;
+}
 
 export function registerAdminAuth(
   app: FastifyInstance,
@@ -66,6 +89,7 @@ export function registerAdminAuth(
   opts: AdminAuthOptions,
 ): AdminGuards {
   const secure = !opts.cookieInsecure;
+  const names = cookieNames(secure);
   const policy = { adminBattletags: opts.adminBattletags, adminBnetSubs: opts.adminBnetSubs };
   const fetchImpl = opts.fetch ?? fetch;
   const sessionCookie: CookieSerializeOptions = {
@@ -79,12 +103,12 @@ export function registerAdminAuth(
   const cache = new WeakMap<FastifyRequest, Promise<ActiveSession | null>>();
 
   async function resolveSession(req: FastifyRequest, reply: FastifyReply) {
-    const raw = req.cookies[SESSION_COOKIE];
+    const raw = req.cookies[names.session];
     if (!raw) return null;
     const unsigned = req.unsignCookie(raw);
     if (!unsigned.valid || !unsigned.value) return null;
     const s = await loadSession(db, unsigned.value);
-    if (s?.renewed) reply.setCookie(SESSION_COOKIE, unsigned.value, sessionCookie);
+    if (s?.renewed) reply.setCookie(names.session, unsigned.value, sessionCookie);
     return s;
   }
 
@@ -130,11 +154,12 @@ export function registerAdminAuth(
   app.get('/admin/auth/login', { config: { rateLimit } }, async (_req, reply) => {
     if (!opts.bnet) return reply.status(503).send({ error: 'Battle.net login not configured' });
     const state = randomBytes(32).toString('base64url');
-    reply.setCookie(STATE_COOKIE, state, {
+    // Signed, with its issued-at: the browser drops it after Max-Age, the server refuses it after STATE_TTL_SECS.
+    reply.setCookie(names.state, `${state}.${nowSecs()}`, {
       httpOnly: true,
       secure,
       sameSite: 'lax',
-      path: STATE_PATH,
+      path: '/',
       signed: true,
       maxAge: STATE_TTL_SECS,
     });
@@ -142,28 +167,24 @@ export function registerAdminAuth(
   });
 
   app.get('/admin/auth/callback', { config: { rateLimit } }, async (req, reply) => {
+    // The state is single-use: cleared on every callback response, whatever the outcome.
+    const rawState = req.cookies[names.state];
+    reply.clearCookie(names.state, { path: '/', httpOnly: true, secure, sameSite: 'lax' });
     if (!opts.bnet) return reply.status(503).send({ error: 'Battle.net login not configured' });
     const q = req.query as Record<string, unknown>;
-    const rawState = req.cookies[STATE_COOKIE];
-    reply.clearCookie(STATE_COOKIE, { path: STATE_PATH, httpOnly: true, secure, sameSite: 'lax' });
 
     const unsigned = rawState ? req.unsignCookie(rawState) : null;
-    const expected = unsigned?.valid ? unsigned.value : null;
+    const expected = unsigned?.valid && unsigned.value ? freshState(unsigned.value) : null;
     if (!expected || typeof q.state !== 'string' || !safeEqual(q.state, expected)) {
-      req.log.warn('battle.net callback with a missing or mismatched state');
-      return failed(reply, 'Your login expired or was started elsewhere. Please try again.');
+      req.log.warn('battle.net callback with a missing, expired or mismatched state');
+      return failed(reply, 'state');
     }
     if (typeof q.error === 'string') {
       req.log.info({ bnetError: q.error.slice(0, 64) }, 'battle.net login not completed');
-      return failed(
-        reply,
-        q.error === 'access_denied'
-          ? 'Battle.net login was cancelled.'
-          : 'Battle.net login failed.',
-      );
+      return failed(reply, q.error === 'access_denied' ? 'cancelled' : 'failed');
     }
     if (typeof q.code !== 'string' || q.code === '' || q.code.length > 2048) {
-      return failed(reply, 'Battle.net login failed.');
+      return failed(reply, 'failed');
     }
 
     let bnetUser;
@@ -172,16 +193,20 @@ export function registerAdminAuth(
     } catch (err) {
       const reason = err instanceof BnetError ? err.message : 'unexpected error';
       req.log.warn({ reason }, 'battle.net login failed');
-      return failed(reply, 'Battle.net login failed. Please try again.');
+      return failed(reply, 'failed');
     }
 
     const user = await upsertUser(db, bnetUser, policy);
+    // No session fixation: a session the browser already carried ends here.
+    const previous = req.cookies[names.session];
+    const prev = previous ? req.unsignCookie(previous) : null;
+    if (prev?.valid && prev.value) await deleteSession(db, hashToken(prev.value));
     const value = await createSession(db, user.id, {
       userAgent: req.headers['user-agent'],
       ip: req.ip,
     });
     req.log.info({ userId: user.id, role: user.role }, 'admin login');
-    reply.setCookie(SESSION_COOKIE, value, sessionCookie);
+    reply.setCookie(names.session, value, sessionCookie);
     return reply.redirect(PANEL);
   });
 
@@ -194,7 +219,7 @@ export function registerAdminAuth(
       await deleteSession(db, s.id);
       req.log.info({ userId: s.user.id }, 'admin logout');
     }
-    reply.clearCookie(SESSION_COOKIE, { path: '/', httpOnly: true, secure, sameSite: 'lax' });
+    reply.clearCookie(names.session, { path: '/', httpOnly: true, secure, sameSite: 'lax' });
     return reply.status(204).send();
   });
 
