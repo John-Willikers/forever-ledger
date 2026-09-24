@@ -59,6 +59,11 @@ export const apiTokens = pgTable('api_tokens', {
   lastUsedAt: tz('last_used_at'),
   /** Owner of the token (characters uploaded with it belong to this user). */
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  /**
+   * Read scope: may also read every /v1 read route (analysis, export, diagnostics) with this token. Off by default:
+   * an upload token only ingests, reports errors and fetches the addon manifest.
+   */
+  canRead: boolean('can_read').notNull().default(false),
 });
 
 export const rawUploads = pgTable(

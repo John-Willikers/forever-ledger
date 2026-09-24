@@ -7,7 +7,7 @@ type Server = Awaited<ReturnType<typeof startServer>>;
 
 describe('analysis and export routes', () => {
   let s: Server;
-  const get = (url: string, headers: Record<string, string> = s.auth) =>
+  const get = (url: string, headers: Record<string, string> = s.readerAuth) =>
     s.app.inject({ method: 'GET', url, headers });
 
   beforeAll(async () => {
@@ -27,6 +27,31 @@ describe('analysis and export routes', () => {
   it('requires a token', async () => {
     expect((await get('/v1/runs/summary', {})).statusCode).toBe(401);
     expect((await get('/v1/export', {})).statusCode).toBe(401);
+  });
+
+  it('answers 400, not a Postgres error, for int4 query parameters out of range', async () => {
+    const TOO_BIG = '2147483648';
+    for (const url of [
+      `/v1/quests/xp?build=${TOO_BIG}`,
+      `/v1/runs/summary?build=${TOO_BIG}`,
+      `/v1/drops/rates?build=${TOO_BIG}`,
+      `/v1/professions/recipes?build=${TOO_BIG}`,
+      `/v1/professions/recipes?skillLine=${TOO_BIG}`,
+      `/v1/professions/sources?itemId=${TOO_BIG}`,
+      `/v1/professions/sources?recipeId=${TOO_BIG}`,
+      `/v1/professions/gathering?build=${TOO_BIG}`,
+      `/v1/professions/skills?build=${TOO_BIG}`,
+      `/v1/quests/xp?build=99999999999999999999`,
+    ]) {
+      const res = await get(url);
+      expect(res.statusCode, `${url} ${res.body}`).toBe(400);
+      expect(res.json().error, url).toMatch(/out of range/);
+    }
+    expect((await get(`/v1/items/${TOO_BIG}`)).json()).toEqual({ error: 'bad item id' });
+    // The int4 maximum itself is a valid (empty) filter.
+    const max = await get('/v1/quests/xp?build=2147483647');
+    expect(max.statusCode).toBe(200);
+    expect(max.json()).toEqual([]);
   });
 
   it('returns XP per minute per dungeon with boss splits', async () => {
@@ -197,7 +222,7 @@ describe('analysis and export routes', () => {
 
 describe('profession routes', () => {
   let s: Server;
-  const get = (url: string, headers: Record<string, string> = s.auth) =>
+  const get = (url: string, headers: Record<string, string> = s.readerAuth) =>
     s.app.inject({ method: 'GET', url, headers });
   const build = 69977;
   const S1 = '1790100000-c0de';
@@ -529,7 +554,7 @@ describe('profession routes', () => {
 
 describe("the real addon's schema 4 session (session-v4.lua)", () => {
   let s: Server;
-  const get = (url: string) => s.app.inject({ method: 'GET', url, headers: s.auth });
+  const get = (url: string) => s.app.inject({ method: 'GET', url, headers: s.readerAuth });
   const build = 61582;
   const batch = batchFromFixture('session-v4.lua', 'ADDON-V4');
   const loc = { zone: 'Elwynn Forest', subzone: 'Goldshire', mapID: 1429, x: 42.1, y: 65.9 };
@@ -690,7 +715,7 @@ describe("the real addon's schema 4 session (session-v4.lua)", () => {
 
 describe("the real addon's schema 5 session (session-v5.lua): vendor costs and NPC titles", () => {
   let s: Server;
-  const get = (url: string) => s.app.inject({ method: 'GET', url, headers: s.auth });
+  const get = (url: string) => s.app.inject({ method: 'GET', url, headers: s.readerAuth });
   const batch = batchFromFixture('session-v5.lua', 'ADDON-V5');
 
   beforeAll(async () => {
@@ -774,7 +799,7 @@ describe("the real addon's schema 5 session (session-v5.lua): vendor costs and N
 
 describe('skill line folding (Forever lists each profession twice: a base line and a "Classic" child)', () => {
   let s: Server;
-  const get = (url: string, headers: Record<string, string> = s.auth) =>
+  const get = (url: string, headers: Record<string, string> = s.readerAuth) =>
     s.app.inject({ method: 'GET', url, headers });
   const build = 69977;
   const F = 'Fontenot-Bayou';

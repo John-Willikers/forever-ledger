@@ -160,7 +160,7 @@ export async function buildApp(opts: AppOptions) {
     bodyLimit: opts.diagnosticsBodyLimit,
     reader: guards.requireReader,
   });
-  registerAdminApiRoutes(app, guards);
+  registerAdminApiRoutes(app, db, guards);
   await registerAdminStatic(app, opts.admin?.distDir);
 
   return app;

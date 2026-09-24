@@ -1,7 +1,7 @@
 // Admin panel users and sessions. The session cookie holds a random value; the database stores only its sha256
 // (like API tokens), so a database leak can't be replayed as a login.
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { eq, lt, sql } from 'drizzle-orm';
+import { and, eq, lt, ne, sql } from 'drizzle-orm';
 import { hashToken } from './auth.js';
 import type { Db } from './db/client.js';
 import { sessions, users } from './db/schema.js';
@@ -150,6 +150,36 @@ export async function loadSession(db: Db, value: string): Promise<ActiveSession 
     renewed,
     expiresAt,
   };
+}
+
+/**
+ * Sets a user's role. Demoting the last admin is refused (the panel would lock everyone out); the check runs under
+ * the bootstrap lock so two concurrent demotions can't both pass it.
+ */
+export async function setUserRole(
+  db: Db,
+  userId: number,
+  role: Role,
+): Promise<'ok' | 'not-found' | 'last-admin'> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${BOOTSTRAP_LOCK})`);
+    const [user] = await tx
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, userId))
+      .for('update');
+    if (!user) return 'not-found';
+    if (user.role === 'admin' && role !== 'admin') {
+      const [other] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.role, 'admin'), ne(users.id, userId)))
+        .limit(1);
+      if (!other) return 'last-admin';
+    }
+    await tx.update(users).set({ role }).where(eq(users.id, userId));
+    return 'ok';
+  });
 }
 
 export async function deleteSession(db: Db, id: string) {

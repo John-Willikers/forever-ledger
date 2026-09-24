@@ -34,7 +34,7 @@ describe('diagnostics API (real Postgres)', () => {
 
   const postReport = (body: unknown, headers: Record<string, string> = s.auth) =>
     s.app.inject({ method: 'POST', url: '/v1/diagnostics', headers, payload: body as object });
-  const list = (query = '', headers: Record<string, string> = s.auth) =>
+  const list = (query = '', headers: Record<string, string> = s.readerAuth) =>
     s.app.inject({ method: 'GET', url: `/v1/diagnostics${query}`, headers });
 
   it('stores a report and lists it with Chicago timestamps', async () => {
@@ -213,7 +213,11 @@ describe('diagnostics API limits', () => {
   it('rate-limits reading the list per token too', async () => {
     const codes: number[] = [];
     for (let i = 0; i < 5; i++) {
-      const res = await s.app.inject({ method: 'GET', url: '/v1/diagnostics', headers: s.auth });
+      const res = await s.app.inject({
+        method: 'GET',
+        url: '/v1/diagnostics',
+        headers: s.readerAuth,
+      });
       codes.push(res.statusCode);
     }
     expect(codes).toEqual([200, 200, 200, 429, 429]);
