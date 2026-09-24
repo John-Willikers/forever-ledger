@@ -1,15 +1,16 @@
 import { createColumnHelper } from '@tanstack/react-table';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAdminQuery } from '../../api';
 import { Card } from '../../components/Card';
 import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Empty, QueryState } from '../../components/State';
 import { formatNumber, plural } from '../../lib/format';
-import { formatCosts, formatMoney } from '../../lib/money';
+import { formatMoney } from '../../lib/money';
 import { BandBar, BandLegend } from './BandBar';
 import { bandScale, difficultyBands, viaLabel } from './lib';
-import type { Recipe, RecipeBuild, RecipeCost, RecipeSources } from './types';
+import { RecipeInfo } from './RecipeInfo';
+import type { Recipe, RecipeBuild, RecipeCost } from './types';
 
 const reagentsText = (b: RecipeBuild | undefined) =>
   b && b.reagents.length > 0
@@ -29,14 +30,26 @@ const viaText = (r: Recipe) =>
     ? r.learnedVia.map((v) => `${viaLabel(v.via)}${v.count > 1 ? ` ×${v.count}` : ''}`).join(', ')
     : '—';
 
-/** Recipes of one base profession (/v1/professions/recipes folds child lines), newest schematic per recipe. */
-export function RecipesCard({ skillLineId, name }: { skillLineId: number; name: string }) {
+/**
+ * Recipes of one base profession (/v1/professions/recipes folds child lines), newest schematic per recipe; the
+ * `selected` recipe's details open under the table (the page keeps it in `?recipe=`).
+ */
+export function RecipesCard({
+  skillLineId,
+  name,
+  selected,
+  onSelect,
+}: {
+  skillLineId: number;
+  name: string;
+  selected: number | null;
+  onSelect: (id: number | null) => void;
+}) {
   const recipes = useAdminQuery<Recipe[]>(
     ['v1-recipes', skillLineId],
     `/v1/professions/recipes?skillLine=${skillLineId}`,
   );
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<number | null>(null);
   return (
     <Card
       title={`${name} recipes`}
@@ -58,7 +71,7 @@ export function RecipesCard({ skillLineId, name }: { skillLineId: number; name: 
             list={list}
             search={search}
             selected={selected}
-            onSelect={(id) => setSelected((s) => (s === id ? null : id))}
+            onSelect={(id) => onSelect(selected === id ? null : id)}
           />
         )}
       </QueryState>
@@ -143,11 +156,17 @@ function RecipeTable({
 }
 
 function RecipeDetail({ recipe, scale }: { recipe: Recipe; scale: number }) {
+  const ref = useRef<HTMLElement>(null);
+  // Opened from a link or the table: bring it into view.
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [recipe.recipeId]);
   return (
-    <section className="recipe-detail" aria-label={`${recipe.name} details`}>
+    <section className="recipe-detail" aria-label={`${recipe.name} details`} ref={ref}>
       <h3>
         {recipe.name} <span className="muted small">recipe {recipe.recipeId}</span>
       </h3>
+      <RecipeInfo recipeId={recipe.recipeId} />
       <div className="grid-2">
         <div>
           <h4>Per build</h4>
@@ -187,13 +206,9 @@ function RecipeDetail({ recipe, scale }: { recipe: Recipe; scale: number }) {
               </table>
             </div>
           )}
-          <p className="small">
-            Known by {plural(recipe.learnedBy, 'character')} · learned via {viaText(recipe)}
-          </p>
         </div>
         <CostCalculator recipeId={recipe.recipeId} builds={recipe.builds.map((b) => b.build)} />
       </div>
-      <Sources recipeId={recipe.recipeId} />
     </section>
   );
 }
@@ -322,63 +337,6 @@ function CostCalculator({ recipeId, builds }: { recipeId: number; builds: number
                 a stack). Listings with an extended cost are never used.
               </p>
             </>
-          )
-        }
-      </QueryState>
-    </div>
-  );
-}
-
-function Sources({ recipeId }: { recipeId: number }) {
-  const sources = useAdminQuery<RecipeSources>(
-    ['v1-sources', recipeId],
-    `/v1/professions/sources?recipeId=${recipeId}`,
-  );
-  return (
-    <div>
-      <h4>Where it comes from</h4>
-      <QueryState query={sources}>
-        {(s) =>
-          s.trainers.length + s.vendors.length + s.drops.length === 0 ? (
-            <p className="muted small">No trainer, vendor or drop seen for it yet.</p>
-          ) : (
-            <ul className="sources small">
-              {s.trainers.map((t) => (
-                <li key={`t-${t.npcId}-${t.build}-${t.service}`}>
-                  <span className="pill neutral">trainer</span>
-                  {t.npcName ?? `NPC ${t.npcId}`}
-                  {t.npcTitle && <span className="chip">{t.npcTitle}</span>}
-                  <span className="muted">
-                    {' '}
-                    · {formatMoney(t.cost)}
-                    {t.skillRank ? ` · needs rank ${t.skillRank}` : ''} · build {t.build}
-                  </span>
-                </li>
-              ))}
-              {s.vendors.map((v) => (
-                <li key={`v-${v.npcId}-${v.build}-${v.itemId}`}>
-                  <span className="pill neutral">vendor</span>
-                  {v.npcName ?? `NPC ${v.npcId}`}
-                  {v.npcTitle && <span className="chip">{v.npcTitle}</span>}
-                  <span className="muted">
-                    {' '}
-                    · {v.itemName ?? `Item ${v.itemId}`} for {formatCosts(v.price, v.costs)} · build{' '}
-                    {v.build}
-                  </span>
-                </li>
-              ))}
-              {s.drops.map((d) => (
-                <li key={`d-${d.itemId}-${d.build}-${d.npcId}-${d.objectId}`}>
-                  <span className="pill neutral">drop</span>
-                  {d.itemName ?? `Item ${d.itemId}`}
-                  <span className="muted">
-                    {' '}
-                    · from {d.npcId !== null ? `NPC ${d.npcId}` : `object ${d.objectId}`} ·{' '}
-                    {plural(d.count, 'time')} · build {d.build}
-                  </span>
-                </li>
-              ))}
-            </ul>
           )
         }
       </QueryState>

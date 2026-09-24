@@ -10,6 +10,7 @@ import { chicagoIso } from '../time.js';
 import type { ReadGuard } from './analysis.js';
 import { buildFilter, int4Param, skillBase } from './analysis.js';
 import { intParam, rows } from './adminData.js';
+import { recipesTaughtBy, registerAdminRecipesRoutes } from './adminRecipes.js';
 import {
   badRequest,
   charKeyParam,
@@ -775,6 +776,7 @@ export function registerAdminProfessionsRoutes(
   /**
    * One vendor's listings in order: item name, quality, class, the gold `price` for `stack` items, stock (-1 =
    * unlimited), and the extended cost (`costs`: items or currencies, named from `items` when known; null when none).
+   * `teaches`: the recipe a listing teaches (`{ recipeId, name }`, see `recipesTaughtBy`), else null.
    */
   app.get<{ Params: { npcId: string } }>(
     '/admin/api/vendors/:npcId',
@@ -784,7 +786,7 @@ export function registerAdminProfessionsRoutes(
       const build = buildFilter(req.query);
       const [v] = await npcRow('vendors', npcId, build);
       if (!v) return reply.status(404).send({ error: 'vendor not seen yet' });
-      const items = await rows(
+      const items = await rows<Record<string, unknown> & { itemId: number | null }>(
         db,
         sql`select l.item_id as "itemId", i.name, i.quality, i.class_id as "classId", i.type, i.subtype,
                    ${jnum(sql`it->'price'`)} as price, ${jnum(sql`it->'stack'`)} as stack,
@@ -808,7 +810,17 @@ export function registerAdminProfessionsRoutes(
             where v.npc_id = ${npcId} and v.build = ${v.build}
             order by e.ord`,
       );
-      return { ...npcOut(v), items };
+      const taught = await recipesTaughtBy(
+        db,
+        items.flatMap((i) => (i.itemId === null ? [] : [i.itemId])),
+      );
+      return {
+        ...npcOut(v),
+        items: items.map((i) => ({
+          ...i,
+          teaches: (i.itemId !== null && taught.get(i.itemId)) || null,
+        })),
+      };
     },
   );
 
@@ -827,7 +839,8 @@ export function registerAdminProfessionsRoutes(
 
   /**
    * One trainer's services in order: name, type (available / unavailable / used), cost in copper, required skill and
-   * rank, required level and the item it makes. `complete` false: the scan ran with a type filter off or a header
+   * rank, required level, the item it makes and `recipeId`: the recipe of the same name in the trainer's profession
+   * (lowest id), else null. `complete` false: the scan ran with a type filter off or a header
    * collapsed, so the list can miss services.
    */
   app.get<{ Params: { npcId: string } }>(
@@ -846,10 +859,16 @@ export function registerAdminProfessionsRoutes(
       );
       const services = await rows(
         db,
-        sql`select ${jtext(sql`svc`, 'name')} as name, ${jtext(sql`svc`, 'type')} as type,
+        sql`with ${skillBase}
+            select ${jtext(sql`svc`, 'name')} as name, ${jtext(sql`svc`, 'type')} as type,
                    ${jnum(sql`svc->'cost'`)} as cost, ${jtext(sql`svc`, 'skill')} as skill,
                    ${jnum(sql`svc->'skillRank'`)} as "skillRank", ${jnum(sql`svc->'level'`)} as level,
-                   l.item_id as "itemId", i.name as "itemName"
+                   l.item_id as "itemId", i.name as "itemName",
+                   (select min(r.recipe_id) from recipes r left join skill_base rb on rb.id = r.skill_line_id
+                    where r.name = ${jtext(sql`svc`, 'name')}
+                      and (${line?.skillLineId ?? null}::int is null or r.skill_line_id is null
+                           or coalesce(rb.base_id, r.skill_line_id) = ${line?.skillLineId ?? null}::int)
+                   ) as "recipeId"
             from trainers t
             cross join lateral jsonb_array_elements(${jarr(sql`t.services`)}) with ordinality as e(svc, ord)
             cross join lateral (select ${jint(sql`svc->'itemId'`)} as item_id) l
@@ -867,4 +886,6 @@ export function registerAdminProfessionsRoutes(
       };
     },
   );
+
+  registerAdminRecipesRoutes(app, db, preHandler);
 }

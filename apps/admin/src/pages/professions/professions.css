@@ -302,3 +302,52 @@ table.data tfoot th {
 .pill.svc-unavailable {
   color: var(--danger-text);
 }
+
+/* ---- recipe details ---- */
+
+.recipe-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.recipe-info > .filters {
+  align-self: flex-end;
+}
+
+ul.wow-tooltip {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-2);
+  max-width: 28rem;
+}
+
+ul.wow-tooltip li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+ul.wow-tooltip .tt-right {
+  text-align: right;
+}
+
+dl.recipe-reqs {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+dl.recipe-reqs dt {
+  color: var(--muted);
+}
+
+dl.recipe-reqs dd {
+  margin: 0;
+}
+
+.teaches {
+  margin-left: 0.25rem;
+}

@@ -112,11 +112,16 @@ export function mergeDropSources(sources: DropSource[], rates: DropRate[]) {
 }
 
 /**
- * A tooltip line as plain text: WoW escape sequences (`|cAARRGGBB…|r` colors, `|H…|h` links, `|T…|t` textures) are
- * dropped, `||` is a literal bar, tabs become spaces. The result is rendered as text, never as markup.
+ * A tooltip line as plain text: coin atlases (`|A:coin-gold…|a`) become g/s/c, other WoW escape sequences
+ * (`|cAARRGGBB…|r` colors, `|H…|h` links, `|T…|t` textures, `|A…|a` atlases) are dropped, `||` is a literal bar, tabs
+ * become spaces. The result is rendered as text, never as markup.
  */
 export function tooltipText(line: string) {
   return line
+    .replace(/\|A:coin-gold[^|]*\|a/gi, 'g')
+    .replace(/\|A:coin-silver[^|]*\|a/gi, 's')
+    .replace(/\|A:coin-copper[^|]*\|a/gi, 'c')
+    .replace(/\|A[^|]*\|a/g, '')
     .replace(/\|T[^|]*\|t/g, '')
     .replace(/\|c[0-9a-fA-F]{8}/g, '')
     .replace(/\|r/g, '')

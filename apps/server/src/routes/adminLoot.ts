@@ -11,6 +11,7 @@ import type { ReadGuard } from './analysis.js';
 import { buildFilter, int4Param } from './analysis.js';
 import { iso, rows } from './adminData.js';
 import { locationOf } from './adminProfessions.js';
+import { learnRanks, recipesTaughtBy } from './adminRecipes.js';
 import {
   badRequest,
   containsPattern,
@@ -470,7 +471,8 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
   /**
    * What the Item page needs besides /v1/items/:id: stat and field changes between builds, drop rates per mob (the
    * rates rules) with names, vendors selling it (price, extended costs named, NPC subtitle) and recipes making or
-   * using it.
+   * using it; makers carry their base profession and the skill rank to learn them (see adminRecipes `learnRanks`).
+   * `recipes.teaches`: the recipe a Recipe-class item teaches (see `recipesTaughtBy`), as a list of at most one.
    */
   app.get<{ Params: { id: string } }>(
     '/admin/api/items/:id',
@@ -557,7 +559,15 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
         order by s.build desc, s.recipe_id`,
         ),
       ]);
-      const names = await npcNames(db, [...new Set(rates.map((r) => r.npcId))]);
+      const [names, taught] = await Promise.all([
+        npcNames(db, [...new Set(rates.map((r) => r.npcId))]),
+        recipesTaughtBy(db, [id]),
+      ]);
+      const teaches = taught.get(id);
+      const ranks = await learnRanks(db, [
+        ...produces.map((p) => p.recipeId as number),
+        ...(teaches ? [teaches.recipeId] : []),
+      ]);
       return {
         itemId: id,
         foreverOnly: id >= FOREVER_ID_THRESHOLDS.item,
@@ -568,7 +578,22 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
           location: locationOf(loc),
           seenAt: chicagoIso(seenAt),
         })),
-        recipes: { produces, reagentIn },
+        recipes: {
+          produces: produces.map((p) => ({
+            ...p,
+            profession: ranks.get(p.recipeId as number)?.profession ?? null,
+            skillRank: ranks.get(p.recipeId as number)?.skillRank ?? null,
+          })),
+          reagentIn,
+          teaches: teaches
+            ? [
+                {
+                  ...teaches,
+                  profession: ranks.get(teaches.recipeId)?.profession ?? null,
+                },
+              ]
+            : [],
+        },
       };
     },
   );

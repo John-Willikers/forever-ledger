@@ -1,6 +1,7 @@
 import { createColumnHelper } from '@tanstack/react-table';
 import { useDeferredValue, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 import { useAdminQuery } from '../../api';
 import { Card } from '../../components/Card';
 import { DataTable } from '../../components/DataTable';
@@ -9,7 +10,9 @@ import { Empty, QueryState } from '../../components/State';
 import { formatNumber, plural } from '../../lib/format';
 import { formatCosts, formatMoney } from '../../lib/money';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
+import { ItemName } from '../loot/parts';
 import '../professions/professions.css';
+import { recipeHref } from '../professions/recipeLib';
 import { formatLocation, listPath, skillReq, stockLabel, unitPrice } from './lib';
 import type { ListFilters } from './lib';
 import type {
@@ -302,13 +305,22 @@ const itemColumns = itemCol.columns([
   itemCol.accessor((i) => i.name ?? `Item ${i.itemId ?? '?'}`, {
     id: 'item',
     header: 'Item',
-    cell: (c) => (
-      <span>
-        <span className={`quality q${c.row.original.quality ?? 'x'}`} aria-hidden />
-        {c.getValue()}
-        {c.row.original.classId === 9 && <span className="pill neutral">recipe</span>}
-      </span>
-    ),
+    cell: (c) => {
+      const i = c.row.original;
+      return (
+        <span>
+          <span className={`quality q${i.quality ?? 'x'}`} aria-hidden />
+          <ItemName itemId={i.itemId} name={i.name} quality={i.quality} />
+          {i.classId === 9 && <span className="pill neutral">recipe</span>}
+          {i.teaches && (
+            <span className="small teaches">
+              {' '}
+              teaches <Link to={recipeHref(i.teaches.recipeId)}>{i.teaches.name}</Link>
+            </span>
+          )}
+        </span>
+      );
+    },
   }),
   itemCol.accessor((i) => [i.type, i.subtype].filter(Boolean).join(' / '), {
     id: 'class',
@@ -436,7 +448,17 @@ function TrainerCard({ npcId }: { npcId: number }) {
                   <tbody>
                     {services.map((s, i) => (
                       <tr key={`${i}-${s.name}`}>
-                        <td>{s.name ?? '—'}</td>
+                        <td>
+                          {s.name === null ? (
+                            '—'
+                          ) : s.recipeId !== null ? (
+                            <Link to={recipeHref(s.recipeId)} title="Recipe details">
+                              {s.name}
+                            </Link>
+                          ) : (
+                            s.name
+                          )}
+                        </td>
                         <td>
                           {s.type ? (
                             <span className={`pill svc-${s.type.replace(/[^a-z]/gi, '')}`}>
@@ -449,7 +471,13 @@ function TrainerCard({ npcId }: { npcId: number }) {
                         <td>{formatMoney(s.cost)}</td>
                         <td>{skillReq(s.skill, s.skillRank)}</td>
                         <td>{s.level ? s.level : '—'}</td>
-                        <td>{s.itemId === null ? '—' : (s.itemName ?? `Item ${s.itemId}`)}</td>
+                        <td>
+                          {s.itemId === null ? (
+                            '—'
+                          ) : (
+                            <ItemName itemId={s.itemId} name={s.itemName} quality={null} />
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

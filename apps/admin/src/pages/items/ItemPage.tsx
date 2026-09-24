@@ -9,6 +9,7 @@ import { formatChicagoShort } from '../../lib/time';
 import { formatCopper, mobLabel, qualityClass, qualityLabel } from '../loot/lootLib';
 import { ForeverBadge, ItemName, RateBar } from '../loot/parts';
 import type { ItemExtra, ItemV1, VendorCost } from '../loot/types';
+import { makerRank, recipeHref } from '../professions/recipeLib';
 import { mergeDropSources, statLabel, statMatrix, tooltipText } from './itemLib';
 
 /** One item across builds: stats with changes highlighted, where it comes from, what uses it. */
@@ -334,21 +335,44 @@ function QuestsCard({ item }: { item: ItemV1 }) {
   );
 }
 
+const RecipeLink = ({ recipeId, name }: { recipeId: number; name: string | null }) => (
+  <Link to={recipeHref(recipeId)} title="Recipe details">
+    {name ?? `Recipe ${recipeId}`}
+  </Link>
+);
+
 function RecipesCard({ extra }: { extra: ItemExtra }) {
   const { produces, reagentIn } = extra.recipes;
+  const teaches = extra.recipes.teaches ?? [];
   return (
     <Card title="Recipes">
-      {produces.length === 0 && reagentIn.length === 0 ? (
+      {produces.length === 0 && reagentIn.length === 0 && teaches.length === 0 ? (
         <Empty>No recipe makes or uses it.</Empty>
       ) : (
         <>
+          {teaches.length > 0 && (
+            <>
+              <h3>Teaches</h3>
+              <ul className="plain">
+                {teaches.map((t) => (
+                  <li key={t.recipeId}>
+                    <RecipeLink recipeId={t.recipeId} name={t.name} />
+                    {t.profession?.name && (
+                      <span className="muted small"> · {t.profession.name}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {produces.length > 0 && (
             <>
               <h3>Made by</h3>
               <ul className="plain">
                 {produces.map((r) => (
                   <li key={`${r.build}-${r.recipeId}`}>
-                    {r.name ?? `Recipe ${r.recipeId}`}{' '}
+                    <RecipeLink recipeId={r.recipeId} name={r.name} />
+                    {makerRank(r) && <span> ({makerRank(r)})</span>}{' '}
                     <span className="muted small">build {r.build}</span>
                     <div className="small muted">
                       {r.reagents.map((g, i) => (
@@ -369,7 +393,7 @@ function RecipesCard({ extra }: { extra: ItemExtra }) {
               <ul className="plain">
                 {reagentIn.map((r) => (
                   <li key={`${r.build}-${r.recipeId}`}>
-                    {r.qty ?? '?'} × for {r.name ?? `Recipe ${r.recipeId}`}
+                    {r.qty ?? '?'} × for <RecipeLink recipeId={r.recipeId} name={r.name} />
                     {r.outputItemId !== null && (
                       <>
                         {' '}

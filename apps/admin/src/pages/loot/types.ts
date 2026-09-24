@@ -129,6 +129,9 @@ export interface ItemExtra {
       qtyMin: number | null;
       qtyMax: number | null;
       reagents: { itemId: number; name: string | null; qty: number }[];
+      /** The recipe's base profession and the skill rank to learn it (trainer, else recipe item). */
+      profession: { skillLineId: number; name: string | null } | null;
+      skillRank: number | null;
     }[];
     reagentIn: {
       recipeId: number;
@@ -137,6 +140,12 @@ export interface ItemExtra {
       qty: number | null;
       outputItemId: number | null;
       outputItemName: string | null;
+    }[];
+    /** The recipe a Recipe-class item teaches (at most one). */
+    teaches: {
+      recipeId: number;
+      name: string;
+      profession: { skillLineId: number; name: string | null } | null;
     }[];
   };
 }

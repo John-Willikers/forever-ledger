@@ -1,19 +1,28 @@
 import { createColumnHelper } from '@tanstack/react-table';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { useAdminQuery } from '../../api';
 import { Card } from '../../components/Card';
 import { Chart, useChartPalette } from '../../components/Chart';
 import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
-import { Empty, QueryState } from '../../components/State';
+import { Empty, ErrorState, QueryState } from '../../components/State';
 import { formatNumber, plural } from '../../lib/format';
 import { formatChicagoShort } from '../../lib/time';
 import './echarts';
 import { GatheringCard } from './GatheringCard';
 import { percent, skillRankOption, skillRankSeries } from './lib';
 import './professions.css';
+import { RecipeInfo } from './RecipeInfo';
+import { recipeParam } from './recipeLib';
 import { RecipesCard } from './RecipesCard';
-import type { CraftRow, ProfessionsOverview, ProfessionSummary, SkillHistory } from './types';
+import type {
+  CraftRow,
+  ProfessionsOverview,
+  ProfessionSummary,
+  RecipeDetail,
+  SkillHistory,
+} from './types';
 
 /** The profession picked until the user picks one: the one with the most recipes, crafts and harvests. */
 const mostActive = (list: ProfessionSummary[]) =>
@@ -23,13 +32,35 @@ const activity = (p: ProfessionSummary) => p.recipes.seen + p.crafts.casts + p.g
 const professionName = (p: { skillLineId: number; name: string | null }) =>
   p.name ?? `Skill line ${p.skillLineId}`;
 
-/** Professions: a card per base profession, then the picked one's skill-ups, recipes and crafts; gathering below. */
+/**
+ * Professions: a card per base profession, then the picked one's skill-ups, recipes and crafts; gathering below.
+ * `?recipe=<id>` (links from vendors, trainers and items) opens that recipe's details under its profession.
+ */
 export function ProfessionsPage() {
   const overview = useAdminQuery<ProfessionsOverview>(
     ['professions-overview'],
     '/admin/api/professions/overview',
   );
   const [selected, setSelected] = useState<number | null>(null);
+  const [params, setParams] = useSearchParams();
+  const recipeId = recipeParam(params);
+  // Same key as RecipeInfo's newest-build query: the linked recipe's profession comes from its details.
+  const linked = useAdminQuery<RecipeDetail>(
+    ['recipe-detail', recipeId, null],
+    `/admin/api/professions/recipes/${recipeId}`,
+    { enabled: recipeId !== null },
+  );
+  const setRecipe = (id: number | null) =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        if (id === null) next.delete('recipe');
+        else next.set('recipe', String(id));
+        return next;
+      },
+      { replace: true },
+    );
+  const linkedProfession = recipeId !== null ? (linked.data?.profession ?? null) : null;
   return (
     <div className="page">
       <header className="page-head">
@@ -43,7 +74,14 @@ export function ProfessionsPage() {
         {({ professions }) => {
           if (professions.length === 0) return <Empty>No professions seen yet.</Empty>;
           const current =
-            professions.find((p) => p.skillLineId === selected) ?? mostActive(professions);
+            professions.find((p) => p.skillLineId === selected) ??
+            professions.find((p) => p.skillLineId === linkedProfession?.skillLineId) ??
+            mostActive(professions);
+          // A linked recipe outside the shown profession (none, or never seen in skills): its details on their own.
+          const orphan =
+            recipeId !== null &&
+            linked.isSuccess &&
+            linkedProfession?.skillLineId !== current.skillLineId;
           return (
             <>
               <div className="prof-grid" role="list">
@@ -52,15 +90,30 @@ export function ProfessionsPage() {
                     key={p.skillLineId}
                     p={p}
                     active={p.skillLineId === current.skillLineId}
-                    onPick={() => setSelected(p.skillLineId)}
+                    onPick={() => {
+                      setSelected(p.skillLineId);
+                      setRecipe(null);
+                    }}
                   />
                 ))}
               </div>
+              {orphan && linked.data && (
+                <Card title={`${linked.data.name} (recipe ${linked.data.recipeId})`}>
+                  <RecipeInfo recipeId={linked.data.recipeId} />
+                </Card>
+              )}
+              {recipeId !== null && linked.isError && (
+                <Card title={`Recipe ${recipeId}`}>
+                  <ErrorState error={linked.error} retry={() => void linked.refetch()} />
+                </Card>
+              )}
               <SkillRankCard prof={current} />
               <RecipesCard
                 key={current.skillLineId}
                 skillLineId={current.skillLineId}
                 name={professionName(current)}
+                selected={recipeId}
+                onSelect={setRecipe}
               />
               <CraftsCard prof={current} />
             </>
