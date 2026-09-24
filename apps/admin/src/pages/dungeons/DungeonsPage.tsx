@@ -13,6 +13,7 @@ import { formatNumber, plural } from '../../lib/format';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { BuildSelect } from '../loot/parts';
 import {
+  charName,
   clearTimeOption,
   formatDuration,
   instanceLabel,
@@ -20,9 +21,23 @@ import {
   xpRateOption,
 } from './runLib';
 import type { ClearTimes } from './runLib';
-import type { RunSummary, RunsPage } from './types';
+import type { RunMember, RunSummary, RunsPage } from './types';
 
 const PAGE = 50;
+
+/** A run group's members: character, class badge and level, one per line. */
+function Members({ members }: { members: RunMember[] }) {
+  return (
+    <ul className="plain">
+      {members.map((m) => (
+        <li key={m.id} className="nowrap" title={m.char}>
+          {charName(m.char)} <ClassBadge cls={m.charClass} />
+          {m.charLevel !== null && <span className="muted small"> L{m.charLevel}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 /** Runs per instance: clear times, XP per minute (mob vs quest), deaths; the runs table links to each run. */
 export function DungeonsPage() {
@@ -38,8 +53,9 @@ export function DungeonsPage() {
       <header className="page-head">
         <h1>Dungeons</h1>
         <p className="muted">
-          Finished runs per instance and build. Clear time is active time (away time excluded);
-          times are America/Chicago.
+          Finished runs per instance and build. A run several party members uploaded counts once (a
+          run group); its clear time is the median of the members' active times (away time
+          excluded). XP per minute counts every member. Times are America/Chicago.
         </p>
       </header>
       <div className="filters">
@@ -82,7 +98,12 @@ function SummaryCard({ rows }: { rows: RunSummary[] }) {
                 <tr key={`${r.instanceId}-${r.build}`}>
                   <td>{instanceLabel(r.instanceId, r.instance)}</td>
                   <td>{r.build}</td>
-                  <td>{formatNumber(r.finishedRuns)}</td>
+                  <td className="nowrap">
+                    {formatNumber(r.finishedRuns)}
+                    {r.members > r.finishedRuns && (
+                      <span className="muted small"> ({plural(r.members, 'member')})</span>
+                    )}
+                  </td>
                   <td>{formatDuration(r.medianActiveSecs)}</td>
                   <td>{formatDuration(r.bestActiveSecs)}</td>
                   <td>{r.xpPerMinute ?? '—'}</td>
@@ -125,7 +146,9 @@ function ClearTimesCard({ query }: { query: UseQueryResult<ClearTimes[], Error> 
                 height={rowsChartHeight(rows.length)}
                 label={`Clear times of ${runs} finished runs over ${plural(rows.length, 'instance')}`}
               />
-              <p className="muted small">One dot per finished run (active minutes).</p>
+              <p className="muted small">
+                One dot per finished run group (median member active minutes).
+              </p>
             </>
           );
         }}
@@ -194,12 +217,12 @@ function RunsCard({ build }: { build: number | null }) {
                   <thead>
                     <tr>
                       <th>Started</th>
-                      <th>Character</th>
+                      <th>Members</th>
                       <th>Instance</th>
                       <th>Build</th>
                       <th>Active</th>
                       <th>Away</th>
-                      <th>XP (mob / quest)</th>
+                      <th>XP per member (mob / quest)</th>
                       <th>Deaths</th>
                       <th>Bosses</th>
                       <th>Loot</th>
@@ -217,10 +240,7 @@ function RunsCard({ build }: { build: number | null }) {
                           </Link>
                         </td>
                         <td>
-                          {r.char} <ClassBadge cls={r.charClass} />
-                          {r.charLevel !== null && (
-                            <span className="muted small"> L{r.charLevel}</span>
-                          )}
+                          <Members members={r.members} />
                         </td>
                         <td>{instanceLabel(r.instanceId, r.instance)}</td>
                         <td>{r.build}</td>
