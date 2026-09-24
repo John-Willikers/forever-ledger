@@ -1,6 +1,6 @@
 {
-  "id": "96939f82-bea9-4643-99bd-102f393ea2f6",
-  "prevId": "1e4727a4-d7d6-4932-94e3-f7fa6732e9e0",
+  "id": "33c8b6f0-79f4-4fd4-bb3d-197436354185",
+  "prevId": "96939f82-bea9-4643-99bd-102f393ea2f6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2648,6 +2648,99 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.zone_maps": {
+      "name": "zone_maps",
+      "schema": "",
+      "columns": {
+        "ui_map_id": {
+          "name": "ui_map_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mime": {
+          "name": "mime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bytes": {
+          "name": "bytes",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "build": {
+          "name": "build",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uploaded_by": {
+          "name": "uploaded_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uploaded_at": {
+          "name": "uploaded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "zone_maps_uploaded_by_users_id_fk": {
+          "name": "zone_maps_uploaded_by_users_id_fk",
+          "tableFrom": "zone_maps",
+          "tableTo": "users",
+          "columnsFrom": ["uploaded_by"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "zone_maps_mime_check": {
+          "name": "zone_maps_mime_check",
+          "value": "\"zone_maps\".\"mime\" in ('image/png', 'image/webp', 'image/jpeg')"
+        },
+        "zone_maps_size_check": {
+          "name": "zone_maps_size_check",
+          "value": "\"zone_maps\".\"width\" between 1 and 4096 and \"zone_maps\".\"height\" between 1 and 4096"
+        }
+      },
       "isRLSEnabled": false
     }
   },

@@ -82,28 +82,47 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db, preHandler:
     );
   });
 
-  /** Clear times, XP per minute and boss splits per dungeon and build. */
+  /**
+   * Clear times, XP per minute and boss splits per dungeon and build. One shared dungeon run uploaded by several party
+   * members is one run group (runs.group_id): `runs`, the clear times and the boss splits count groups, `members` the
+   * characters' runs in them. A group's clear time is the median active time of its finished members (whole seconds);
+   * a boss's time in a group is the earliest member's. XP per minute, deaths and level stay per character (every
+   * member's run counts: each one earned its own XP).
+   */
   app.get('/v1/runs/summary', { preHandler }, async (req) => {
     const build = buildFilter(req.query);
     const summary = await rows<Record<string, unknown> & { instanceId: number; build: number }>(
       db,
       sql`
-      select instance_id as "instanceId", max(instance) as instance, build,
-             count(*)::int as runs,
-             count(finished_at)::int as "finishedRuns",
-             percentile_cont(0.5) within group (order by active_secs)::float8 as "medianActiveSecs",
-             min(active_secs)::int as "bestActiveSecs",
-             round(avg(deaths)::numeric, 2)::float8 as "avgDeaths",
-             round(avg(char_level)::numeric, 1)::float8 as "avgCharLevel",
-             round((sum(xp_total)::numeric / nullif(sum(active_secs), 0)) * 60, 1)::float8 as "xpPerMinute",
-             round((sum(xp_total - quest_xp)::numeric / nullif(sum(active_secs), 0)) * 60, 1)::float8
-               as "mobXpPerMinute",
-             round((sum(quest_xp)::numeric / nullif(sum(active_secs), 0)) * 60, 1)::float8 as "questXpPerMinute"
-      from runs
-      where finished_at is not null and active_secs > 0
-        and (${build}::int is null or build = ${build}::int)
-      group by instance_id, build
-      order by build desc, "xpPerMinute" desc nulls last`,
+      with m as (
+        select *, coalesce(group_id, id) as gid from runs
+        where finished_at is not null and active_secs > 0
+          and (${build}::int is null or build = ${build}::int)
+      ), g as (
+        select gid, instance_id, build,
+               round(percentile_cont(0.5) within group (order by active_secs))::int as clear_secs
+        from m group by gid, instance_id, build
+      ), per_group as (
+        select instance_id, build, count(*)::int as runs,
+               percentile_cont(0.5) within group (order by clear_secs)::float8 as "medianActiveSecs",
+               min(clear_secs)::int as "bestActiveSecs"
+        from g group by instance_id, build
+      ), per_member as (
+        select instance_id, build, max(instance) as instance, count(*)::int as members,
+               round(avg(deaths)::numeric, 2)::float8 as "avgDeaths",
+               round(avg(char_level)::numeric, 1)::float8 as "avgCharLevel",
+               round((sum(xp_total)::numeric / nullif(sum(active_secs), 0)) * 60, 1)::float8 as "xpPerMinute",
+               round((sum(xp_total - quest_xp)::numeric / nullif(sum(active_secs), 0)) * 60, 1)::float8
+                 as "mobXpPerMinute",
+               round((sum(quest_xp)::numeric / nullif(sum(active_secs), 0)) * 60, 1)::float8 as "questXpPerMinute"
+        from m group by instance_id, build
+      )
+      select pm.instance_id as "instanceId", pm.instance, pm.build,
+             pg.runs, pg.runs as "finishedRuns", pm.members,
+             pg."medianActiveSecs", pg."bestActiveSecs", pm."avgDeaths", pm."avgCharLevel",
+             pm."xpPerMinute", pm."mobXpPerMinute", pm."questXpPerMinute"
+      from per_member pm join per_group pg using (instance_id, build)
+      order by pm.build desc, pm."xpPerMinute" desc nulls last`,
     );
     const bosses = await rows<{
       instanceId: number;
@@ -115,13 +134,19 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db, preHandler:
     }>(
       db,
       sql`
-      select r.instance_id as "instanceId", r.build, b.name,
-             count(*) filter (where b.killed)::int as kills,
-             percentile_cont(0.5) within group (order by b.at_secs)::float8 as "medianAtSecs",
-             min(b.ord)::int as "firstOrd"
-      from run_bosses b join runs r on r.id = b.run_id
-      where r.finished_at is not null and (${build}::int is null or r.build = ${build}::int)
-      group by r.instance_id, r.build, b.name
+      with gb as (
+        select r.instance_id, r.build, coalesce(r.group_id, r.id) as gid, b.name,
+               bool_or(b.killed) as killed, min(b.at_secs) as at_secs, min(b.ord) as ord
+        from run_bosses b join runs r on r.id = b.run_id
+        where r.finished_at is not null and (${build}::int is null or r.build = ${build}::int)
+        group by r.instance_id, r.build, coalesce(r.group_id, r.id), b.name
+      )
+      select instance_id as "instanceId", build, name,
+             count(*) filter (where killed)::int as kills,
+             percentile_cont(0.5) within group (order by at_secs)::float8 as "medianAtSecs",
+             min(ord)::int as "firstOrd"
+      from gb
+      group by instance_id, build, name
       order by "medianAtSecs"`,
     );
     return summary.map((s) => ({

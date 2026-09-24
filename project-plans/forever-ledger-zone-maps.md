@@ -15,9 +15,7 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   (d8b8900 points route for the preview, f95c046 UI; `pnpm check` green, 833 vitest; headless Chrome check with a
   generated 1002×668 grid image: corner/center dots at 0/50/100 % of the image, tooltip, preview → alignment tick →
   save; run page skipped: runs carry no location)
-- ⚠️ Migration numbering: generated as `0010_zone_maps` while `feat/run-groups` (0010_run_groups) isn't on master →
-  after it merges, delete `0010_zone_maps.sql` + `meta/0010_snapshot.json` + its journal entry, merge master, run
-  `pnpm --filter @forever-ledger/server db:generate --name zone_maps` (→ 0011)
+- ✅ Migration renumbered to `0011_zone_maps` after run groups (0010) merged — 23:25 CDT
 - ⬜ 3 🚀 Deploy: backup, migrate, nginx reload, PM2 reload; export Durotar + The Barrens and upload (not in this branch)
 
 ## 📌 Context

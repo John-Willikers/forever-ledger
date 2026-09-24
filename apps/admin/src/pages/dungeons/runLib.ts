@@ -40,6 +40,38 @@ export function median(xs: number[]) {
 export const instanceLabel = (instanceId: number, instance: string | null | undefined) =>
   instance ? instance : `Instance ${instanceId}`;
 
+/** The name part of a `Name-Realm` character key (names never hold a dash; realms may). */
+export const charName = (key: string) => {
+  const i = key.indexOf('-');
+  return i > 0 ? key.slice(0, i) : key;
+};
+
+export interface RunTab {
+  /** 'group', or the member's run id. */
+  key: string;
+  label: string;
+}
+
+/**
+ * Tabs of a run group's page: the merged Group view, then one per member perspective (character name, or the whole
+ * key when two members share a name). A run nobody else uploaded has no tabs: its page is the run itself.
+ */
+export function runTabs(members: { id: string; char: string }[]): RunTab[] {
+  if (members.length < 2) return [];
+  const names = members.map((m) => charName(m.char));
+  return [
+    { key: 'group', label: 'Group' },
+    ...members.map((m, i) => ({
+      key: m.id,
+      label: names.filter((n) => n === names[i]).length > 1 ? m.char : names[i]!,
+    })),
+  ];
+}
+
+/** The tab to show: `wanted` when it is one of `tabs`, else the Group tab. */
+export const pickTab = (tabs: RunTab[], wanted: string | null) =>
+  tabs.some((t) => t.key === wanted) ? wanted! : 'group';
+
 export interface BossLike {
   ord: number;
   encounterId: number | null;
@@ -147,7 +179,8 @@ export function bossTimelineOption(splits: BossSplit[], p: ChartPalette) {
 export interface ClearTimes {
   instanceId: number;
   instance: string | null;
-  runs: { id: string; build: number; activeSecs: number }[];
+  /** One per run group: its clear time and how many members' runs it merges. */
+  runs: { id: string; build: number; activeSecs: number; members: number }[];
 }
 
 /** Clear-time distribution: a dot per finished run (active minutes) on one row per instance. */
