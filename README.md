@@ -209,11 +209,12 @@ COOKIE_SECRET=...                         # output of `openssl rand -hex 32`; si
 
 How it works: `/admin/auth/login` → Battle.net (`scope=openid`, signed single-use `__Host-fl_oauth_state` cookie
 carrying its issued-at, refused after 10 minutes) → `/admin/auth/callback` exchanges the code, reads the account id
-and BattleTag, ends any session the browser already had, and starts a 7-day sliding session (`__Host-fl_session`
-cookie: httpOnly, Secure, SameSite=Lax, Path=/; the database keeps only its sha256). Failed logins land on
-`/admin/?error=state|cancelled|failed|unauthorized`; the panel shows a fixed message per code and nothing for any
-other value. With `COOKIE_INSECURE=1` the cookies drop `Secure` and the `__Host-` prefix. The panel reads the
-`/v1/*` routes with its session and calls `/admin/api/*` (non-GET requests send the `x-csrf-token` from
+and BattleTag, ends any session the browser already had, and starts a 7-day sliding session that ends 30 days after
+login at the latest (`__Host-fl_session` cookie: httpOnly, Secure, SameSite=Lax, Path=/; the database keeps only its
+sha256). `/admin/api`, `/admin/auth` and session-authorized `/v1` reads answer `Cache-Control: no-store`. Failed
+logins land on `/admin/?error=state|cancelled|failed|unauthorized`; the panel shows a fixed message per code and
+nothing for any other value. With `COOKIE_INSECURE=1` the cookies drop `Secure` and the `__Host-` prefix. The panel
+reads the `/v1/*` routes with its session and calls `/admin/api/*` (non-GET requests send the `x-csrf-token` from
 `/admin/auth/me`). Nginx proxies `/admin/` to the API like `/v1/`.
 
 Roles: `ADMIN_BATTLETAGS` is a **first-login bootstrap only** — a listed BattleTag becomes `admin` at login while no

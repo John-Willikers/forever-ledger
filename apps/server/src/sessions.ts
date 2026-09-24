@@ -7,6 +7,8 @@ import type { Db } from './db/client.js';
 import { sessions, users } from './db/schema.js';
 
 export const SESSION_TTL_MS = 7 * 86_400_000;
+/** Absolute lifetime from login: sliding renewal never extends a session past this. */
+export const SESSION_MAX_AGE_MS = 30 * 86_400_000;
 /** Sliding expiry: once a session has used more than this, a request pushes it back to the full TTL. */
 export const SESSION_RENEW_AFTER_MS = 86_400_000;
 /** last_seen_at is refreshed at most this often, so reads don't write on every request. */
@@ -26,6 +28,7 @@ export interface ActiveSession {
   user: SessionUser;
   /** The expiry was pushed back: the caller re-sends the cookie. */
   renewed: boolean;
+  expiresAt: Date;
 }
 
 /** Who becomes admin at login (see upsertUser). */
@@ -101,11 +104,15 @@ export async function createSession(
   return value;
 }
 
-/** The live session for a cookie value, with sliding renewal; null when unknown or expired. */
+/**
+ * The live session for a cookie value, with sliding renewal capped at SESSION_MAX_AGE_MS from login; null when
+ * unknown, expired, or older than that.
+ */
 export async function loadSession(db: Db, value: string): Promise<ActiveSession | null> {
   const id = hashToken(value);
   const [row] = await db
     .select({
+      createdAt: sessions.createdAt,
       expiresAt: sessions.expiresAt,
       lastSeenAt: sessions.lastSeenAt,
       userId: users.id,
@@ -116,13 +123,20 @@ export async function loadSession(db: Db, value: string): Promise<ActiveSession 
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(eq(sessions.id, id));
   const now = Date.now();
-  if (!row || row.expiresAt.getTime() <= now) return null;
+  if (!row) return null;
+  const hardEnd = row.createdAt.getTime() + SESSION_MAX_AGE_MS;
+  if (row.expiresAt.getTime() <= now || hardEnd <= now) return null;
 
-  const renewed = row.expiresAt.getTime() - now < SESSION_TTL_MS - SESSION_RENEW_AFTER_MS;
+  let expiresAt = row.expiresAt;
+  const next = Math.min(now + SESSION_TTL_MS, hardEnd);
+  const renewed =
+    row.expiresAt.getTime() - now < SESSION_TTL_MS - SESSION_RENEW_AFTER_MS &&
+    next > row.expiresAt.getTime();
   if (renewed) {
+    expiresAt = new Date(next);
     await db
       .update(sessions)
-      .set({ expiresAt: new Date(now + SESSION_TTL_MS), lastSeenAt: new Date(now) })
+      .set({ expiresAt, lastSeenAt: new Date(now) })
       .where(eq(sessions.id, id));
   } else if (now - row.lastSeenAt.getTime() > LAST_SEEN_EVERY_MS) {
     await db
@@ -134,6 +148,7 @@ export async function loadSession(db: Db, value: string): Promise<ActiveSession 
     id,
     user: { id: row.userId, battletag: row.battletag, role: row.role },
     renewed,
+    expiresAt,
   };
 }
 

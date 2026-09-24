@@ -640,6 +640,47 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       expect(ttl).toBeGreaterThan(7 * 86400_000 - 60_000);
     });
 
+    it('ends a session 30 days after login, even though sliding would keep it alive', async () => {
+      const { session } = await login(app);
+      await s.database.pool.query(
+        `update sessions set created_at = now() - interval '31 days', expires_at = now() + interval '5 days'`,
+      );
+      expect((await me(app, session)).json().user).toBeNull();
+      const api = await app.inject({
+        method: 'GET',
+        url: '/admin/api/ping',
+        cookies: { [SESSION]: session! },
+      });
+      expect(api.statusCode).toBe(401);
+      const v1 = await app.inject({
+        method: 'GET',
+        url: '/v1/quests/xp',
+        cookies: { [SESSION]: session! },
+      });
+      expect(v1.statusCode).toBe(401);
+    });
+
+    it('never slides past 30 days from login', async () => {
+      const { session } = await login(app);
+      // 27 days in, 2 days left: renewal would give 7 more days, but only 3 remain of the 30.
+      await s.database.pool.query(
+        `update sessions set created_at = now() - interval '27 days', expires_at = now() + interval '2 days'`,
+      );
+      const res = await me(app, session);
+      expect(res.json().user).not.toBeNull();
+      const { rows } = await s.database.pool.query(
+        `select extract(epoch from expires_at - created_at)::float8 as life,
+                extract(epoch from expires_at - now())::float8 as left_secs from sessions`,
+      );
+      expect(rows[0].life).toBeLessThanOrEqual(30 * 86400 + 1);
+      expect(rows[0].left_secs).toBeGreaterThan(3 * 86400 - 60);
+      expect(rows[0].left_secs).toBeLessThanOrEqual(3 * 86400 + 1);
+      // The renewed cookie doesn't outlive the session either.
+      const cookie = cookieOf(res, SESSION) as Record<string, unknown>;
+      expect(cookie.value).toBe(session);
+      expect(Math.abs(Number(cookie.maxAge) - 3 * 86400)).toBeLessThan(60);
+    });
+
     it('logout needs the CSRF token, then deletes the session and clears the cookie', async () => {
       const { session } = await login(app);
       const { csrf } = (await me(app, session)).json();
@@ -731,6 +772,24 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       expect(anon.json()).toEqual({ error: 'invalid or revoked token' });
     });
 
+    it('answers session-authorized reads with Cache-Control: no-store', async () => {
+      const { session } = await login(app);
+      for (const url of ['/v1/quests/xp', '/v1/export', '/v1/diagnostics']) {
+        const res = await app.inject({ method: 'GET', url, cookies: { [SESSION]: session! } });
+        expect(res.statusCode, url).toBe(200);
+        expect(res.headers['cache-control'], url).toBe('no-store');
+      }
+      // Refused session reads too.
+      await s.database.pool.query(`update users set role = 'member'`);
+      const refused = await app.inject({
+        method: 'GET',
+        url: '/v1/quests/xp',
+        cookies: { [SESSION]: session! },
+      });
+      expect(refused.statusCode).toBe(403);
+      expect(refused.headers['cache-control']).toBe('no-store');
+    });
+
     it('keeps the addon manifest and ingest bearer-only', async () => {
       const { session } = await login(app);
       const manifest = await app.inject({
@@ -774,7 +833,15 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
     });
 
     it('never falls back for /admin/api and /admin/auth', async () => {
-      for (const url of ['/admin/api/unknown', '/admin/auth/unknown']) {
+      for (const url of [
+        '/admin/api/unknown',
+        '/admin/auth/unknown',
+        '/admin/api',
+        '/admin/auth',
+        '/admin/api?x=1',
+        '/admin/auth?x=1',
+        '/admin/api/unknown?x=1',
+      ]) {
         const res = await app.inject({ method: 'GET', url });
         expect(res.statusCode, url).toBe(404);
         expect(res.headers['content-type']).toMatch(/application\/json/);
@@ -782,6 +849,22 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       }
       const post = await app.inject({ method: 'POST', url: '/admin/some/route' });
       expect(post.statusCode).toBe(404);
+    });
+
+    it('never serves dotfiles from the build directory', async () => {
+      writeFileSync(join(distDir, '.env'), 'DIST_DOTFILE_SECRET=1');
+      mkdirSync(join(distDir, '.git'), { recursive: true });
+      writeFileSync(join(distDir, '.git', 'config'), 'DIST_DOTFILE_SECRET=2');
+      try {
+        for (const url of ['/admin/.env', '/admin/.git/config', '/admin/assets/../.env']) {
+          const res = await app.inject({ method: 'GET', url });
+          expect(res.body, url).not.toContain('DIST_DOTFILE_SECRET');
+          expect([403, 404], url).toContain(res.statusCode);
+        }
+      } finally {
+        rmSync(join(distDir, '.env'));
+        rmSync(join(distDir, '.git'), { recursive: true });
+      }
     });
 
     it('answers 503 when the panel is not built', async () => {
@@ -799,6 +882,42 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         expect(api.statusCode).toBe(404);
       } finally {
         await other.close();
+      }
+    });
+  });
+
+  describe('/admin/api and /admin/auth headers', () => {
+    it('are no-store and nosniff on every response', async () => {
+      const { session } = await login(app);
+      const { csrf } = (await me(app, session)).json();
+      const cookies = { [SESSION]: session! };
+      const responses = {
+        'GET /admin/api/ping': await app.inject({ method: 'GET', url: '/admin/api/ping', cookies }),
+        'GET /admin/api/ping anon': await app.inject({ method: 'GET', url: '/admin/api/ping' }),
+        'POST /admin/api/ping no csrf': await app.inject({
+          method: 'POST',
+          url: '/admin/api/ping',
+          cookies,
+        }),
+        'GET /admin/api/unknown': await app.inject({ method: 'GET', url: '/admin/api/unknown' }),
+        'GET /admin/auth/me': await me(app, session),
+        'GET /admin/auth/me?x=1': await app.inject({ method: 'GET', url: '/admin/auth/me?x=1' }),
+        'GET /admin/auth/login': await app.inject({ method: 'GET', url: '/admin/auth/login' }),
+        'GET /admin/auth/callback': await app.inject({
+          method: 'GET',
+          url: '/admin/auth/callback',
+        }),
+        'GET /admin/auth/unknown': await app.inject({ method: 'GET', url: '/admin/auth/unknown' }),
+        'POST /admin/auth/logout': await app.inject({
+          method: 'POST',
+          url: '/admin/auth/logout',
+          cookies,
+          headers: { 'x-csrf-token': csrf },
+        }),
+      };
+      for (const [name, res] of Object.entries(responses)) {
+        expect(res.headers['cache-control'], name).toBe('no-store');
+        expect(res.headers['x-content-type-options'], name).toBe('nosniff');
       }
     });
   });

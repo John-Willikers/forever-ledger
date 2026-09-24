@@ -13,6 +13,9 @@ export const DEFAULT_ADMIN_DIST_DIR = fileURLToPath(
 /** JSON namespaces under /admin that never fall back to the SPA. */
 const API_PATH = /^\/admin\/(api|auth)(\/|$)/;
 
+/** /admin/api or /admin/auth, judged on the path alone (a query string must not change the answer). */
+export const isAdminApiPath = (url: string) => API_PATH.test(url.split('?', 1)[0]!);
+
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
@@ -31,13 +34,15 @@ export async function registerAdminStatic(app: FastifyInstance, distDir = DEFAUL
   await app.register(
     async (scope) => {
       scope.addHook('onSend', async (req, reply) => {
-        if (!API_PATH.test(req.url)) reply.headers(SECURITY_HEADERS);
+        if (!isAdminApiPath(req.url)) reply.headers(SECURITY_HEADERS);
       });
       if (built) {
         await scope.register(fastifyStatic, {
           root: distDir,
           prefix: '/',
           cacheControl: false,
+          // The default is 'allow': never serve .env, .git or other dotfiles that end up in the build directory.
+          dotfiles: 'deny',
           // Vite's hashed bundles never change; everything else is revalidated.
           setHeaders: (reply, path) => {
             reply.header(
@@ -50,7 +55,7 @@ export async function registerAdminStatic(app: FastifyInstance, distDir = DEFAUL
         });
       }
       scope.setNotFoundHandler(async (req, reply) => {
-        if (API_PATH.test(req.url) || (req.method !== 'GET' && req.method !== 'HEAD')) {
+        if (isAdminApiPath(req.url) || (req.method !== 'GET' && req.method !== 'HEAD')) {
           return reply.status(404).send({ error: 'not found' });
         }
         if (!built) return reply.status(503).type('text/plain').send('admin panel not built');

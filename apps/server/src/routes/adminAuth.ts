@@ -16,6 +16,7 @@ import {
   upsertUser,
 } from '../sessions.js';
 import type { ActiveSession } from '../sessions.js';
+import { isAdminApiPath } from './adminStatic.js';
 
 /**
  * Cookie names. Over https they carry the `__Host-` prefix (the browser then insists on Secure, Path=/ and no Domain,
@@ -92,14 +93,14 @@ export function registerAdminAuth(
   const names = cookieNames(secure);
   const policy = { adminBattletags: opts.adminBattletags, adminBnetSubs: opts.adminBnetSubs };
   const fetchImpl = opts.fetch ?? fetch;
-  const sessionCookie: CookieSerializeOptions = {
+  const sessionCookie = (maxAgeSecs = SESSION_TTL_MS / 1000): CookieSerializeOptions => ({
     httpOnly: true,
     secure,
     sameSite: 'lax',
     path: '/',
     signed: true,
-    maxAge: SESSION_TTL_MS / 1000,
-  };
+    maxAge: maxAgeSecs,
+  });
   const cache = new WeakMap<FastifyRequest, Promise<ActiveSession | null>>();
 
   async function resolveSession(req: FastifyRequest, reply: FastifyReply) {
@@ -108,7 +109,10 @@ export function registerAdminAuth(
     const unsigned = req.unsignCookie(raw);
     if (!unsigned.valid || !unsigned.value) return null;
     const s = await loadSession(db, unsigned.value);
-    if (s?.renewed) reply.setCookie(names.session, unsigned.value, sessionCookie);
+    if (s?.renewed) {
+      const left = Math.round((s.expiresAt.getTime() - Date.now()) / 1000);
+      reply.setCookie(names.session, unsigned.value, sessionCookie(Math.max(left, 0)));
+    }
     return s;
   }
 
@@ -127,6 +131,8 @@ export function registerAdminAuth(
       if ((await verifyBearer(db, req.headers.authorization)) !== null) return;
       return reply.status(401).send({ error: 'invalid or revoked token' });
     }
+    // A browser read: never kept in a shared or disk cache.
+    reply.header('cache-control', 'no-store');
     const s = await session(req, reply);
     if (!s) return reply.status(401).send({ error: 'invalid or revoked token' });
     if (s.user.role !== 'admin') return reply.status(403).send({ error: 'not authorized' });
@@ -144,6 +150,14 @@ export function registerAdminAuth(
       return reply.status(403).send({ error: 'invalid csrf token' });
     }
   };
+
+  // Every /admin/api and /admin/auth response (JSON, redirects, errors, 404s, 429s): private, never sniffed.
+  app.addHook('onSend', async (req, reply) => {
+    if (isAdminApiPath(req.url)) {
+      reply.header('cache-control', 'no-store');
+      reply.header('x-content-type-options', 'nosniff');
+    }
+  });
 
   const rateLimit = {
     max: opts.authPerMinute ?? 60,
@@ -206,7 +220,7 @@ export function registerAdminAuth(
       ip: req.ip,
     });
     req.log.info({ userId: user.id, role: user.role }, 'admin login');
-    reply.setCookie(names.session, value, sessionCookie);
+    reply.setCookie(names.session, value, sessionCookie());
     return reply.redirect(PANEL);
   });
 
@@ -224,7 +238,6 @@ export function registerAdminAuth(
   });
 
   app.get('/admin/auth/me', { config: { rateLimit } }, async (req, reply) => {
-    reply.header('cache-control', 'no-store');
     const s = await session(req, reply);
     return {
       user: s ? s.user : null,
