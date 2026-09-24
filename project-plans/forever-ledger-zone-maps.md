@@ -11,7 +11,13 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 1 🗄️ Server: migration `zone_maps`, image validation module, maps routes, nginx body size — 22:56 CDT (85ada50;
   migration generated as `0010_zone_maps` because `feat/run-groups` (0010_run_groups) isn't on master yet → regenerate
   as 0011 after it merges; 288 server tests)
-- 🟡 2 🖥️ UI: `ZoneMap` component, 🗺️ Maps page, gathering/quest/vendor/trainer integrations, CSP check
+- ✅ 2 🖥️ UI: `ZoneMap` component, 🗺️ Maps page, gathering/quest/vendor/trainer integrations, CSP check — 23:08 CDT
+  (d8b8900 points route for the preview, f95c046 UI; `pnpm check` green, 833 vitest; headless Chrome check with a
+  generated 1002×668 grid image: corner/center dots at 0/50/100 % of the image, tooltip, preview → alignment tick →
+  save; run page skipped: runs carry no location)
+- ⚠️ Migration numbering: generated as `0010_zone_maps` while `feat/run-groups` (0010_run_groups) isn't on master →
+  after it merges, delete `0010_zone_maps.sql` + `meta/0010_snapshot.json` + its journal entry, merge master, run
+  `pnpm --filter @forever-ledger/server db:generate --name zone_maps` (→ 0011)
 - ⬜ 3 🚀 Deploy: backup, migrate, nginx reload, PM2 reload; export Durotar + The Barrens and upload (not in this branch)
 
 ## 📌 Context
