@@ -16,6 +16,7 @@ import { serializeRequest } from './logging.js';
 import { registerAddonRoutes } from './routes/addon.js';
 import { registerAdminApiRoutes } from './routes/adminApi.js';
 import { registerAdminAuth } from './routes/adminAuth.js';
+import { registerAdminBuildsRoutes } from './routes/adminBuilds.js';
 import { registerAdminQuestRoutes } from './routes/adminQuests.js';
 import { registerAdminLootRoutes } from './routes/adminLoot.js';
 import { registerAdminProfessionsRoutes } from './routes/adminProfessions.js';
@@ -170,6 +171,7 @@ export async function buildApp(opts: AppOptions) {
   registerAdminQuestRoutes(app, db, guards.requireAdmin);
   registerAdminLootRoutes(app, db, guards.requireAdmin);
   registerAdminProfessionsRoutes(app, db, guards.requireAdmin);
+  registerAdminBuildsRoutes(app, db, guards.requireAdmin);
   await registerAdminStatic(app, opts.admin?.distDir);
 
   return app;
