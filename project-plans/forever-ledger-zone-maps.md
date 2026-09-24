@@ -16,7 +16,12 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   generated 1002×668 grid image: corner/center dots at 0/50/100 % of the image, tooltip, preview → alignment tick →
   save; run page skipped: runs carry no location)
 - ✅ Migration renumbered to `0011_zone_maps` after run groups (0010) merged — 23:25 CDT
-- ⬜ 3 🚀 Deploy: backup, migrate, nginx reload, PM2 reload; export Durotar + The Barrens and upload (not in this branch)
+- ✅ 🔒 Security review: approved, minors fixed (ec87554: image errors never cached, unbuffered upload proxy, stricter
+  tests); PR #23 merged green — 23:22 CDT
+- ✅ 3 🚀 Deploy: backup `forever_ledger-20260923-2323-pre0011.sql.gz`, migration 0011 applied, PM2 reloaded, nginx
+  conf installed + reloaded — 23:24 CDT. Hotfix: `location /admin/api/maps/` 301'd the list route → prefix without the
+  trailing slash (live 23:27 CDT, PR fix/nginx-maps-location)
+- ⬜ 4 🗺️ Owner uploads Durotar (1411) + The Barrens (1413) from wow.export, checks the alignment
 
 ## 📌 Context
 
