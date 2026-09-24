@@ -225,34 +225,63 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
 /** Epoch seconds (selected as `extract(epoch from col)`) → America/Chicago ISO. */
 const iso = (secs: unknown) => (secs === null ? null : chicagoIso(Number(secs) * 1000));
 
-/** Schema 4 profession routes: recipes, where recipes and items come from, gathering nodes. */
+/**
+ * `skill_base(id, base_id, base_name)`: every skill line seen → its base profession. Forever (build 69977) lists each
+ * profession twice — a base line and a "Classic" child whose `parent_id` is the base, same name and rank — and
+ * records recipes mostly on the child and skill-ups on both, so every profession view folds child lines into their
+ * base. A line whose parent is null/0 is its own base; a child whose parent was never seen stands for itself. Lines
+ * are the same for every character, so the newest row of any character names them. Lines never seen in `skills` are
+ * not listed: fold with `coalesce(b.base_id, <line>)`.
+ */
+const skillBase = sql`skill_base as (
+  with lines as (
+    select distinct on (skill_line_id) skill_line_id as id, nullif(parent_id, 0) as parent_id, name
+    from skills order by skill_line_id, last_seen desc
+  )
+  select l.id, coalesce(p.id, l.id) as base_id, coalesce(p.name, l.name) as base_name
+  from lines l left join lines p on p.id = l.parent_id
+)`;
+
+/** Newest skill-ups listed per character and profession by `/v1/professions/skills`. */
+const SKILL_UP_HISTORY = 200;
+
+/** Schema 4 profession routes: recipes, where recipes and items come from, gathering nodes, skills. */
 function registerProfessionRoutes(
   app: FastifyInstance,
   db: Db,
   preHandler: ReturnType<typeof requireToken>,
 ) {
   /**
-   * Recipes (optionally of one skill line / build) with, per build, the schematic (output item, quantity range,
+   * Recipes (optionally of one profession / build) with, per build, the schematic (output item, quantity range,
    * reagents with item names) and the observed difficulty thresholds: per difficulty the lowest and highest skill rank
    * any character saw it at. `learnedBy` counts characters that know it; `learnedVia` counts learn events by source.
+   * `?skillLine=` takes a base or a child line and means the base and all its children; each recipe keeps its own
+   * `skillLineId` and carries `profession: { skillLineId, name }` of the base (null without a skill line).
    */
   app.get('/v1/professions/recipes', { preHandler }, async (req) => {
     const skillLine = positiveInt(req.query, 'skillLine');
     const build = buildFilter(req.query);
-    const inScope = sql`(select recipe_id from recipes
-      where ${skillLine}::int is null or skill_line_id = ${skillLine}::int)`;
+    const inScope = sql`(with ${skillBase}
+      select r.recipe_id from recipes r left join skill_base b on b.id = r.skill_line_id
+      where ${skillLine}::int is null
+         or coalesce(b.base_id, r.skill_line_id)
+            = coalesce((select base_id from skill_base where id = ${skillLine}::int), ${skillLine}::int))`;
     const inBuild = sql`(${build}::int is null or build = ${build}::int)`;
 
     const recipes = await rows<{ recipeId: number }>(
       db,
       sql`
-      select recipe_id as "recipeId", name, skill_line_id as "skillLineId", category_id as "categoryId"
-      from recipes
-      where recipe_id in ${inScope}
+      with ${skillBase}
+      select r.recipe_id as "recipeId", r.name, r.skill_line_id as "skillLineId", r.category_id as "categoryId",
+             case when r.skill_line_id is not null then jsonb_build_object(
+               'skillLineId', coalesce(b.base_id, r.skill_line_id), 'name', b.base_name) end as profession
+      from recipes r
+      left join skill_base b on b.id = r.skill_line_id
+      where r.recipe_id in ${inScope}
         and (${build}::int is null
-             or recipe_id in (select recipe_id from recipe_snapshots where build = ${build}::int)
-             or recipe_id in (select recipe_id from recipe_status where build = ${build}::int))
-      order by skill_line_id nulls last, name, recipe_id`,
+             or r.recipe_id in (select recipe_id from recipe_snapshots where build = ${build}::int)
+             or r.recipe_id in (select recipe_id from recipe_status where build = ${build}::int))
+      order by coalesce(b.base_id, r.skill_line_id) nulls last, r.name, r.recipe_id`,
     );
     const snapshots = await rows<{ recipeId: number; build: number }>(
       db,
@@ -333,6 +362,7 @@ function registerProfessionRoutes(
    * services named like the recipe or creating its output item. Vendors: listings of the recipe items (items the recipe
    * was learned from, or Recipe-class items named "<Prefix>: <recipe name>"), or of the item itself. Drops: those items
    * when they are Recipe-class (items.class_id = 9), from creatures (npcId) or game objects such as chests (objectId).
+   * A trainer's `skillLineId` is folded to the base profession, named by `skillLineName`.
    */
   app.get('/v1/professions/sources', { preHandler }, async (req, reply) => {
     const itemId = positiveInt(req.query, 'itemId');
@@ -384,13 +414,16 @@ function registerProfessionRoutes(
     const trainers = await rows<Record<string, unknown>>(
       db,
       sql`
-      select t.npc_id as "npcId", t.name as "npcName", t.build, t.loc, t.skill_line_id as "skillLineId",
+      with ${skillBase}
+      select t.npc_id as "npcId", t.name as "npcName", t.build, t.loc,
+             coalesce(b.base_id, t.skill_line_id) as "skillLineId", b.base_name as "skillLineName",
              extract(epoch from t.seen_at) as "seenAt",
              svc->>'name' as service, svc->>'type' as type, (svc->>'cost')::int as cost,
              svc->>'skill' as skill, (svc->>'skillRank')::int as "skillRank", (svc->>'level')::int as level,
              (svc->>'itemId')::int as "itemId"
       from trainers t
       cross join lateral jsonb_array_elements(t.services) as svc
+      left join skill_base b on b.id = t.skill_line_id
       where svc->>'name' = any(${sql.param(names)}::text[])
          or (svc->>'itemId')::int = any(${intArray([...outputs, ...self])})
       order by t.build desc, t.npc_id, service`,
@@ -441,8 +474,9 @@ function registerProfessionRoutes(
 
   /**
    * Gathering per build and game object (object 0 = fishing): the name most sessions gave it, opens summed over
-   * sessions, uploaders and accounts, the lowest skill rank seen, the maps it was gathered on (distinct spots) and the top 10 loot items with count and
-   * stack quantity per open.
+   * sessions, uploaders and accounts, the lowest skill rank seen, the base profession (`skillLineId`, folded from
+   * child lines, and `skillLineName`), the maps it was gathered on (distinct spots) and the top 10 loot items with
+   * count and stack quantity per open.
    */
   app.get('/v1/professions/gathering', { preHandler }, async (req) => {
     const build = buildFilter(req.query);
@@ -451,13 +485,20 @@ function registerProfessionRoutes(
     const nodes = await rows<{ build: number; objectId: number }>(
       db,
       sql`
-      select build, object_id as "objectId", mode() within group (order by name) as name,
-             max(skill_line_id) as "skillLineId",
-             sum(opened)::int as opens, min(rank_min)::int as "rankMin"
-      from nodes
-      where ${inBuild}
-      group by build, object_id
-      order by build desc, opens desc, "objectId"`,
+      with ${skillBase}, g as (
+        select n.build, n.object_id, mode() within group (order by n.name) as name,
+               max(coalesce(b.base_id, n.skill_line_id)) as skill_line_id,
+               sum(n.opened)::int as opens, min(n.rank_min)::int as rank_min
+        from nodes n
+        left join skill_base b on b.id = n.skill_line_id
+        where ${inBuild}
+        group by n.build, n.object_id
+      )
+      select g.build, g.object_id as "objectId", g.name, g.skill_line_id as "skillLineId",
+             b.base_name as "skillLineName", g.opens, g.rank_min as "rankMin"
+      from g
+      left join skill_base b on b.id = g.skill_line_id
+      order by g.build desc, g.opens desc, g.object_id`,
     );
     const zones = await rows<{ build: number; objectId: number; mapId: number; spots: number }>(
       db,
@@ -500,5 +541,65 @@ function registerProfessionRoutes(
         .filter((x) => x.build === n.build && x.objectId === n.objectId)
         .map(({ build: _b, objectId: _o, ...rest }) => rest);
     return nodes.map((n) => ({ ...n, zones: of(zones, n), loot: of(loot, n) }));
+  });
+
+  /**
+   * Per character (`?char=` for one), its base professions: child lines folded in (`skillLineIds` lists the lines
+   * seen), the highest rank and max rank over them and when they were last seen. `skillUps`: the rank history, one
+   * entry per rise (Forever records each rise on the base and on the child line), with the credited recipe if any,
+   * newest first, at most 200 per profession. `?build=` filters the history; skills carry no build.
+   */
+  app.get('/v1/professions/skills', { preHandler }, async (req) => {
+    const raw = (req.query as Record<string, unknown>).char;
+    const char = typeof raw === 'string' && raw !== '' ? raw : null;
+    const build = buildFilter(req.query);
+
+    const professions = await rows<{ char: string; skillLineId: number; lastSeen: unknown }>(
+      db,
+      sql`
+      with ${skillBase}
+      select s.char, b.base_id as "skillLineId", b.base_name as name,
+             array_agg(s.skill_line_id order by s.skill_line_id) as "skillLineIds",
+             max(s.rank)::int as rank, max(s.max_rank)::int as "maxRank",
+             extract(epoch from max(s.last_seen)) as "lastSeen"
+      from skills s
+      join skill_base b on b.id = s.skill_line_id
+      where ${char}::text is null or s.char = ${char}::text
+      group by s.char, b.base_id, b.base_name
+      order by s.char, name, "skillLineId"`,
+    );
+    const history = await rows<{ char: string; skillLineId: number; observedAt: unknown }>(
+      db,
+      sql`
+      with ${skillBase}, ups as (
+        select u.char, coalesce(b.base_id, u.skill_line_id) as base_id, u.observed_at, u.to_rank,
+               min(u.from_rank) as from_rank, max(u.build) as build, max(u.recipe_id) as recipe_id
+        from skill_ups u
+        left join skill_base b on b.id = u.skill_line_id
+        where (${char}::text is null or u.char = ${char}::text)
+          and (${build}::int is null or u.build = ${build}::int)
+        group by u.char, 2, u.observed_at, u.to_rank
+      ), ranked as (
+        select ups.*, row_number() over (
+          partition by char, base_id order by observed_at desc, to_rank desc) as pos
+        from ups
+      )
+      select u.char, u.base_id as "skillLineId", u.build, u.from_rank as "fromRank", u.to_rank as "toRank",
+             extract(epoch from u.observed_at) as "observedAt", u.recipe_id as "recipeId", r.name as "recipeName"
+      from ranked u
+      left join recipes r on r.recipe_id = u.recipe_id
+      where u.pos <= ${SKILL_UP_HISTORY}
+      order by u.observed_at desc, u.to_rank desc`,
+    );
+
+    const byChar = new Map<string, Record<string, unknown>[]>();
+    for (const { char: c, ...p } of professions) {
+      const skillUps = history
+        .filter((u) => u.char === c && u.skillLineId === p.skillLineId)
+        .map(({ char: _c, skillLineId: _l, ...u }) => ({ ...u, observedAt: iso(u.observedAt) }));
+      if (!byChar.has(c)) byChar.set(c, []);
+      byChar.get(c)!.push({ ...p, lastSeen: iso(p.lastSeen), skillUps });
+    }
+    return [...byChar].map(([c, list]) => ({ char: c, professions: list }));
   });
 }

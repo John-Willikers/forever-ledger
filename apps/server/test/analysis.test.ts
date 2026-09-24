@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { toCsv } from '../src/routes/export.js';
+import { chicagoIso } from '../src/time.js';
 import { batchFromFixture, schema4Batch, startServer } from './helpers.js';
 
 type Server = Awaited<ReturnType<typeof startServer>>;
@@ -258,6 +259,7 @@ describe('profession routes', () => {
       '/v1/professions/recipes',
       '/v1/professions/sources?recipeId=2963',
       '/v1/professions/gathering',
+      '/v1/professions/skills',
     ])
       expect((await get(url, {})).statusCode).toBe(401);
   });
@@ -271,6 +273,7 @@ describe('profession routes', () => {
         name: 'Blue Linen Vest',
         skillLineId: 197,
         categoryId: null,
+        profession: { skillLineId: 197, name: 'Tailoring' },
         learnedBy: 1,
         learnedVia: [{ via: 'item:6270', count: 1 }],
         builds: [
@@ -295,6 +298,7 @@ describe('profession routes', () => {
         name: 'Bolt of Linen Cloth',
         skillLineId: 197,
         categoryId: 1001,
+        profession: { skillLineId: 197, name: 'Tailoring' },
         learnedBy: 2,
         learnedVia: [{ via: 'trainer:1346', count: 1 }],
         builds: [
@@ -368,6 +372,7 @@ describe('profession routes', () => {
         build,
         loc: { zone: 'Stormwind City', subzone: 'The Canals', mapID: 1453, x: 43.4, y: 73.8 },
         skillLineId: 197,
+        skillLineName: 'Tailoring',
         seenAt: expect.stringMatching(/-0[56]:00$/),
         service: 'Bolt of Linen Cloth',
         type: 'used',
@@ -466,6 +471,7 @@ describe('profession routes', () => {
         objectId: 1731,
         name: 'Copper Vein',
         skillLineId: 186,
+        skillLineName: 'Mining',
         opens: 6,
         rankMin: 29,
         zones: [{ mapId: 1429, spots: 2 }],
@@ -479,6 +485,7 @@ describe('profession routes', () => {
         objectId: 0,
         name: null,
         skillLineId: 356,
+        skillLineName: null,
         opens: 4,
         rankMin: null,
         zones: [{ mapId: 1429, spots: 1 }],
@@ -618,6 +625,25 @@ describe("the real addon's schema 4 session (session-v4.lua)", () => {
     ]);
   });
 
+  it('/v1/professions/skills: every profession with its skill-up', async () => {
+    const res = await get('/v1/professions/skills');
+    expect(res.statusCode).toBe(200);
+    const [char] = res.json();
+    expect(
+      char.professions.map((p: { name: string; skillLineIds: number[] }) => [
+        p.name,
+        p.skillLineIds,
+      ]),
+    ).toEqual([
+      ['First Aid', [129]],
+      ['Fishing', [356]],
+      ['Herbalism', [182]],
+      ['Mining', [186]],
+      ['Tailoring', [197]],
+    ]);
+    expect(char.professions.flatMap((p: { skillUps: unknown[] }) => p.skillUps)).toHaveLength(1);
+  });
+
   it('/v1/professions/gathering: the mined vein and fishing', async () => {
     const res = await get(`/v1/professions/gathering?build=${build}`);
     expect(res.statusCode).toBe(200);
@@ -627,6 +653,7 @@ describe("the real addon's schema 4 session (session-v4.lua)", () => {
         objectId: 1731,
         name: 'Copper Vein',
         skillLineId: 186,
+        skillLineName: 'Mining',
         opens: 2,
         rankMin: 70,
         zones: [{ mapId: 1429, spots: 2 }],
@@ -639,6 +666,7 @@ describe("the real addon's schema 4 session (session-v4.lua)", () => {
         objectId: 0,
         name: null,
         skillLineId: 356,
+        skillLineName: 'Fishing',
         opens: 1,
         rankMin: 25,
         zones: [{ mapId: 1429, spots: 1 }],
@@ -654,6 +682,267 @@ describe("the real addon's schema 4 session (session-v4.lua)", () => {
         ],
       },
     ]);
+  });
+});
+
+describe('skill line folding (Forever lists each profession twice: a base line and a "Classic" child)', () => {
+  let s: Server;
+  const get = (url: string, headers: Record<string, string> = s.auth) =>
+    s.app.inject({ method: 'GET', url, headers });
+  const build = 69977;
+  const F = 'Fontenot-Bayou';
+  const G = 'Guidry-Bayou';
+  const seen = 1790200000;
+  const session = '1790200000-f01d';
+  const skill = (char: string, skillLineId: number, name: string, rank: number, extra = {}) => ({
+    char,
+    skillLineId,
+    name,
+    rank,
+    maxRank: 75,
+    lastSeen: seen,
+    ...extra,
+  });
+  /** The live shape: one rise recorded once per line, on the base and on its child. */
+  const rise = (
+    char: string,
+    lines: number[],
+    from: number,
+    time: number,
+    recipeIds: (number | undefined)[] = [],
+    b = build,
+  ) =>
+    lines.map((skillLineId, i) => ({
+      char,
+      skillLineId,
+      from,
+      to: from + 1,
+      build: b,
+      time,
+      ...(recipeIds[i] === undefined ? {} : { recipeId: recipeIds[i] }),
+    }));
+  const ts = (secs: number) => chicagoIso(secs * 1000);
+
+  beforeAll(async () => {
+    s = await startServer();
+    const b = schema4Batch(session, 'FOLD1');
+    for (const kind of Object.keys(b.records) as (keyof typeof b.records)[])
+      (b.records[kind] as unknown[]) = [];
+    b.records = {
+      ...b.records,
+      skills: [
+        skill(F, 164, 'Blacksmithing', 60, { parentId: 0 }),
+        skill(F, 2938, 'Blacksmithing', 60, { parentId: 164 }),
+        skill(F, 186, 'Mining', 40),
+        skill(F, 2946, 'Mining', 40, { parentId: 186, maxRank: 150 }),
+        // Alchemy's base line (171) was never seen: the child stands for itself.
+        skill(F, 2937, 'Alchemy', 5, { parentId: 171 }),
+        // G only has the child line; the base is known from F.
+        skill(G, 2938, 'Blacksmithing', 10, { parentId: 164 }),
+      ],
+      skillUps: [
+        ...rise(F, [164, 2938], 59, 1790199900, [3115, 3115]),
+        ...rise(F, [164, 2938], 58, 1790199800, [undefined, 2662]),
+        ...rise(F, [164, 2938], 57, 1790190000, [], 70000),
+        ...rise(F, [186, 2946], 39, 1790199700, [2657, 2657]),
+        ...rise(G, [2938], 9, 1790199600),
+      ],
+      recipes: [
+        { recipeId: 2660, name: 'Rough Sharpening Stone', skillLineId: 164 },
+        { recipeId: 2662, name: 'Copper Chain Pants', skillLineId: 2938 },
+        { recipeId: 3115, name: 'Rough Weightstone', skillLineId: 2938 },
+        { recipeId: 2330, name: 'Minor Healing Potion', skillLineId: 2937 },
+        { recipeId: 2657, name: 'Smelt Copper', skillLineId: 2946 },
+      ],
+      nodes: [
+        {
+          objectId: 1731,
+          build,
+          session,
+          opened: 2,
+          name: 'Copper Vein',
+          skillLineId: 2946,
+          spots: [],
+        },
+      ],
+      trainers: [
+        {
+          npcId: 1241,
+          build,
+          name: 'Brombar Higgleby',
+          skillLineId: 2938,
+          seenAt: seen,
+          services: [{ name: 'Rough Weightstone', type: 'available', cost: 10, skillRank: 25 }],
+        },
+      ],
+    };
+    const res = await s.app.inject({
+      method: 'POST',
+      url: '/v1/ingest',
+      headers: s.auth,
+      payload: b,
+    });
+    expect(res.statusCode).toBe(200);
+  });
+  afterAll(async () => {
+    await s?.stop();
+  });
+
+  it('/v1/professions/recipes: a base or child id lists the recipes of the base and all its children', async () => {
+    const blacksmithing = { skillLineId: 164, name: 'Blacksmithing' };
+    const expected = [
+      { recipeId: 2662, name: 'Copper Chain Pants', skillLineId: 2938, profession: blacksmithing },
+      {
+        recipeId: 2660,
+        name: 'Rough Sharpening Stone',
+        skillLineId: 164,
+        profession: blacksmithing,
+      },
+      { recipeId: 3115, name: 'Rough Weightstone', skillLineId: 2938, profession: blacksmithing },
+    ];
+    for (const line of [164, 2938]) {
+      const res = await get(`/v1/professions/recipes?skillLine=${line}`);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual(expected.map((r) => expect.objectContaining(r)));
+    }
+    expect((await get('/v1/professions/recipes?skillLine=186')).json()).toEqual([
+      expect.objectContaining({
+        recipeId: 2657,
+        skillLineId: 2946,
+        profession: { skillLineId: 186, name: 'Mining' },
+      }),
+    ]);
+    // A child whose base was never seen is its own base.
+    for (const line of [2937, 171])
+      expect((await get(`/v1/professions/recipes?skillLine=${line}`)).json()).toEqual(
+        line === 171
+          ? []
+          : [
+              expect.objectContaining({
+                recipeId: 2330,
+                profession: { skillLineId: 2937, name: 'Alchemy' },
+              }),
+            ],
+      );
+    expect((await get('/v1/professions/recipes')).json()).toHaveLength(5);
+  });
+
+  it('/v1/professions/gathering and /sources: skill lines fold to the base', async () => {
+    expect((await get(`/v1/professions/gathering?build=${build}`)).json()).toEqual([
+      expect.objectContaining({ objectId: 1731, skillLineId: 186, skillLineName: 'Mining' }),
+    ]);
+    const src = (await get('/v1/professions/sources?recipeId=3115')).json();
+    expect(src.trainers).toEqual([
+      expect.objectContaining({
+        npcId: 1241,
+        skillLineId: 164,
+        skillLineName: 'Blacksmithing',
+        service: 'Rough Weightstone',
+      }),
+    ]);
+  });
+
+  it('/v1/professions/skills: base professions per character with folded skill-up history', async () => {
+    expect((await get('/v1/professions/skills', {})).statusCode).toBe(401);
+    const res = await get(`/v1/professions/skills?char=${F}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      {
+        char: F,
+        professions: [
+          {
+            skillLineId: 2937,
+            name: 'Alchemy',
+            skillLineIds: [2937],
+            rank: 5,
+            maxRank: 75,
+            lastSeen: ts(seen),
+            skillUps: [],
+          },
+          {
+            skillLineId: 164,
+            name: 'Blacksmithing',
+            skillLineIds: [164, 2938],
+            rank: 60,
+            maxRank: 75,
+            lastSeen: ts(seen),
+            skillUps: [
+              {
+                build,
+                fromRank: 59,
+                toRank: 60,
+                observedAt: ts(1790199900),
+                recipeId: 3115,
+                recipeName: 'Rough Weightstone',
+              },
+              {
+                build,
+                fromRank: 58,
+                toRank: 59,
+                observedAt: ts(1790199800),
+                recipeId: 2662,
+                recipeName: 'Copper Chain Pants',
+              },
+              {
+                build: 70000,
+                fromRank: 57,
+                toRank: 58,
+                observedAt: ts(1790190000),
+                recipeId: null,
+                recipeName: null,
+              },
+            ],
+          },
+          {
+            skillLineId: 186,
+            name: 'Mining',
+            skillLineIds: [186, 2946],
+            rank: 40,
+            maxRank: 150,
+            lastSeen: ts(seen),
+            skillUps: [
+              {
+                build,
+                fromRank: 39,
+                toRank: 40,
+                observedAt: ts(1790199700),
+                recipeId: 2657,
+                recipeName: 'Smelt Copper',
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const inBuild = (await get(`/v1/professions/skills?char=${F}&build=${build}`)).json();
+    expect(inBuild[0].professions[1].skillUps.map((u: { toRank: number }) => u.toRank)).toEqual([
+      60, 59,
+    ]);
+
+    const all = (await get('/v1/professions/skills')).json();
+    expect(all.map((c: { char: string }) => c.char)).toEqual([F, G]);
+    expect(all[1].professions).toEqual([
+      {
+        skillLineId: 164,
+        name: 'Blacksmithing',
+        skillLineIds: [2938],
+        rank: 10,
+        maxRank: 75,
+        lastSeen: ts(seen),
+        skillUps: [
+          {
+            build,
+            fromRank: 9,
+            toRank: 10,
+            observedAt: ts(1790199600),
+            recipeId: null,
+            recipeName: null,
+          },
+        ],
+      },
+    ]);
+    expect((await get('/v1/professions/skills?char=Nobody-Bayou')).json()).toEqual([]);
   });
 });
 
