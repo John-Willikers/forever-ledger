@@ -31,6 +31,7 @@ local function items()
   add(2447, "Peacebloom", 7, 9)
   add(6303, "Raw Slitherskin Mackerel", 7, 8)
   add(4470, "Simple Wood", 7, 11)
+  add(250001, "Mark of the Barrens", 7, 11) -- a vendor's extended cost, never seen otherwise
   it[2589].classID, it[2589].subclassID = 7, 5 -- Linen Cloth
   return it
 end
@@ -176,8 +177,9 @@ local function tailorServices()
     { name = "Journeyman Tailoring", type = "used", cost = 500, level = 10, skillLine = "Tailoring" },
   }
 end
-local function atTrainer(c, services, tradeskill)
-  c.world.npc = { name = "Eldrin", guid = TRAINER }
+-- `title`: the subtitle under the NPC's name in its tooltip (none: the level line follows the name).
+local function atTrainer(c, services, tradeskill, title)
+  c.world.npc = { name = "Eldrin", guid = TRAINER, title = title }
   c.world.trainer = { tradeskill = tradeskill ~= false, services = services or tailorServices() }
   c.fire("TRAINER_SHOW")
 end
@@ -185,18 +187,39 @@ local function merchantItem(itemID, price, extra)
   local info = { name = "?", texture = 134939, price = price, stackCount = 1, numAvailable = -1,
                  isPurchasable = true, isUsable = true, hasExtendedCost = false, currencyID = nil, spellID = nil,
                  isQuestStartItem = false }
-  for k, v in pairs(extra or {}) do info[k] = v end
-  return { itemID = itemID, info = info }
+  local costs -- extended costs live beside the info (GetMerchantItemCostItem), not in it
+  for k, v in pairs(extra or {}) do
+    if k == "costs" then costs = v else info[k] = v end
+  end
+  return { itemID = itemID, info = info, costs = costs }
 end
-local function atVendor(c, stock, guid)
-  c.world.npc = { name = "Alexandra Bolero", guid = guid or VENDOR }
-  c.world.merchant = { items = stock or { merchantItem(2320, 10, { stackCount = 5 }),
+local function atVendor(c, stock, guid, title, name, currencies)
+  c.world.npc = { name = name or "Alexandra Bolero", guid = guid or VENDOR, title = title }
+  c.world.merchant = { currencies = currencies,
+                       items = stock or { merchantItem(2320, 10, { stackCount = 5 }),
                                           merchantItem(2598, 1200, { numAvailable = 1 }),
                                           merchantItem(2996, 0, { hasExtendedCost = true, currencyID = 1901 }) } }
   c.fire("MERCHANT_SHOW")
 end
 
+-- A Forever-only recipe vendor in The Barrens: price 0 and hasExtendedCost, paid in an item and a currency.
+local RECIPE_VENDOR = "Creature-0-1-0-1-248196-0000R01"
+local HONOR = 1901
+local function recipeVendorStock()
+  return {
+    merchantItem(2598, 0, { hasExtendedCost = true,
+                            costs = { { itemID = 250001, amount = 3 },
+                                      { currencyID = HONOR, amount = 25, name = "Honor Points" } } }),
+    merchantItem(2320, 10, { stackCount = 5 }),
+  }
+end
+local function atRecipeVendor(c, title)
+  atVendor(c, recipeVendorStock(), RECIPE_VENDOR, title, "Beneris", { HONOR })
+end
+
 return {
+  RECIPE_VENDOR = RECIPE_VENDOR, HONOR = HONOR, recipeVendorStock = recipeVendorStock,
+  atRecipeVendor = atRecipeVendor,
   ADDON = ADDON, B = B, ME = ME, TAILORING = TAILORING, FIRST_AID = FIRST_AID, RED_ROBE = RED_ROBE,
   LINEN_BOLT = LINEN_BOLT, LINEN_SHIRT = LINEN_SHIRT, BANDAGE = BANDAGE, TRAINER = TRAINER, items = items,
   line = line, header = header, skillLines = skillLines, profInfo = profInfo, recipe = recipe,

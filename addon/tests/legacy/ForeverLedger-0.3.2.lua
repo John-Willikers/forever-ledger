@@ -1,13 +1,12 @@
--- Forever Ledger v0.3.2 (SavedVariables schema 5)
+-- Forever Ledger v0.3.2 (SavedVariables schema 4)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
 local VERSION = "0.3.2"
 -- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
 -- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
--- items[].classID/subclassID and apiSamples; 5 adds vendors[].title, vendors[].items[].costs (extended costs paid in
--- items or currencies) and trainers[].title. Each is additive: older data is valid as it is.
-local SCHEMA_VERSION = 5
+-- items[].classID/subclassID and apiSamples. Each is additive: older data is valid as it is.
+local SCHEMA_VERSION = 4
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local LIST_CAP = 500     -- bossLoot and groupLoot entries kept per run
 local f = CreateFrame("Frame")
@@ -698,106 +697,7 @@ end
 -- filters are all on (GetTrainerServiceTypeFilter, only read) and no header is collapsed: it replaces the list for
 -- that NPC and build; any other scan merges its services into the list by name. A vendor scan replaces the list (its
 -- item filter can narrow it). At most LIST_CAP entries.
-local merchantNpc   -- npcID while a merchant window is open
-local merchantTitle -- its subtitle, read when the window opened
-local trainerTitle  -- the open trainer's subtitle
-
--- The subtitle under an NPC's name ("<Blacksmithing Supplies>", or "Enchanting" on Forever's recipe vendors): line 2
--- of C_TooltipInfo.GetUnit, unless that line is the level line ("Level 30 Humanoid") of an NPC without one. The level
--- line is found with the client's own templates (TOOLTIP_UNIT_LEVEL and friends), else a leading "Level ". The "npc"
--- unit is asked first, then the target when it is the same NPC. Colour codes and surrounding "<>" are dropped.
-local TITLE_API = "C_TooltipInfo.GetUnit"
-local function plainText(s)
-  s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-  return strtrim and strtrim(s) or s:match("^%s*(.-)%s*$")
-end
-
-local function levelPatterns()
-  local out = {}
-  for _, tpl in ipairs({ TOOLTIP_UNIT_LEVEL, TOOLTIP_UNIT_LEVEL_TYPE, UNIT_LEVEL_TEMPLATE }) do
-    -- the text before the template's first format spec ("Level " in "Level %s"), as a plain prefix
-    local prefix = type(tpl) == "string" and tpl:match("^(.-)%%")
-    if prefix and prefix:match("%S") then out[#out + 1] = prefix end
-  end
-  if type(LEVEL) == "string" and LEVEL ~= "" then out[#out + 1] = LEVEL .. " " end
-  out[#out + 1] = "Level "
-  return out
-end
-
-local function isLevelLine(text)
-  for _, prefix in ipairs(levelPatterns()) do
-    if text:sub(1, #prefix) == prefix then return true end
-  end
-  return false
-end
-
-local function unitTooltip(unit)
-  local data = C_TooltipInfo.GetUnit(unit, true)
-  if type(data) == "table" then return data end
-end
-
-local function npcTitle()
-  if not C_TooltipInfo or not C_TooltipInfo.GetUnit then return nil end
-  local data = unitTooltip("npc")
-  if not data and UnitGUID("target") and UnitGUID("target") == UnitGUID("npc") then data = unitTooltip("target") end
-  if not data then return nil end
-  sample(TITLE_API, data)
-  local lines = field(data, "lines")
-  if type(lines) ~= "table" then return nil end
-  local line = lines[2]
-  if type(line) ~= "table" then return nil end
-  sample(TITLE_API .. ":line", line)
-  local text = need(TITLE_API, line, "leftText", "text")
-  if type(text) ~= "string" then return nil end
-  text = plainText(text)
-  if text == "" or isLevelLine(text) then return nil end
-  text = text:match("^<(.*)>$") or text
-  if text == "" then return nil end
-  return text:sub(1, 200)
-end
-
-local function readTitle()
-  local ok, title = safely("npcTitle", npcTitle)
-  if ok then return title end
-end
-
--- Extended costs of merchant item i (items or currencies paid besides gold, e.g. Forever's Barrens recipe vendors
--- that sell for 0 copper): { { amount=, itemID=, currencyID=, name= }, ... } or nil. Retail
--- GetMerchantItemCostItem returns texture, value, link, currencyName; a currency's link is |Hcurrency:ID|h. The link
--- and the currency name are found by value (the trainer API taught us Forever may reorder returns); the amount is the
--- second value. Item and currency costs are sampled apart. Cost items are scanned once per build so their names reach
--- the server. At most COST_CAP costs.
-local COST_CAP = 10
-local function merchantCosts(i)
-  if not GetMerchantItemCostInfo or not GetMerchantItemCostItem then return nil end
-  local n, r = packed(GetMerchantItemCostInfo(i))
-  local count = tonumber(r[1]) or 0
-  if count <= 0 then return nil end
-  sampleReturns("GetMerchantItemCostInfo", unpack(r, 1, n))
-  local costs = {}
-  for j = 1, math.min(count, COST_CAP) do
-    local m, c = packed(GetMerchantItemCostItem(i, j))
-    local amount, link, currencyName = tonumber(c[2]), nil, nil
-    for k = 1, m do
-      local v = c[k]
-      if type(v) == "string" and v ~= "" then
-        if v:find("|H", 1, true) then link = link or v else currencyName = currencyName or v end
-      end
-    end
-    local isCurrency = link and link:find("currency:", 1, true)
-    sampleReturns(isCurrency and "GetMerchantItemCostItem:currency" or "GetMerchantItemCostItem", unpack(c, 1, m))
-    local cost = { amount = amount, itemID = idFromLink(link),
-                   currencyID = link and tonumber(link:match("currency:(%d+)")) }
-    local name = type(currencyName) == "string" and currencyName ~= "" and currencyName
-      or (link and link:match("|h%[(.-)%]|h"))
-    cost.name = name and name:sub(1, 200) or nil
-    if amount and (cost.itemID or cost.currencyID or cost.name) then
-      costs[#costs + 1] = cost
-      if cost.itemID then scanItemOnce(cost.itemID, link) end
-    end
-  end
-  if #costs > 0 then return costs end
-end
+local merchantNpc -- npcID while a merchant window is open
 
 local function skillLineByName(name)
   if type(name) ~= "string" or name == "" then return nil end
@@ -891,9 +791,8 @@ local function scanTrainer()
     services = mergeServices(prev.services, services)
     skillLineID = skillLineID or prev.skillLineID
   end
-  -- a title this open did not read (tooltip not ready) keeps the one read before
-  byNpc[trainerNpc] = { name = UnitName("npc"), title = trainerTitle or (prev and prev.title), loc = where(),
-                        skillLineID = skillLineID, seenAt = now(), complete = complete, services = services }
+  byNpc[trainerNpc] = { name = UnitName("npc"), loc = where(), skillLineID = skillLineID, seenAt = now(),
+                        complete = complete, services = services }
 end
 
 -- The whole list every pass, but at most VENDOR_SCAN_BUDGET items new to this build are scanned per pass (big stocks);
@@ -905,7 +804,6 @@ local function scanVendor()
   local MF = C_MerchantFrame
   local api = "C_MerchantFrame.GetItemInfo"
   local list, budget, more = {}, VENDOR_SCAN_BUDGET, false
-  if GetMerchantCurrencies then sampleReturns("GetMerchantCurrencies", GetMerchantCurrencies()) end
   for i = 1, math.min(GetMerchantNumItems() or 0, LIST_CAP) do
     local info = MF and MF.GetItemInfo and MF.GetItemInfo(i)
     sample(api, info)
@@ -918,10 +816,6 @@ local function scanVendor()
                   currencyID = tonumber(field(info, "currencyID")) }
       local ext = field(info, "hasExtendedCost", "extendedCost")
       if ext ~= nil then e.extendedCost = ext and true or false end
-      if ext ~= false then -- true, or a client that does not say: ask for the costs
-        local ok, costs = safely("merchantCosts", merchantCosts, i)
-        if ok then e.costs = costs end
-      end
       list[#list + 1] = e
       local rec = db.items[itemID]
       if not (rec and rec.byBuild and rec.byBuild[build]) and not pendingItems[itemID] then
@@ -936,10 +830,8 @@ local function scanVendor()
   end
   local byNpc = db.vendors[build] or {}
   db.vendors[build] = byNpc
-  local prev = byNpc[merchantNpc]
-  if not prev then added() end
-  byNpc[merchantNpc] = { name = UnitName("npc"), title = merchantTitle or (prev and prev.title), loc = where(),
-                         seenAt = now(), items = list }
+  if not byNpc[merchantNpc] then added() end
+  byNpc[merchantNpc] = { name = UnitName("npc"), loc = where(), seenAt = now(), items = list }
   return more
 end
 
@@ -2028,7 +1920,7 @@ local function initDB()
   local hadData = next(db.quests) or next(db.items) or next(db.runs) or next(db.drops)
   local existed = db.meta.schemaVersion ~= nil or hadData
   if not db.meta.schemaVersion and hadData then migrateV0() end
-  -- 1 -> 2 -> 3 -> 4 -> 5 only add fields, so older data needs nothing but the new stamp.
+  -- 1 -> 2 -> 3 -> 4 only add fields, so older data needs nothing but the new stamp.
   if (tonumber(db.meta.schemaVersion) or 0) < SCHEMA_VERSION then db.meta.schemaVersion = SCHEMA_VERSION end
   -- Per-session totals (drops, dropQty, corpses) belong to this session id for the life of the table. Forever
   -- starts every load with an empty table, so each load is a session. A table written by an older addon keeps
@@ -2162,18 +2054,16 @@ function handlers.TRADE_SKILL_CLOSE() tradeOpen, tradeSwitching, tradeShownAt = 
 function handlers.NEW_RECIPE_LEARNED(...) safely("onRecipeLearned", onRecipeLearned, ...) end
 function handlers.TRAINER_SHOW()
   trainerNpc = npcIDFromGUID(UnitGUID("npc"))
-  trainerTitle = trainerNpc and readTitle() or nil
   if trainerNpc then throttled("trainer", scanTrainer) end
 end
 function handlers.TRAINER_UPDATE() if trainerNpc then throttled("trainer", scanTrainer) end end
-function handlers.TRAINER_CLOSED() trainerNpc, trainerTitle = nil, nil end
+function handlers.TRAINER_CLOSED() trainerNpc = nil end
 function handlers.MERCHANT_SHOW()
   merchantNpc = npcIDFromGUID(UnitGUID("npc"))
-  merchantTitle = merchantNpc and readTitle() or nil
   if merchantNpc then throttled("vendor", scanVendor) end
 end
 function handlers.MERCHANT_UPDATE() if merchantNpc then throttled("vendor", scanVendor) end end
-function handlers.MERCHANT_CLOSED() merchantNpc, merchantTitle = nil, nil end
+function handlers.MERCHANT_CLOSED() merchantNpc = nil end
 function handlers.UNIT_SPELLCAST_START(unit)
   if unit == "player" then safely("onPlayerCastStart", onPlayerCastStart) end
 end
