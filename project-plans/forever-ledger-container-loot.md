@@ -18,7 +18,7 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   `container_loot_pk`: generated names pass Postgres' 63-byte limit; both tables in `/v1/export`)
 - ✅ 4 🖥️ Admin UI: item page "Contents" (for containers) and "Opened from" (for their loot) — 01:45 CDT (f9c5cd9;
   `pnpm check` green: Lua harness 195 passed, vitest 889 passed in 74 files, +16 over master's 873; admin builds)
-- 🟡 5 🔍 Review + `pnpm check` + CI green → merge
+- ✅ 5 🔍 Review + `pnpm check` + CI green → merge — PR #27 merged green (efd6dfe) 02:06 CDT
   - ✅ 🔍 PR #27 review: 2 Important + 3 minors fixed — 02:05 CDT
     - ✅ I1 partly looted container counted twice — 01:56 CDT (0be560e; Lua harness 205 passed, +10): the addon keeps
       the last container window; a reopen of its leftovers (same GUID, else same known id; ≤ 15 min; nothing new in
@@ -30,9 +30,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
     - ✅ Minors — 02:05 CDT: `lastLock` used up per container and unlock events ignored (in 0be560e); admin "Came from"
       wording for opened and processed items; `contentsByBuild` tolerates a response without `contents`/`openedFrom`.
   - ⬜ CI green → merge
-- ⬜ 6 🚀 Rollout: server deploy (backup first) → tag `v0.1.5` → **owner confirms the App card shows 0.1.5** → tag
-  `addon-v0.3.4` → `addon-cli publish 0.3.4` → owner opens a Message in a Bottle (or any clam/lockbox) → verify
-  (the schema gate now protects trays ≤ 0.1.4 automatically: they keep 0.3.3 even once 0.3.4 is live)
+- 🟡 6 🚀 Rollout
+  - ✅ Server deployed 02:07 CDT (backup `forever_ledger-20260924-0207-pre0012.sql.gz`, migration 0012 applied;
+    legacy releases read as schema ≤ 5)
+  - ✅ Tray `v0.1.5` released (exe + blockmap + latest.yml, GitHub latest) — 02:10 CDT
+  - ✅ `addon-v0.3.4` released and `addon-cli publish 0.3.4` (schema 6) — 02:11 CDT. Live manifest: no `schema` or
+    `schema=5` → 0.3.3, `schema=6` → 0.3.4 (trays ≤ 0.1.4 keep 0.3.3 automatically)
+  - ⬜ Owner's App card shows 0.1.5, addon 0.3.4 installed; owner opens a container → verify `container_opens` /
+    `container_loot` rows and the item page
 
 ## 📌 Context
 
