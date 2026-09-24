@@ -347,18 +347,18 @@ export async function registerAdminMapsRoutes(
       );
       if (!meta) return reply.status(404).send({ error: 'no map uploaded' });
       const etag = `"${meta.sha256}"`;
-      reply.header('etag', etag);
-      reply.header('cache-control', IMAGE_CACHE);
-      if (etagMatches(req.headers['if-none-match'], etag)) return reply.status(304).send();
+      // The ETag and cache headers go on the 200/304 only, so an error response (e.g. the bytes query failing) is
+      // never cached.
+      if (etagMatches(req.headers['if-none-match'], etag))
+        return reply.header('etag', etag).header('cache-control', IMAGE_CACHE).status(304).send();
       const [img] = await rows<{ bytes: Buffer }>(
         db,
         sql`select bytes from zone_maps where ui_map_id = ${uiMapId} and sha256 = ${meta.sha256}`,
       );
-      if (!img) {
-        reply.header('cache-control', 'no-store');
-        return reply.status(404).send({ error: 'no map uploaded' });
-      }
+      if (!img) return reply.status(404).send({ error: 'no map uploaded' });
       return reply
+        .header('etag', etag)
+        .header('cache-control', IMAGE_CACHE)
         .header('content-type', meta.mime)
         .header('content-security-policy', "default-src 'none'; sandbox")
         .header('cross-origin-resource-policy', 'same-origin')

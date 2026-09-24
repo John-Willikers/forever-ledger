@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { hashToken } from '../src/index.js';
 import { MAX_IMAGE_BYTES } from '../src/images.js';
 import { createSession, csrfToken } from '../src/sessions.js';
@@ -127,7 +127,7 @@ describe('zone maps (real Postgres)', () => {
 
     it('refuses an oversized body before any session work for anonymous callers', async () => {
       const res = await put('/admin/api/maps/1429', undefined, Buffer.alloc(MAX_IMAGE_BYTES + 1));
-      expect([401, 413]).toContain(res.statusCode);
+      expect(res.statusCode).toBe(401);
     });
   });
 
@@ -357,6 +357,31 @@ describe('zone maps (real Postgres)', () => {
       ).toBe(400);
       expect((await get('/admin/maps/abc', admin)).statusCode).toBe(400);
       expect((await get('/admin/maps/0', admin)).statusCode).toBe(400);
+    });
+
+    it('never caches an error response of the image route', async () => {
+      expect((await put('/admin/api/maps/1418', admin, png(3, 2))).statusCode).toBe(200);
+      const db = s.database.db;
+      const execute = db.execute.bind(db);
+      let failNext = false;
+      // The bytes query fails (e.g. the database drops) right after the metadata lookup succeeded.
+      const spy = vi.spyOn(db, 'execute').mockImplementation((async (
+        query: Parameters<typeof execute>[0],
+      ) => {
+        if (failNext) throw new Error('connection lost');
+        const res = await execute(query);
+        const row = res.rows[0];
+        if (row !== undefined && 'sha256' in row && 'mime' in row) failNext = true;
+        return res;
+      }) as typeof db.execute);
+      try {
+        const img = await get('/admin/maps/1418', admin);
+        expect(img.statusCode).toBe(500);
+        expect(img.headers.etag).toBeUndefined();
+        expect(img.headers['cache-control']).toBe('no-store');
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('deletes, then 404s', async () => {

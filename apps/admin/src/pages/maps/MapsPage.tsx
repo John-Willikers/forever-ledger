@@ -205,6 +205,13 @@ function MapEditor({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => ref.current?.scrollIntoView({ block: 'nearest' }), []);
+  // A pick still loading when the editor closes revokes its own object URL (it no longer matches).
+  useEffect(
+    () => () => {
+      picked.current = null;
+    },
+    [],
+  );
   // The preview's object URL lives as long as the preview.
   useEffect(() => () => void (preview && URL.revokeObjectURL(preview.url)), [preview]);
 
