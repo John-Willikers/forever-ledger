@@ -22,6 +22,7 @@ import {
   textParam,
 } from './shared.js';
 import { jarr, jint, jlen, jnum, jtext, viaItemId } from './sqlJson.js';
+import { uiMapName } from '../uiMapNames.js';
 
 const LIST_DEFAULT_LIMIT = 100;
 const LIST_MAX_LIMIT = 500;
@@ -609,7 +610,7 @@ export function registerAdminProfessionsRoutes(
       .sort((a, b) => b.opens - a.opens || a.mapId - b.mapId)
       .map((m) => ({
         mapId: m.mapId,
-        zone: zones.find((z) => z.mapId === m.mapId)?.zone ?? null,
+        zone: zones.find((z) => z.mapId === m.mapId)?.zone ?? uiMapName(m.mapId),
         opens: m.opens,
         nodes: m.nodes.sort((a, b) => b.opens - a.opens || a.objectId - b.objectId),
       }));

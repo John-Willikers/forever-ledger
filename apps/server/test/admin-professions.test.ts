@@ -466,10 +466,10 @@ describe('admin professions, vendors and trainers (real Postgres)', () => {
       expect(res.builds).toEqual([69977, 61582]);
       expect(res.maps.map((m: { mapId: number }) => m.mapId)).toEqual([1429, 1426, 1427]);
       const [elwynn, dunMorogh, other] = res.maps;
-      // The map name comes from an NPC seen on it.
+      // The map name comes from an NPC seen on it, else from the client's UiMap table.
       expect(elwynn.zone).toBe('Elwynn Forest');
       expect(dunMorogh.zone).toBe('Dun Morogh');
-      expect(other.zone).toBeNull();
+      expect(other.zone).toBe('Searing Gorge');
       expect(elwynn.nodes).toEqual([
         {
           objectId: 1731,
