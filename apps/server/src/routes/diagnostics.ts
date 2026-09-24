@@ -2,6 +2,7 @@ import {
   DIAGNOSTIC_LEVELS,
   DIAGNOSTIC_SOURCES,
   DiagnosticsReport,
+  INT4_MAX,
 } from '@forever-ledger/contracts';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -24,7 +25,6 @@ export const DIAGNOSTICS_BODY_LIMIT = 256 * 1024;
 const DEFAULT_LIST_DAYS = 7;
 const DEFAULT_LIST_LIMIT = 200;
 const MAX_LIST_LIMIT = 1000;
-const INT4_MAX = 2_147_483_647;
 
 /** `?since=` as epoch seconds or an ISO date; undefined when absent, null when unreadable. */
 function parseSince(raw: unknown): Date | null | undefined {

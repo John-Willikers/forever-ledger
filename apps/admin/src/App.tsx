@@ -24,6 +24,30 @@ const HealthPage = lazy(() =>
 const AccessPage = lazy(() =>
   import('./pages/AccessPage').then((m) => ({ default: m.AccessPage })),
 );
+const QuestsPage = lazy(() =>
+  import('./pages/quests/QuestsPage').then((m) => ({ default: m.QuestsPage })),
+);
+const CharacterDetailPage = lazy(() =>
+  import('./pages/characters/CharacterDetailPage').then((m) => ({
+    default: m.CharacterDetailPage,
+  })),
+);
+const LootPage = lazy(() => import('./pages/loot/LootPage').then((m) => ({ default: m.LootPage })));
+const ItemPage = lazy(() =>
+  import('./pages/items/ItemPage').then((m) => ({ default: m.ItemPage })),
+);
+const DungeonsPage = lazy(() =>
+  import('./pages/dungeons/DungeonsPage').then((m) => ({ default: m.DungeonsPage })),
+);
+const RunPage = lazy(() =>
+  import('./pages/dungeons/RunPage').then((m) => ({ default: m.RunPage })),
+);
+const ProfessionsPage = lazy(() =>
+  import('./pages/professions/ProfessionsPage').then((m) => ({ default: m.ProfessionsPage })),
+);
+const VendorsPage = lazy(() =>
+  import('./pages/vendors/VendorsPage').then((m) => ({ default: m.VendorsPage })),
+);
 
 /** Pages that have shipped; the rest show their placeholder until their phase lands. */
 const PAGES: Readonly<Record<string, () => ReactElement>> = {
@@ -31,7 +55,18 @@ const PAGES: Readonly<Record<string, () => ReactElement>> = {
   characters: () => <CharactersPage />,
   health: () => <HealthPage />,
   access: () => <AccessPage />,
+  quests: () => <QuestsPage />,
+  loot: () => <LootPage />,
+  dungeons: () => <DungeonsPage />,
+  professions: () => <ProfessionsPage />,
+  vendors: () => <VendorsPage />,
 };
+
+/** Detail pages reached from a listing (not in the sidebar). */
+const DETAIL_ROUTES: readonly { path: string; page: () => ReactElement }[] = [
+  { path: 'items/:id', page: () => <ItemPage /> },
+  { path: 'dungeons/runs/:id', page: () => <RunPage /> },
+];
 
 function pageFor(item: NavItem) {
   const page = PAGES[item.path];
@@ -59,6 +94,18 @@ const router = createBrowserRouter(
             ? { index: true, element: pageFor(item) }
             : { path: item.path, element: pageFor(item) },
         ),
+        {
+          path: 'characters/:key',
+          element: (
+            <Suspense fallback={<Loading />}>
+              <CharacterDetailPage />
+            </Suspense>
+          ),
+        },
+        ...DETAIL_ROUTES.map((r) => ({
+          path: r.path,
+          element: <Suspense fallback={<Loading />}>{r.page()}</Suspense>,
+        })),
         { path: '*', element: <NotFound /> },
       ],
     },

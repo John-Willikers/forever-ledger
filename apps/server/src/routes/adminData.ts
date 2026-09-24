@@ -7,6 +7,7 @@ import type { Db } from '../db/client.js';
 import { chicagoIso } from '../time.js';
 import type { ReadGuard } from './analysis.js';
 import { buildFilter } from './analysis.js';
+import { jarr } from './sqlJson.js';
 
 /** The addon's own reports in api_samples: its Lua errors and the field names it looked for but didn't find. */
 export const FLAGGED_SAMPLES = {
@@ -293,9 +294,7 @@ export function registerAdminDataRoutes(app: FastifyInstance, db: Db, preHandler
       with seen as (
         select distinct c->>'key' as key, u.token_id
         from raw_uploads u
-        cross join lateral jsonb_array_elements(
-          case when jsonb_typeof(u.payload->'records'->'characters') = 'array'
-               then u.payload->'records'->'characters' else '[]'::jsonb end) c
+        cross join lateral jsonb_array_elements(${jarr(sql`u.payload->'records'->'characters'`)}) c
         where u.token_id is not null
       )
       select ch.key, ch.name, ch.realm, ch.class, ch.race, ch.faction, ch.level, ch.last_seen,

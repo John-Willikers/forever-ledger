@@ -5,6 +5,7 @@ import {
   addonDownloadUrl,
   addonTag,
   compareVersions,
+  INT4_MAX,
   isAddonVersion,
   MAX_ADDON_BYTES,
   verifyAddonZip,
@@ -16,8 +17,8 @@ import { addonPins, addonReleases } from './db/schema.js';
 
 type AddonRelease = typeof addonReleases.$inferSelect;
 
-/** Largest value an int4 column (builds in pins) can hold. */
-export const INT4_MAX = 2_147_483_647;
+/** Largest value an int4 column (builds in pins, every id) can hold; one definition, in contracts. */
+export { INT4_MAX };
 
 const toManifest = (r: AddonRelease): AddonManifest => ({
   addon: ADDON_NAME,

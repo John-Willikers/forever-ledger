@@ -1,11 +1,14 @@
+import { Link } from 'react-router';
 import { useAdminQuery } from '../api';
 import { ClassBadge } from '../components/ClassBadge';
 import { Empty, QueryState } from '../components/State';
 import { classColor } from '../lib/classes';
 import { formatChicagoShort, timeAgo } from '../lib/time';
 import type { CharacterRow, Items } from '../types';
+import './characters/characters.css';
+import { characterPath } from './characters/timelineLib';
 
-/** Character cards; level-over-time charts come with phase 3. */
+/** Character cards; each links to the character's page (level over time, quest XP, professions). */
 export function CharactersPage() {
   const chars = useAdminQuery<Items<CharacterRow>>(['characters'], '/admin/api/characters');
   return (
@@ -37,7 +40,9 @@ function CharacterCard({ c }: { c: CharacterRow }) {
   return (
     <article className="char-card" style={{ borderLeftColor: classColor(c.class) }}>
       <header>
-        <h2>{c.name}</h2>
+        <h2>
+          <Link to={characterPath(c.key)}>{c.name}</Link>
+        </h2>
         <span className="muted small">{c.realm}</span>
       </header>
       <p className="char-line">

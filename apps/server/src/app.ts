@@ -16,6 +16,9 @@ import { serializeRequest } from './logging.js';
 import { registerAddonRoutes } from './routes/addon.js';
 import { registerAdminApiRoutes } from './routes/adminApi.js';
 import { registerAdminAuth } from './routes/adminAuth.js';
+import { registerAdminQuestRoutes } from './routes/adminQuests.js';
+import { registerAdminLootRoutes } from './routes/adminLoot.js';
+import { registerAdminProfessionsRoutes } from './routes/adminProfessions.js';
 import type { AdminAuthOptions } from './routes/adminAuth.js';
 import { registerAdminStatic } from './routes/adminStatic.js';
 import { registerAnalysisRoutes } from './routes/analysis.js';
@@ -59,6 +62,9 @@ export async function buildApp(opts: AppOptions) {
     logger: opts.logger ?? false,
     bodyLimit: opts.bodyLimit ?? DEFAULT_BODY_LIMIT,
     trustProxy: '127.0.0.1',
+    // Path params up to 512 chars (default 100) so 128-char character keys and 256-char run ids reach their routes,
+    // which enforce their own caps with a 400.
+    maxParamLength: 512,
   });
 
   await app.register(rateLimit, { global: false });
@@ -161,6 +167,9 @@ export async function buildApp(opts: AppOptions) {
     reader: guards.requireReader,
   });
   registerAdminApiRoutes(app, db, guards);
+  registerAdminQuestRoutes(app, db, guards.requireAdmin);
+  registerAdminLootRoutes(app, db, guards.requireAdmin);
+  registerAdminProfessionsRoutes(app, db, guards.requireAdmin);
   await registerAdminStatic(app, opts.admin?.distDir);
 
   return app;

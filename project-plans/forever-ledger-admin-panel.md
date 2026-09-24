@@ -50,9 +50,58 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   raw_uploads grows large. (`d3a5bfb` scope: `api_tokens.can_read` default false, upload-only tokens get 403 on
   every `/v1` read, Access page toggle + "can read" at mint, `tokens-cli mint --read`; `b4e7448` int4 query params
   → 400; mint box `reset()` so the plaintext leaves the mutation cache.)
-- ⬜ 3 📜 Quests + 🧙 Characters
-- ⬜ 4 🎒 Loot + 🏰 Dungeons
-- ⬜ 5 ⚒️ Professions + 🏪 Vendors/trainers
+- ✅ 3 📜 Quests + 🧙 Characters — 2026-09-23 21:40 CDT — `eaa40d8` server (+ `23a019f` test), `e4b27ae` pages
+  (branch `feat/admin-quests-characters`, not deployed). New `routes/adminQuests.ts` (admin session only):
+  `GET /admin/api/quests` one row per quest at `?build=` or its newest build (all numbers from that build only:
+  offered XP/money, turn-ins, avg XP paid, `xpMismatch`, reward choices with picks from `turn_ins.choice_item_id`,
+  givers/enders, `foreverOnly` = id ≥ `FOREVER_QUEST_ID_MIN` 90000), filters `search`/`zone`/`minLevel`/`maxLevel`/
+  `forever=1`/`mismatch=1`, `limit` ≤ 500 + `offset`, zone/build facets; `GET /admin/api/quests/:id` observations
+  (locations sanitized to known fields), newest 500 turn-ins, reward options + picks per build;
+  `GET /admin/api/characters/:key/timeline` level points (observations, turn-ins, character; deduped, runs at one
+  level cut to first/last), turn-ins with running XP, XP per Chicago day. Pages: Quests (URL-kept filters, badges,
+  XP-vs-level scatter with 3 zone colors + Other and Forever-only diamonds, `?quest=` drawer with pick bars and
+  giver/ender zone plots), `/characters/:key` (level + cumulative XP lines, XP per day, turn-ins, professions from
+  `/v1/professions/skills`). Notes: "XP sources stacked area (quests vs mobs)" left for 🏰 Dungeons (mob XP only exists
+  per run); the list scans all observations + turn-ins per request (fine now; add a per-quest/build summary table if
+  it gets slow); ECharts scatter/legend registered from `pages/quests/registerScatter.ts`, not `Chart.tsx`. Caveat:
+  `xpMismatch` compares the max XP offered with the average XP paid across every level that turned the quest in, so
+  a quest whose reward scales with level can be flagged without a real mismatch.
+- ✅ 4 🎒 Loot + 🏰 Dungeons — 2026-09-23 21:37 — `50a3ec1` server, `22141f7` test fix, `5fad1b4` pages (branch
+  `feat/admin-loot-dungeons`, not deployed). New `routes/adminLoot.ts` (admin session only): `/admin/api/loot/mobs`
+  (per build + npc: corpses, avg copper, items, top 5 by rate with the `/v1/drops/rates` session rules; best-known
+  npc name from quest givers/vendors/trainers, else null; `?build= ?search= ?limit=` ≤ 200 `?offset=`),
+  `/loot/mobs/:npcId`, `/loot/items` (latest snapshot, distinct source counts, `FOREVER_ID_MIN` flag, `?quality=
+  ?class=`), `/admin/api/items/:id` (stat/field diffs between consecutive builds, drop rates with names, vendors with
+  named costs + title, recipes making/using it — complements `/v1/items/:id`), `/admin/api/runs` (+ instances facet),
+  `/runs/:id`, `/dungeons/clear-times`. Pages: Loot (mob table + drop chart, item search), 🧾 Item, Dungeons (summary,
+  clear-time dots, mob vs quest XP/min), 🏃 Run (boss split timeline, loot, boss loot rolls, party). Notes: run ids
+  over 100 chars couldn't be fetched by path (Fastify `maxParamLength`; fixed in review, now 512); the clear-time
+  chart is a dot plot, not a box plot (few runs per instance so far); Chart.tsx untouched — scatter/legend register
+  from `pages/dungeons/echartsExtra.ts`.
+  🔧 Review fixes for phases 3–5 — 2026-09-23 21:58 CDT (branch `integrate/admin-phases-3-5`, PR #19): `340bfa2`
+  contracts int4 caps; `e52ea86` server (safe jsonb readers `routes/sqlJson.ts` for every uploaded-jsonb cast,
+  shared `routes/shared.ts` helpers + `FOREVER_ID_THRESHOLDS`, text params 400 instead of truncating, indexed quest
+  `last_seen`, `maxParamLength` 512 so long run ids / character keys route); `1794a95` admin (skill chart cycles its
+  palette, drop-rate axis past 100%, one `formatMoney`).
+- ✅ 5 ⚒️ Professions + 🏪 Vendors/trainers — 2026-09-23 21:41 — `57db63d` server, `379c434` pages (branch
+  `feat/admin-professions-vendors`, not deployed). New `routes/adminProfessions.ts` (admin session only):
+  professions overview (per base profession, child lines folded: characters rank/max + recipes known, recipes
+  known/seen, crafts, harvests/nodes, trainers, recipe vendors), skill-history (one point per rise, oldest first,
+  ≤ 2000 per profession), crafts (per recipe + build, procs), gathering-map (spots per mapId, each session's opens
+  spread evenly over its spots, zone names from NPC locs), cost calculator (cheapest vendor gold price per item =
+  price / stack; extended-cost and 0-gold listings ignored; unknowns listed; output value = sell price × average
+  qty; profit only when complete), vendors / trainers lists (`search` name/tag/npc id with literal wildcards,
+  `title`, `foreverOnly` = npc id ≥ `FOREVER_NPC_MIN` 200000, `limit`/`offset`, `titles`) and details (`?build=`,
+  newest by default; cost items named from `items`). jsonb fields read by type (untrusted); `skillBase` exported
+  from analysis.ts. Pages: profession cards, skill rank step lines, recipe browser with difficulty bands, recipe
+  detail (sources + cost calculator), crafts, gathering scatter (y inverted, size = opens, color + shape per node
+  type, "Other" past 7) + yield table; Vendors/Trainers tabs with tag chips, Forever-only, vendor costs
+  "3× [Item] + 25 [Currency]", trainer partial-scan note. Tests: 20 server (real Postgres: session-v4/v5 +
+  professions-v4 + a fold batch; authz 401/403/200, folding, cost math, Forever filter), 21 admin unit (money,
+  costs, bands, scatter, skill series, labels); `pnpm check` green (624 vitest, 179 Lua). Deviations: extra routes
+  crafts + gathering-map (no /v1 answer for crafts or spot points); Chart.tsx untouched (scatter/legend
+  registered by the page); page CSS in `pages/professions/professions.css`; gathering defaults to all builds merged
+  (build picker).
 - ⬜ 6 🧪 Builds
 - 🟡 7 🚀 Deploy — Phase 1 live 20:45 CDT 2026-09-23: nginx /admin/ + HSTS + no-query auth log, PM2 reloaded from ecosystem (BNET env), migration 0008 applied, pm2 saved. ✅ First admin login 20:47 CDT: user #1 JohnWilliker#1292 role=admin (pinned to account id)
 - **`apps/admin`** — React 19 + TypeScript + Vite SPA (base `/admin/`), **Apache ECharts** (`echarts` +
