@@ -144,6 +144,12 @@ pnpm install && pnpm build
 pm2 start deploy/ecosystem.config.cjs         # runs migrations on start
 ```
 
+🧩 Run groups: when several party members upload the same dungeon run, ingest puts their runs in one group
+(`runs.group_id`, the earliest member's run id): same instance and build, starts at most 180 s apart, and each one's
+party lists the other's class and level. The dungeon reads count a group once; its clear time is the median of the
+members' active times. Runs stored before migration 0010 are grouped by a one-off backfill the server runs at start
+(any run with no `group_id`; a no-op afterwards), so a restart after deploying is all it takes.
+
 Tokens (one per contributor; only the hash is stored). A token has one of two scopes:
 
 - **upload** (the default): `POST /v1/ingest`, `POST /v1/diagnostics` and `GET /v1/addon/manifest` — everything the
@@ -169,7 +175,7 @@ session, an upload-only token gets 403):
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
 | `GET /v1/health`                                 | Liveness + DB check                                                                          |
 | `POST /v1/ingest`                                | Idempotent batch upsert; returns acknowledged record keys + content hashes                   |
-| `GET /v1/runs/summary?build=`                    | Per dungeon: runs, median/best clear, XP/min (mob vs quest), deaths, boss splits             |
+| `GET /v1/runs/summary?build=`                    | Per dungeon: run groups + members, median/best clear, XP/min (mob vs quest), deaths, bosses  |
 | `GET /v1/quests/xp?build=`                       | Offered vs paid XP per quest                                                                 |
 | `GET /v1/items/:id`                              | Item snapshots per build, drop sources, quest rewards, class/spec fit                        |
 | `GET /v1/drops/rates?build=`                     | Per npc + item: corpses looted, dropped, rate, stack quantity, avg copper/corpse             |
