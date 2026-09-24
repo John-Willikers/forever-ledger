@@ -41,6 +41,10 @@ first table each profession API or event returns on a build is kept (trimmed) in
 for but didn't find go to `apiSamples["ForeverLedger.fieldMisses"]`. Both reach the server's `api_samples` table,
 so a wrong reader shows up there without anyone sending files.
 
+Since 0.3.3 (schema 5) a vendor item bought with items or currencies keeps that extended cost (amount, item or
+currency, name) next to its gold price, and vendors and trainers keep the subtitle under their name ("Enchanting",
+"Blacksmithing Supplies").
+
 Since 0.2.2 the addon reminds you at natural checkpoints (a boss kill, a dungeon run closing, a quest turn-in, a
 dungeon finder reward): `Forever Ledger: N new records since your last /reload — type /reload to save them`. It
 prints at most once every 5 minutes, waits until you leave combat, and only prints; the tray app uploads within
@@ -160,7 +164,7 @@ API (all but health need `Authorization: Bearer <token>`):
 | `GET /v1/items/:id`                              | Item snapshots per build, drop sources, quest rewards, class/spec fit            |
 | `GET /v1/drops/rates?build=`                     | Per npc + item: corpses looted, dropped, rate, stack quantity, avg copper/corpse |
 | `GET /v1/professions/recipes?skillLine=&build=`  | Recipes: reagents, output, difficulty thresholds seen, learned by / via          |
-| `GET /v1/professions/sources?itemId=\|recipeId=` | Trainers (cost, rank), vendors (price, stock), Recipe-class item drops           |
+| `GET /v1/professions/sources?itemId=\|recipeId=` | Trainers (cost, rank), vendors (price, costs, stock), NPC titles, recipe drops   |
 | `GET /v1/professions/gathering?build=`           | Per node (0 = fishing): opens, min rank, zones, top loot per open                |
 | `GET /v1/professions/skills?char=&build=`        | Per character: professions, rank / max rank, skill-up history with recipe        |
 | `GET /v1/export?format=json\|csv&table=`         | Full dump for offline analysis (times in America/Chicago)                        |

@@ -727,7 +727,7 @@ describe('normalize — schema 5 vendor costs and NPC titles (session-v5.lua)', 
 
   it('validates with no problems as schema 5; schema 5 is the current major', () => {
     expect(problems).toEqual([]);
-    expect(meta.schemaVersion).toBe(5);
+    expect(meta).toMatchObject({ schemaVersion: 5, addonVersion: '0.3.3' });
     expect(SCHEMA_VERSION).toBe(5);
     expect(isSupportedSchemaVersion(5)).toBe(true);
     expect(isSupportedSchemaVersion(6)).toBe(false);

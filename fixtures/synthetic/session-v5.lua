@@ -623,7 +623,7 @@ ForeverLedgerDB = {
 		}, -- [2]
 	},
 	["meta"] = {
-		["addonVersion"] = "0.3.2",
+		["addonVersion"] = "0.3.3",
 		["build"] = 61582,
 		["buildDate"] = "Sep 18 2026",
 		["interface"] = 11507,
