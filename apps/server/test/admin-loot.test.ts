@@ -475,6 +475,131 @@ describe('admin loot + dungeon API (real Postgres)', () => {
       ).toEqual([1200]);
     });
   });
+
+  // Last: the container items (a Schematic among them) would change the item list assertions above.
+  describe('GET /admin/api/items/:id — container loot (schema 6)', () => {
+    beforeAll(async () => {
+      // session-v6.lua's items and container records only (its drops, runs etc. would repeat v5's), then a second
+      // session that opened the clam stack twice more, and loot of a session with no opens (never counted).
+      const v6 = batchFromFixture('session-v6.lua', 'ACCOUNT3', 'pc-3');
+      const only = (b: UploadBatch, records: Partial<UploadBatch['records']>): UploadBatch => ({
+        ...b,
+        records: {
+          ...Object.fromEntries(Object.keys(b.records).map((k) => [k, []])),
+          ...records,
+        } as UploadBatch['records'],
+      });
+      await ingest(
+        only(v6, {
+          items: v6.records.items,
+          itemSnapshots: v6.records.itemSnapshots,
+          containerOpens: v6.records.containerOpens,
+          containerLoot: v6.records.containerLoot,
+        }),
+      );
+      const b = { build: 61582, session: '1790300000-c1a2' };
+      await ingest(
+        only(
+          { ...v6, meta: { ...v6.meta, session: b.session } },
+          {
+            containerOpens: [{ containerId: 5523, ...b, opened: 2, copper: 15 }],
+            containerLoot: [{ itemId: 5503, containerId: 5523, ...b, count: 1, quantity: 1 }],
+          },
+        ),
+      );
+      const orphan = { build: 61582, session: '1790300500-dead' };
+      await ingest(
+        only(
+          { ...v6, meta: { ...v6.meta, session: orphan.session } },
+          {
+            containerLoot: [{ itemId: 5503, containerId: 5523, ...orphan, count: 5, quantity: 5 }],
+          },
+        ),
+      );
+    });
+
+    it('a container lists its opens, copper per open and each item with its chance per open', async () => {
+      const clam = await json('/admin/api/items/5523');
+      expect(clam.contents).toEqual({
+        opens: [{ build: 61582, opened: 4, copper: 50, avgCopper: 12.5 }],
+        items: [
+          {
+            build: 61582,
+            itemId: 5503,
+            name: 'Clam Meat',
+            quality: 1,
+            count: 3,
+            quantity: 4,
+            chance: 0.75,
+            avgQuantity: 1.33,
+          },
+          {
+            build: 61582,
+            itemId: 5498,
+            name: 'Small Lustrous Pearl',
+            quality: 1,
+            count: 1,
+            quantity: 1,
+            chance: 0.25,
+            avgQuantity: 1,
+          },
+        ],
+      });
+      expect(clam.openedFrom).toEqual([]);
+      const bottle = await json('/admin/api/items/6307');
+      expect(bottle.contents.opens).toEqual([{ build: 61582, opened: 1, copper: 0, avgCopper: 0 }]);
+      expect(bottle.contents.items).toEqual([
+        expect.objectContaining({
+          itemId: 4409,
+          name: 'Schematic: Small Seaforium Charge',
+          count: 1,
+          chance: 1,
+        }),
+      ]);
+    });
+
+    it('an item lists the containers it came out of; container 0 is unnamed', async () => {
+      const meat = await json('/admin/api/items/5503');
+      expect(meat.openedFrom).toEqual([
+        {
+          build: 61582,
+          containerId: 0,
+          containerName: null,
+          containerQuality: null,
+          opened: 1,
+          count: 1,
+          quantity: 1,
+          chance: 1,
+        },
+        {
+          build: 61582,
+          containerId: 5523,
+          containerName: 'Small Barnacled Clam',
+          containerQuality: 1,
+          opened: 4,
+          count: 3,
+          quantity: 4,
+          chance: 0.75,
+        },
+      ]);
+      expect(meat.contents).toEqual({ opens: [], items: [] });
+      expect(meat.dropRates).toEqual([]);
+      const schematic = await json('/admin/api/items/4409');
+      expect(schematic.openedFrom).toEqual([
+        expect.objectContaining({
+          containerId: 6307,
+          containerName: 'Message in a Bottle',
+          chance: 1,
+        }),
+      ]);
+    });
+
+    it('items without container loot answer empty lists', async () => {
+      const rock = await json('/admin/api/items/872');
+      expect(rock.contents).toEqual({ opens: [], items: [] });
+      expect(rock.openedFrom).toEqual([]);
+    });
+  });
 });
 
 describe('statDiffs', () => {

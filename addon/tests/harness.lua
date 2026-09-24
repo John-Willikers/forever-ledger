@@ -627,6 +627,28 @@ function H.new(worldOverrides)
     end
   end
 
+  -- Opened items (schema 6). world.itemGUIDs = { [itemGUID] = itemID } adds C_Item.GetItemIDByGUID (present on
+  -- Forever per the probe dump); world.bags alone adds C_Container.GetContainerItemID for ITEM_LOCK_CHANGED(bag,
+  -- slot). Both only exist when asked for, so the probe's global census stays as it was.
+  if world.itemGUIDs then
+    env.C_Item = env.C_Item or {}
+    env.C_Item.GetItemIDByGUID = function(guid)
+      world.calls = world.calls or {}
+      world.calls.GetItemIDByGUID = (world.calls.GetItemIDByGUID or 0) + 1
+      return world.itemGUIDs[guid]
+    end
+  end
+  if world.bags and not env.C_Container then
+    env.C_Container = { GetContainerItemID = function(bag, slot) return (world.bags[bag] or {})[slot] end }
+  end
+  -- world.bagLocks = { [bag] = { [slot] = true | false } } adds C_Container.GetContainerItemInfo(bag, slot).isLocked.
+  if world.bagLocks and env.C_Container then
+    env.C_Container.GetContainerItemInfo = function(bag, slot)
+      local id = (world.bags[bag] or {})[slot]
+      if id then return { itemID = id, isLocked = (world.bagLocks[bag] or {})[slot] or false } end
+    end
+  end
+
   -- frame:RegisterUnitEvent(ev, unit, ...): the event only reaches the frame for those units (its first argument).
   -- world.noUnitEvents: a client without it. (Added here, not in CreateFrame above, so harness line numbers that the
   -- probe fixture records stay put.)

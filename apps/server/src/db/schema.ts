@@ -423,6 +423,56 @@ export const nodeLoot = pgTable(
   ],
 );
 
+// Schema 6: opened items (container loot plan). Container 0 is an opened item the client could not name.
+
+/**
+ * Opens of a container (one loot window each) per session, with the copper its money slots held. Set, never added.
+ * Primary keys are named: the generated names would pass Postgres' 63-byte identifier limit.
+ */
+export const containerOpens = pgTable(
+  'container_opens',
+  {
+    containerId: integer('container_id').notNull(),
+    build: integer('build').notNull(),
+    uploaderId: text('uploader_id').notNull(),
+    account: text('account').notNull(),
+    session: text('session').notNull(),
+    opened: integer('opened').notNull(),
+    copper: integer('copper').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'container_opens_pk',
+      columns: [t.containerId, t.build, t.uploaderId, t.account, t.session],
+    }),
+    index('container_opens_build_idx').on(t.build),
+  ],
+);
+
+/** Per session: opens of a container that held the item (`count`) and their total quantity. Set, never added. */
+export const containerLoot = pgTable(
+  'container_loot',
+  {
+    itemId: integer('item_id').notNull(),
+    build: integer('build').notNull(),
+    containerId: integer('container_id').notNull(),
+    uploaderId: text('uploader_id').notNull(),
+    account: text('account').notNull(),
+    session: text('session').notNull(),
+    count: integer('count').notNull(),
+    quantity: integer('quantity').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'container_loot_pk',
+      columns: [t.itemId, t.build, t.containerId, t.uploaderId, t.account, t.session],
+    }),
+    index('container_loot_container_idx').on(t.containerId, t.build),
+  ],
+);
+
 /**
  * A trainer's services (TrainerService[]) in one build. A complete scan replaces the list, any other merges into it by
  * service name; `complete` says some scan saw the whole list. An older scan never overwrites a newer one. `title` is
@@ -556,6 +606,11 @@ export const addonReleases = pgTable('addon_releases', {
     .notNull()
     .default('active'),
   publishedAt: tz('published_at').notNull().defaultNow(),
+  /**
+   * SavedVariables schema the release writes (`local SCHEMA_VERSION` of its ForeverLedger.lua), recorded at publish.
+   * Null: published before the manifest's schema gate, so schema 5 or lower (LEGACY_ADDON_SCHEMA).
+   */
+  schemaVersion: integer('schema_version'),
 });
 
 /** Client builds [buildMin, buildMax] (buildMax null = open-ended) that must run a given addon version. */

@@ -1,17 +1,22 @@
 import { z } from 'zod';
 
 /** SavedVariables / upload schema major. Bump together with `SCHEMA_VERSION` in the addon. */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * Schema majors this code reads. Each one is additive, so older files and queued older batches stay valid:
  * 2 adds `turnIns[].choice` (addon 0.2.3); 3 adds `meta.session`, `dropQty`, `corpses` and run loot details
  * (addon 0.2.4); 4 adds professions — skills, recipes, crafts, gathering nodes, trainers, vendors, API samples and
  * `items[].classID/subclassID` (addon 0.3.0); 5 adds vendor and trainer `title` (the NPC's subtitle) and vendor item
- * `costs` (extended costs paid in items or currencies) (addon 0.3.3).
+ * `costs` (extended costs paid in items or currencies) (addon 0.3.3); 6 adds container opens and container loot —
+ * what opened items (clams, lockboxes, a Message in a Bottle) held, per session (addon 0.3.4).
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
 export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
+/** The newest schema this code reads: what the tray sends as `?schema=` when it asks for an addon manifest. */
+export const MAX_SUPPORTED_SCHEMA: SchemaVersion = Math.max(
+  ...SUPPORTED_SCHEMA_VERSIONS,
+) as SchemaVersion;
 
 export const isSupportedSchemaVersion = (v: unknown): v is SchemaVersion =>
   (SUPPORTED_SCHEMA_VERSIONS as readonly unknown[]).includes(v);
@@ -22,6 +27,7 @@ const schemaVersion = z.union([
   z.literal(3),
   z.literal(4),
   z.literal(5),
+  z.literal(6),
 ]);
 
 /** Schema 3 `meta.session`: `<epoch>-<4 hex>`, one per SavedVariables table. '' for older files. */
@@ -342,6 +348,31 @@ export const NodeLoot = z.object({
 });
 export type NodeLoot = z.infer<typeof NodeLoot>;
 
+// ---------------------------------------------------------------------------------------------------------------
+// Schema 6: opened items (container loot plan). Container 0 is an opened item the client could not name.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Per session: how often an item was opened (one loot window each) and the copper its money slots held. */
+export const ContainerOpen = z.object({
+  containerId: nonNegInt,
+  build,
+  session,
+  opened: nonNegInt,
+  copper: nonNegInt,
+});
+export type ContainerOpen = z.infer<typeof ContainerOpen>;
+
+/** Per session: opens of a container that held the item (`count`) and their total stack quantity. */
+export const ContainerLoot = z.object({
+  itemId: nonNegInt,
+  containerId: nonNegInt,
+  build,
+  session,
+  count: nonNegInt,
+  quantity: nonNegInt,
+});
+export type ContainerLoot = z.infer<typeof ContainerLoot>;
+
 export const TrainerService = z.object({
   name: z.string(),
   /** GetTrainerServiceInfo type, e.g. 'available', 'unavailable', 'used'. */
@@ -527,6 +558,8 @@ export const Records = z.object({
   crafts: z.array(Craft).default([]),
   nodes: z.array(GatherNode).default([]),
   nodeLoot: z.array(NodeLoot).default([]),
+  containerOpens: z.array(ContainerOpen).default([]),
+  containerLoot: z.array(ContainerLoot).default([]),
   trainers: z.array(Trainer).default([]),
   vendors: z.array(Vendor).default([]),
   apiSamples: z.array(ApiSample).default([]),

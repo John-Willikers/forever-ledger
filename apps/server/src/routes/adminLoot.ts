@@ -128,6 +128,106 @@ export async function itemInfo(db: Db, ids: number[]) {
   return new Map(rs.map((r) => [r.item_id, { name: r.name, quality: r.quality }]));
 }
 
+/** A container's opens in one build (sessions, uploaders and accounts summed). */
+export interface ContainerOpens {
+  build: number;
+  opened: number;
+  copper: number;
+  /** Copper per open (1 decimal); null without opens. */
+  avgCopper: number | null;
+}
+
+/** One item that came out of a container in one build. */
+export interface ContainerContent {
+  build: number;
+  itemId: number;
+  name: string | null;
+  quality: number | null;
+  /** Opens that held the item. */
+  count: number;
+  quantity: number;
+  /** count / opens of the container in that build (4 decimals). */
+  chance: number | null;
+  /** quantity / count: the stack when it is in there (2 decimals). */
+  avgQuantity: number | null;
+}
+
+/** A container an item came out of, in one build. Container 0 is an opened item the client could not name. */
+export interface OpenedFrom {
+  build: number;
+  containerId: number;
+  containerName: string | null;
+  containerQuality: number | null;
+  opened: number;
+  count: number;
+  quantity: number;
+  chance: number | null;
+}
+
+/**
+ * Schema 6 container loot of one item, both ways: what it held when opened (`contents`) and the containers it came out
+ * of (`openedFrom`). Loot counts only from sessions that recorded the container's opens (the addon always writes both);
+ * the chance per open divides by every open of the container in that build. Newest build first, then by chance.
+ */
+export async function containerLootOf(db: Db, id: number) {
+  const [opens, items, openedFrom] = await Promise.all([
+    rows<ContainerOpens>(
+      db,
+      sql`
+      select build, sum(opened)::int as opened, sum(copper)::float8 as copper,
+             round(sum(copper)::numeric / nullif(sum(opened), 0), 1)::float8 as "avgCopper"
+      from container_opens where container_id = ${id}
+      group by build
+      order by build desc`,
+    ),
+    rows<ContainerContent>(
+      db,
+      sql`
+      with t as (
+        select build, sum(opened)::int as opened from container_opens where container_id = ${id} group by build
+      ), l as (
+        select l.build, l.item_id, sum(l.count)::int as count, sum(l.quantity)::int as quantity
+        from container_loot l
+        where l.container_id = ${id} and exists (
+          select 1 from container_opens k
+          where k.container_id = l.container_id and k.build = l.build and k.uploader_id = l.uploader_id
+            and k.account = l.account and k.session = l.session)
+        group by l.build, l.item_id
+      )
+      select l.build, l.item_id as "itemId", i.name, i.quality, l.count, l.quantity,
+             round(l.count::numeric / nullif(t.opened, 0), 4)::float8 as chance,
+             round(l.quantity::numeric / nullif(l.count, 0), 2)::float8 as "avgQuantity"
+      from l join t using (build)
+      left join items i on i.item_id = l.item_id
+      order by l.build desc, chance desc nulls last, l.item_id`,
+    ),
+    rows<OpenedFrom>(
+      db,
+      sql`
+      with l as (
+        select l.container_id, l.build, sum(l.count)::int as count, sum(l.quantity)::int as quantity
+        from container_loot l
+        where l.item_id = ${id} and exists (
+          select 1 from container_opens k
+          where k.container_id = l.container_id and k.build = l.build and k.uploader_id = l.uploader_id
+            and k.account = l.account and k.session = l.session)
+        group by l.container_id, l.build
+      ), t as (
+        select container_id, build, sum(opened)::int as opened from container_opens
+        where container_id in (select container_id from l)
+        group by container_id, build
+      )
+      select l.build, l.container_id as "containerId", i.name as "containerName",
+             i.quality as "containerQuality", t.opened, l.count, l.quantity,
+             round(l.count::numeric / nullif(t.opened, 0), 4)::float8 as chance
+      from l join t using (container_id, build)
+      left join items i on i.item_id = l.container_id
+      order by l.build desc, chance desc nulls last, l.container_id`,
+    ),
+  ]);
+  return { contents: { opens, items }, openedFrom };
+}
+
 interface Snapshot {
   build: number;
   ilvl: number | null;
@@ -400,6 +500,7 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
    * rates rules) with names, vendors selling it (price, extended costs named, NPC subtitle) and recipes making or
    * using it; makers carry their base profession and the skill rank to learn them (see adminRecipes `learnRanks`).
    * `recipes.teaches`: the recipe a Recipe-class item teaches (see `recipesTaughtBy`), as a list of at most one.
+   * `contents` / `openedFrom`: schema 6 container loot (see `containerLootOf`); empty lists when none.
    */
   app.get<{ Params: { id: string } }>(
     '/admin/api/items/:id',
@@ -486,9 +587,10 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
         order by s.build desc, s.recipe_id`,
         ),
       ]);
-      const [names, taught] = await Promise.all([
+      const [names, taught, containers] = await Promise.all([
         npcNames(db, [...new Set(rates.map((r) => r.npcId))]),
         recipesTaughtBy(db, [id]),
+        containerLootOf(db, id),
       ]);
       const teaches = taught.get(id);
       const ranks = await learnRanks(db, [
@@ -500,6 +602,8 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
         foreverOnly: id >= FOREVER_ID_THRESHOLDS.item,
         statDiffs: statDiffs(snapshots),
         dropRates: rates.map((r) => ({ ...r, npcName: names.get(r.npcId) ?? null })),
+        contents: containers.contents,
+        openedFrom: containers.openedFrom,
         vendors: vendors.map(({ loc, seenAt, ...v }) => ({
           ...v,
           location: locationOf(loc),

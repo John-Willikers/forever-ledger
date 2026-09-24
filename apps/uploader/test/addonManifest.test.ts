@@ -1,4 +1,10 @@
-import { addonDownloadUrl, NO_ADDON_RELEASE } from '@forever-ledger/contracts';
+import {
+  addonDownloadUrl,
+  MAX_SUPPORTED_SCHEMA,
+  NO_ADDON_RELEASE,
+  SCHEMA_VERSION,
+  SUPPORTED_SCHEMA_VERSIONS,
+} from '@forever-ledger/contracts';
 import { describe, expect, it } from 'vitest';
 import { AddonSyncError, fetchManifest } from '../src/addonManifest.js';
 import type { FetchLike } from '../src/client.js';
@@ -27,18 +33,32 @@ const json = (body: unknown, status = 200) =>
 const base = { serverUrl: 'https://ledger.test', token: 'flt_x' };
 
 describe('fetchManifest', () => {
-  it('sends the bearer token and the build', async () => {
+  it('sends the bearer token, the build and the newest schema it reads', async () => {
     const { calls, fetchImpl } = stub(() => json(manifest));
     await expect(fetchManifest({ ...base, build: 69913, fetchImpl })).resolves.toEqual(manifest);
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe('https://ledger.test/v1/addon/manifest?build=69913');
+    expect(calls[0]?.url).toBe(
+      `https://ledger.test/v1/addon/manifest?build=69913&schema=${MAX_SUPPORTED_SCHEMA}`,
+    );
     expect(new Headers(calls[0]?.init?.headers).get('authorization')).toBe('Bearer flt_x');
+  });
+
+  it('asks for releases up to the max of SUPPORTED_SCHEMA_VERSIONS (the schema gate)', async () => {
+    const { calls, fetchImpl } = stub(() => json(manifest));
+    await fetchManifest({ ...base, build: 69913, fetchImpl });
+    const sent = new URL(calls[0]!.url).searchParams.get('schema');
+    expect(Number(sent)).toBe(Math.max(...SUPPORTED_SCHEMA_VERSIONS));
+    expect(Number(sent)).toBe(SCHEMA_VERSION);
+    await fetchManifest({ ...base, schema: 5, fetchImpl });
+    expect(calls[1]?.url).toBe('https://ledger.test/v1/addon/manifest?schema=5');
   });
 
   it('omits build when it is unknown', async () => {
     const { calls, fetchImpl } = stub(() => json(manifest));
     await fetchManifest({ ...base, fetchImpl });
-    expect(calls[0]?.url).toBe('https://ledger.test/v1/addon/manifest');
+    expect(calls[0]?.url).toBe(
+      `https://ledger.test/v1/addon/manifest?schema=${MAX_SUPPORTED_SCHEMA}`,
+    );
   });
 
   it('returns null on the server 404 for "no release yet"', async () => {

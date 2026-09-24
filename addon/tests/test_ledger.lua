@@ -51,10 +51,10 @@ return function(H)
   local db, db2, start = twoSessions(H)
 
   H.test("ledger: meta carries schema and build", function()
-    H.eq(db.meta.schemaVersion, 5)
+    H.eq(db.meta.schemaVersion, 6)
     H.eq(db.meta.build, 61582)
     H.eq(db.meta.interface, 11507)
-    H.eq(db.meta.addonVersion, "0.3.3")
+    H.eq(db.meta.addonVersion, "0.3.4")
     H.eq(db.chars[ME].class, "HUNTER")
   end)
 

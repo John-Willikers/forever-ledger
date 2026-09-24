@@ -240,6 +240,39 @@ describe('upload-once end to end (mock server implementing the ingest contract)'
     expect(server.ingestRequests).toBe(requests);
   });
 
+  it("schema 6: the real addon's session-v6.lua uploads container opens and container loot as schema 6", async () => {
+    await env.writeSv(await readFixture('session-v6.lua'));
+    const { records } = normalize(await loadFixtureDb('session-v6.lua'));
+    const total = toEntries(records).length;
+
+    server = await startMockServer();
+    const first = await pass(server.url);
+    expect(first.ok).toBe(true);
+    expect(first.flush).toMatchObject({ acked: total, pendingBatches: 0, errors: [] });
+    expect(server.receivedKeys).toHaveLength(total);
+    expect(server.batches.every((b) => b.schemaVersion === 6)).toBe(true);
+    const opens = server.batches.flatMap((b) => b.records.containerOpens);
+    expect(opens.map((o) => [o.containerId, o.opened, o.copper]).sort()).toEqual([
+      [0, 1, 0],
+      [5523, 2, 35],
+      [6307, 1, 0],
+    ]);
+    const loot = server.batches.flatMap((b) => b.records.containerLoot);
+    expect(loot).toContainEqual(
+      expect.objectContaining({ itemId: 4409, containerId: 6307, count: 1, quantity: 1 }),
+    );
+    expect(loot).toContainEqual(
+      expect.objectContaining({ itemId: 5503, containerId: 5523, count: 2, quantity: 3 }),
+    );
+    expect(server.batches.flatMap((b) => b.records.drops).some((d) => d.itemId === 4409)).toBe(
+      false,
+    );
+
+    const requests = server.ingestRequests;
+    expect((await pass(server.url)).ok).toBe(true);
+    expect(server.ingestRequests).toBe(requests);
+  });
+
   it('bad token → 401 stops the pass with a clear message', async () => {
     await env.writeSv(await readFixture('session-v1.lua'));
     server = await startMockServer({ token: 'another-token' });

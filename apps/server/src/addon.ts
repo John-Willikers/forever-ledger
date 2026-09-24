@@ -1,12 +1,15 @@
 import { createHash } from 'node:crypto';
 import {
+  ADDON_MAIN_FILE,
   ADDON_NAME,
   addonAssetName,
   addonDownloadUrl,
+  addonSchemaVersion,
   addonTag,
   compareVersions,
   INT4_MAX,
   isAddonVersion,
+  LEGACY_ADDON_SCHEMA,
   MAX_ADDON_BYTES,
   verifyAddonZip,
 } from '@forever-ledger/contracts';
@@ -28,13 +31,31 @@ const toManifest = (r: AddonRelease): AddonManifest => ({
   size: r.size,
 });
 
+/** Can a tray that reads schemas up to `maxSchema` use this release's SavedVariables? Null: a legacy release, ≤ 5. */
+const fits = (r: AddonRelease, maxSchema: number) =>
+  (r.schemaVersion ?? LEGACY_ADDON_SCHEMA) <= maxSchema;
+
 /**
- * The addon version a client build should run: the newest pin covering `build` whose release is still active,
- * else the newest active release. Null when nothing is published.
+ * The addon version a client build should run, for a tray that reads SavedVariables schemas up to `maxSchema`
+ * (`?schema=`; trays older than the gate don't send it and read up to LEGACY_ADDON_SCHEMA). Only active releases
+ * whose schema fits are served, so an old tray is never handed an addon whose files it would refuse.
+ *
+ * The newest pin covering `build` whose release is active decides. When that release needs a newer schema than the
+ * tray reads, the tray gets the newest release that fits instead (not an older pin: the newest pin is the current
+ * intent for the build, and every release that fits is older than the pinned one). Without a pin: the newest active
+ * release that fits. Null when nothing fits.
  */
-export async function resolveManifest(db: Db, build: number | null): Promise<AddonManifest | null> {
+export async function resolveManifest(
+  db: Db,
+  build: number | null,
+  maxSchema: number = LEGACY_ADDON_SCHEMA,
+): Promise<AddonManifest | null> {
   const releases = await db.select().from(addonReleases).where(eq(addonReleases.status, 'active'));
   const active = new Map(releases.map((r) => [r.version, r]));
+  const newestFitting = () =>
+    releases
+      .filter((r) => fits(r, maxSchema))
+      .sort((a, b) => compareVersions(b.version, a.version))[0];
   if (build !== null) {
     const pins = await db
       .select()
@@ -48,10 +69,12 @@ export async function resolveManifest(db: Db, build: number | null): Promise<Add
       .orderBy(desc(addonPins.id));
     for (const p of pins) {
       const r = active.get(p.version);
-      if (r) return toManifest(r);
+      if (!r) continue; // yanked: the next pin decides
+      const served = fits(r, maxSchema) ? r : newestFitting();
+      return served ? toManifest(served) : null;
     }
   }
-  const newest = [...active.values()].sort((a, b) => compareVersions(b.version, a.version))[0];
+  const newest = newestFitting();
   return newest ? toManifest(newest) : null;
 }
 
@@ -72,9 +95,26 @@ interface GitHubAsset {
 }
 
 /**
+ * The SavedVariables schema a release writes: `local SCHEMA_VERSION = <int>` in its ForeverLedger.lua, read as text
+ * (never executed). The manifest's schema gate depends on it, so a release it can't be read from is refused.
+ */
+export function releaseSchema(files: Map<string, Uint8Array>): number {
+  const main = files.get(ADDON_MAIN_FILE);
+  if (!main) throw new Error(`addon zip has no ${ADDON_NAME}/${ADDON_MAIN_FILE}`);
+  const schema = addonSchemaVersion(new TextDecoder('utf-8', { fatal: false }).decode(main));
+  if (schema === undefined) {
+    throw new Error(
+      `cannot read "local SCHEMA_VERSION = <int>" (exactly once) from ${ADDON_NAME}/${ADDON_MAIN_FILE}`,
+    );
+  }
+  return schema;
+}
+
+/**
  * Registers GitHub release `addon-v<version>` as an active addon release. Downloads its zip, checks it the way the
- * uploader will (sha256, entry paths, .toc version) and upserts the row. A version's bytes never change: publishing
- * again only re-activates a release with the same sha256.
+ * uploader will (sha256, entry paths, .toc version), records the schema its ForeverLedger.lua writes and upserts the
+ * row. A version's bytes never change: publishing again only re-activates a release with the same sha256 (and records
+ * its schema, for a release published before the schema gate).
  */
 export async function publishRelease(
   db: Db,
@@ -121,14 +161,15 @@ export async function publishRelease(
     throw new Error(`downloaded ${bytes.byteLength} bytes of ${name}, GitHub says ${asset.size}`);
   }
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  verifyAddonZip(bytes, { version, sha256 });
+  const files = verifyAddonZip(bytes, { version, sha256 });
+  const schemaVersion = releaseSchema(files);
 
   const [row] = await db
     .insert(addonReleases)
-    .values({ version, url, sha256, size: bytes.byteLength, status: 'active' })
+    .values({ version, url, sha256, size: bytes.byteLength, status: 'active', schemaVersion })
     .onConflictDoUpdate({
       target: addonReleases.version,
-      set: { url, size: bytes.byteLength, status: 'active' },
+      set: { url, size: bytes.byteLength, status: 'active', schemaVersion },
       setWhere: eq(addonReleases.sha256, sha256),
     })
     .returning();

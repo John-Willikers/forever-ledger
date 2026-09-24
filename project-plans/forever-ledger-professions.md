@@ -157,6 +157,14 @@ db.apiSamples["ForeverLedger.fieldMisses"].sample = { ["api:firstName"] = "first
 db.apiSamples["ForeverLedger.errors"].sample = { [place] = { msg=, count=, last= } }   -- per build, ≤ 40 places, msg ≤ 200 chars:
   -- place = handler/function name, "scan:<window>", "event:<EVENT>", "blocked:<fn>" / "forbidden:<fn>"
   -- (ADDON_ACTION_* blamed on ForeverLedger) or "warning:<text>" (LUA_WARNING naming the addon)
+-- schema 6 (addon 0.3.4, container loot plan), additive; per session like drops/corpses:
+db.containers[containerID][build] = { opened=, copper= }       -- one open per LOOT_OPENED window of an opened item
+db.containerLoot[itemID][build][containerID] = count           -- opens that held the item (two slots of one open: 1)
+db.containerQty[itemID][build][containerID] = quantity         -- total stack quantity
+  -- a container open: LOOT_OPENED(autoLoot, isFromItem) with isFromItem, or a loot source GUID "Item-..."; the
+  -- container is C_Item.GetItemIDByGUID(item GUID), else the last bag ITEM_LOCK_CHANGED(bag, slot) item within 3 s,
+  -- else 0 (unknown); never drops/dropQty/corpses/run loot; fishing windows stay node loot
+-- schema 6 sample: "GetLootSourceInfo:container" = { isFromItem=, containerID=, via="guid"|"lock"|"none", returns={ ... } }
 ```
 
 `loc` is the table `where()` already returns (`zone, subzone, mapID, x, y`).
@@ -178,6 +186,8 @@ db.apiSamples["ForeverLedger.errors"].sample = { [place] = { msg=, count=, last=
 | `trainers` | npcId, build, name?, title? (schema 5), loc?, skillLineId?, seenAt, complete?, services[{name, type?, cost?, skill?, skillRank?, level?, itemId?}] | `trainer:npcId:build` |
 | `vendors` | npcId, build, name?, title? (schema 5), loc?, seenAt, items[{itemId, price?, stack?, numAvailable?, currencyId?, extendedCost?, costs?[{amount, itemId?, currencyId?, name?}] (schema 5, ≤ 10)}] | `vendor:npcId:build` |
 | `apiSamples` | api, build, time, sample (json) | `api:api:build` |
+| `containerOpens` (schema 6) | containerId, build, session, opened, copper | `container:containerId:build` + session suffix |
+| `containerLoot` (schema 6) | itemId, containerId, build, session, count, quantity | `cloot:itemId:containerId:build` + session suffix |
 | `items` (existing) | + classId?, subclassId? | unchanged |
 
 Server tables (snake_case): `skills`, `skill_ups`, `recipes` (keepKnown), `recipe_snapshots` (reagents jsonb),
@@ -187,4 +197,7 @@ replaced by a newer scan; `trainers.complete` boolean — an incomplete scan mer
 `trainers.title` / `vendors.title` nullable text, a newer scan without a title keeps the stored one, migration
 0007_npc_titles; vendor item `costs` live in the items jsonb), `api_samples` (sample jsonb), `items.class_id/subclass_id`.
 `/v1/professions/sources` returns `npcTitle` for trainers and vendors and each vendor listing's `costs` (null when
-none; cost items named from `items` when known). Schema 5 is accepted with 1–4; 6 gets 409.
+none; cost items named from `items` when known). Schema 5 is accepted with 1–4. Schema 6 (migration
+0012_container_loot): `container_opens` (PK container_id, build, uploader_id, account, session) and `container_loot`
+(PK item_id, build, container_id, uploader_id, account, session), counters set per session; `/admin/api/items/:id`
+returns `contents` and `openedFrom`. 7 gets 409.

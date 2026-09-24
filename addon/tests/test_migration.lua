@@ -1,7 +1,7 @@
 -- Plays the scenario with the real v0.1.0 addon, then loads the current addon on top of its SavedVariables.
 -- Also: schema 1/2 files written by the real 0.2.2/0.2.3 addons are stamped the current schema, keep session "" (their
 -- drops are running totals the server already stores under ""), and are otherwise left alone; so are schema 4 files
--- written by 0.3.2.
+-- written by 0.3.2 and schema 5 files written by 0.3.3.
 local S = require("scenario")
 
 local LEGACY = "legacy/ForeverLedger-0.1.0.lua"
@@ -9,6 +9,7 @@ local ADDON_0_2_2 = "legacy/ForeverLedger-0.2.2.lua"
 local ADDON_0_2_3 = "legacy/ForeverLedger-0.2.3.lua"
 local ADDON_0_2_4 = "legacy/ForeverLedger-0.2.4.lua" -- writes the schema 3 session-migrated fixture
 local ADDON_0_3_2 = "legacy/ForeverLedger-0.3.2.lua" -- last schema 4 release
+local ADDON_0_3_3 = "legacy/ForeverLedger-0.3.3.lua" -- last schema 5 release
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
 local FIXTURES = "../../fixtures/synthetic/"
 local ME = "Thibodeaux-Bayou"
@@ -37,8 +38,8 @@ return function(H)
   H.writeFile(FIXTURES .. "session-migrated.lua", H.serialize("ForeverLedgerDB", migrate(ADDON_0_2_4)))
   local db = migrate(ADDON)
 
-  H.test("migration: stamps the current schema (5) and flattens meta.build", function()
-    H.eq(db.meta.schemaVersion, 5)
+  H.test("migration: stamps the current schema (6) and flattens meta.build", function()
+    H.eq(db.meta.schemaVersion, 6)
     H.eq(db.meta.session, "")
     H.eq(db.meta.build, 61582)
   end)
@@ -87,7 +88,7 @@ return function(H)
   end)
 
   for _, legacy in ipairs({ { ADDON_0_2_2, 1 }, { ADDON_0_2_3, 2 } }) do
-    H.test("migration: schema " .. legacy[2] .. " data is stamped 5, keeps session \"\" and is kept as is", function()
+    H.test("migration: schema " .. legacy[2] .. " data is stamped 6, keeps session \"\" and is kept as is", function()
       local old2 = H.new({ items = S.items(), questLog = S.questLog() })
       old2.load(legacy[1])
       S.play(old2, "ForeverLedger")
@@ -100,8 +101,8 @@ return function(H)
       up.load(ADDON)
       up.login("ForeverLedger")
       local d = up.env.ForeverLedgerDB
-      H.eq(d.meta.schemaVersion, 5)
-      H.eq(d.meta.addonVersion, "0.3.3")
+      H.eq(d.meta.schemaVersion, 6)
+      H.eq(d.meta.addonVersion, "0.3.4")
       H.eq(d.meta.session, "")
       H.eq(#d.turnIns, 1)
       H.eq(d.turnIns[1].id, before.turnIns[1].id)
@@ -113,7 +114,7 @@ return function(H)
     end)
   end
 
-  H.test("migration: schema 4 data from 0.3.2 is stamped 5; its session and professions tables are kept", function()
+  H.test("migration: schema 4 data from 0.3.2 is stamped 6; its session and professions tables are kept", function()
     local P = require("professions_world")
     local c4 = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true,
                        skillLines = P.gatherLines() })
@@ -131,12 +132,40 @@ return function(H)
     up.load(ADDON)
     up.login("ForeverLedger")
     local d = up.env.ForeverLedgerDB
-    H.eq(d.meta.schemaVersion, 5)
+    H.eq(d.meta.schemaVersion, 6)
     H.eq(d.meta.session, before.meta.session)
     H.eq(#d.vendors[61582][1347].items, #before.vendors[61582][1347].items)
     H.eq(d.vendors[61582][1347].title, nil)
     H.eq(#d.trainers[61582][1103].services, #before.trainers[61582][1103].services)
     H.eq(H.count(d.skills), H.count(before.skills))
     H.eq(#d.turnIns, 1)
+  end)
+
+  H.test("migration: schema 5 data from 0.3.3 is stamped 6; titles and costs are kept, no containers", function()
+    local P = require("professions_world")
+    local c5 = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true,
+                       skillLines = P.gatherLines() })
+    c5.load(ADDON_0_3_3)
+    S.play(c5, "ForeverLedger")
+    P.atRecipeVendor(c5, "Tailoring")
+    local v = c5.env.ForeverLedgerDB
+    H.eq(v.meta.schemaVersion, 5)
+    H.eq(v.containers, nil)
+    local before = H.copy(v)
+
+    local up = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true,
+                       skillLines = P.gatherLines(), clock = c5.world.clock + 60 })
+    up.env.ForeverLedgerDB = H.copy(v)
+    up.load(ADDON)
+    up.login("ForeverLedger")
+    local d = up.env.ForeverLedgerDB
+    H.eq(d.meta.schemaVersion, 6)
+    H.eq(d.meta.session, before.meta.session)
+    H.eq(d.vendors[61582][248196].title, "Tailoring")
+    H.eq(#d.vendors[61582][248196].items[1].costs, #before.vendors[61582][248196].items[1].costs)
+    H.eq(next(d.containers), nil)
+    H.eq(next(d.containerLoot), nil)
+    H.eq(next(d.containerQty), nil)
+    H.eq(H.count(d.drops), H.count(before.drops))
   end)
 end

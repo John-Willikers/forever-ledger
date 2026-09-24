@@ -8,6 +8,8 @@ import {
   apiSamples,
   builds,
   characters,
+  containerLoot,
+  containerOpens,
   corpses,
   crafts,
   drops,
@@ -148,6 +150,8 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       'crafts',
       'nodes',
       'nodeLoot',
+      'containerOpens',
+      'containerLoot',
       'trainers',
       'vendors',
       'apiSamples',
@@ -369,6 +373,33 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         nodeLoot.uploaderId,
         nodeLoot.account,
         nodeLoot.session,
+      ],
+    );
+
+    // Schema 6: opened items. Per-session totals like drops/corpses: set, never added.
+    await upsert(
+      tx,
+      containerOpens,
+      r.containerOpens.map((c) => ({ ...c, ...perSession })),
+      [
+        containerOpens.containerId,
+        containerOpens.build,
+        containerOpens.uploaderId,
+        containerOpens.account,
+        containerOpens.session,
+      ],
+    );
+    await upsert(
+      tx,
+      containerLoot,
+      r.containerLoot.map((l) => ({ ...l, ...perSession })),
+      [
+        containerLoot.itemId,
+        containerLoot.build,
+        containerLoot.containerId,
+        containerLoot.uploaderId,
+        containerLoot.account,
+        containerLoot.session,
       ],
     );
 

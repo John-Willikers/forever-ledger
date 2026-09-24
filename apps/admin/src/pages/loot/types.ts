@@ -1,6 +1,12 @@
 // Shapes of the loot routes (apps/server/src/routes/adminLoot.ts) and /v1/items/:id (routes/analysis.ts).
 // Every string here is uploaded data: render it as text.
-import type { DropRate, DropSource } from '../items/itemLib';
+import type {
+  ContainerContent,
+  ContainerOpens,
+  DropRate,
+  DropSource,
+  OpenedFrom,
+} from '../items/itemLib';
 import type { Location } from '../vendors/types';
 import type { RateItem } from './lootLib';
 
@@ -109,6 +115,13 @@ export interface ItemExtra {
     fields: { field: string; from: number | null; to: number | null }[];
   }[];
   dropRates: DropRate[];
+  /**
+   * Schema 6: what the item gave when opened, or disenchanted / prospected / milled (empty lists when it never was).
+   * Missing from a server older than schema 6: treat as empty.
+   */
+  contents?: { opens?: ContainerOpens[]; items?: ContainerContent[] } | null;
+  /** Schema 6: items the item came out of, opened or processed (missing from an older server: empty). */
+  openedFrom?: OpenedFrom[] | null;
   vendors: {
     npcId: number;
     npcName: string | null;

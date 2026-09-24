@@ -30,16 +30,20 @@ end
 
 local FIXTURE_V4 = "../../fixtures/synthetic/session-v4.lua"
 local FIXTURE_V5 = "../../fixtures/synthetic/session-v5.lua"
+local FIXTURE_V6 = "../../fixtures/synthetic/session-v6.lua"
 local ADDON_0_3_2 = "legacy/ForeverLedger-0.3.2.lua" -- last schema 4 release, writes session-v4
+local ADDON_0_3_3 = "legacy/ForeverLedger-0.3.3.lua" -- last schema 5 release, writes session-v5
 
 -- The schema 4 fixture: the shared play session (quests, loot, a dungeon run), then a profession session that
 -- touches every appendix table: skills and a skill-up, a trainer (a recipe learned there), a vendor, the profession
 -- window (one client field missing), crafts with a proc, a recipe learned from a pattern, a mined vein and fishing.
 -- `v5` (the schema 5 fixture) adds NPC subtitles to the trainer and a Forever recipe vendor whose pattern costs an
--- item and a currency.
-local function profSession(H, addon, v5)
+-- item and a currency. `v6` (the schema 6 fixture) then opens a fished Message in a Bottle (named by its item GUID)
+-- and a stack of two clams (named by the bag item lock), one with copper, and one item nothing can name (container 0).
+local function profSession(H, addon, v5, v6)
   local c = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true, skillLines = P.gatherLines(),
-                    bags = { [0] = { [1] = 2598 } } })
+                    bags = { [0] = { [1] = 2598, [2] = 5523 } },
+                    itemGUIDs = v6 and { [P.BOTTLE_GUID] = 6307 } or nil })
   c.load(addon)
   S.play(c, "ForeverLedger")
   local w = c.world
@@ -97,6 +101,26 @@ local function profSession(H, addon, v5)
     c.fire("MERCHANT_CLOSED")
     w.npc, w.merchant = nil, nil
     c.advance(30)
+  end
+  if v6 then
+    w.fishing = true
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-F2", 7620)
+    lootNode(c, { { itemID = 6307, sourceGUID = BOBBER } }) -- a Message in a Bottle, fished
+    w.fishing = false
+    c.advance(20)
+    P.openItem(c, { { itemID = 4409, sourceGUID = P.BOTTLE_GUID } }, true)
+    c.advance(20)
+    for _, slots in ipairs({ { { itemID = 5503, sourceGUID = P.CLAM_GUID } },
+                             { { itemID = 5503, sourceGUID = P.CLAM_GUID, quantity = 2 },
+                               { itemID = 5498, sourceGUID = P.CLAM_GUID },
+                               { money = 35, sourceGUID = P.CLAM_GUID } } }) do
+      c.fire("ITEM_LOCK_CHANGED", 0, 2) -- the clam stack
+      c.advance(1)
+      P.openItem(c, slots, true)
+      c.advance(10)
+    end
+    P.openItem(c, { { itemID = 5503 } }, true) -- no source GUID, no recent lock
+    c.advance(10)
   end
   c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "UseAction()") -- reaches the server in the errors sample
   return c.env.ForeverLedgerDB
@@ -1704,8 +1728,8 @@ return function(H)
     H.eq(learned[3], LINEN_SHIRT)
   end)
 
-  H.test("professions: session-v5 fixture adds vendor costs and NPC titles", function()
-    local d = profSession(H, ADDON, true)
+  H.test("professions: session-v5 fixture (0.3.3) adds vendor costs and NPC titles", function()
+    local d = profSession(H, ADDON_0_3_3, true)
     H.writeFile(FIXTURE_V5, H.serialize("ForeverLedgerDB", d))
     H.eq(d.meta.schemaVersion, 5)
     for _, k in ipairs({ "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
@@ -1727,5 +1751,32 @@ return function(H)
                            "GetMerchantCurrencies" }) do
       H.ok(d.apiSamples[api], api)
     end
+  end)
+
+  H.test("professions: session-v6 fixture adds container opens and their loot", function()
+    local d = profSession(H, ADDON, true, true)
+    H.writeFile(FIXTURE_V6, H.serialize("ForeverLedgerDB", d))
+    H.eq(d.meta.schemaVersion, 6)
+    H.eq(d.meta.addonVersion, "0.3.4")
+    for _, k in ipairs({ "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
+                         "trainers", "vendors", "apiSamples", "quests", "turnIns", "runs", "drops", "corpses",
+                         "containers", "containerLoot", "containerQty" }) do
+      H.ok(next(d[k]) ~= nil, k)
+    end
+    H.eq(d.vendors[B][248196].title, "Tailoring", "schema 5 data as before")
+    H.eq(d.nodeLoot[6307][B][0].n, 1, "the bottle was fishing loot")
+    H.eq(d.containers[6307][B].opened, 1)
+    H.eq(d.containerLoot[4409][B][6307], 1)
+    H.eq(d.containers[5523][B].opened, 2)
+    H.eq(d.containers[5523][B].copper, 35)
+    H.eq(d.containerLoot[5503][B][5523], 2)
+    H.eq(d.containerQty[5503][B][5523], 3)
+    H.eq(d.containerLoot[5498][B][5523], 1)
+    H.eq(d.containers[0][B].opened, 1)
+    H.eq(d.containerLoot[5503][B][0], 1)
+    H.eq(d.drops[4409], nil)
+    H.eq(d.drops[5503], nil)
+    H.eq(d.items[6307].name, "Message in a Bottle")
+    H.eq(d.apiSamples["GetLootSourceInfo:container"].sample.via, "guid")
   end)
 end
