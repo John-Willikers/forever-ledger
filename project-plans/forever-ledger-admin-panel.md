@@ -36,16 +36,12 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   `8bcfd65` (M1 `__Host-` cookies + 600 s single-use state, M3 fixed `?error=` codes, M4 no session fixation),
   `1daf343` (M5 30-day absolute sessions, M5b query-safe API paths, M7 no-store/nosniff, M8 dotfiles deny),
   `f65127c` (M2 HSTS, M6 `/admin/auth/` access log without query strings).
-- ⬜ 2 🏠 Overview + Health + Access
+- 🟡 2 🏠 Overview + Health + Access
 - ⬜ 3 📜 Quests + 🧙 Characters
 - ⬜ 4 🎒 Loot + 🏰 Dungeons
 - ⬜ 5 ⚒️ Professions + 🏪 Vendors/trainers
 - ⬜ 6 🧪 Builds
-- ⬜ 7 🚀 Deploy — needs the Battle.net client (user: develop.battle.net → API Access → Create Client, redirect
-  `https://ledger.willikers.dev/admin/auth/callback`)
-
-## 🏗️ Architecture
-
+- 🟡 7 🚀 Deploy — Phase 1 live 20:45 CDT 2026-09-23: nginx /admin/ + HSTS + no-query auth log, PM2 reloaded from ecosystem (BNET env), migration 0008 applied, pm2 saved. ✅ First admin login 20:47 CDT: user #1 JohnWilliker#1292 role=admin (pinned to account id)
 - **`apps/admin`** — React 19 + TypeScript + Vite SPA (base `/admin/`), **Apache ECharts** (`echarts` +
   `echarts-for-react`) for charts, **TanStack Query** for data + polling, **TanStack Table** for sortable/filterable
   tables, React Router. Built to `apps/admin/dist`. Dark/light via CSS vars. Times rendered America/Chicago.
