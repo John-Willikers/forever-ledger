@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { QueryKey, UseQueryOptions } from '@tanstack/react-query';
 
 export type Role = 'admin' | 'member';
 
@@ -16,12 +17,19 @@ export interface Me {
   loginConfigured: boolean;
 }
 
+/** A non-2xx answer from the API; `message` is the server's `{ error }` text when it sent one. */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
   ) {
     super(message);
+    this.name = 'ApiError';
+  }
+
+  /** The session is gone (or never was): the shell shows the login page after /me is re-read. */
+  get unauthenticated() {
+    return this.status === 401;
   }
 }
 
@@ -70,6 +78,37 @@ export function useMe() {
 }
 
 export const logout = (csrf: string | null) => postJson('/admin/auth/logout', csrf);
+
+/** The CSRF token from /admin/auth/me (already loaded by the shell), for writes. */
+export function useCsrf(): string | null {
+  const queryClient = useQueryClient();
+  return queryClient.getQueryData<Me>(ME_KEY)?.csrf ?? null;
+}
+
+/**
+ * GET an admin JSON route with TanStack Query. A 401 means the session ended: /me is re-read so the shell swaps to the
+ * login page instead of showing an error on every card.
+ */
+export function useAdminQuery<T>(
+  key: QueryKey,
+  path: string,
+  options: Omit<UseQueryOptions<T, Error>, 'queryKey' | 'queryFn'> = {},
+) {
+  const queryClient = useQueryClient();
+  return useQuery<T, Error>({
+    queryKey: key,
+    queryFn: async () => {
+      try {
+        return await getJson<T>(path);
+      } catch (err) {
+        if (err instanceof ApiError && err.unauthenticated)
+          void queryClient.invalidateQueries({ queryKey: ME_KEY });
+        throw err;
+      }
+    },
+    ...options,
+  });
+}
 
 /** Full-page navigation: Battle.net's login page can't be fetched. */
 export const LOGIN_URL = '/admin/auth/login';

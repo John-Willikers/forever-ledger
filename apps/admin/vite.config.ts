@@ -11,5 +11,10 @@ export default defineConfig({
     port: 5173,
     proxy: { '/v1': api, '/admin/api': api, '/admin/auth': api },
   },
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    // The chart pages' chunk carries ECharts (core + bar/line, ~550 kB, lazy-loaded); everything else is small.
+    chunkSizeWarningLimit: 600,
+  },
 });

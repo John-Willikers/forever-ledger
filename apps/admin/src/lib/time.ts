@@ -50,3 +50,36 @@ export function formatChicagoDate(value: TimeInput) {
   const d = toDate(value);
   return d ? formatter({ year: 'numeric', month: 'short', day: 'numeric' }).format(d) : DASH;
 }
+
+/** `Sep 23, 7:05 PM CDT`: a recent time, without the year. */
+export function formatChicagoShort(value: TimeInput) {
+  const d = toDate(value);
+  if (!d) return DASH;
+  return formatter({
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(d);
+}
+
+/** `Sep 23, 7 PM`: an hour bucket on a chart axis (America/Chicago). */
+export function formatChicagoHour(value: TimeInput) {
+  const d = toDate(value);
+  if (!d) return DASH;
+  return formatter({ month: 'short', day: 'numeric', hour: 'numeric' }).format(d);
+}
+
+/** `just now`, `5 min ago`, `3 h ago`, `2 d ago`; future times read as just now. */
+export function timeAgo(value: TimeInput, now: number = Date.now()) {
+  const d = toDate(value);
+  if (!d) return DASH;
+  const secs = Math.max(0, Math.round((now - d.getTime()) / 1000));
+  if (secs < 45) return 'just now';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
