@@ -32,6 +32,12 @@ local function items()
   add(6303, "Raw Slitherskin Mackerel", 7, 8)
   add(4470, "Simple Wood", 7, 11)
   add(250001, "Mark of the Barrens", 7, 11) -- a vendor's extended cost, never seen otherwise
+  -- opened items (schema 6): a Message in a Bottle holds a schematic; a clam holds meat, sometimes a pearl
+  add(6307, "Message in a Bottle", 15, 0, { type = "Miscellaneous", subtype = "Junk" })
+  add(4409, "Schematic: Small Seaforium Charge", 9, 3, { type = "Recipe", subtype = "Engineering" })
+  add(5523, "Small Barnacled Clam", 15, 0, { type = "Miscellaneous", subtype = "Junk" })
+  add(5503, "Clam Meat", 7, 8)
+  add(5498, "Small Lustrous Pearl", 7, 7)
   it[2589].classID, it[2589].subclassID = 7, 5 -- Linen Cloth
   return it
 end
@@ -217,7 +223,20 @@ local function atRecipeVendor(c, title)
   atVendor(c, recipeVendorStock(), RECIPE_VENDOR, title, "Beneris", { HONOR })
 end
 
+---------------------------------------------------------------- opened items (schema 6)
+-- Item GUIDs as GetLootSourceInfo would name an opened item; one GUID per stack (both clams share CLAM_GUID).
+local BOTTLE_GUID = "Item-1-0-4000000A0000B077"
+local CLAM_GUID = "Item-1-0-4000000A0000C1A0"
+-- A loot window of an opened item: LOOT_OPENED(autoLoot, isFromItem), then LOOT_CLOSED.
+local function openItem(c, slots, isFromItem)
+  c.world.loot = slots
+  c.fire("LOOT_OPENED", false, isFromItem)
+  c.fire("LOOT_CLOSED")
+  c.world.loot = {}
+end
+
 return {
+  BOTTLE_GUID = BOTTLE_GUID, CLAM_GUID = CLAM_GUID, openItem = openItem,
   RECIPE_VENDOR = RECIPE_VENDOR, HONOR = HONOR, recipeVendorStock = recipeVendorStock,
   atRecipeVendor = atRecipeVendor,
   ADDON = ADDON, B = B, ME = ME, TAILORING = TAILORING, FIRST_AID = FIRST_AID, RED_ROBE = RED_ROBE,

@@ -45,6 +45,12 @@ Since 0.3.3 (schema 5) a vendor item bought with items or currencies keeps that 
 currency, name) next to its gold price, and vendors and trainers keep the subtitle under their name ("Enchanting",
 "Blacksmithing Supplies").
 
+Since 0.3.4 (schema 6) loot from an opened item (a clam, a lockbox, a Message in a Bottle) is recorded against that
+container instead of as a drop of an unknown source: how often each container was opened, the copper it held, and
+each item with how many opens held it and the total quantity. The container is named by the loot window's item GUID,
+else by the bag item locked in the last 3 s, else recorded as unknown (0). The admin item page shows a container's
+🎁 Contents and, for its loot, what it was opened from.
+
 Since 0.2.2 the addon reminds you at natural checkpoints (a boss kill, a dungeon run closing, a quest turn-in, a
 dungeon finder reward): `Forever Ledger: N new records since your last /reload — type /reload to save them`. It
 prints at most once every 5 minutes, waits until you leave combat, and only prints; the tray app uploads within
