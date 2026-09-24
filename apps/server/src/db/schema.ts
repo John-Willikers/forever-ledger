@@ -1,7 +1,9 @@
 // Drizzle schema for the Forever Ledger database. Keep this file free of relative imports: drizzle-kit loads it
 // directly. Times are timestamptz (converted from the addon's epoch seconds); sessions use America/Chicago.
+import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -15,6 +17,39 @@ import {
 const tz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 const updatedAt = () => tz('updated_at').notNull().defaultNow();
 
+/** Admin panel users (Battle.net login). `bnet_sub` is the stable account id; BattleTags can change. */
+export const users = pgTable(
+  'users',
+  {
+    id: serial('id').primaryKey(),
+    bnetSub: text('bnet_sub').notNull().unique(),
+    battletag: text('battletag').notNull(),
+    role: text('role', { enum: ['admin', 'member'] })
+      .notNull()
+      .default('member'),
+    createdAt: tz('created_at').notNull().defaultNow(),
+    lastLoginAt: tz('last_login_at'),
+  },
+  (t) => [check('users_role_check', sql`${t.role} in ('admin', 'member')`)],
+);
+
+/** Admin panel sessions. `id` is the sha256 of the random cookie value; the value itself is never stored. */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: text('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: tz('created_at').notNull().defaultNow(),
+    expiresAt: tz('expires_at').notNull(),
+    lastSeenAt: tz('last_seen_at').notNull().defaultNow(),
+    userAgent: text('user_agent'),
+    ip: text('ip'),
+  },
+  (t) => [index('sessions_user_idx').on(t.userId)],
+);
+
 export const apiTokens = pgTable('api_tokens', {
   id: serial('id').primaryKey(),
   label: text('label').notNull(),
@@ -22,6 +57,8 @@ export const apiTokens = pgTable('api_tokens', {
   createdAt: tz('created_at').notNull().defaultNow(),
   revokedAt: tz('revoked_at'),
   lastUsedAt: tz('last_used_at'),
+  /** Owner of the token (characters uploaded with it belong to this user). */
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
 });
 
 export const rawUploads = pgTable(

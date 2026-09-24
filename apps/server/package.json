@@ -26,7 +26,9 @@
     "addon": "node dist/addon-cli.js"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
     "@fastify/rate-limit": "^11.2.0",
+    "@fastify/static": "^10.1.4",
     "@forever-ledger/contracts": "workspace:*",
     "drizzle-orm": "^0.45.3",
     "fastify": "^5.12.5",

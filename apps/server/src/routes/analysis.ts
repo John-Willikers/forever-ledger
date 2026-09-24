@@ -5,7 +5,7 @@ import { verifyBearer } from '../auth.js';
 import type { Db } from '../db/client.js';
 import { chicagoIso } from '../time.js';
 
-/** Read routes need any valid token: the data includes contributors' character names. */
+/** Bearer-only guard (addon manifest). Read routes use `requireReader`, which also takes an admin session. */
 export function requireToken(db: Db) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if ((await verifyBearer(db, req.headers.authorization)) === null) {
@@ -32,8 +32,14 @@ async function rows<T>(db: Db, query: ReturnType<typeof sql>) {
 /** A JS number list as one `int[]` parameter (usable with `= any(...)`, empty included). */
 const intArray = (xs: number[]) => sql`${sql.param(xs)}::int[]`;
 
-export function registerAnalysisRoutes(app: FastifyInstance, db: Db) {
-  const preHandler = requireToken(db);
+/** A read-route guard; the data includes contributors' character names. */
+export type ReadGuard = (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
+
+export function registerAnalysisRoutes(
+  app: FastifyInstance,
+  db: Db,
+  preHandler: ReadGuard = requireToken(db),
+) {
   registerProfessionRoutes(app, db, preHandler);
 
   /** Offered vs paid XP per quest and build. */
@@ -246,11 +252,7 @@ const skillBase = sql`skill_base as (
 const SKILL_UP_HISTORY = 200;
 
 /** Schema 4 profession routes: recipes, where recipes and items come from, gathering nodes, skills. */
-function registerProfessionRoutes(
-  app: FastifyInstance,
-  db: Db,
-  preHandler: ReturnType<typeof requireToken>,
-) {
+function registerProfessionRoutes(app: FastifyInstance, db: Db, preHandler: ReadGuard) {
   /**
    * Recipes (optionally of one profession / build) with, per build, the schematic (output item, quantity range,
    * reagents with item names) and the observed difficulty thresholds: per difficulty the lowest and highest skill rank

@@ -6,12 +6,15 @@ import type { Db } from '../db/client.js';
 import { diagnostics, ingestErrors } from '../db/schema.js';
 import { chicagoIso } from '../time.js';
 import { requireToken } from './analysis.js';
+import type { ReadGuard } from './analysis.js';
 
 export interface DiagnosticsOptions {
   /** Reports per minute per token (default 30). */
   perMinute?: number;
   /** Max report body in bytes (default 256 KB). */
   bodyLimit?: number;
+  /** Guard for GET /v1/diagnostics (default: bearer token only). */
+  reader?: ReadGuard;
 }
 
 export const DIAGNOSTICS_BODY_LIMIT = 256 * 1024;
@@ -174,7 +177,7 @@ export function registerDiagnosticsRoutes(
   app.get(
     '/v1/diagnostics',
     {
-      preHandler: requireToken(db),
+      preHandler: opts.reader ?? requireToken(db),
       config: {
         rateLimit: {
           max: opts.perMinute ?? 30,

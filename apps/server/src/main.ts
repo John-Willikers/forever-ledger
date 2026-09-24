@@ -13,7 +13,15 @@ const app = await buildApp({
   logger: loggerOptions,
   bodyLimit: env.bodyLimit,
   ingestPerMinute: env.ingestPerMinute,
+  admin: env.admin,
 });
+app.log.info(
+  {
+    battleNetLogin: env.admin.bnet !== undefined,
+    adminBattletags: env.admin.adminBattletags.length,
+  },
+  'admin panel settings',
+);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'shutting down');
