@@ -99,7 +99,6 @@ overlays our points on the uploaded image.** Nothing changes for other contribut
   givers (e.g. Kaltunk at 43.2, 68.5 in Durotar) land at the Valley of Trials camp.
 
 ## ⚠️ Notes
-- **Run grouping (Sam + Vic)** is paused mid-work on branch `feat/run-groups` (server half done, uncommitted); it
-  resumes right after this plan is approved and ships separately.
+- **Run grouping (Sam + Vic)** shipped separately first (PR #22, migration 0010); zone maps took 0011.
 - Future (not now): the addon could record `C_Map.GetMapArtID` per uiMapID so the panel can flag when a patch
   changed a zone's art and the upload should be refreshed.
