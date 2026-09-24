@@ -29,6 +29,31 @@ describe('analysis and export routes', () => {
     expect((await get('/v1/export', {})).statusCode).toBe(401);
   });
 
+  it('answers 400, not a Postgres error, for int4 query parameters out of range', async () => {
+    const TOO_BIG = '2147483648';
+    for (const url of [
+      `/v1/quests/xp?build=${TOO_BIG}`,
+      `/v1/runs/summary?build=${TOO_BIG}`,
+      `/v1/drops/rates?build=${TOO_BIG}`,
+      `/v1/professions/recipes?build=${TOO_BIG}`,
+      `/v1/professions/recipes?skillLine=${TOO_BIG}`,
+      `/v1/professions/sources?itemId=${TOO_BIG}`,
+      `/v1/professions/sources?recipeId=${TOO_BIG}`,
+      `/v1/professions/gathering?build=${TOO_BIG}`,
+      `/v1/professions/skills?build=${TOO_BIG}`,
+      `/v1/quests/xp?build=99999999999999999999`,
+    ]) {
+      const res = await get(url);
+      expect(res.statusCode, `${url} ${res.body}`).toBe(400);
+      expect(res.json().error, url).toMatch(/out of range/);
+    }
+    expect((await get(`/v1/items/${TOO_BIG}`)).json()).toEqual({ error: 'bad item id' });
+    // The int4 maximum itself is a valid (empty) filter.
+    const max = await get('/v1/quests/xp?build=2147483647');
+    expect(max.statusCode).toBe(200);
+    expect(max.json()).toEqual([]);
+  });
+
   it('returns XP per minute per dungeon with boss splits', async () => {
     const res = await get('/v1/runs/summary?build=61582');
     expect(res.statusCode).toBe(200);

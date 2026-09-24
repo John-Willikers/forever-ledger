@@ -753,6 +753,8 @@ describe('admin API (real Postgres)', () => {
 
       expect((await get('/admin/api/api-samples/Nope.nothing', admin)).statusCode).toBe(404);
       expect((await get(`/admin/api/api-samples/${recipe}?build=1`, admin)).statusCode).toBe(404);
+      const huge = await get(`/admin/api/api-samples/${recipe}?build=2147483648`, admin);
+      expect(huge.statusCode).toBe(400);
     });
   });
 

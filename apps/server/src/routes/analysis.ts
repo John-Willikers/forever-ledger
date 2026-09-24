@@ -1,6 +1,7 @@
 import { RULES_VERSION, specsWanting } from '@forever-ledger/contracts';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { INT4_MAX } from '../addon.js';
 import { verifyBearer } from '../auth.js';
 import type { Db } from '../db/client.js';
 import { chicagoIso } from '../time.js';
@@ -17,15 +18,28 @@ export function requireToken(db: Db) {
   };
 }
 
+/** A 400 thrown from a handler (the app's error handler answers `{ error: message }`). */
+const badRequest = (message: string) => Object.assign(new Error(message), { statusCode: 400 });
+
 /** `?<key>=` as a positive integer, else null. */
-const positiveInt = (q: unknown, key: string) => {
+export const positiveInt = (q: unknown, key: string) => {
   const raw = (q as Record<string, string | undefined>)[key];
   const n = Number(raw);
   return raw !== undefined && Number.isInteger(n) && n > 0 ? n : null;
 };
 
-/** `?build=` as a positive integer, else null (no filter). */
-export const buildFilter = (q: unknown) => positiveInt(q, 'build');
+/**
+ * `?<key>=` for an int4 column: a positive integer, else null (no filter). Above int4 it's a 400: no row can match,
+ * and Postgres would refuse the comparison (a 500).
+ */
+export const int4Param = (q: unknown, key: string) => {
+  const n = positiveInt(q, key);
+  if (n !== null && n > INT4_MAX) throw badRequest(`?${key}= out of range (max ${INT4_MAX})`);
+  return n;
+};
+
+/** `?build=` as a positive int4, else null (no filter); 400 above int4. */
+export const buildFilter = (q: unknown) => int4Param(q, 'build');
 
 async function rows<T>(db: Db, query: ReturnType<typeof sql>) {
   const res = await db.execute(query);
@@ -159,7 +173,8 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db, preHandler:
   /** One item across builds: snapshots, drop and node-loot sources, quest rewards and which specs want it. */
   app.get<{ Params: { id: string } }>('/v1/items/:id', { preHandler }, async (req, reply) => {
     const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return reply.status(400).send({ error: 'bad item id' });
+    if (!Number.isInteger(id) || id <= 0 || id > INT4_MAX)
+      return reply.status(400).send({ error: 'bad item id' });
     const [item] = await rows<Record<string, unknown>>(
       db,
       sql`select item_id as "itemId", name, quality, type, subtype, equip_loc as "equipLoc"
@@ -260,7 +275,7 @@ function registerProfessionRoutes(app: FastifyInstance, db: Db, preHandler: Read
    * `skillLineId` and carries `profession: { skillLineId, name }` of the base (null without a skill line).
    */
   app.get('/v1/professions/recipes', { preHandler }, async (req) => {
-    const skillLine = positiveInt(req.query, 'skillLine');
+    const skillLine = int4Param(req.query, 'skillLine');
     const build = buildFilter(req.query);
     const inScope = sql`(with ${skillBase}
       select r.recipe_id from recipes r left join skill_base b on b.id = r.skill_line_id
@@ -368,8 +383,8 @@ function registerProfessionRoutes(app: FastifyInstance, db: Db, preHandler: Read
    * or currencies paid besides `price`, the gold part; null when none), each cost item named from `items` when known.
    */
   app.get('/v1/professions/sources', { preHandler }, async (req, reply) => {
-    const itemId = positiveInt(req.query, 'itemId');
-    const recipeId = positiveInt(req.query, 'recipeId');
+    const itemId = int4Param(req.query, 'itemId');
+    const recipeId = int4Param(req.query, 'recipeId');
     if ((itemId === null) === (recipeId === null))
       return reply.status(400).send({ error: 'pass exactly one of ?itemId= or ?recipeId=' });
 
