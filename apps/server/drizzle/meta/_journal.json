@@ -57,6 +57,13 @@
       "when": 1790210681876,
       "tag": "0007_npc_titles",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790212332940,
+      "tag": "0008_admin_users_sessions",
+      "breakpoints": true
     }
   ]
 }

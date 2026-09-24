@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -47,6 +48,12 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    // Admin panel SPA (React): browser code
+    files: ['apps/admin/src/**'],
+    ...reactHooks.configs.flat.recommended,
+    languageOptions: { globals: { ...globals.browser } },
   },
   {
     // Electron renderer: runs in the browser sandbox

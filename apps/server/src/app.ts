@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import {
   isSupportedSchemaVersion,
@@ -10,7 +12,12 @@ import type { FastifyServerOptions } from 'fastify';
 import { verifyBearer } from './auth.js';
 import type { Database } from './db/client.js';
 import { ingestBatch } from './ingest.js';
+import { serializeRequest } from './logging.js';
 import { registerAddonRoutes } from './routes/addon.js';
+import { registerAdminApiRoutes } from './routes/adminApi.js';
+import { registerAdminAuth } from './routes/adminAuth.js';
+import type { AdminAuthOptions } from './routes/adminAuth.js';
+import { registerAdminStatic } from './routes/adminStatic.js';
 import { registerAnalysisRoutes } from './routes/analysis.js';
 import { recordIngestError, registerDiagnosticsRoutes } from './routes/diagnostics.js';
 import { registerExportRoutes } from './routes/export.js';
@@ -27,15 +34,23 @@ export interface AppOptions {
   diagnosticsPerMinute?: number;
   /** Max error report body in bytes (default 256 KB). */
   diagnosticsBodyLimit?: number;
+  /** Admin panel: Battle.net login, sessions, static SPA. */
+  admin?: AdminOptions;
+}
+
+export interface AdminOptions extends Partial<AdminAuthOptions> {
+  /** Built admin SPA directory (default apps/admin/dist). */
+  distDir?: string;
 }
 
 export const DEFAULT_BODY_LIMIT = 5 * 1024 * 1024;
 
-/** pino options: America/Chicago timestamps, never log bearer tokens. */
+/** pino options: America/Chicago timestamps, never log bearer tokens, cookies or OAuth codes. */
 export const loggerOptions = {
   level: process.env.LOG_LEVEL ?? 'info',
   timestamp: () => `,"time":"${chicagoIso()}"`,
-  redact: ['req.headers.authorization'],
+  redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
+  serializers: { req: serializeRequest },
 };
 
 export async function buildApp(opts: AppOptions) {
@@ -47,6 +62,9 @@ export async function buildApp(opts: AppOptions) {
   });
 
   await app.register(rateLimit, { global: false });
+  // Without COOKIE_SECRET nobody can log in (env requires it with Battle.net), so a per-process secret is fine.
+  const cookieSecret = opts.admin?.cookieSecret ?? randomBytes(32).toString('hex');
+  await app.register(cookie, { secret: cookieSecret });
 
   app.setErrorHandler((err, req, reply) => {
     const e = err as { statusCode?: number; message?: string };
@@ -133,13 +151,17 @@ export async function buildApp(opts: AppOptions) {
     },
   );
 
-  registerAnalysisRoutes(app, db);
-  registerExportRoutes(app, db);
+  const guards = registerAdminAuth(app, db, { ...opts.admin, cookieSecret });
+  registerAnalysisRoutes(app, db, guards.requireReader);
+  registerExportRoutes(app, db, guards.requireReader);
   registerAddonRoutes(app, db);
   registerDiagnosticsRoutes(app, db, {
     perMinute: opts.diagnosticsPerMinute,
     bodyLimit: opts.diagnosticsBodyLimit,
+    reader: guards.requireReader,
   });
+  registerAdminApiRoutes(app, guards);
+  await registerAdminStatic(app, opts.admin?.distDir);
 
   return app;
 }
