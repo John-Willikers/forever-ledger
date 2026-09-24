@@ -682,12 +682,110 @@ describe('ingest API (real Postgres)', () => {
     });
   });
 
+  describe('schema 6 container loot (session-v6.lua)', () => {
+    const acct = 'ACCOUNT-V6';
+    const q = (text: string, params: unknown[] = []) =>
+      s.database.pool.query(text, params).then((r) => r.rows);
+    const batch = batchFromFixture('session-v6.lua', acct);
+    const session = batch.meta.session!;
+    const opens = () =>
+      q(
+        `select container_id, build, session, opened, copper from container_opens
+         where account = $1 order by container_id`,
+        [acct],
+      );
+    const loot = () =>
+      q(
+        `select item_id, container_id, count, quantity from container_loot
+         where account = $1 order by item_id, container_id`,
+        [acct],
+      );
+
+    it('stores container opens and container loot; none of it is a drop', async () => {
+      expect(batch.schemaVersion).toBe(6);
+      const res = await post(batch);
+      expect(res.statusCode).toBe(200);
+      const keys = res.json().acknowledged.map((a: { key: string }) => a.key);
+      expect(keys).toContain(`container:5523:61582:${session}`);
+      expect(keys).toContain(`cloot:5503:5523:61582:${session}`);
+      expect(await opens()).toEqual([
+        { container_id: 0, build: 61582, session, opened: 1, copper: 0 },
+        { container_id: 5523, build: 61582, session, opened: 2, copper: 35 },
+        { container_id: 6307, build: 61582, session, opened: 1, copper: 0 },
+      ]);
+      expect(await loot()).toEqual([
+        { item_id: 4409, container_id: 6307, count: 1, quantity: 1 },
+        { item_id: 5498, container_id: 5523, count: 1, quantity: 1 },
+        { item_id: 5503, container_id: 0, count: 1, quantity: 1 },
+        { item_id: 5503, container_id: 5523, count: 2, quantity: 3 },
+      ]);
+      expect(
+        await q(
+          `select count(*)::int as n from drops where account = $1 and item_id in (4409, 5503, 5498)`,
+          [acct],
+        ),
+      ).toEqual([{ n: 0 }]);
+    });
+
+    it('re-uploading a session sets its counters, never adds; a new session is its own row', async () => {
+      expect((await post(batch)).statusCode).toBe(200);
+      expect((await opens()).find((o) => o.container_id === 5523)).toMatchObject({ opened: 2 });
+      // The same session later in play: the totals grew, the row is replaced.
+      const grown = {
+        ...batch,
+        records: {
+          ...batch.records,
+          containerOpens: batch.records.containerOpens.map((c) =>
+            c.containerId === 5523 ? { ...c, opened: 3, copper: 50 } : c,
+          ),
+          containerLoot: batch.records.containerLoot.map((l) =>
+            l.itemId === 5503 && l.containerId === 5523 ? { ...l, count: 3, quantity: 5 } : l,
+          ),
+        },
+      };
+      expect((await post(grown)).statusCode).toBe(200);
+      expect((await post(grown)).statusCode).toBe(200);
+      expect((await opens()).find((o) => o.container_id === 5523)).toMatchObject({
+        opened: 3,
+        copper: 50,
+      });
+      expect((await loot()).find((l) => l.item_id === 5503 && l.container_id === 5523)).toEqual({
+        item_id: 5503,
+        container_id: 5523,
+        count: 3,
+        quantity: 5,
+      });
+      const other = {
+        ...batch,
+        meta: { ...batch.meta, session: 'S2' },
+        records: {
+          ...batch.records,
+          containerOpens: batch.records.containerOpens.map((c) => ({ ...c, session: 'S2' })),
+          containerLoot: batch.records.containerLoot.map((l) => ({ ...l, session: 'S2' })),
+        },
+      };
+      expect((await post(other)).statusCode).toBe(200);
+      expect(
+        await q(
+          `select session, sum(opened)::int as opened from container_opens
+           where account = $1 and container_id = 5523 group by session order by session`,
+          [acct],
+        ),
+      ).toEqual(
+        [
+          { session, opened: 3 },
+          { session: 'S2', opened: 2 },
+        ].sort((a, b) => a.session.localeCompare(b.session)),
+      );
+    });
+  });
+
   it('rejects unknown schema versions with 409 and malformed batches with 400', async () => {
     const batch = batchFromFixture('session-v1.lua');
-    const res409 = await post({ ...batch, schemaVersion: 6 });
+    const res409 = await post({ ...batch, schemaVersion: 7 });
     expect(res409.statusCode).toBe(409);
     expect(res409.json().error).toMatch(
-      /unsupported schemaVersion 6; this server accepts 1, 2, 3, 4, 5$/,
+      /unsupported schemaVersion 7; this server accepts 1, 2, 3, 4, 5, 6$/,
     );
     const bad = structuredClone(batch) as unknown as { records: { runs: { start: unknown }[] } };
     bad.records.runs[0]!.start = 'yesterday';

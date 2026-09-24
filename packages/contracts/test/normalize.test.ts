@@ -26,6 +26,7 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
     ['session-migrated.lua', 3],
     ['session-v4.lua', 4],
     ['session-v5.lua', 5],
+    ['session-v6.lua', 6],
   ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
@@ -104,8 +105,8 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 6, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 6 is not supported \(expected 1 or 2 or 3 or 4 or 5\)/,
+    expect(() => normalize({ meta: { schemaVersion: 7, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 7 is not supported \(expected 1 or 2 or 3 or 4 or 5 or 6\)/,
     );
   });
 
@@ -198,7 +199,7 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(t2).toEqual(v1.records.turnIns[0]);
   });
 
-  it('accepts schema 1 and 2 upload batches, not 6', () => {
+  it('accepts schema 1 and 2 upload batches, not 7', () => {
     const batch = { uploaderId: 'pc-1', account: 'A', meta: v2.meta, records: v2.records };
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 2 }).success).toBe(true);
     expect(
@@ -206,7 +207,8 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
         .success,
     ).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 5 }).success).toBe(true);
-    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 6 }).success).toBe(false);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 6 }).success).toBe(true);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 7 }).success).toBe(false);
   });
 });
 
@@ -725,12 +727,12 @@ describe('normalize — schema 5 vendor costs and NPC titles (session-v5.lua)', 
   const { meta, records, problems } = normalize(load('session-v5.lua'));
   const v4 = normalize(load('session-v4.lua'));
 
-  it('validates with no problems as schema 5; schema 5 is the current major', () => {
+  it('validates with no problems as schema 5 (still supported)', () => {
     expect(problems).toEqual([]);
     expect(meta).toMatchObject({ schemaVersion: 5, addonVersion: '0.3.3' });
-    expect(SCHEMA_VERSION).toBe(5);
     expect(isSupportedSchemaVersion(5)).toBe(true);
-    expect(isSupportedSchemaVersion(6)).toBe(false);
+    expect(records.containerOpens).toEqual([]);
+    expect(records.containerLoot).toEqual([]);
     for (const kind of RECORD_KINDS) {
       const keys = (records[kind] as never[]).map((r) => recordKey(kind, r));
       expect(new Set(keys).size).toBe(keys.length);
@@ -812,6 +814,91 @@ describe('normalize — schema 5 vendor costs and NPC titles (session-v5.lua)', 
     expect(r.vendors.map((v) => v.npcId)).toEqual([3]);
     expect(r.vendors[0]!.items[0]!.costs).toEqual([{ amount: 1, currencyId: 7 }]);
     expect(p.map((x) => x.path)).toEqual(['vendors.69977.1', 'vendors.69977.2']);
+  });
+});
+
+describe('normalize — schema 6 container loot (session-v6.lua)', () => {
+  const { meta, records, problems } = normalize(load('session-v6.lua'));
+  const S = meta.session!;
+  const B = 61582;
+
+  it('validates with no problems as schema 6; schema 6 is the current major', () => {
+    expect(problems).toEqual([]);
+    expect(meta).toMatchObject({ schemaVersion: 6, addonVersion: '0.3.4' });
+    expect(S).toMatch(/^\d+-[0-9a-f]{4}$/);
+    expect(SCHEMA_VERSION).toBe(6);
+    expect(isSupportedSchemaVersion(6)).toBe(true);
+    expect(isSupportedSchemaVersion(7)).toBe(false);
+    for (const kind of RECORD_KINDS) {
+      const keys = (records[kind] as never[]).map((r) => recordKey(kind, r));
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+    expect(
+      UploadBatch.safeParse({ schemaVersion: 6, uploaderId: 'pc-1', account: 'A', meta, records })
+        .success,
+    ).toBe(true);
+  });
+
+  it('container opens: opened and copper per container, per session; container 0 is unknown', () => {
+    const byId = (id: number) => records.containerOpens.find((c) => c.containerId === id);
+    expect(records.containerOpens).toHaveLength(3);
+    expect(byId(6307)).toEqual({ containerId: 6307, build: B, session: S, opened: 1, copper: 0 });
+    expect(byId(5523)).toEqual({ containerId: 5523, build: B, session: S, opened: 2, copper: 35 });
+    expect(byId(0)).toEqual({ containerId: 0, build: B, session: S, opened: 1, copper: 0 });
+    expect(recordKey('containerOpens', byId(5523)!)).toBe(`container:5523:${B}:${S}`);
+  });
+
+  it('container loot: count (opens that held it) and quantity from containerQty', () => {
+    const find = (itemId: number, containerId: number) =>
+      records.containerLoot.find((l) => l.itemId === itemId && l.containerId === containerId);
+    expect(records.containerLoot).toHaveLength(4);
+    expect(find(4409, 6307)).toMatchObject({ count: 1, quantity: 1, build: B, session: S });
+    expect(find(5503, 5523)).toMatchObject({ count: 2, quantity: 3 });
+    expect(find(5498, 5523)).toMatchObject({ count: 1, quantity: 1 });
+    expect(find(5503, 0)).toMatchObject({ count: 1, quantity: 1 });
+    expect(recordKey('containerLoot', find(5503, 5523)!)).toBe(`cloot:5503:5523:${B}:${S}`);
+  });
+
+  it('container loot is not a drop; the fished bottle is fishing node loot', () => {
+    for (const id of [4409, 5503, 5498])
+      expect(records.drops.some((d) => d.itemId === id)).toBe(false);
+    expect(records.nodeLoot).toContainEqual(
+      expect.objectContaining({ itemId: 6307, objectId: 0, count: 1 }),
+    );
+    expect(records.items.find((i) => i.itemId === 6307)).toMatchObject({
+      name: 'Message in a Bottle',
+    });
+    expect(records.apiSamples.find((a) => a.api === 'GetLootSourceInfo:container')).toMatchObject({
+      sample: { via: 'guid', containerID: 6307, isFromItem: true },
+    });
+  });
+
+  it('bad container entries are problems on their own; a missing containerQty falls back to count', () => {
+    const { records: r, problems: p } = normalize({
+      meta: { schemaVersion: 6, addonVersion: '0.3.4', build: 7, session: 'S' },
+      containers: {
+        5523: { 7: { opened: 2, copper: 10 } },
+        9: { 7: { opened: -1 } },
+        8: { 7: 'x' },
+      },
+      containerLoot: { 5503: { 7: { 5523: 2, 0: 3_000_000_000 } } },
+      containerQty: { 5503: { 7: {} } },
+    });
+    expect(r.containerOpens).toEqual([
+      { containerId: 5523, build: 7, session: 'S', opened: 2, copper: 10 },
+    ]);
+    expect(r.containerLoot).toEqual([
+      { itemId: 5503, containerId: 5523, build: 7, session: 'S', count: 2, quantity: 2 },
+    ]);
+    expect(p.map((x) => x.path).sort()).toEqual(['containerLoot.5503.7.0', 'containers.9.7']);
+  });
+
+  it('schema 1-5 files normalize to empty container lists', () => {
+    for (const name of ['session-v1.lua', 'session-v3.lua', 'session-v4.lua', 'session-v5.lua']) {
+      const n = normalize(load(name));
+      expect(n.records.containerOpens).toEqual([]);
+      expect(n.records.containerLoot).toEqual([]);
+    }
   });
 });
 

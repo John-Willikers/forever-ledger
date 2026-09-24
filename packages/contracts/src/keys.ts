@@ -47,6 +47,10 @@ export function recordKey<K extends RecordKind>(kind: K, record: RecordOf<K>): s
       return `node:${r.objectId}:${r.build}${sessionSuffix(r.session)}`;
     case 'nodeLoot':
       return `nloot:${r.itemId}:${r.objectId}:${r.build}${sessionSuffix(r.session)}`;
+    case 'containerOpens':
+      return `container:${r.containerId}:${r.build}${sessionSuffix(r.session)}`;
+    case 'containerLoot':
+      return `cloot:${r.itemId}:${r.containerId}:${r.build}${sessionSuffix(r.session)}`;
     case 'trainers':
       return `trainer:${r.npcId}:${r.build}`;
     case 'vendors':

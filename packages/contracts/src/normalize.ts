@@ -2,6 +2,8 @@ import type { z } from 'zod';
 import {
   ApiSample,
   Character,
+  ContainerLoot,
+  ContainerOpen,
   Corpse,
   Craft,
   Drop,
@@ -169,6 +171,8 @@ export function normalize(db: unknown): Normalized {
     crafts: [],
     nodes: [],
     nodeLoot: [],
+    containerOpens: [],
+    containerLoot: [],
     trainers: [],
     vendors: [],
     apiSamples: [],
@@ -373,6 +377,35 @@ export function normalize(db: unknown): Normalized {
           session,
           count: l.n,
           quantity: l.qty,
+        });
+      }
+    }
+  }
+
+  // Schema 6: opened items. `containers.<id>.<build>` and `containerLoot.<item>.<build>.<id>` (+ `containerQty`).
+  for (const [cid, byBuild] of entries(db.containers)) {
+    for (const [b, c] of entries(byBuild)) {
+      if (!isObj(c)) continue;
+      add('containerOpens', ContainerOpen, `containers.${cid}.${b}`, {
+        containerId: num(cid),
+        build: num(b),
+        session,
+        opened: c.opened ?? 0,
+        copper: c.copper ?? 0,
+      });
+    }
+  }
+
+  for (const [iid, byBuild] of entries(db.containerLoot)) {
+    for (const [b, byContainer] of entries(byBuild)) {
+      for (const [cid, count] of entries(byContainer)) {
+        add('containerLoot', ContainerLoot, `containerLoot.${iid}.${b}.${cid}`, {
+          itemId: num(iid),
+          containerId: num(cid),
+          build: num(b),
+          session,
+          count,
+          quantity: child(child(child(db.containerQty, iid), b), cid) ?? count,
         });
       }
     }

@@ -2,6 +2,8 @@
 // int4 range is an invalid record, refused on its own like any other invalid record.
 import { describe, expect, it } from 'vitest';
 import {
+  ContainerLoot,
+  ContainerOpen,
   Drop,
   INT4_MAX,
   normalize,
@@ -61,6 +63,33 @@ describe('int4 bounds', () => {
     ).toBe(false);
     expect(Quest.safeParse({ questId: OVER }).success).toBe(false);
     expect(Drop.safeParse({ itemId: 1, build: 1, npcId: OVER, count: 1 }).success).toBe(false);
+    const open = (extra: Record<string, unknown>) =>
+      ContainerOpen.safeParse({
+        containerId: 1,
+        build: 1,
+        session: 'S',
+        opened: 1,
+        copper: 0,
+        ...extra,
+      }).success;
+    expect(open({ opened: INT4_MAX, copper: INT4_MAX })).toBe(true);
+    expect(open({ containerId: OVER })).toBe(false);
+    expect(open({ opened: OVER })).toBe(false);
+    expect(open({ copper: OVER })).toBe(false);
+    const cloot = (extra: Record<string, unknown>) =>
+      ContainerLoot.safeParse({
+        itemId: 1,
+        containerId: 1,
+        build: 1,
+        session: 'S',
+        count: 1,
+        quantity: 1,
+        ...extra,
+      }).success;
+    expect(cloot({ count: INT4_MAX })).toBe(true);
+    expect(cloot({ itemId: OVER })).toBe(false);
+    expect(cloot({ quantity: OVER })).toBe(false);
+    expect(cloot({ count: -1 })).toBe(false);
     expect(
       TurnIn.safeParse({ id: 'a', questId: 1, build: 1, char: 'A-R', time: 1, money: OVER })
         .success,
