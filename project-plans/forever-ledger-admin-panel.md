@@ -144,8 +144,8 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   trainer services and 121 name-matched recipe items so far); character level from any source 0; description from
   the output tooltip 897, from the recipe item 3. Tests: 17 server unit + 11 server integration, 7 admin unit + 1
   item tooltip; `pnpm check` green (746 vitest, 179 Lua).
-- ✅ 🧩 Run groups (dedupe shared dungeon runs) — 2026-09-23 22:52 CDT — `83f48d1` server, `add2126` admin (branch
-  `feat/run-groups`, not deployed). Live: Sam (druid 20) and Vic (warrior 20) uploaded one Wailing Caverns run twice.
+- ✅ 🧩 Run groups (dedupe shared dungeon runs) — 2026-09-23 22:52 CDT — `83f48d1` server, `add2126` admin, `2e8ba82`
+  review fixes; PR #22 merged green, deployed 23:10 CDT (backup `…-2310-pre0010.sql.gz`; backfill grouped Sam + Vic). Live: Sam (druid 20) and Vic (warrior 20) uploaded one Wailing Caverns run twice.
   Migration 0010 (additive): `runs.group_id` (the earliest member's run id, its own id when alone) + `runs_group_idx`;
   `runs_instance_idx` widened to (instance, build, started_at) for the candidate range scan.
   Rule (`src/runGroups.ts`): same instance + build, starts ≤ 180 s apart, different characters, each party lists the
