@@ -24,6 +24,12 @@ const HealthPage = lazy(() =>
 const AccessPage = lazy(() =>
   import('./pages/AccessPage').then((m) => ({ default: m.AccessPage })),
 );
+const ProfessionsPage = lazy(() =>
+  import('./pages/professions/ProfessionsPage').then((m) => ({ default: m.ProfessionsPage })),
+);
+const VendorsPage = lazy(() =>
+  import('./pages/vendors/VendorsPage').then((m) => ({ default: m.VendorsPage })),
+);
 
 /** Pages that have shipped; the rest show their placeholder until their phase lands. */
 const PAGES: Readonly<Record<string, () => ReactElement>> = {
@@ -31,6 +37,8 @@ const PAGES: Readonly<Record<string, () => ReactElement>> = {
   characters: () => <CharactersPage />,
   health: () => <HealthPage />,
   access: () => <AccessPage />,
+  professions: () => <ProfessionsPage />,
+  vendors: () => <VendorsPage />,
 };
 
 function pageFor(item: NavItem) {
