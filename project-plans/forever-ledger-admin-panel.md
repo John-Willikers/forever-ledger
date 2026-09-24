@@ -32,6 +32,10 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   every `/v1` read (manifest/ingest stay bearer-only); `/admin/api/ping` (GET + POST as the CSRF probe); SPA served
   at `/admin/` (503 until built). Notes: `ADMIN_BATTLETAGS` must be quoted in `deploy/.env` (unquoted `#` is a
   comment; the server refuses a tag without `#number`); request logs redact `code`/`state`/tokens in URLs.
+  Security review fixes: `4e0b878` (I1: `ADMIN_BATTLETAGS` bootstraps only while no admin exists, `ADMIN_BNET_SUBS`),
+  `8bcfd65` (M1 `__Host-` cookies + 600 s single-use state, M3 fixed `?error=` codes, M4 no session fixation),
+  `1daf343` (M5 30-day absolute sessions, M5b query-safe API paths, M7 no-store/nosniff, M8 dotfiles deny),
+  `f65127c` (M2 HSTS, M6 `/admin/auth/` access log without query strings).
 - ⬜ 2 🏠 Overview + Health + Access
 - ⬜ 3 📜 Quests + 🧙 Characters
 - ⬜ 4 🎒 Loot + 🏰 Dungeons
@@ -54,10 +58,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   - **Tables (migration 0008, additive):** `users` (id, bnet_sub unique, battletag, role `admin|member`,
     created_at, last_login_at), `sessions` (id = random 32-byte hash, user_id, created_at, expires_at 7 d,
     user_agent, ip), `api_tokens.user_id` (nullable FK → users: token owner).
-  - **Authorization:** a user is admin if `role = 'admin'`, or — bootstrap — their BattleTag is in
-    `ADMIN_BATTLETAGS` on first login (then `role` is saved and the `sub` pins them). Non-admins get 403 for now
-    (the panel shows "not authorized yet"). Session cookie `fl_session`: httpOnly, Secure, SameSite=Lax,
-    Path=/, sliding expiry.
+  - **Authorization:** a user is admin if `role = 'admin'`, or — bootstrap, only while no admin exists yet — their
+    BattleTag is in `ADMIN_BATTLETAGS` (then `role` is saved and the `sub` pins them), or their account id is in
+    `ADMIN_BNET_SUBS`. Once an admin exists, roles change only in the database. Non-admins get 403 for now (the
+    panel shows "not authorized yet"). Session cookie `__Host-fl_session`: httpOnly, Secure, SameSite=Lax, Path=/,
+    sliding expiry, 30 days absolute.
   - **Reads:** a new `requireReader` preHandler = bearer token **or** admin session, swapped into the existing
     `/v1/*` read routes, so the panel reuses them (no duplicate SQL). Session reads don't touch `last_used_at`.
   - **Admin API `/admin/api/*`** (session + CSRF header for writes; double-submit token from `/admin/auth/me`):
