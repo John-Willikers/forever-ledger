@@ -9,7 +9,12 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
-import { addonDownloadUrl, MAX_ADDON_BYTES, NO_ADDON_RELEASE } from '@forever-ledger/contracts';
+import {
+  addonDownloadUrl,
+  MAX_ADDON_BYTES,
+  MAX_SUPPORTED_SCHEMA,
+  NO_ADDON_RELEASE,
+} from '@forever-ledger/contracts';
 import type { AddonManifest } from '@forever-ledger/contracts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { installAddon, readInstalledVersion } from '../src/addonInstall.js';
@@ -109,7 +114,9 @@ describe('syncAddon', () => {
     });
     expect(r.checkedAt).toBeCloseTo(Date.now() / 1000, -1);
     expect(await readInstalledVersion(addonsDir)).toBe('0.2.1');
-    expect(server.manifestUrls).toEqual([`${SERVER}/v1/addon/manifest?build=69913`]);
+    expect(server.manifestUrls).toEqual([
+      `${SERVER}/v1/addon/manifest?build=69913&schema=${MAX_SUPPORTED_SCHEMA}`,
+    ]);
   });
 
   it('is up to date on the second run and does not download again', async () => {
@@ -174,7 +181,9 @@ describe('syncAddon', () => {
       });
       expect(r.status).toBe('installed');
       expect(r.build).toBeUndefined();
-      expect(server.manifestUrls).toEqual([`${SERVER}/v1/addon/manifest`]);
+      expect(server.manifestUrls).toEqual([
+        `${SERVER}/v1/addon/manifest?schema=${MAX_SUPPORTED_SCHEMA}`,
+      ]);
     } finally {
       await fresh.cleanup();
     }
@@ -458,7 +467,9 @@ describe('client build', () => {
     server.recommend('0.2.1');
     const r = await sync();
     expect(r.build).toBe(61600);
-    expect(server.manifestUrls).toEqual([`${SERVER}/v1/addon/manifest?build=61600`]);
+    expect(server.manifestUrls).toEqual([
+      `${SERVER}/v1/addon/manifest?build=61600&schema=${MAX_SUPPORTED_SCHEMA}`,
+    ]);
   });
 
   it('re-reads SavedVariables that changed since the upload pass recorded the build', async () => {

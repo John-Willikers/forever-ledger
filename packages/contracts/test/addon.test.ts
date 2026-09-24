@@ -1,12 +1,21 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   addonAssetName,
+  addonSchemaVersion,
   addonTag,
   AddonManifest,
   compareVersions,
   isAddonVersion,
+  LEGACY_ADDON_SCHEMA,
+  MAX_SUPPORTED_SCHEMA,
+  SCHEMA_VERSION,
+  SUPPORTED_SCHEMA_VERSIONS,
   tocVersion,
 } from '../src/index.js';
+
+const addonDir = fileURLToPath(new URL('../../../addon/', import.meta.url));
 
 describe('addon versions', () => {
   it('compares dotted numeric versions', () => {
@@ -36,6 +45,52 @@ describe('addon versions', () => {
     expect(tocVersion('## Interface: 16001\n')).toBeUndefined();
     expect(tocVersion('## Version:\n0.2.2\n')).toBeUndefined();
     expect(tocVersion('## Version: 0.2.1\n## Version: 0.2.2\n')).toBeUndefined();
+  });
+
+  it('reads SCHEMA_VERSION from the addon source as text', () => {
+    expect(
+      addonSchemaVersion('local VERSION = "0.3.4"\nlocal SCHEMA_VERSION = 6\nlocal X = 1\n'),
+    ).toBe(6);
+    expect(addonSchemaVersion('local SCHEMA_VERSION = 2 -- 2 adds turnIns[].choice\r\n')).toBe(2);
+    expect(addonSchemaVersion('local SCHEMA_VERSION = 12   \n')).toBe(12);
+    // Anything but one plain integer assignment at the start of a line is unreadable.
+    for (const bad of [
+      '',
+      'local VERSION = "0.1.0"\n',
+      'local SCHEMA_VERSION = 5\nlocal SCHEMA_VERSION = 6\n',
+      'local SCHEMA_VERSION = 5 + 1\n',
+      'local SCHEMA_VERSION = tonumber("6")\n',
+      'local SCHEMA_VERSION = 06\n',
+      'local SCHEMA_VERSION = 0\n',
+      'local SCHEMA_VERSION = 6.0\n',
+      '  local SCHEMA_VERSION = 6\n',
+      '-- local SCHEMA_VERSION = 6\n',
+      'local SCHEMA_VERSION=6\n',
+      'local SCHEMA_VERSION = 1234567890\n',
+    ]) {
+      expect(addonSchemaVersion(bad), bad).toBeUndefined();
+    }
+  });
+
+  it('reads the schema of the addon and of every legacy release kept for tests', () => {
+    const lua = (p: string) => readFileSync(`${addonDir}${p}`, 'utf8');
+    expect(addonSchemaVersion(lua('ForeverLedger/ForeverLedger.lua'))).toBe(SCHEMA_VERSION);
+    const legacy = readdirSync(`${addonDir}tests/legacy`).filter((f) => f.endsWith('.lua'));
+    const schemas = Object.fromEntries(
+      legacy.map((f) => [f, addonSchemaVersion(lua(`tests/legacy/${f}`))]),
+    );
+    expect(schemas).toMatchObject({
+      'ForeverLedger-0.2.2.lua': 1,
+      'ForeverLedger-0.2.3.lua': 2,
+      'ForeverLedger-0.2.4.lua': 3,
+      'ForeverLedger-0.3.2.lua': 4,
+      'ForeverLedger-0.3.3.lua': LEGACY_ADDON_SCHEMA,
+    });
+  });
+
+  it('names the newest supported schema', () => {
+    expect(MAX_SUPPORTED_SCHEMA).toBe(SCHEMA_VERSION);
+    expect(MAX_SUPPORTED_SCHEMA).toBe(Math.max(...SUPPORTED_SCHEMA_VERSIONS));
   });
 
   it('names tags and assets', () => {

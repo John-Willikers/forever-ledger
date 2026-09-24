@@ -13,6 +13,10 @@ export const SCHEMA_VERSION = 6;
  */
 export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
 export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
+/** The newest schema this code reads: what the tray sends as `?schema=` when it asks for an addon manifest. */
+export const MAX_SUPPORTED_SCHEMA: SchemaVersion = Math.max(
+  ...SUPPORTED_SCHEMA_VERSIONS,
+) as SchemaVersion;
 
 export const isSupportedSchemaVersion = (v: unknown): v is SchemaVersion =>
   (SUPPORTED_SCHEMA_VERSIONS as readonly unknown[]).includes(v);

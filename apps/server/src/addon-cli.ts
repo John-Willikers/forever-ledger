@@ -1,6 +1,7 @@
 // Admin CLI for addon releases:
 //   node dist/addon-cli.js publish <version> | pin <buildMin>-<buildMax|> <version> | unpin <id>
 //                          | yank <version> | list
+import { LEGACY_ADDON_SCHEMA } from '@forever-ledger/contracts';
 import { listAddon, pinVersion, publishRelease, unpin, yankVersion } from './addon.js';
 import { openDatabase, runMigrations } from './db/client.js';
 import { readEnv } from './env.js';
@@ -18,8 +19,10 @@ try {
   await runMigrations(db);
   if (command === 'publish' && arg) {
     const m = await publishRelease(db, arg, { repo: env.githubRepo, token: env.githubToken });
+    const { releases } = await listAddon(db);
+    const schema = releases.find((r) => r.version === m.version)?.schemaVersion;
     console.log(
-      `published ${m.addon} ${m.version} (${m.size} bytes, sha256 ${m.sha256})\n${m.url}`,
+      `published ${m.addon} ${m.version} (schema ${schema}, ${m.size} bytes, sha256 ${m.sha256})\n${m.url}`,
     );
   } else if (command === 'pin' && arg && arg2) {
     const range = /^(\d+)-(\d*)$/.exec(arg);
@@ -41,7 +44,7 @@ try {
     console.log(releases.length ? 'releases:' : 'releases: none');
     for (const r of releases) {
       console.log(
-        `  ${r.version}\t${r.status}\tpublished ${chicagoIso(r.publishedAt)}\t${r.size} bytes\tsha256 ${r.sha256}`,
+        `  ${r.version}\t${r.status}\tschema ${r.schemaVersion ?? `≤${LEGACY_ADDON_SCHEMA}`}\tpublished ${chicagoIso(r.publishedAt)}\t${r.size} bytes\tsha256 ${r.sha256}`,
       );
     }
     console.log(pins.length ? 'pins:' : 'pins: none');

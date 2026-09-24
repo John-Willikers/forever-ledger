@@ -36,6 +36,26 @@ export function tocVersion(toc: string): string | undefined {
   return found.length === 1 ? found[0]?.[1] : undefined;
 }
 
+/** The addon's main file inside its folder (and inside a release zip, under `ForeverLedger/`). */
+export const ADDON_MAIN_FILE = `${ADDON_NAME}.lua`;
+/**
+ * The schema a release without a recorded schema (published before the manifest's schema gate) writes at most: every
+ * such release is addon 0.3.3 or older, schema 5 or lower. Also the manifest's `?schema=` default: trays older than the
+ * gate (0.1.4 and earlier) don't send it and read schemas up to 5.
+ */
+export const LEGACY_ADDON_SCHEMA = 5;
+
+/**
+ * Reads `local SCHEMA_VERSION = <int>` from the addon's Lua source text (text only, never executed). Undefined unless
+ * exactly one such line exists; a trailing `-- comment` is allowed.
+ */
+export function addonSchemaVersion(lua: string): number | undefined {
+  const found = [
+    ...lua.matchAll(/^local SCHEMA_VERSION = ([1-9]\d{0,8})[ \t]*(?:--[^\r\n]*)?\r?$/gm),
+  ];
+  return found.length === 1 ? Number(found[0]?.[1]) : undefined;
+}
+
 /** GET /v1/addon/manifest response: the addon version this client build should run. */
 export const AddonManifest = z
   .object({

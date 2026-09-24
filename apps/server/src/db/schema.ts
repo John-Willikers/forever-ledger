@@ -606,6 +606,11 @@ export const addonReleases = pgTable('addon_releases', {
     .notNull()
     .default('active'),
   publishedAt: tz('published_at').notNull().defaultNow(),
+  /**
+   * SavedVariables schema the release writes (`local SCHEMA_VERSION` of its ForeverLedger.lua), recorded at publish.
+   * Null: published before the manifest's schema gate, so schema 5 or lower (LEGACY_ADDON_SCHEMA).
+   */
+  schemaVersion: integer('schema_version'),
 });
 
 /** Client builds [buildMin, buildMax] (buildMax null = open-ended) that must run a given addon version. */

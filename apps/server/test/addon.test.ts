@@ -1,10 +1,14 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import {
   ADDON_REPO,
   addonAssetName,
   addonDownloadUrl,
   AddonManifest,
+  MAX_SUPPORTED_SCHEMA,
   NO_ADDON_RELEASE,
+  SCHEMA_VERSION,
+  tocVersion,
 } from '@forever-ledger/contracts';
 import { strToU8, zipSync } from 'fflate';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -26,10 +30,19 @@ const sha = (c: string) => c.repeat(64);
 let s: Server;
 const get = (url: string, headers: Record<string, string> = s.auth) =>
   s.app.inject({ method: 'GET', url, headers });
-const release = (version: string, status: 'active' | 'yanked' = 'active') =>
-  s.database.db
-    .insert(addonReleases)
-    .values({ version, url: addonDownloadUrl(version), sha256: sha('a'), size: 1234, status });
+const release = (
+  version: string,
+  status: 'active' | 'yanked' = 'active',
+  schemaVersion: number | null = null,
+) =>
+  s.database.db.insert(addonReleases).values({
+    version,
+    url: addonDownloadUrl(version),
+    sha256: sha('a'),
+    size: 1234,
+    status,
+    schemaVersion,
+  });
 const pin = (buildMin: number, buildMax: number | null, version: string) =>
   s.database.db.insert(addonPins).values({ buildMin, buildMax, version });
 
@@ -132,14 +145,87 @@ describe('addon manifest', () => {
   });
 });
 
+describe('addon manifest schema gate', () => {
+  const version = async (url: string) => {
+    const res = await get(url);
+    return res.statusCode === 200 ? (res.json() as { version: string }).version : res.json();
+  };
+
+  it('serves trays only releases whose schema they read (no ?schema= reads up to 5)', async () => {
+    await release('0.3.2', 'active', null); // published before the gate: schema ≤ 5
+    await release('0.3.3', 'active', null);
+    await release('0.3.4', 'active', 6);
+    // Tray 0.1.4 sends no schema: it reads up to 5 and must never get 0.3.4.
+    expect(await version('/v1/addon/manifest?build=69913')).toBe('0.3.3');
+    expect(await version('/v1/addon/manifest')).toBe('0.3.3');
+    expect(await version('/v1/addon/manifest?build=69913&schema=5')).toBe('0.3.3');
+    // Tray 0.1.5 reads up to 6 (and a future tray more).
+    expect(await version('/v1/addon/manifest?build=69913&schema=6')).toBe('0.3.4');
+    expect(await version('/v1/addon/manifest?schema=7')).toBe('0.3.4');
+    // Anything but a positive integer counts as a tray that doesn't send it.
+    for (const bad of ['abc', '0', '-6', '6.5', '']) {
+      expect(await version(`/v1/addon/manifest?build=69913&schema=${bad}`), bad).toBe('0.3.3');
+    }
+    // An explicit schema 5 is as good as a legacy null.
+    await release('0.3.5', 'active', 5);
+    expect(await version('/v1/addon/manifest?schema=5')).toBe('0.3.5');
+    expect(await version('/v1/addon/manifest?schema=6')).toBe('0.3.5');
+  });
+
+  it('404s with the no-release error only when no release fits', async () => {
+    await release('0.3.4', 'active', 6);
+    await release('0.4.0', 'active', 7);
+    const res = await get('/v1/addon/manifest?build=69913');
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: NO_ADDON_RELEASE });
+    expect(await version('/v1/addon/manifest?schema=6')).toBe('0.3.4');
+    expect(await version('/v1/addon/manifest?schema=7')).toBe('0.4.0');
+    expect(await resolveManifest(s.database.db, null)).toBeNull(); // the function defaults to 5 too
+  });
+
+  it('falls back from a pin whose release needs a newer schema to the newest release that fits', async () => {
+    await release('0.3.2', 'active', null);
+    await release('0.3.3', 'active', null);
+    await release('0.3.4', 'active', 6);
+    await pin(69000, 70000, '0.3.2'); // an older, compatible pin: superseded by the next one
+    await pin(69900, 69920, '0.3.4');
+    const db = s.database.db;
+    expect((await resolveManifest(db, 69913, 6))?.version).toBe('0.3.4');
+    expect((await resolveManifest(db, 69913, 5))?.version).toBe('0.3.3');
+    expect(await version('/v1/addon/manifest?build=69913')).toBe('0.3.3');
+    expect(await version('/v1/addon/manifest?build=69913&schema=6')).toBe('0.3.4');
+    // Outside the newer pin, the older compatible pin still holds for both trays.
+    expect((await resolveManifest(db, 69500, 5))?.version).toBe('0.3.2');
+    expect((await resolveManifest(db, 69500, 6))?.version).toBe('0.3.2');
+    // Nothing fits at all: 404.
+    await yankVersion(db, '0.3.3');
+    await yankVersion(db, '0.3.2');
+    expect(await resolveManifest(db, 69913, 5)).toBeNull();
+    expect((await get('/v1/addon/manifest?build=69913')).statusCode).toBe(404);
+  });
+
+  it('keeps a compatible pin for old and new trays alike', async () => {
+    await release('0.3.2', 'active', null);
+    await release('0.3.4', 'active', 6);
+    await pin(69900, 69920, '0.3.2');
+    expect(await version('/v1/addon/manifest?build=69913')).toBe('0.3.2');
+    expect(await version('/v1/addon/manifest?build=69913&schema=6')).toBe('0.3.2');
+    expect(await version('/v1/addon/manifest?build=69921&schema=6')).toBe('0.3.4');
+    expect(await version('/v1/addon/manifest?build=69921')).toBe('0.3.2');
+  });
+});
+
 const hex = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
-const addonZip = (tocVersion: string) =>
+const addonZip = (
+  tocVersion: string,
+  lua = `local VERSION = "${tocVersion}"\nlocal SCHEMA_VERSION = 5\n`,
+) =>
   zipSync({
     ForeverLedger: {
       'ForeverLedger.toc': strToU8(
         `## Interface: 16001\n## Version: ${tocVersion}\nForeverLedger.lua\n`,
       ),
-      'ForeverLedger.lua': strToU8(`local VERSION = "${tocVersion}"\n`),
+      'ForeverLedger.lua': strToU8(lua),
     },
   });
 
@@ -271,11 +357,82 @@ describe('addon admin', () => {
 
     const other = fakeGitHub('0.3.0', {
       zip: zipSync({
-        ForeverLedger: { 'ForeverLedger.toc': strToU8('## Version: 0.3.0\n-- changed\n') },
+        ForeverLedger: {
+          'ForeverLedger.toc': strToU8('## Version: 0.3.0\n-- changed\n'),
+          'ForeverLedger.lua': strToU8('local SCHEMA_VERSION = 6\n'),
+        },
       }),
     });
     await expect(publish('0.3.0', other)).rejects.toThrow(/already published/);
     expect(await resolveManifest(s.database.db, null)).toEqual(first);
+  });
+
+  it('records the schema read from ForeverLedger.lua', async () => {
+    await publish(
+      '0.3.4',
+      fakeGitHub('0.3.4', { zip: addonZip('0.3.4', 'local SCHEMA_VERSION = 6\n') }),
+    );
+    const legacyZip = addonZip('0.3.3', 'local SCHEMA_VERSION = 5\n');
+    await publish('0.3.3', fakeGitHub('0.3.3', { zip: legacyZip }));
+    const { releases } = await listAddon(s.database.db);
+    expect(releases.map((r) => [r.version, r.schemaVersion])).toEqual([
+      ['0.3.4', 6],
+      ['0.3.3', 5],
+    ]);
+    expect((await resolveManifest(s.database.db, null, 5))?.version).toBe('0.3.3');
+    expect((await resolveManifest(s.database.db, null, 6))?.version).toBe('0.3.4');
+  });
+
+  it('reads the schema of the real addon sources: 0.3.4 needs 6, 0.3.3 fits old trays', async () => {
+    const src = (p: string) =>
+      readFileSync(new URL(`../../../addon/${p}`, import.meta.url), 'utf8');
+    const toc = tocVersion(src('ForeverLedger/ForeverLedger.toc'))!;
+    const current = addonZip(toc, src('ForeverLedger/ForeverLedger.lua'));
+    const legacy = addonZip('0.3.3', src('tests/legacy/ForeverLedger-0.3.3.lua'));
+    await publish(toc, fakeGitHub(toc, { zip: current }));
+    await publish('0.3.3', fakeGitHub('0.3.3', { zip: legacy }));
+    const { releases } = await listAddon(s.database.db);
+    expect(Object.fromEntries(releases.map((r) => [r.version, r.schemaVersion]))).toEqual({
+      [toc]: SCHEMA_VERSION,
+      '0.3.3': 5,
+    });
+    expect(await resolveManifest(s.database.db, 69913)).toMatchObject({ version: '0.3.3' });
+    expect(await resolveManifest(s.database.db, 69913, MAX_SUPPORTED_SCHEMA)).toMatchObject({
+      version: toc,
+    });
+  });
+
+  it('refuses a release whose schema cannot be read, and stores nothing', async () => {
+    for (const lua of [
+      'local VERSION = "0.3.4"\n',
+      'local SCHEMA_VERSION = 5 + 1\n',
+      'local SCHEMA_VERSION = 6\nlocal SCHEMA_VERSION = 7\n',
+      'SCHEMA_VERSION = 6\n',
+    ]) {
+      const gh = fakeGitHub('0.3.4', { zip: addonZip('0.3.4', lua) });
+      await expect(publish('0.3.4', gh), lua).rejects.toThrow(/SCHEMA_VERSION/);
+    }
+    const noLua = zipSync({
+      ForeverLedger: { 'ForeverLedger.toc': strToU8('## Version: 0.3.4\n') },
+    });
+    await expect(publish('0.3.4', fakeGitHub('0.3.4', { zip: noLua }))).rejects.toThrow(
+      /no ForeverLedger\/ForeverLedger\.lua/,
+    );
+    expect(await s.count('addon_releases')).toBe(0);
+  });
+
+  it('records the schema of a legacy release when it is published again', async () => {
+    const gh = fakeGitHub('0.3.3', { zip: addonZip('0.3.3', 'local SCHEMA_VERSION = 5\n') });
+    await s.database.db.insert(addonReleases).values({
+      version: '0.3.3',
+      url: addonDownloadUrl('0.3.3'),
+      sha256: hex(gh.zip),
+      size: gh.zip.length,
+      status: 'active',
+    });
+    expect((await listAddon(s.database.db)).releases[0]?.schemaVersion).toBeNull();
+    await publish('0.3.3', gh);
+    expect((await listAddon(s.database.db)).releases[0]?.schemaVersion).toBe(5);
   });
 
   it('pins, unpins and yanks', async () => {

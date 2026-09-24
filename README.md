@@ -48,8 +48,11 @@ currency, name) next to its gold price, and vendors and trainers keep the subtit
 Since 0.3.4 (schema 6) loot from an opened item (a clam, a lockbox, a Message in a Bottle) is recorded against that
 container instead of as a drop of an unknown source: how often each container was opened, the copper it held, and
 each item with how many opens held it and the total quantity. The container is named by the loot window's item GUID,
-else by the bag item locked in the last 3 s, else recorded as unknown (0). The admin item page shows a container's
-🎁 Contents and, for its loot, what it was opened from.
+else by the bag item locked in the last 3 s, else recorded as unknown (0). A container left partly looted (bags full)
+and opened again within 15 minutes is still one open, and nothing in it is counted twice. Disenchanting, prospecting
+and milling open the same kind of loot window, so their results are recorded too, against the item that was
+processed (a disenchanted sword "contains" its dust). The admin item page shows a container's 🎁 Contents and, for
+its loot, where it came from (opened or processed).
 
 Since 0.2.2 the addon reminds you at natural checkpoints (a boss kill, a dungeon run closing, a quest turn-in, a
 dungeon finder reward): `Forever Ledger: N new records since your last /reload — type /reload to save them`. It
@@ -323,6 +326,15 @@ node apps/server/dist/addon-cli.js pin 69913-69999 0.2.1 # these client builds s
 node apps/server/dist/addon-cli.js yank 0.2.2            # pull a bad version (clients fall back to the newest active)
 node apps/server/dist/addon-cli.js list
 ```
+
+**Schema gate.** `publish` reads `local SCHEMA_VERSION = <int>` from the release's `ForeverLedger.lua` (as text,
+never executed) and refuses a release it can't read it from. The tray asks for `GET /v1/addon/manifest?schema=<the
+newest schema it reads>` and only gets releases that write that schema or older; trays older than the gate (0.1.4
+and earlier) send no `schema` and are treated as reading up to 5. So an addon that bumps the schema can be published
+right away: old trays keep the newest addon they can read (e.g. 0.3.3) until they update themselves, instead of
+installing an addon whose files they'd refuse. Releases published before the gate have no recorded schema and count
+as 5 (`list` shows `≤5`; publishing the same version again records it). A pin to a release that needs a newer schema
+than the tray reads falls back to the newest release that tray can read.
 
 Tray app: bump `apps/desktop/package.json` `version`, merge to master, `git tag v0.1.1 && git push origin v0.1.1`.
 The Action builds the installer and publishes it as the latest release; installed apps update themselves.

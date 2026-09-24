@@ -1,5 +1,5 @@
 {
-  "id": "00cf77b2-4e69-4b28-b08d-4bcc22493ea9",
+  "id": "9f1e6197-01af-471c-9882-bf5569076061",
   "prevId": "33c8b6f0-79f4-4fd4-bb3d-197436354185",
   "version": "7",
   "dialect": "postgresql",
@@ -99,6 +99,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "schema_version": {
+          "name": "schema_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},

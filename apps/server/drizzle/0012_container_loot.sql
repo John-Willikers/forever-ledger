@@ -23,5 +23,6 @@ CREATE TABLE "container_opens" (
 	CONSTRAINT "container_opens_pk" PRIMARY KEY("container_id","build","uploader_id","account","session")
 );
 --> statement-breakpoint
+ALTER TABLE "addon_releases" ADD COLUMN "schema_version" integer;--> statement-breakpoint
 CREATE INDEX "container_loot_container_idx" ON "container_loot" USING btree ("container_id","build");--> statement-breakpoint
 CREATE INDEX "container_opens_build_idx" ON "container_opens" USING btree ("build");

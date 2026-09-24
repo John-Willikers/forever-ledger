@@ -1,4 +1,4 @@
-import { AddonManifest, NO_ADDON_RELEASE } from '@forever-ledger/contracts';
+import { AddonManifest, MAX_SUPPORTED_SCHEMA, NO_ADDON_RELEASE } from '@forever-ledger/contracts';
 import { errorText } from './client.js';
 import type { FetchLike } from './client.js';
 import { errorMessage } from './errors.js';
@@ -13,6 +13,12 @@ export interface ManifestOptions {
   token: string;
   /** Client build from SavedVariables; omitted before the addon has run once. */
   build?: number;
+  /**
+   * Newest SavedVariables schema this uploader reads (default: the newest of contracts' SUPPORTED_SCHEMA_VERSIONS).
+   * The server only hands out addon releases that write it or older, so an auto-update never installs an addon whose
+   * files this uploader would refuse.
+   */
+  schema?: number;
   fetchImpl?: FetchLike;
   timeoutMs?: number;
 }
@@ -26,11 +32,16 @@ function errorField(text: string): unknown {
   }
 }
 
-/** `GET /v1/addon/manifest[?build=N]` → the addon version to run, or null when nothing is published yet. */
+/**
+ * `GET /v1/addon/manifest?[build=N&]schema=S` → the addon version to run, or null when no release this uploader can
+ * read is published.
+ */
 export async function fetchManifest(opts: ManifestOptions): Promise<AddonManifest | null> {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const query = opts.build === undefined ? '' : `?build=${opts.build}`;
-  const url = `${opts.serverUrl}/v1/addon/manifest${query}`;
+  const params = new URLSearchParams();
+  if (opts.build !== undefined) params.set('build', String(opts.build));
+  params.set('schema', String(opts.schema ?? MAX_SUPPORTED_SCHEMA));
+  const url = `${opts.serverUrl}/v1/addon/manifest?${params}`;
   let res: Response;
   try {
     res = await fetchImpl(url, {
