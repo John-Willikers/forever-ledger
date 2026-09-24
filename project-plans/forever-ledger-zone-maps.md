@@ -7,9 +7,11 @@
 
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/Chicago.
 
-- 🟡 0 📝 Plan approved, branch `feat/zone-maps` from `origin/master` (434958c) — 22:52 CDT 2026-09-23
-- ⬜ 1 🗄️ Server: migration `zone_maps`, image validation module, maps routes, nginx body size
-- ⬜ 2 🖥️ UI: `ZoneMap` component, 🗺️ Maps page, gathering/quest/vendor/trainer integrations, CSP check
+- ✅ 0 📝 Plan approved, branch `feat/zone-maps` from `origin/master` (434958c) — 22:52 CDT 2026-09-23
+- ✅ 1 🗄️ Server: migration `zone_maps`, image validation module, maps routes, nginx body size — 22:56 CDT (85ada50;
+  migration generated as `0010_zone_maps` because `feat/run-groups` (0010_run_groups) isn't on master yet → regenerate
+  as 0011 after it merges; 288 server tests)
+- 🟡 2 🖥️ UI: `ZoneMap` component, 🗺️ Maps page, gathering/quest/vendor/trainer integrations, CSP check
 - ⬜ 3 🚀 Deploy: backup, migrate, nginx reload, PM2 reload; export Durotar + The Barrens and upload (not in this branch)
 
 ## 📌 Context
