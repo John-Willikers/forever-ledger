@@ -3,10 +3,13 @@ import { CHART_PALETTES } from '../../lib/charts';
 import {
   bossSplits,
   bossTimelineOption,
+  charName,
   clearTimeOption,
   formatDuration,
   median,
   perMinute,
+  pickTab,
+  runTabs,
   SECOND_SERIES,
   secondSeries,
   timeAxisInterval,
@@ -94,11 +97,15 @@ describe('clearTimeOption', () => {
           instanceId: 36,
           instance: 'The Deadmines',
           runs: [
-            { id: 'a', build: 1, activeSecs: 930 },
-            { id: 'b', build: 1, activeSecs: 1200 },
+            { id: 'a', build: 1, activeSecs: 930, members: 1 },
+            { id: 'b', build: 1, activeSecs: 1200, members: 1 },
           ],
         },
-        { instanceId: 34, instance: null, runs: [{ id: 'c', build: 1, activeSecs: 600 }] },
+        {
+          instanceId: 34,
+          instance: null,
+          runs: [{ id: 'c', build: 1, activeSecs: 600, members: 1 }],
+        },
       ],
       P,
     );
@@ -143,5 +150,47 @@ describe('xpRateOption', () => {
     expect(o.series[1]!.itemStyle.color).toBe(SECOND_SERIES.light);
     expect(o.legend.data).toEqual(['Mob XP', 'Quest XP']);
     expect(secondSeries(CHART_PALETTES.dark)).toBe(SECOND_SERIES.dark);
+  });
+});
+
+describe('charName', () => {
+  it('keeps the name of a Name-Realm key (realms may hold dashes and spaces)', () => {
+    expect(charName('Sam Willikers-Classic Beta PvE')).toBe('Sam Willikers');
+    expect(charName('Vic-Some-Realm')).toBe('Vic');
+    expect(charName('NoRealm')).toBe('NoRealm');
+  });
+});
+
+describe('runTabs', () => {
+  const p = (id: string, char: string) => ({ id, char });
+  it('has a Group tab and one tab per member, in order', () => {
+    expect(runTabs([p('a', 'Sam-R'), p('b', 'Vic-R 2')])).toEqual([
+      { key: 'group', label: 'Group' },
+      { key: 'a', label: 'Sam' },
+      { key: 'b', label: 'Vic' },
+    ]);
+  });
+  it('has no tabs for a run nobody else uploaded', () => {
+    expect(runTabs([p('a', 'Sam-R')])).toEqual([]);
+  });
+  it('tells same-named members apart by their key', () => {
+    expect(runTabs([p('a', 'Sam-R1'), p('b', 'Sam-R2')]).map((t) => t.label)).toEqual([
+      'Group',
+      'Sam-R1',
+      'Sam-R2',
+    ]);
+  });
+});
+
+describe('pickTab', () => {
+  const tabs = runTabs([
+    { id: 'a', char: 'Sam-R' },
+    { id: 'b', char: 'Vic-R' },
+  ]);
+  it('keeps a known tab, else the group', () => {
+    expect(pickTab(tabs, 'b')).toBe('b');
+    expect(pickTab(tabs, 'zzz')).toBe('group');
+    expect(pickTab(tabs, null)).toBe('group');
+    expect(pickTab([], 'a')).toBe('group');
   });
 });

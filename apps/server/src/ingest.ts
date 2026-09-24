@@ -33,6 +33,8 @@ import {
   turnIns,
   vendors,
 } from './db/schema.js';
+import { lockRunGroups, regroupRuns } from './runGroups.js';
+import type { RegroupLog } from './runGroups.js';
 import { fromEpoch } from './time.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -105,6 +107,8 @@ function dedupe(records: Records): Records {
 
 export interface IngestContext {
   tokenId: number;
+  /** Where run grouping reports a search that hit its round cap (defaults to the console). */
+  log?: RegroupLog;
 }
 
 /** Stores one batch idempotently and returns the acknowledged record keys and hashes. */
@@ -113,6 +117,8 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
   const recordCount = RECORD_KINDS.reduce((n, k) => n + r[k].length, 0);
 
   const batchId = await db.transaction(async (tx) => {
+    // Run grouping's lock comes first, before this transaction writes (and row-locks) any run: see lockRunGroups.
+    if (r.runs.length > 0) await lockRunGroups(tx);
     const [raw] = await tx
       .insert(rawUploads)
       .values({
@@ -451,6 +457,8 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         groupLoot: run.groupLoot,
       })),
       [runs.id],
+      // The group is ingest's own column, assigned below: an upload never resets it.
+      { set: { groupId: sql`${runs.groupId}` } },
     );
     // A run's boss and party lists are replaced wholesale: a resumed run can gain bosses after upload.
     const runIds = r.runs.map((run) => run.id);
@@ -478,6 +486,8 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
           run.party.map((p, i) => ({ runId: run.id, slot: i + 1, class: p.class, level: p.level })),
         ),
       );
+      // One dungeon run uploaded by several party members is one group (after characters and parties are stored).
+      await regroupRuns(tx, runIds, { log: ctx.log });
     }
 
     return raw!.id;

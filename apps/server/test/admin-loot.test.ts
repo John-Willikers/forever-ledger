@@ -327,11 +327,11 @@ describe('admin loot + dungeon API (real Postgres)', () => {
       expect(body.instances).toEqual([{ instanceId: 36, instance: 'The Deadmines', runs: 2 }]);
       const [newer, older] = body.items;
       expect(newer.startedAt > older.startedAt).toBe(true);
+      // One row per run group; a run nobody else uploaded is a group of one.
       expect(older).toMatchObject({
         id: RUN_ID,
         build: 61582,
-        char: 'Thibodeaux-Bayou',
-        charClass: 'HUNTER',
+        members: [{ id: RUN_ID, char: 'Thibodeaux-Bayou', charClass: 'HUNTER', charLevel: 10 }],
         instance: 'The Deadmines',
         instanceId: 36,
         activeSecs: 930,
@@ -357,7 +357,25 @@ describe('admin loot + dungeon API (real Postgres)', () => {
     });
 
     it('answers one run with bosses, loot with names, boss loot rolls, group loot and party', async () => {
-      const run = await json(`/admin/api/runs/${encodeURIComponent(RUN_ID)}`);
+      const group = await json(`/admin/api/runs/${encodeURIComponent(RUN_ID)}`);
+      // A group of one: the group view is the run itself, its only perspective the full run.
+      expect(group).toMatchObject({
+        id: RUN_ID,
+        members: 1,
+        activeSecs: 930,
+        deaths: 1,
+        lootMethod: 'group',
+      });
+      expect(group.perspectives).toHaveLength(1);
+      const run = group.perspectives[0];
+      expect(group.bosses).toEqual(run.bosses);
+      expect(group.bossLoot).toEqual(
+        run.bossLoot.map(({ winnerIsSelf: _, ...b }: { winnerIsSelf: boolean }) => ({
+          ...b,
+          winnerChar: null,
+        })),
+      );
+      expect(group.loot).toEqual(run.loot.map((l: object) => ({ ...l, char: 'Thibodeaux-Bayou' })));
       expect(run).toMatchObject({
         id: RUN_ID,
         charClass: 'HUNTER',
@@ -382,6 +400,7 @@ describe('admin loot + dungeon API (real Postgres)', () => {
         {
           encounterId: 1,
           bossName: "Rhahk'Zor",
+          lootListKey: 1,
           itemId: 872,
           name: 'Rockslicer',
           quality: 3,
@@ -444,8 +463,8 @@ describe('admin loot + dungeon API (real Postgres)', () => {
           instanceId: 36,
           instance: 'The Deadmines',
           runs: [
-            { id: RUN_ID, build: 61582, activeSecs: 930 },
-            { id: 'Thibodeaux-Bayou-36-1790087510', build: 61600, activeSecs: 1200 },
+            { id: RUN_ID, build: 61582, activeSecs: 930, members: 1 },
+            { id: 'Thibodeaux-Bayou-36-1790087510', build: 61600, activeSecs: 1200, members: 1 },
           ],
         },
       ]);

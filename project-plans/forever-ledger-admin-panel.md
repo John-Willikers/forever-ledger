@@ -144,6 +144,22 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   trainer services and 121 name-matched recipe items so far); character level from any source 0; description from
   the output tooltip 897, from the recipe item 3. Tests: 17 server unit + 11 server integration, 7 admin unit + 1
   item tooltip; `pnpm check` green (746 vitest, 179 Lua).
+- ✅ 🧩 Run groups (dedupe shared dungeon runs) — 2026-09-23 22:52 CDT — `83f48d1` server, `add2126` admin (branch
+  `feat/run-groups`, not deployed). Live: Sam (druid 20) and Vic (warrior 20) uploaded one Wailing Caverns run twice.
+  Migration 0010 (additive): `runs.group_id` (the earliest member's run id, its own id when alone) + `runs_group_idx`;
+  `runs_instance_idx` widened to (instance, build, started_at) for the candidate range scan.
+  Rule (`src/runGroups.ts`): same instance + build, starts ≤ 180 s apart, different characters, each party lists the
+  other's class + level (mutual: every schema records the party, so an empty party is a solo run); transitive,
+  closest starts merge first, never two runs of one character in a group. Ingest takes the run-group advisory lock
+  (`src/locks.ts`) before its first runs write, then regroups the stored runs + neighbours (idempotent, stable ids);
+  the server backfills runs with no group right after it starts listening (no CLI; a failure is logged). Reads count groups:
+  `/v1/runs/summary` `runs` + `members`, clear times and `/admin/api/runs` one row per group; clear time = median
+  member active time (XP/min, deaths, level stay per character). `/admin/api/runs/:id` takes any member id: merged
+  bosses (earliest time), boss loot deduped by encounter/item/winner class/loot list key with `winnerChar`, members'
+  own loot, `perspectives`; group loot stays per perspective (no time to match). Pages: member badges per row, Run
+  page Group tab + a tab per member (`?view=`). Tests: 14 rule + 6 merge unit, 6 integration, 5 admin unit;
+  `pnpm check` green (812 vitest, 179 Lua). ⬜ Follow-up: drop/corpse counts double-count corpses opened by two group
+  members — needs corpse GUIDs in the addon (future).
 - **`apps/admin`** — React 19 + TypeScript + Vite SPA (base `/admin/`), **Apache ECharts** (`echarts` +
   `echarts-for-react`) for charts, **TanStack Query** for data + polling, **TanStack Table** for sortable/filterable
   tables, React Router. Built to `apps/admin/dist`. Dark/light via CSS vars. Times rendered America/Chicago.
@@ -222,3 +238,7 @@ Phase 1 + 2 is a usable MVP; later phases can ship as they're done.
 - Blizzard requires an **authenticator on your Battle.net developer account** to create API clients.
 - No refresh tokens: sessions are ours (7 days, sliding); Battle.net's own SSO cookie makes re-login near-silent.
 - Admin reads everything; later a member role could see only their own characters (owner filter already modeled).
+- Drop rates double-count a corpse two group members both opened (each addon counts it); run groups don't fix that.
+  Needs corpse GUIDs in the addon (future).
+- Run groups match party members by class + level at the start, so someone who levels between two members' entries
+  (the party lists the old level, their own run the new `char_level`) is left ungrouped: it fails safe, as two runs.
