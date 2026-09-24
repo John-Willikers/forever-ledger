@@ -10,7 +10,15 @@ import { formatCopper, mobLabel, qualityClass, qualityLabel } from '../loot/loot
 import { ForeverBadge, ItemName, RateBar } from '../loot/parts';
 import type { ItemExtra, ItemV1, VendorCost } from '../loot/types';
 import { makerRank, recipeHref } from '../professions/recipeLib';
-import { mergeDropSources, statLabel, statMatrix, tooltipText } from './itemLib';
+import {
+  containerLabel,
+  contentsByBuild,
+  formatAvgQuantity,
+  mergeDropSources,
+  statLabel,
+  statMatrix,
+  tooltipText,
+} from './itemLib';
 
 /** One item across builds: stats with changes highlighted, where it comes from, what uses it. */
 export function ItemPage() {
@@ -55,6 +63,8 @@ export function ItemPage() {
                     <DropsCard item={i} extra={x} />
                     <NodesCard item={i} />
                   </div>
+                  <ContentsCard extra={x} />
+                  <OpenedFromCard extra={x} />
                   <VendorsCard extra={x} />
                   <div className="grid-2">
                     <QuestsCard item={i} />
@@ -260,6 +270,100 @@ function NodesCard({ item }: { item: ItemV1 }) {
           </table>
         </div>
       )}
+    </Card>
+  );
+}
+
+/** What the item held when opened (schema 6): per build, its opens and copper, then each item by chance per open. */
+function ContentsCard({ extra }: { extra: ItemExtra }) {
+  const builds = contentsByBuild(extra.contents);
+  if (builds.length === 0) return null;
+  return (
+    <Card title="🎁 Contents">
+      {builds.map((b) => (
+        <div key={b.build}>
+          <p className="small">
+            <strong>Build {b.build}</strong> · opened {formatNumber(b.opened)}{' '}
+            {b.opened === 1 ? 'time' : 'times'} · {formatCopper(b.avgCopper)} per open{' '}
+            <span className="muted">({formatCopper(b.copper)} in all)</span>
+          </p>
+          {b.items.length === 0 ? (
+            <Empty>No item recorded from its opens.</Empty>
+          ) : (
+            <div className="table-wrap">
+              <table className="data compact">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Opens with it</th>
+                    <th>Chance per open</th>
+                    <th>Avg quantity</th>
+                    <th>Total quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {b.items.map((it) => (
+                    <tr key={it.itemId}>
+                      <td>
+                        <ItemName itemId={it.itemId} name={it.name} quality={it.quality} />
+                      </td>
+                      <td>{formatNumber(it.count)}</td>
+                      <td>
+                        <RateBar rate={it.chance} />
+                      </td>
+                      <td>{formatAvgQuantity(it.avgQuantity)}</td>
+                      <td>{formatNumber(it.quantity)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+/** Containers the item came out of (schema 6), linking to the container's page; container 0 is unnamed. */
+function OpenedFromCard({ extra }: { extra: ItemExtra }) {
+  if (extra.openedFrom.length === 0) return null;
+  return (
+    <Card title="Opened from">
+      <div className="table-wrap">
+        <table className="data compact">
+          <thead>
+            <tr>
+              <th>Container</th>
+              <th>Build</th>
+              <th>Opens</th>
+              <th>Held it</th>
+              <th>Chance per open</th>
+              <th>Quantity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {extra.openedFrom.map((o) => (
+              <tr key={`${o.build}-${o.containerId}`}>
+                <td>
+                  <ItemName
+                    itemId={o.containerId === 0 ? null : o.containerId}
+                    name={containerLabel(o.containerId, o.containerName)}
+                    quality={o.containerQuality}
+                  />
+                </td>
+                <td>{o.build}</td>
+                <td>{formatNumber(o.opened)}</td>
+                <td>{formatNumber(o.count)}</td>
+                <td>
+                  <RateBar rate={o.chance} />
+                </td>
+                <td>{formatNumber(o.quantity)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }

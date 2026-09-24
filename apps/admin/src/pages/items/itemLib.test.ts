@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { mergeDropSources, statLabel, statMatrix, tooltipText } from './itemLib';
+import {
+  containerLabel,
+  contentsByBuild,
+  formatAvgQuantity,
+  mergeDropSources,
+  statLabel,
+  statMatrix,
+  tooltipText,
+} from './itemLib';
 import type { SnapshotLike } from './itemLib';
 
 describe('statLabel', () => {
@@ -114,5 +122,56 @@ describe('tooltipText', () => {
     ).toBe('Sell Price: 1s 25c');
     expect(tooltipText('3|A:coin-gold:14:14:2:0|a')).toBe('3g');
     expect(tooltipText('|A:quest-icon:0:0|a Quest Item')).toBe('Quest Item');
+  });
+});
+
+describe('container loot', () => {
+  it('names containers: the item name, Unknown container for 0, else the id', () => {
+    expect(containerLabel(6307, 'Message in a Bottle')).toBe('Message in a Bottle');
+    expect(containerLabel(0, null)).toBe('Unknown container');
+    expect(containerLabel(5523, null)).toBe('Item 5523');
+    expect(containerLabel(5523, '')).toBe('Item 5523');
+  });
+
+  it('groups contents per build, newest first, items by chance then id', () => {
+    const item = (build: number, itemId: number, chance: number | null) => ({
+      build,
+      itemId,
+      name: null,
+      quality: null,
+      count: 1,
+      quantity: 1,
+      chance,
+      avgQuantity: 1,
+    });
+    const groups = contentsByBuild({
+      opens: [
+        { build: 61582, opened: 4, copper: 50, avgCopper: 12.5 },
+        { build: 69977, opened: 1, copper: 0, avgCopper: 0 },
+      ],
+      items: [
+        item(61582, 5498, 0.25),
+        item(61582, 5503, 0.75),
+        item(69977, 5503, 1),
+        item(61582, 4409, 0.75),
+        item(61582, 1, null),
+      ],
+    });
+    expect(groups.map((g) => [g.build, g.opened])).toEqual([
+      [69977, 1],
+      [61582, 4],
+    ]);
+    expect(groups[0]!.items.map((i) => i.itemId)).toEqual([5503]);
+    expect(groups[1]!.items.map((i) => i.itemId)).toEqual([4409, 5503, 5498, 1]);
+    expect(groups[1]!.avgCopper).toBe(12.5);
+    expect(contentsByBuild({ opens: [], items: [] })).toEqual([]);
+  });
+
+  it('formats average quantities with up to 2 decimals', () => {
+    expect(formatAvgQuantity(1)).toBe('1');
+    expect(formatAvgQuantity(1.3333)).toBe('1.33');
+    expect(formatAvgQuantity(1250.5)).toBe('1,250.5');
+    expect(formatAvgQuantity(null)).toBe('—');
+    expect(formatAvgQuantity(Number.NaN)).toBe('—');
   });
 });

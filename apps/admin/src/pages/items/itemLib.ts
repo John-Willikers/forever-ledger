@@ -131,3 +131,61 @@ export function tooltipText(line: string) {
     .replace(/\t/g, ' ')
     .trim();
 }
+
+// Schema 6 container loot (the admin item route's `contents` and `openedFrom`).
+
+export interface ContainerOpens {
+  build: number;
+  opened: number;
+  copper: number;
+  avgCopper: number | null;
+}
+
+export interface ContainerContent {
+  build: number;
+  itemId: number;
+  name: string | null;
+  quality: number | null;
+  /** Opens that held the item. */
+  count: number;
+  quantity: number;
+  /** Chance per open (0..1). */
+  chance: number | null;
+  /** The stack when it is in there. */
+  avgQuantity: number | null;
+}
+
+export interface OpenedFrom {
+  build: number;
+  /** 0: an opened item the client could not name. */
+  containerId: number;
+  containerName: string | null;
+  containerQuality: number | null;
+  opened: number;
+  count: number;
+  quantity: number;
+  chance: number | null;
+}
+
+/** A container's display name: its item name, `Unknown container` for 0, else its id. */
+export const containerLabel = (containerId: number, name: string | null | undefined) =>
+  name ? name : containerId === 0 ? 'Unknown container' : `Item ${containerId}`;
+
+/** Contents per build, newest first: the build's opens and copper with the items it held (by chance). */
+export function contentsByBuild(contents: { opens: ContainerOpens[]; items: ContainerContent[] }) {
+  return [...contents.opens]
+    .sort((a, b) => b.build - a.build)
+    .map((o) => ({
+      ...o,
+      items: contents.items
+        .filter((i) => i.build === o.build)
+        .sort((a, b) => (b.chance ?? -1) - (a.chance ?? -1) || a.itemId - b.itemId),
+    }));
+}
+
+const quantityFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+
+/** An average stack: `1`, `1.33`; a dash when unknown. */
+export function formatAvgQuantity(n: number | null | undefined) {
+  return typeof n === 'number' && Number.isFinite(n) ? quantityFormat.format(n) : '—';
+}
