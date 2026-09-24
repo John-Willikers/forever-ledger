@@ -54,4 +54,5 @@ Full dump: `fixtures/real/api-69913.json` (probe 0.1.0, 2026-09-23 00:41 CDT, en
 | Encounter / loot events   | `ENCOUNTER_END(encounterID, name, difficultyID, groupSize, success, encounterUnitStatus)`, `BOSS_KILL`, `LOOT_OPENED(autoLoot, isFromItem)`, `GetLootSourceInfo` all present.      |
 | Combat log                | `CombatLogGetCurrentEventInfo` is **nil** and `C_CombatLog.IsCombatLogRestricted` exists: don't plan on CLEU.                                                                      |
 | All 37 candidate events   | Register fine. `LoadAddOn` is nil (use `C_AddOns.LoadAddOn`).                                                                                                                      |
+| Level cap                 | **20** on the beta (owner, 2026-09-24): max-level characters earn 0 XP, so a run's `xp_total` 0 is expected there.                                                                 |
 | Event arg order (sniffed) | Not sniffed yet — the payloads above come from the API docs. Confirm with `/flprobe sniff on` during real play.                                                                    |
