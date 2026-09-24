@@ -162,9 +162,16 @@ API (all but health need `Authorization: Bearer <token>`):
 | `GET /v1/professions/recipes?skillLine=&build=`  | Recipes: reagents, output, difficulty thresholds seen, learned by / via          |
 | `GET /v1/professions/sources?itemId=\|recipeId=` | Trainers (cost, rank), vendors (price, stock), Recipe-class item drops           |
 | `GET /v1/professions/gathering?build=`           | Per node (0 = fishing): opens, min rank, zones, top loot per open                |
+| `GET /v1/professions/skills?char=&build=`        | Per character: professions, rank / max rank, skill-up history with recipe        |
 | `GET /v1/export?format=json\|csv&table=`         | Full dump for offline analysis (times in America/Chicago)                        |
 | `POST /v1/diagnostics`                           | Tray app error report (30/min per token, 256 KB)                                 |
 | `GET /v1/diagnostics?since=&limit=`              | Error reports and refused uploads, newest first (`since`: epoch secs or ISO)     |
+
+Forever lists every profession twice: a base skill line and a "Classic" child line (`parentId` = the base) with the
+same name and rank. The profession routes fold child lines into their base: `?skillLine=` takes either id and means
+the whole profession, recipes carry `profession: { skillLineId, name }` of the base next to their own `skillLineId`,
+gathering and trainer skill lines are the base (with `skillLineName`), and a rise recorded on both lines is one
+skill-up.
 
 ## 🏷️ Releasing
 
