@@ -50,7 +50,20 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   raw_uploads grows large. (`d3a5bfb` scope: `api_tokens.can_read` default false, upload-only tokens get 403 on
   every `/v1` read, Access page toggle + "can read" at mint, `tokens-cli mint --read`; `b4e7448` int4 query params
   → 400; mint box `reset()` so the plaintext leaves the mutation cache.)
-- ⬜ 3 📜 Quests + 🧙 Characters
+- ✅ 3 📜 Quests + 🧙 Characters — 2026-09-23 21:40 CDT — `eaa40d8` server (+ `23a019f` test), `e4b27ae` pages
+  (branch `feat/admin-quests-characters`, not deployed). New `routes/adminQuests.ts` (admin session only):
+  `GET /admin/api/quests` one row per quest at `?build=` or its newest build (all numbers from that build only:
+  offered XP/money, turn-ins, avg XP paid, `xpMismatch`, reward choices with picks from `turn_ins.choice_item_id`,
+  givers/enders, `foreverOnly` = id ≥ `FOREVER_QUEST_ID_MIN` 90000), filters `search`/`zone`/`minLevel`/`maxLevel`/
+  `forever=1`/`mismatch=1`, `limit` ≤ 500 + `offset`, zone/build facets; `GET /admin/api/quests/:id` observations
+  (locations sanitized to known fields), newest 500 turn-ins, reward options + picks per build;
+  `GET /admin/api/characters/:key/timeline` level points (observations, turn-ins, character; deduped, runs at one
+  level cut to first/last), turn-ins with running XP, XP per Chicago day. Pages: Quests (URL-kept filters, badges,
+  XP-vs-level scatter with 3 zone colors + Other and Forever-only diamonds, `?quest=` drawer with pick bars and
+  giver/ender zone plots), `/characters/:key` (level + cumulative XP lines, XP per day, turn-ins, professions from
+  `/v1/professions/skills`). Notes: "XP sources stacked area (quests vs mobs)" left for 🏰 Dungeons (mob XP only exists
+  per run); the list scans all observations + turn-ins per request (fine now; add a per-quest/build summary table if
+  it gets slow); ECharts scatter/legend registered from `pages/quests/registerScatter.ts`, not `Chart.tsx`.
 - ⬜ 4 🎒 Loot + 🏰 Dungeons
 - ⬜ 5 ⚒️ Professions + 🏪 Vendors/trainers
 - ⬜ 6 🧪 Builds
