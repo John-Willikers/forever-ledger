@@ -155,21 +155,22 @@ pnpm --filter @forever-ledger/server token:revoke 3
 
 API (all but health need `Authorization: Bearer <token>`; the read routes also take an admin panel session):
 
-| Route                                            | What                                                                             |
-| ------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `GET /v1/health`                                 | Liveness + DB check                                                              |
-| `POST /v1/ingest`                                | Idempotent batch upsert; returns acknowledged record keys + content hashes       |
-| `GET /v1/runs/summary?build=`                    | Per dungeon: runs, median/best clear, XP/min (mob vs quest), deaths, boss splits |
-| `GET /v1/quests/xp?build=`                       | Offered vs paid XP per quest                                                     |
-| `GET /v1/items/:id`                              | Item snapshots per build, drop sources, quest rewards, class/spec fit            |
-| `GET /v1/drops/rates?build=`                     | Per npc + item: corpses looted, dropped, rate, stack quantity, avg copper/corpse |
-| `GET /v1/professions/recipes?skillLine=&build=`  | Recipes: reagents, output, difficulty thresholds seen, learned by / via          |
-| `GET /v1/professions/sources?itemId=\|recipeId=` | Trainers (cost, rank), vendors (price, costs, stock), NPC titles, recipe drops   |
-| `GET /v1/professions/gathering?build=`           | Per node (0 = fishing): opens, min rank, zones, top loot per open                |
-| `GET /v1/professions/skills?char=&build=`        | Per character: professions, rank / max rank, skill-up history with recipe        |
-| `GET /v1/export?format=json\|csv&table=`         | Full dump for offline analysis (times in America/Chicago)                        |
-| `POST /v1/diagnostics`                           | Tray app error report (30/min per token, 256 KB)                                 |
-| `GET /v1/diagnostics?since=&limit=`              | Error reports and refused uploads, newest first (`since`: epoch secs or ISO)     |
+| Route                                            | What                                                                                         |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `GET /v1/health`                                 | Liveness + DB check                                                                          |
+| `POST /v1/ingest`                                | Idempotent batch upsert; returns acknowledged record keys + content hashes                   |
+| `GET /v1/runs/summary?build=`                    | Per dungeon: runs, median/best clear, XP/min (mob vs quest), deaths, boss splits             |
+| `GET /v1/quests/xp?build=`                       | Offered vs paid XP per quest                                                                 |
+| `GET /v1/items/:id`                              | Item snapshots per build, drop sources, quest rewards, class/spec fit                        |
+| `GET /v1/drops/rates?build=`                     | Per npc + item: corpses looted, dropped, rate, stack quantity, avg copper/corpse             |
+| `GET /v1/professions/recipes?skillLine=&build=`  | Recipes: reagents, output, difficulty thresholds seen, learned by / via                      |
+| `GET /v1/professions/sources?itemId=\|recipeId=` | Trainers (cost, rank), vendors (price, costs, stock), NPC titles, recipe drops               |
+| `GET /v1/professions/gathering?build=`           | Per node (0 = fishing): opens, min rank, zones, top loot per open                            |
+| `GET /v1/professions/skills?char=&build=`        | Per character: professions, rank / max rank, skill-up history with recipe                    |
+| `GET /v1/export?format=json\|csv&table=`         | Full dump for offline analysis (times in America/Chicago)                                    |
+| `POST /v1/diagnostics`                           | Tray app error report (30/min per token, 256 KB)                                             |
+| `GET /v1/diagnostics?since=&limit=`              | Error reports and refused uploads, newest first (`since`: epoch secs or ISO)                 |
+| `GET /v1/diagnostics?type=&level=&source=`       | Filters: `type=diagnostic\|ingest-error`; refused uploads are level `error`, source `ingest` |
 
 Forever lists every profession twice: a base skill line and a "Classic" child line (`parentId` = the base) with the
 same name and rank. The profession routes fold child lines into their base: `?skillLine=` takes either id and means
@@ -219,10 +220,26 @@ reads the `/v1/*` routes with its session and calls `/admin/api/*` (non-GET requ
 
 Roles: `ADMIN_BATTLETAGS` is a **first-login bootstrap only** — a listed BattleTag becomes `admin` at login while no
 admin exists yet (checked in the same transaction). Once any admin exists the list grants nothing: a second account
-with the same BattleTag stays `member` and a demoted admin stays demoted; roles change only in the database (Phase 2
-Access page). Empty it after your first login (if the last admin is ever demoted, a listed tag would bootstrap
+with the same BattleTag stays `member` and a demoted admin stays demoted; roles change only on the panel's Access
+page (or in the database); the last admin can't be demoted. Empty it after your first login (if the last admin is ever demoted, a listed tag would bootstrap
 again). The account id pins the user, so a BattleTag change keeps the role. `ADMIN_BNET_SUBS` (account ids) always
 grants admin — pinned to the account, not the tag.
+
+Pages: **Overview** (KPIs, uploads per hour, records by kind, live upload feed every 15 s, builds, addon/tray
+versions in use), **Characters** (cards with owners), **Health** (diagnostics + refused uploads with filters, client
+API samples with the addon's `ForeverLedger.errors` / `fieldMisses` reports first), **Access** (users and roles,
+upload tokens: mint with an owner, assign owners, revoke). Admin API (admin session; writes need `x-csrf-token`):
+
+| Route                                                     | What                                                                   |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `GET /admin/api/overview`                                 | KPIs, records by kind, builds, versions in use, 7-day health           |
+| `GET /admin/api/uploads?limit=&before=`                   | Recent uploads: token, owner, versions, counts per kind (no data)      |
+| `GET /admin/api/uploads/hourly?days=`                     | Uploads per hour (America/Chicago), empty hours included, ≤ 31 d       |
+| `GET /admin/api/characters`                               | Characters with the owners of the tokens that uploaded them            |
+| `GET /admin/api/api-samples`, `…/api-samples/:api?build=` | Client API samples (list without JSON; one sample)                     |
+| `GET /admin/api/tokens`, `POST /admin/api/tokens`         | List; mint `{ label, ownerUserId? }` (plaintext in that response only) |
+| `POST /admin/api/tokens/:id/revoke`, `…/:id/owner`        | Revoke (idempotent); set owner `{ userId \| null }`                    |
+| `GET /admin/api/users`, `POST /admin/api/users/:id/role`  | Users with token counts; `{ role }` (409 for the last admin)           |
 
 Deploy: `pnpm install && pnpm build` (builds `apps/admin/dist` too), fill `deploy/.env`, copy the Nginx site
 (`deploy/nginx/ledger.willikers.dev.conf`) **and** its `log_format` snippet (`deploy/nginx/ledger-noquery-log.conf` →

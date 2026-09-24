@@ -36,7 +36,16 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   `8bcfd65` (M1 `__Host-` cookies + 600 s single-use state, M3 fixed `?error=` codes, M4 no session fixation),
   `1daf343` (M5 30-day absolute sessions, M5b query-safe API paths, M7 no-store/nosniff, M8 dotfiles deny),
   `f65127c` (M2 HSTS, M6 `/admin/auth/` access log without query strings).
-- ⬜ 2 🏠 Overview + Health + Access
+- ✅ 2 🏠 Overview + Health + Access — 2026-09-23 21:05 — `c8ee1dd` server, `8333225` pages (branch
+  `feat/admin-overview-health-access`, not deployed). Admin API: overview KPIs (records by kind via `jsonb_each` over
+  `raw_uploads` payloads), uploads feed (`?before=` id cursor, counts per kind, never records) + hourly buckets
+  (gap-filled, Chicago ISO), characters with owners (tokens whose uploads held the character), api-samples list/detail,
+  tokens list/mint (plaintext only in the 201 response, never logged)/revoke (idempotent)/owner, users list/role
+  (409 for the last admin, under the bootstrap advisory lock); `/v1/diagnostics` gains `type`/`level`/`source`
+  filters (refused uploads = level `error`, source `ingest`). Pages: Overview (live feed 15 s, KPIs 60 s), Health,
+  Access (inline confirms, copy-once token box), Characters (cards; charts in phase 3). No migration (no index
+  needed). Notes: overview/characters read every payload's `records` (fine at today's 34 uploads / 241 kB; add
+  per-kind counts at ingest if it grows to many MB); pages lazy-load so ECharts (~550 kB) stays off the login page.
 - ⬜ 3 📜 Quests + 🧙 Characters
 - ⬜ 4 🎒 Loot + 🏰 Dungeons
 - ⬜ 5 ⚒️ Professions + 🏪 Vendors/trainers
