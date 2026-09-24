@@ -640,6 +640,25 @@ pre.json {
   flex: 1 1 12rem;
 }
 
+.mint label.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 1 auto;
+  padding-bottom: 0.4rem;
+}
+
+.scope {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.scope .pill {
+  margin: 0;
+}
+
 .field-error {
   color: var(--danger-text);
   margin: 0.4rem 0 0;

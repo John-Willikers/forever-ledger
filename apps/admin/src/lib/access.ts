@@ -22,3 +22,23 @@ export function labelProblem(label: string) {
   if (t.length > TOKEN_LABEL_MAX) return `Keep the label under ${TOKEN_LABEL_MAX} characters.`;
   return null;
 }
+
+/** What a token's read scope unlocks: every /v1 read route, i.e. everyone's data and error reports. */
+export const READ_SCOPE_LABEL = 'can read all data (API/export)';
+
+/** The read-scope toggle for a token: what it switches to, its button, and the inline confirm. */
+export function readToggle(t: Pick<Token, 'canRead' | 'label'>) {
+  return t.canRead
+    ? {
+        next: false,
+        button: 'Make upload only',
+        confirm: `Take back read access from "${t.label}"`,
+        danger: false,
+      }
+    : {
+        next: true,
+        button: 'Allow reading',
+        confirm: `Let "${t.label}" read all data (API/export)`,
+        danger: true,
+      };
+}

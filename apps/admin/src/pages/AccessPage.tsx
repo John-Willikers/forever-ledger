@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper } from '@tanstack/react-table';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { postJson, useAdminQuery, useCsrf, useMe } from '../api';
 import type { Role } from '../api';
@@ -9,7 +9,14 @@ import { ConfirmButton } from '../components/ConfirmButton';
 import { DataTable } from '../components/DataTable';
 import type { SortableFeatures } from '../components/DataTable';
 import { ErrorState, QueryState } from '../components/State';
-import { isLastAdmin, labelProblem, sortTokens, TOKEN_LABEL_MAX } from '../lib/access';
+import {
+  isLastAdmin,
+  labelProblem,
+  READ_SCOPE_LABEL,
+  readToggle,
+  sortTokens,
+  TOKEN_LABEL_MAX,
+} from '../lib/access';
 import { formatNumber } from '../lib/format';
 import { formatChicago, formatChicagoShort, timeAgo } from '../lib/time';
 import type { AdminUser, Items, MintedToken, Token } from '../types';
@@ -35,8 +42,9 @@ export function AccessPage() {
       <header className="page-head">
         <h1>Access</h1>
         <p className="muted">
-          Who can log in, and the upload tokens the tray apps use. Characters uploaded with a token
-          belong to its owner.
+          Who can log in, and the tokens the tray apps use. Characters uploaded with a token belong
+          to its owner. Tokens only upload unless they may read: a reader token sees everyone's data
+          through the API and export, so keep that for your own scripts.
         </p>
       </header>
       <MintCard users={users.data?.items ?? []} />
@@ -53,29 +61,34 @@ function MintCard({ users }: { users: AdminUser[] }) {
   const invalidate = useInvalidateAccess();
   const [label, setLabel] = useState('');
   const [owner, setOwner] = useState('');
+  const [canRead, setCanRead] = useState(false);
   const [touched, setTouched] = useState(false);
-  const [minted, setMinted] = useState<MintedToken | null>(null);
+  // The plaintext lives only in this mutation's result: reset() drops it when the box is hidden or the page left,
+  // and gcTime 0 lets the mutation cache forget it at once.
   const mint = useMutation({
-    mutationFn: (body: { label: string; ownerUserId: number | null }) =>
+    mutationFn: (body: { label: string; ownerUserId: number | null; canRead: boolean }) =>
       postJson<MintedToken>('/admin/api/tokens', csrf, body),
-    onSuccess: (t) => {
-      setMinted(t);
+    gcTime: 0,
+    onSuccess: () => {
       setLabel('');
       setOwner('');
+      setCanRead(false);
       setTouched(false);
       void invalidate();
     },
   });
+  const { reset } = mint;
+  useEffect(() => reset, [reset]);
   const problem = labelProblem(label);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setTouched(true);
     if (problem) return;
-    setMinted(null);
-    mint.mutate({ label: label.trim(), ownerUserId: owner ? Number(owner) : null });
+    reset();
+    mint.mutate({ label: label.trim(), ownerUserId: owner ? Number(owner) : null, canRead });
   };
   return (
-    <Card title="Mint an upload token">
+    <Card title="Mint a token">
       <form className="mint" onSubmit={submit} noValidate>
         <label>
           Label
@@ -98,13 +111,17 @@ function MintCard({ users }: { users: AdminUser[] }) {
             ))}
           </select>
         </label>
+        <label className="checkbox" title="Off: the token only uploads (what the tray app needs)">
+          <input type="checkbox" checked={canRead} onChange={(e) => setCanRead(e.target.checked)} />
+          {READ_SCOPE_LABEL}
+        </label>
         <button type="submit" disabled={mint.isPending}>
           {mint.isPending ? 'Minting…' : 'Mint token'}
         </button>
       </form>
       {touched && problem && <p className="field-error">{problem}</p>}
       {mint.isError && <ErrorState error={mint.error} />}
-      {minted && <MintedBox token={minted} onDone={() => setMinted(null)} />}
+      {mint.data && <MintedBox token={mint.data} onDone={reset} />}
     </Card>
   );
 }
@@ -126,8 +143,9 @@ function MintedBox({ token, onDone }: { token: MintedToken; onDone: () => void }
         <strong>
           Token #{token.id} "{token.label}"
         </strong>
-        {token.owner ? ` for ${token.owner.battletag}` : ''}. Copy it now: it won't be shown again
-        (only its hash is stored). Paste it into the tray app's settings.
+        {token.owner ? ` for ${token.owner.battletag}` : ''}
+        {token.canRead ? `, ${READ_SCOPE_LABEL}` : ', upload only'}. Copy it now: it won't be shown
+        again (only its hash is stored). Paste it into the tray app's settings.
       </p>
       <div className="copy-box">
         <input
@@ -161,6 +179,11 @@ function TokensCard({ users }: { users: AdminUser[] }) {
   const setOwner = useMutation({
     mutationFn: ({ id, userId }: { id: number; userId: number | null }) =>
       postJson(`/admin/api/tokens/${id}/owner`, csrf, { userId }),
+    onSettled: () => invalidate(),
+  });
+  const setRead = useMutation({
+    mutationFn: ({ id, canRead }: { id: number; canRead: boolean }) =>
+      postJson(`/admin/api/tokens/${id}/read`, csrf, { canRead }),
     onSettled: () => invalidate(),
   });
 
@@ -197,6 +220,36 @@ function TokensCard({ users }: { users: AdminUser[] }) {
               </option>
             ))}
           </select>
+        );
+      },
+    }),
+    col.accessor((t) => Number(t.canRead), {
+      id: 'scope',
+      header: 'Scope',
+      cell: (c) => {
+        const t = c.row.original;
+        const toggle = readToggle(t);
+        return (
+          <span className="scope">
+            {t.canRead ? (
+              <span className="pill sev-warn" title={READ_SCOPE_LABEL}>
+                upload + read
+              </span>
+            ) : (
+              <span className="pill neutral">upload only</span>
+            )}
+            {!t.revokedAt && (
+              <ConfirmButton
+                danger={toggle.danger}
+                disabled={setRead.isPending}
+                confirmLabel={toggle.confirm}
+                onConfirm={() => setRead.mutate({ id: t.id, canRead: toggle.next })}
+                title={t.canRead ? undefined : READ_SCOPE_LABEL}
+              >
+                {toggle.button}
+              </ConfirmButton>
+            )}
+          </span>
         );
       },
     }),
@@ -254,9 +307,10 @@ function TokensCard({ users }: { users: AdminUser[] }) {
   ]);
 
   return (
-    <Card title="Upload tokens">
+    <Card title="Tokens">
       {revoke.isError && <ErrorState error={revoke.error} />}
       {setOwner.isError && <ErrorState error={setOwner.error} />}
+      {setRead.isError && <ErrorState error={setRead.error} />}
       <QueryState query={tokens}>
         {({ items }) => (
           <DataTable

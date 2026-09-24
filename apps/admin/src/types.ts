@@ -93,6 +93,8 @@ export interface Token {
   revokedAt: string | null;
   lastUsedAt: string | null;
   owner: UserRef | null;
+  /** Read scope: may also read every /v1 read route (all data, export, diagnostics). */
+  canRead: boolean;
   uploads: number;
   lastUploadAt: string | null;
 }
@@ -101,6 +103,7 @@ export interface MintedToken {
   id: number;
   label: string;
   owner: UserRef | null;
+  canRead: boolean;
   /** Shown once; never returned again. */
   token: string;
 }

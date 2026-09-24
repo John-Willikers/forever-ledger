@@ -144,16 +144,26 @@ pnpm install && pnpm build
 pm2 start deploy/ecosystem.config.cjs         # runs migrations on start
 ```
 
-Tokens (one per contributor; only the hash is stored):
+Tokens (one per contributor; only the hash is stored). A token has one of two scopes:
+
+- **upload** (the default): `POST /v1/ingest`, `POST /v1/diagnostics` and `GET /v1/addon/manifest` — everything the
+  tray app and the uploader CLI call. It can't read anything back: the read routes answer `403 token cannot read`.
+- **upload + read** (`can_read`): also every `/v1` read route (analysis, items, professions, export, diagnostics
+  list) — that's everyone's data and error reports, so mint it only for your own scripts, never for a friend's PC.
+
+Reads need an admin panel session or a reader token. Mint a reader with `--read`, or tick "can read" on the Access
+page (which can also grant or take it back later):
 
 ```bash
 set -a; . deploy/.env; set +a
-pnpm --filter @forever-ledger/server token:mint "Friend's PC"
-pnpm --filter @forever-ledger/server token:list
+pnpm --filter @forever-ledger/server token:mint "Friend's PC"            # upload only
+pnpm --filter @forever-ledger/server token:mint "my analysis script" --read
+pnpm --filter @forever-ledger/server token:list                          # shows upload / upload+read
 pnpm --filter @forever-ledger/server token:revoke 3
 ```
 
-API (all but health need `Authorization: Bearer <token>`; the read routes also take an admin panel session):
+API (all but health need `Authorization: Bearer <token>`; the read routes need a reader token or an admin panel
+session, an upload-only token gets 403):
 
 | Route                                            | What                                                                                         |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
@@ -228,18 +238,20 @@ grants admin — pinned to the account, not the tag.
 Pages: **Overview** (KPIs, uploads per hour, records by kind, live upload feed every 15 s, builds, addon/tray
 versions in use), **Characters** (cards with owners), **Health** (diagnostics + refused uploads with filters, client
 API samples with the addon's `ForeverLedger.errors` / `fieldMisses` reports first), **Access** (users and roles,
-upload tokens: mint with an owner, assign owners, revoke). Admin API (admin session; writes need `x-csrf-token`):
+tokens: mint with an owner and an optional "can read", assign owners, grant or take back read access, revoke).
+Admin API (admin session; writes need `x-csrf-token`):
 
-| Route                                                     | What                                                                   |
-| --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `GET /admin/api/overview`                                 | KPIs, records by kind, builds, versions in use, 7-day health           |
-| `GET /admin/api/uploads?limit=&before=`                   | Recent uploads: token, owner, versions, counts per kind (no data)      |
-| `GET /admin/api/uploads/hourly?days=`                     | Uploads per hour (America/Chicago), empty hours included, ≤ 31 d       |
-| `GET /admin/api/characters`                               | Characters with the owners of the tokens that uploaded them            |
-| `GET /admin/api/api-samples`, `…/api-samples/:api?build=` | Client API samples (list without JSON; one sample)                     |
-| `GET /admin/api/tokens`, `POST /admin/api/tokens`         | List; mint `{ label, ownerUserId? }` (plaintext in that response only) |
-| `POST /admin/api/tokens/:id/revoke`, `…/:id/owner`        | Revoke (idempotent); set owner `{ userId \| null }`                    |
-| `GET /admin/api/users`, `POST /admin/api/users/:id/role`  | Users with token counts; `{ role }` (409 for the last admin)           |
+| Route                                                     | What                                                                                              |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `GET /admin/api/overview`                                 | KPIs, records by kind, builds, versions in use, 7-day health                                      |
+| `GET /admin/api/uploads?limit=&before=`                   | Recent uploads: token, owner, versions, counts per kind (no data)                                 |
+| `GET /admin/api/uploads/hourly?days=`                     | Uploads per hour (America/Chicago), empty hours included, ≤ 31 d                                  |
+| `GET /admin/api/characters`                               | Characters with the owners of the tokens that uploaded them                                       |
+| `GET /admin/api/api-samples`, `…/api-samples/:api?build=` | Client API samples (list without JSON; one sample)                                                |
+| `GET /admin/api/tokens`, `POST /admin/api/tokens`         | List (with `canRead`); mint `{ label, ownerUserId?, canRead? }` (plaintext in that response only) |
+| `POST /admin/api/tokens/:id/revoke`, `…/:id/owner`        | Revoke (idempotent); set owner `{ userId \| null }`                                               |
+| `POST /admin/api/tokens/:id/read`                         | Read scope `{ canRead: boolean }` (all data via the API/export)                                   |
+| `GET /admin/api/users`, `POST /admin/api/users/:id/role`  | Users with token counts; `{ role }` (409 for the last admin)                                      |
 
 Deploy: `pnpm install && pnpm build` (builds `apps/admin/dist` too), fill `deploy/.env`, copy the Nginx site
 (`deploy/nginx/ledger.willikers.dev.conf`) **and** its `log_format` snippet (`deploy/nginx/ledger-noquery-log.conf` →
