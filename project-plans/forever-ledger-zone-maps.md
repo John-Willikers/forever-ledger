@@ -21,6 +21,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 3 🚀 Deploy: backup `forever_ledger-20260923-2323-pre0011.sql.gz`, migration 0011 applied, PM2 reloaded, nginx
   conf installed + reloaded — 23:24 CDT. Hotfix: `location /admin/api/maps/` 301'd the list route → prefix without the
   trailing slash (live 23:27 CDT, PR fix/nginx-maps-location)
+- ✅ 🏷️ Zone names for maps only gathered on (were "unknown", e.g. 1412 Mulgore, 1414 Kalimdor): `src/uiMapNames.ts`,
+  the 60-row UiMap table of build 1.60.1.69977 from wago.tools (54 Classic maps + the beta's Mount Hyjal, Zephras
+  Isle ×2, Darkspear Islands, Riverglades, Shen'dralas); names our uploads saw still win — 00:05 CDT 2026-09-24
+- ℹ️ wow.export lists AreaTable ids, not uiMapIDs (Durotar `[14]` → 1411, Mulgore `[215]` → 1412, The Barrens `[17]` →
+  1413); continents (1414 Kalimdor) aren't in its Zones tab (no AreaTable row), so Kalimdor has no upload for now
 - ⬜ 4 🗺️ Owner uploads Durotar (1411) + The Barrens (1413) from wow.export, checks the alignment
 
 ## 📌 Context

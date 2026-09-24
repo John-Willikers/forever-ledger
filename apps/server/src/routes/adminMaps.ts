@@ -11,6 +11,7 @@ import { buildFilter } from './analysis.js';
 import { iso, rows } from './adminData.js';
 import { badRequest, idParam, textParam } from './shared.js';
 import { jarr, jint, jlen, jnum, jtext } from './sqlJson.js';
+import { uiMapName } from '../uiMapNames.js';
 
 /** Longest zone name accepted with `?name=`. */
 export const MAP_NAME_MAX = 100;
@@ -160,7 +161,7 @@ export async function registerAdminMapsRoutes(
         const image = byId.get(r.map_id) ?? null;
         return {
           uiMapId: r.map_id,
-          zone: r.zone ?? image?.name ?? null,
+          zone: r.zone ?? image?.name ?? uiMapName(r.map_id),
           points: {
             gathering: r.gathering,
             quests: r.quests,
@@ -293,7 +294,8 @@ export async function registerAdminMapsRoutes(
         await db.execute(sql`with ${ZONE_NAMES}
           insert into zone_maps (ui_map_id, name, mime, width, height, bytes, sha256, build, uploaded_by, uploaded_at)
           values (${uiMapId},
-                  coalesce(${name}::text, (select zone from zone_names where map_id = ${uiMapId})),
+                  coalesce(${name}::text, (select zone from zone_names where map_id = ${uiMapId}),
+                           ${uiMapName(uiMapId)}::text),
                   ${info.mime}, ${info.width}, ${info.height}, ${body}, ${sha256}, ${build}::int,
                   ${s?.user.id ?? null}::int, now())
           on conflict (ui_map_id) do update set

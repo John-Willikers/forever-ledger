@@ -162,8 +162,8 @@ describe('zone maps (real Postgres)', () => {
         zone: 'Stormwind City',
         points: { gathering: 0, quests: 0, npcs: 2 },
       });
-      // Only well-formed spots count; no name known for a map only gathered on.
-      expect(byId.get(1411)).toMatchObject({ zone: null, points: { gathering: 2, total: 2 } });
+      // Only well-formed spots count; a map only gathered on gets its name from the client's UiMap table.
+      expect(byId.get(1411)).toMatchObject({ zone: 'Durotar', points: { gathering: 2, total: 2 } });
       expect([...byId.keys()].every((id) => Number.isInteger(id) && id > 0)).toBe(true);
     });
   });
@@ -294,11 +294,19 @@ describe('zone maps (real Postgres)', () => {
       expect(res.json().map.name).toBe('Durotar');
       expect(res.json().warnings).toHaveLength(1);
       expect(res.json().warnings[0]).toMatch(/1002:668/);
-      // A map without points can be uploaded too (an image first, points later).
-      expect((await put('/admin/api/maps/1413', admin, png(3, 2))).statusCode).toBe(200);
+      // A map without points can be uploaded too (an image first, points later); its name comes from the UiMap table.
+      const barrens = await put('/admin/api/maps/1413', admin, png(3, 2));
+      expect(barrens.statusCode).toBe(200);
+      expect(barrens.json().map.name).toBe('The Barrens');
+      // A uiMapID the table doesn't know stays unnamed.
+      const unknownMap = await put('/admin/api/maps/99999', admin, png(3, 2));
+      expect(unknownMap.json().map.name).toBeNull();
       const list = (await get('/admin/api/maps', admin)).json();
-      expect(list.maps.find((m: { uiMapId: number }) => m.uiMapId === 1413)).toMatchObject({
-        zone: null,
+      const find = (id: number) => list.maps.find((m: { uiMapId: number }) => m.uiMapId === id);
+      expect(find(99999)).toMatchObject({ zone: null, image: { width: 3 } });
+      expect(await del('/admin/api/maps/99999', admin)).toMatchObject({ statusCode: 204 });
+      expect(find(1413)).toMatchObject({
+        zone: 'The Barrens',
         points: { total: 0 },
         image: { width: 3 },
       });
