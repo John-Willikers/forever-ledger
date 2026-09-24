@@ -1,8 +1,8 @@
--- Forever Ledger v0.3.1 (SavedVariables schema 4)
+-- Forever Ledger v0.3.2 (SavedVariables schema 4)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.3.1"
+local VERSION = "0.3.2"
 -- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
 -- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
 -- items[].classID/subclassID and apiSamples. Each is additive: older data is valid as it is.
