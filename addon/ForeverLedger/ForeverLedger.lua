@@ -1253,21 +1253,24 @@ do
 
   -- UNIT_SPELLCAST_SENT(unit, target, castGUID, spellID) of a player gather spell: the target is the node's name.
   function onGatherSent(target, castGUID, spellID)
-    if not gatherSkill(spellID) or type(target) ~= "string" or target == "" then return end
-    gather.sent = { castGUID = castGUID, spellID = tonumber(spellID), name = target:sub(1, 100), at = now() }
+    local line = gatherSkill(spellID)
+    if not line then return end
+    -- The rank now, before this cast's own skill-up (SKILL_LINES_CHANGED arrives before the loot window opens).
+    gather.sent = { castGUID = castGUID, spellID = tonumber(spellID), at = now(), rank = skillRank(line),
+                    name = type(target) == "string" and target ~= "" and target:sub(1, 100) or nil }
   end
 
   -- A player gather cast finished: the next node opened is its harvest.
   function noteGatherCast(line, castGUID, spellID)
     local s = gather.sent
-    local name
+    local name, rank
     if s and now() - s.at <= ATTRIBUTE_WINDOW and s.spellID == spellID
        and (s.castGUID == castGUID or not s.castGUID or not castGUID) then
-      name = s.name
+      name, rank = s.name, s.rank
     end
     gather.sent = nil
     gather.seq = gather.seq + 1
-    gather.last = { skillLineID = line, at = now(), seq = gather.seq, name = name }
+    gather.last = { skillLineID = line, at = now(), seq = gather.seq, name = name, rank = rank }
   end
 
   -- Counts the object's harvest if it is a new one; returns the harvest key its loot is deduplicated by.
@@ -1287,7 +1290,7 @@ do
     local line = objectID == 0 and FISHING_LINE or (g and g.skillLineID)
     if line then
       n.skillLineID = line
-      local rank = skillRank(line)
+      local rank = (g and g.skillLineID == line and g.rank) or skillRank(line)
       if rank and (not n.rankMin or rank < n.rankMin) then n.rankMin = rank end
     end
     if objectID ~= 0 and g and g.name then

@@ -859,6 +859,22 @@ return function(H)
     H.ok(d.items[2770] and d.items[2770].byBuild[B], "node loot is scanned")
   end)
 
+  H.test("gathering: rankMin is the rank before that harvest's own skill-up", function()
+    -- Live (build 69977): SKILL_LINES_CHANGED for the pick's skill-up arrives before the loot window opens.
+    local c = P.gatherer(H)
+    local castGUID = "Cast-rank-1"
+    c.fire("UNIT_SPELLCAST_SENT", "player", "Copper Vein", castGUID, 2575)
+    for _, l in ipairs(c.world.skillLines) do
+      if l.skillID == P.MINING then l.rank = 71 end
+    end
+    c.fire("SKILL_LINES_CHANGED")
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", castGUID, 2575)
+    c.world.loot = { { itemID = 2770, sourceGUID = P.VEIN, quantity = 1 } }
+    c.fire("LOOT_OPENED")
+    c.fire("LOOT_CLOSED")
+    H.eq(c.env.ForeverLedgerDB.nodes[B][1731].rankMin, 70)
+  end)
+
   H.test("gathering: a node counts once per harvest; spots within 1 map unit are one spot", function()
     local c = gatherer(H)
     mine(c, VEIN)
