@@ -52,7 +52,25 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   → 400; mint box `reset()` so the plaintext leaves the mutation cache.)
 - ⬜ 3 📜 Quests + 🧙 Characters
 - ⬜ 4 🎒 Loot + 🏰 Dungeons
-- ⬜ 5 ⚒️ Professions + 🏪 Vendors/trainers
+- ✅ 5 ⚒️ Professions + 🏪 Vendors/trainers — 2026-09-23 21:41 — `57db63d` server, `379c434` pages (branch
+  `feat/admin-professions-vendors`, not deployed). New `routes/adminProfessions.ts` (admin session only):
+  professions overview (per base profession, child lines folded: characters rank/max + recipes known, recipes
+  known/seen, crafts, harvests/nodes, trainers, recipe vendors), skill-history (one point per rise, oldest first,
+  ≤ 2000 per profession), crafts (per recipe + build, procs), gathering-map (spots per mapId, each session's opens
+  spread evenly over its spots, zone names from NPC locs), cost calculator (cheapest vendor gold price per item =
+  price / stack; extended-cost and 0-gold listings ignored; unknowns listed; output value = sell price × average
+  qty; profit only when complete), vendors / trainers lists (`search` name/tag/npc id with literal wildcards,
+  `title`, `foreverOnly` = npc id ≥ `FOREVER_NPC_MIN` 200000, `limit`/`offset`, `titles`) and details (`?build=`,
+  newest by default; cost items named from `items`). jsonb fields read by type (untrusted); `skillBase` exported
+  from analysis.ts. Pages: profession cards, skill rank step lines, recipe browser with difficulty bands, recipe
+  detail (sources + cost calculator), crafts, gathering scatter (y inverted, size = opens, color + shape per node
+  type, "Other" past 7) + yield table; Vendors/Trainers tabs with tag chips, Forever-only, vendor costs
+  "3× [Item] + 25 [Currency]", trainer partial-scan note. Tests: 20 server (real Postgres: session-v4/v5 +
+  professions-v4 + a fold batch; authz 401/403/200, folding, cost math, Forever filter), 21 admin unit (money,
+  costs, bands, scatter, skill series, labels); `pnpm check` green (624 vitest, 179 Lua). Deviations: extra routes
+  crafts + gathering-map (no /v1 answer for crafts or spot points); Chart.tsx untouched (scatter/legend
+  registered by the page); page CSS in `pages/professions/professions.css`; gathering defaults to all builds merged
+  (build picker).
 - ⬜ 6 🧪 Builds
 - 🟡 7 🚀 Deploy — Phase 1 live 20:45 CDT 2026-09-23: nginx /admin/ + HSTS + no-query auth log, PM2 reloaded from ecosystem (BNET env), migration 0008 applied, pm2 saved. ✅ First admin login 20:47 CDT: user #1 JohnWilliker#1292 role=admin (pinned to account id)
 - **`apps/admin`** — React 19 + TypeScript + Vite SPA (base `/admin/`), **Apache ECharts** (`echarts` +
