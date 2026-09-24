@@ -58,6 +58,8 @@ export interface VendorItem {
   currencyId: number | null;
   extendedCost: boolean;
   costs: Cost[] | null;
+  /** The recipe this (recipe) item teaches: learned from it, or named "<Prefix>: <recipe name>". */
+  teaches: { recipeId: number; name: string } | null;
 }
 
 export interface VendorDetail extends NpcBase {
@@ -73,6 +75,8 @@ export interface TrainerService {
   level: number | null;
   itemId: number | null;
   itemName: string | null;
+  /** The recipe of the same name in the trainer's profession, when one was seen. */
+  recipeId: number | null;
 }
 
 export interface TrainerDetail extends NpcBase {

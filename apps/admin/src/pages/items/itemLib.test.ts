@@ -106,4 +106,13 @@ describe('tooltipText', () => {
     expect(tooltipText('<b>not html</b>')).toBe('<b>not html</b>');
     expect(tooltipText('a || b')).toBe('a | b');
   });
+
+  it('turns coin atlases into g/s/c and drops other atlases', () => {
+    expect(tooltipText('Sell Price: 17|A:coin-copper:14:14:2:0|a')).toBe('Sell Price: 17c');
+    expect(
+      tooltipText('Sell Price: 1|A:coin-silver:14:14:2:0|a 25|A:coin-copper:14:14:2:0|a'),
+    ).toBe('Sell Price: 1s 25c');
+    expect(tooltipText('3|A:coin-gold:14:14:2:0|a')).toBe('3g');
+    expect(tooltipText('|A:quest-icon:0:0|a Quest Item')).toBe('Quest Item');
+  });
 });

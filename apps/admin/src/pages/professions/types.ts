@@ -178,33 +178,95 @@ export interface RecipeCost {
   profit: number | null;
 }
 
-export interface RecipeSources {
-  recipeItems: { itemId: number; name: string | null }[];
-  trainers: {
-    npcId: number;
-    npcName: string | null;
-    npcTitle: string | null;
-    build: number;
-    service: string;
-    cost: number | null;
+/** Where a learn requirement was read: a trainer service or a recipe item's tooltip. */
+export type LearnSource =
+  | { source: 'trainer'; npcId: number; npcName: string | null }
+  | { source: 'recipeItem'; itemId: number; itemName: string | null };
+
+/** /admin/api/professions/recipes/:recipeId. Tooltip lines are cleaned of WoW escape codes; a tab splits columns. */
+export interface RecipeDetail {
+  recipeId: number;
+  name: string;
+  skillLineId: number | null;
+  profession: { skillLineId: number; name: string | null } | null;
+  build: number | null;
+  builds: number[];
+  learnedBy: number;
+  learnedVia: { via: string; count: number }[];
+  sourceText: string | null;
+  requirements: {
+    skillRank: ({ rank: number } & LearnSource) | null;
+    charLevel: ({ level: number } & LearnSource) | null;
+    useLevel: { level: number; source: 'reqLevel' | 'tooltip' } | null;
+    maxTrivial: number | null;
+    difficulty: Threshold[];
+  };
+  output: {
+    itemId: number;
+    name: string | null;
+    quality: number | null;
+    classId: number | null;
+    subclassId: number | null;
+    type: string | null;
+    subtype: string | null;
+    equipLoc: string | null;
+    qtyMin: number | null;
+    qtyMax: number | null;
+    /** The snapshot build the item facts come from (null: no snapshot). */
+    build: number | null;
+    ilvl: number | null;
+    reqLevel: number | null;
+    sellPrice: number | null;
+    stats: Record<string, number>;
+    tooltip: string[];
+  } | null;
+  reagents: { itemId: number; name: string | null; quality: number | null; qty: number }[];
+  recipeItems: {
+    itemId: number;
+    name: string | null;
+    quality: number | null;
+    build: number | null;
+    reqLevel: number | null;
     skillRank: number | null;
+    charLevel: number | null;
+    tooltip: string[];
   }[];
-  vendors: {
-    npcId: number;
-    npcName: string | null;
-    npcTitle: string | null;
-    build: number;
-    itemId: number;
-    itemName: string | null;
-    price: number | null;
-    costs: { amount: number; itemId?: number; currencyId?: number; name?: string }[] | null;
-  }[];
-  drops: {
-    itemId: number;
-    itemName: string | null;
-    build: number;
-    npcId: number | null;
-    objectId: number | null;
-    count: number;
-  }[];
+  sources: {
+    trainers: {
+      npcId: number;
+      npcName: string | null;
+      npcTitle: string | null;
+      build: number;
+      skillLineId: number | null;
+      skillLineName: string | null;
+      cost: number | null;
+      skill: string | null;
+      skillRank: number | null;
+      level: number | null;
+    }[];
+    vendors: {
+      npcId: number;
+      npcName: string | null;
+      npcTitle: string | null;
+      build: number;
+      itemId: number;
+      itemName: string | null;
+      quality: number | null;
+      price: number | null;
+      stack: number | null;
+      numAvailable: number | null;
+      costs: { amount: number; itemId?: number; currencyId?: number; name?: string }[] | null;
+    }[];
+    drops: {
+      itemId: number;
+      itemName: string | null;
+      build: number;
+      npcId: number | null;
+      npcName: string | null;
+      objectId: number | null;
+      objectName: string | null;
+      count: number;
+      contributors: number;
+    }[];
+  };
 }
