@@ -1,8 +1,8 @@
-// Admin panel access management: upload tokens (list, mint, revoke, owner) and users (list, role).
+// Admin panel access management: tokens (list, mint, revoke, owner, read scope) and users (list, role).
 // A minted token's plaintext goes into the one response that creates it; it is never logged or stored.
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { mintToken, revokeToken } from '../auth.js';
+import { mintToken, revokeToken, setTokenCanRead } from '../auth.js';
 import type { Db } from '../db/client.js';
 import { setUserRole } from '../sessions.js';
 import type { Role } from '../sessions.js';
@@ -53,12 +53,13 @@ export function registerAdminAccessRoutes(
       last_used_at: Date | null;
       owner_id: number | null;
       owner_battletag: string | null;
+      can_read: boolean;
       uploads: number;
       last_upload_at: Date | null;
     }>(
       db,
       sql`
-      select t.id, t.label, t.created_at, t.revoked_at, t.last_used_at,
+      select t.id, t.label, t.created_at, t.revoked_at, t.last_used_at, t.can_read,
              usr.id as owner_id, usr.battletag as owner_battletag,
              coalesce(u.n, 0)::int as uploads, u.last_at as last_upload_at
       from api_tokens t
@@ -75,13 +76,17 @@ export function registerAdminAccessRoutes(
         revokedAt: iso(r.revoked_at),
         lastUsedAt: iso(r.last_used_at),
         owner: r.owner_id === null ? null : { id: r.owner_id, battletag: r.owner_battletag },
+        canRead: r.can_read,
         uploads: r.uploads,
         lastUploadAt: iso(r.last_upload_at),
       })),
     };
   });
 
-  /** Mints a token `{ label, ownerUserId? }`; the response is the only place its plaintext ever appears. */
+  /**
+   * Mints a token `{ label, ownerUserId?, canRead? }` (upload scope unless `canRead: true`); the response is the only
+   * place its plaintext ever appears.
+   */
   app.post('/admin/api/tokens', { preHandler }, async (req, reply) => {
     const body = bodyOf(req);
     const label = typeof body?.label === 'string' ? body.label.trim() : '';
@@ -92,11 +97,16 @@ export function registerAdminAccessRoutes(
       return badRequest(reply, 'ownerUserId must be a user id or null');
     const owner = ownerId === null ? null : await userById(db, ownerId);
     if (ownerId !== null && !owner) return badRequest(reply, 'unknown user');
+    const canRead = body?.canRead ?? false;
+    if (typeof canRead !== 'boolean') return badRequest(reply, 'canRead must be true or false');
 
-    const { id, token } = await mintToken(db, label, { userId: owner?.id ?? null });
+    const { id, token } = await mintToken(db, label, { userId: owner?.id ?? null, canRead });
     const me = await whoAmI(req, reply);
-    req.log.info({ tokenId: id, ownerUserId: owner?.id ?? null, by: me?.user.id }, 'token minted');
-    return reply.status(201).send({ id, label, owner, token });
+    req.log.info(
+      { tokenId: id, ownerUserId: owner?.id ?? null, canRead, by: me?.user.id },
+      'token minted',
+    );
+    return reply.status(201).send({ id, label, owner, canRead, token });
   });
 
   app.post<{ Params: { id: string } }>(
@@ -141,6 +151,23 @@ export function registerAdminAccessRoutes(
       const me = await whoAmI(req, reply);
       req.log.info({ tokenId: id, ownerUserId: owner?.id ?? null, by: me?.user.id }, 'token owner');
       return { id, owner };
+    },
+  );
+
+  /** `{ canRead }`: whether the token may also read every /v1 read route (all data, export, diagnostics). */
+  app.post<{ Params: { id: string } }>(
+    '/admin/api/tokens/:id/read',
+    { preHandler },
+    async (req, reply) => {
+      const id = idParam(req.params.id);
+      if (id === null) return badRequest(reply, 'bad token id');
+      const canRead = bodyOf(req)?.canRead;
+      if (typeof canRead !== 'boolean') return badRequest(reply, 'canRead must be true or false');
+      if (!(await setTokenCanRead(db, id, canRead)))
+        return reply.status(404).send({ error: 'no such token' });
+      const me = await whoAmI(req, reply);
+      req.log.info({ tokenId: id, canRead, by: me?.user.id }, 'token read scope');
+      return { id, canRead };
     },
   );
 

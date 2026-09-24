@@ -5,7 +5,10 @@ import { verifyBearer } from '../auth.js';
 import type { Db } from '../db/client.js';
 import { chicagoIso } from '../time.js';
 
-/** Bearer-only guard (addon manifest). Read routes use `requireReader`, which also takes an admin session. */
+/**
+ * Any valid bearer token, whatever its scope (the addon manifest, an upload route). Read routes use
+ * `requireReader`: a reader token or an admin session.
+ */
 export function requireToken(db: Db) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if ((await verifyBearer(db, req.headers.authorization)) === null) {
@@ -35,11 +38,7 @@ const intArray = (xs: number[]) => sql`${sql.param(xs)}::int[]`;
 /** A read-route guard; the data includes contributors' character names. */
 export type ReadGuard = (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
 
-export function registerAnalysisRoutes(
-  app: FastifyInstance,
-  db: Db,
-  preHandler: ReadGuard = requireToken(db),
-) {
+export function registerAnalysisRoutes(app: FastifyInstance, db: Db, preHandler: ReadGuard) {
   registerProfessionRoutes(app, db, preHandler);
 
   /** Offered vs paid XP per quest and build. */

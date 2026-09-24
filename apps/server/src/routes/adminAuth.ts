@@ -2,7 +2,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { CookieSerializeOptions } from '@fastify/cookie';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { hashToken, verifyBearer } from '../auth.js';
+import { hashToken, verifyBearerToken } from '../auth.js';
 import { authorizeUrl, BnetError, fetchBnetUser } from '../bnet.js';
 import type { BnetConfig } from '../bnet.js';
 import type { Db } from '../db/client.js';
@@ -57,7 +57,7 @@ export interface AdminAuthOptions {
 type PreHandler = (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
 
 export interface AdminGuards {
-  /** /v1 reads: a valid bearer token, or the session of an admin. */
+  /** /v1 reads: a valid bearer token with read scope (`can_read`), or the session of an admin. */
   requireReader: PreHandler;
   /** /admin/api/*: the session of an admin, plus the CSRF header on writes. */
   requireAdmin: PreHandler;
@@ -126,10 +126,12 @@ export function registerAdminAuth(
   };
 
   const requireReader: PreHandler = async (req, reply) => {
-    // A bearer header decides on its own (the uploader and scripts); browsers use the session.
+    // A bearer header decides on its own (scripts); browsers use the session. Upload tokens (the tray app) can't read.
     if (req.headers.authorization !== undefined) {
-      if ((await verifyBearer(db, req.headers.authorization)) !== null) return;
-      return reply.status(401).send({ error: 'invalid or revoked token' });
+      const token = await verifyBearerToken(db, req.headers.authorization);
+      if (token === null) return reply.status(401).send({ error: 'invalid or revoked token' });
+      if (!token.canRead) return reply.status(403).send({ error: 'token cannot read' });
+      return;
     }
     // A browser read: never kept in a shared or disk cache.
     reply.header('cache-control', 'no-store');

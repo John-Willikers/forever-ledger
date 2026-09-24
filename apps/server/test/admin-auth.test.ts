@@ -3,10 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildApp, loggerOptions } from '../src/index.js';
+import { NO_ADDON_RELEASE } from '@forever-ledger/contracts';
+import { buildApp, loggerOptions, mintToken, revokeToken } from '../src/index.js';
 import type { AppOptions } from '../src/index.js';
 import { BNET_AUTHORIZE_URL, BNET_TOKEN_URL, BNET_USERINFO_URL } from '../src/bnet.js';
-import { startServer } from './helpers.js';
+import { batchFromFixture, startServer } from './helpers.js';
 
 type Server = Awaited<ReturnType<typeof startServer>>;
 type App = Server['app'];
@@ -162,7 +163,11 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         expect(who.json()).toMatchObject({ user: null, loginConfigured: false });
         const health = await other.inject({ method: 'GET', url: '/v1/health' });
         expect(health.statusCode).toBe(200);
-        const quests = await other.inject({ method: 'GET', url: '/v1/quests/xp', headers: s.auth });
+        const quests = await other.inject({
+          method: 'GET',
+          url: '/v1/quests/xp',
+          headers: s.readerAuth,
+        });
         expect(quests.statusCode).toBe(200);
       } finally {
         await other.close();
@@ -745,8 +750,89 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
   });
 
   describe('/v1 reads', () => {
-    it('work with a bearer token and with an admin session; sessions do not touch last_used_at', async () => {
-      const bearer = await app.inject({ method: 'GET', url: '/v1/quests/xp', headers: s.auth });
+    /** Every /v1 read route, with what a reader gets back (it passes the guard; unknown item → 404). */
+    const READS: [string, number][] = [
+      ['/v1/quests/xp', 200],
+      ['/v1/runs/summary', 200],
+      ['/v1/drops/rates', 200],
+      ['/v1/items/1', 404],
+      ['/v1/professions/recipes', 200],
+      ['/v1/professions/sources?itemId=1', 200],
+      ['/v1/professions/gathering', 200],
+      ['/v1/professions/skills', 200],
+      ['/v1/export', 200],
+      ['/v1/diagnostics', 200],
+    ];
+
+    it('the read list covers every GET /v1 route but health and the addon manifest', () => {
+      const routes = app
+        .printRoutes({ commonPrefix: false })
+        .split('\n')
+        .map((l) => /(\/v1\/\S+) \((.*)\)/.exec(l))
+        .filter((m): m is RegExpExecArray => m !== null && m[2]!.split(', ').includes('GET'))
+        .map((m) => m[1]!)
+        .filter((r) => r !== '/v1/health' && r !== '/v1/addon/manifest')
+        .sort();
+      const listed = READS.map(([u]) => u.split('?')[0]!.replace('/v1/items/1', '/v1/items/:id'));
+      expect(routes).toEqual([...listed].sort());
+    });
+
+    it('an upload-only token gets 403 on every read, and still ingests, reports errors and reads the manifest', async () => {
+      for (const [url] of READS) {
+        const res = await app.inject({ method: 'GET', url, headers: s.auth });
+        expect(res.statusCode, url).toBe(403);
+        expect(res.json(), url).toEqual({ error: 'token cannot read' });
+      }
+      const ingest = await app.inject({
+        method: 'POST',
+        url: '/v1/ingest',
+        headers: s.auth,
+        payload: batchFromFixture('session-v5.lua'),
+      });
+      expect(ingest.statusCode, ingest.body).toBe(200);
+      const report = await app.inject({
+        method: 'POST',
+        url: '/v1/diagnostics',
+        headers: s.auth,
+        payload: {
+          uploaderId: 'pc-1',
+          appVersion: '0.1.4',
+          platform: 'win32 10.0.22631',
+          events: [{ at: 1_790_000_000, level: 'warn', source: 'uploader', message: 'slow' }],
+        },
+      });
+      expect(report.statusCode, report.body).toBe(200);
+      const manifest = await app.inject({
+        method: 'GET',
+        url: '/v1/addon/manifest',
+        headers: s.auth,
+      });
+      // Nothing is published in this database: the manifest answers its own 404, past the token check.
+      expect(manifest.statusCode).toBe(404);
+      expect(manifest.json()).toEqual({ error: NO_ADDON_RELEASE });
+    });
+
+    it('a reader token passes every read; revoking it ends that', async () => {
+      for (const [url, status] of READS) {
+        const res = await app.inject({ method: 'GET', url, headers: s.readerAuth });
+        expect(res.statusCode, `${url} ${res.body}`).toBe(status);
+      }
+      const t = await mintToken(s.database.db, 'reader-to-revoke', { canRead: true });
+      const auth = { authorization: `Bearer ${t.token}` };
+      expect(
+        (await app.inject({ method: 'GET', url: '/v1/quests/xp', headers: auth })).statusCode,
+      ).toBe(200);
+      await revokeToken(s.database.db, t.id);
+      const revoked = await app.inject({ method: 'GET', url: '/v1/quests/xp', headers: auth });
+      expect(revoked.statusCode).toBe(401);
+    });
+
+    it('work with a reader token and with an admin session; sessions do not touch last_used_at', async () => {
+      const bearer = await app.inject({
+        method: 'GET',
+        url: '/v1/quests/xp',
+        headers: s.readerAuth,
+      });
       expect(bearer.statusCode).toBe(200);
 
       await s.database.pool.query('update api_tokens set last_used_at = null');
@@ -758,6 +844,8 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         '/v1/professions/recipes',
         '/v1/export',
         '/v1/diagnostics',
+        '/v1/professions/skills',
+        '/v1/professions/gathering',
       ]) {
         const res = await app.inject({ method: 'GET', url, cookies: { [SESSION]: session! } });
         expect(res.statusCode, url).toBe(200);

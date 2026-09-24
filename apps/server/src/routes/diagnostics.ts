@@ -9,7 +9,6 @@ import { verifyBearer } from '../auth.js';
 import type { Db } from '../db/client.js';
 import { diagnostics, ingestErrors } from '../db/schema.js';
 import { chicagoIso } from '../time.js';
-import { requireToken } from './analysis.js';
 import type { ReadGuard } from './analysis.js';
 
 export interface DiagnosticsOptions {
@@ -17,8 +16,8 @@ export interface DiagnosticsOptions {
   perMinute?: number;
   /** Max report body in bytes (default 256 KB). */
   bodyLimit?: number;
-  /** Guard for GET /v1/diagnostics (default: bearer token only). */
-  reader?: ReadGuard;
+  /** Guard for GET /v1/diagnostics: reader tokens and admin sessions (`requireReader`). */
+  reader: ReadGuard;
 }
 
 export const DIAGNOSTICS_BODY_LIMIT = 256 * 1024;
@@ -134,11 +133,7 @@ function listItem(r: ListRow) {
   };
 }
 
-export function registerDiagnosticsRoutes(
-  app: FastifyInstance,
-  db: Db,
-  opts: DiagnosticsOptions = {},
-) {
+export function registerDiagnosticsRoutes(app: FastifyInstance, db: Db, opts: DiagnosticsOptions) {
   /** Error reports from the tray app. */
   app.post(
     '/v1/diagnostics',
@@ -196,7 +191,7 @@ export function registerDiagnosticsRoutes(
   app.get(
     '/v1/diagnostics',
     {
-      preHandler: opts.reader ?? requireToken(db),
+      preHandler: opts.reader,
       config: {
         rateLimit: {
           max: opts.perMinute ?? 30,

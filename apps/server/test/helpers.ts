@@ -12,12 +12,16 @@ export async function startServer(opts: Partial<AppOptions> = {}) {
   const database = openDatabase(container.getConnectionUri());
   await runMigrations(database.db);
   const app = await buildApp({ database, ...opts });
+  // An upload token (ingest, error reports, addon manifest) and a reader token (every /v1 read too).
   const { token } = await mintToken(database.db, 'test');
+  const { token: readerToken } = await mintToken(database.db, 'test-reader', { canRead: true });
   return {
     app,
     database,
     token,
     auth: { authorization: `Bearer ${token}` },
+    readerToken,
+    readerAuth: { authorization: `Bearer ${readerToken}` },
     async count(table: string) {
       const res = await database.pool.query(`select count(*)::int as n from ${table}`);
       return res.rows[0].n as number;

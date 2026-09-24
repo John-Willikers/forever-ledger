@@ -30,7 +30,6 @@ import {
   vendors,
 } from '../db/schema.js';
 import { chicagoIso } from '../time.js';
-import { requireToken } from './analysis.js';
 import type { ReadGuard } from './analysis.js';
 
 /** Tables offered for export (tokens and raw payloads are never exported). */
@@ -83,11 +82,7 @@ export function toCsv(rows: Record<string, unknown>[], columns: string[]) {
   return lines.join('\n') + '\n';
 }
 
-export function registerExportRoutes(
-  app: FastifyInstance,
-  db: Db,
-  reader: ReadGuard = requireToken(db),
-) {
+export function registerExportRoutes(app: FastifyInstance, db: Db, reader: ReadGuard) {
   app.get<{ Querystring: { format?: string; table?: string } }>(
     '/v1/export',
     { preHandler: reader },

@@ -64,6 +64,13 @@
       "when": 1790212332940,
       "tag": "0008_admin_users_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790215870648,
+      "tag": "0009_token_read_scope",
+      "breakpoints": true
     }
   ]
 }

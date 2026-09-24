@@ -1,6 +1,6 @@
 // Admin panel data + access routes (/admin/api/*) against a real Postgres, with sessions seeded directly.
 import { Writable } from 'node:stream';
-import { RECORD_KINDS } from '@forever-ledger/contracts';
+import { NO_ADDON_RELEASE, RECORD_KINDS } from '@forever-ledger/contracts';
 import type { UploadBatch } from '@forever-ledger/contracts';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp, hashToken, loggerOptions, mintToken } from '../src/index.js';
@@ -157,8 +157,10 @@ describe('admin API (real Postgres)', () => {
       for (const url of GETS) {
         const anon = await get(url);
         expect(anon.statusCode, url).toBe(401);
-        const bearer = await s.app.inject({ method: 'GET', url, headers: s.auth });
-        expect(bearer.statusCode, url).toBe(401);
+        for (const headers of [s.auth, s.readerAuth]) {
+          const bearer = await s.app.inject({ method: 'GET', url, headers });
+          expect(bearer.statusCode, url).toBe(401);
+        }
         const m = await get(url, member);
         expect(m.statusCode, url).toBe(403);
         const ok = await get(url, admin);
@@ -172,12 +174,13 @@ describe('admin API (real Postgres)', () => {
         ['/admin/api/tokens', { label: 'sneaky' }],
         [`/admin/api/tokens/${cody.id}/revoke`, undefined],
         [`/admin/api/tokens/${cody.id}/owner`, { userId: member.userId }],
+        [`/admin/api/tokens/${cody.id}/read`, { canRead: true }],
         [`/admin/api/users/${member.userId}/role`, { role: 'admin' }],
       ];
       const snapshot = async () =>
         (
           await s.database.pool.query(
-            `select (select json_agg(t order by id) from (select id, label, revoked_at, user_id from api_tokens) t) as tokens,
+            `select (select json_agg(t order by id) from (select id, label, revoked_at, user_id, can_read from api_tokens) t) as tokens,
                     (select json_agg(u order by id) from (select id, role from users) u) as users`,
           )
         ).rows[0];
@@ -406,14 +409,17 @@ describe('admin API (real Postgres)', () => {
         revokedAt: null,
         lastUsedAt: expect.stringMatching(CHICAGO_ISO),
         owner: null,
+        canRead: false,
         uploads: 2,
         lastUploadAt: expect.stringMatching(CHICAGO_ISO),
       });
       expect(items.find((i) => i.id === cody.id)).toMatchObject({ uploads: 1 });
       expect(items.find((i) => i.label === 'test')).toMatchObject({
+        canRead: false,
         uploads: 0,
         lastUploadAt: null,
       });
+      expect(items.find((i) => i.label === 'test-reader')).toMatchObject({ canRead: true });
       expect(res.body).not.toContain(tray.token);
       expect(res.body).not.toContain(hashToken(tray.token));
       expect(res.body).not.toMatch(/token_?hash/i);
@@ -430,6 +436,7 @@ describe('admin API (real Postgres)', () => {
         id: expect.any(Number),
         label: 'sam laptop',
         owner: { id: member.userId, battletag: 'Friend#1111' },
+        canRead: false,
         token: expect.stringMatching(/^flt_[A-Za-z0-9_-]{43}$/),
       });
       const { rows } = await s.database.pool.query('select * from api_tokens where id = $1', [
@@ -437,15 +444,23 @@ describe('admin API (real Postgres)', () => {
       ]);
       expect(rows[0].token_hash).toBe(hashToken(minted.token));
       expect(rows[0].user_id).toBe(member.userId);
+      expect(rows[0].can_read).toBe(false);
       expect(JSON.stringify(rows[0])).not.toContain(minted.token);
 
-      // The token works for uploads/reads, and the list never shows it again.
+      // An upload token by default: accepted on upload routes but can't read; the list never shows it again.
+      const manifest = await s.app.inject({
+        method: 'GET',
+        url: '/v1/addon/manifest',
+        headers: { authorization: `Bearer ${minted.token}` },
+      });
+      expect(manifest.statusCode).toBe(404); // past the token check: nothing published here
+      expect(manifest.json()).toEqual({ error: NO_ADDON_RELEASE });
       const read = await s.app.inject({
         method: 'GET',
         url: '/v1/quests/xp',
         headers: { authorization: `Bearer ${minted.token}` },
       });
-      expect(read.statusCode).toBe(200);
+      expect(read.statusCode).toBe(403);
       const list = await get('/admin/api/tokens', admin);
       expect(list.body).not.toContain(minted.token);
       expect(list.json().items.find((i: { id: number }) => i.id === minted.id)).toMatchObject({
@@ -457,6 +472,17 @@ describe('admin API (real Postgres)', () => {
       const plain = await post('/admin/api/tokens', admin, { label: 'spare' });
       expect(plain.statusCode).toBe(201);
       expect(plain.json().owner).toBeNull();
+
+      // A reader token, asked for explicitly.
+      const reader = await post('/admin/api/tokens', admin, { label: 'script', canRead: true });
+      expect(reader.statusCode).toBe(201);
+      expect(reader.json()).toMatchObject({ label: 'script', canRead: true });
+      const readOk = await s.app.inject({
+        method: 'GET',
+        url: '/v1/quests/xp',
+        headers: { authorization: `Bearer ${reader.json().token}` },
+      });
+      expect(readOk.statusCode).toBe(200);
     });
 
     it('refuses bad mint requests without creating a token', async () => {
@@ -469,6 +495,8 @@ describe('admin API (real Postgres)', () => {
         { label: 'x'.repeat(101) },
         { label: 'ok', ownerUserId: 999_999 },
         { label: 'ok', ownerUserId: 'one' },
+        { label: 'ok', canRead: 'yes' },
+        { label: 'ok', canRead: 1 },
       ]) {
         const res = await post('/admin/api/tokens', admin, body);
         expect(res.statusCode, JSON.stringify(body)).toBe(400);
@@ -520,7 +548,7 @@ describe('admin API (real Postgres)', () => {
       });
       const read = await s.app.inject({
         method: 'GET',
-        url: '/v1/quests/xp',
+        url: '/v1/addon/manifest',
         headers: { authorization: `Bearer ${t.token}` },
       });
       expect(read.statusCode).toBe(401);
@@ -551,6 +579,61 @@ describe('admin API (real Postgres)', () => {
       expect(
         (await post('/admin/api/tokens/999999/owner', admin, { userId: null })).statusCode,
       ).toBe(404);
+    });
+  });
+
+  describe('token read scope', () => {
+    const readAs = (token: string) =>
+      s.app.inject({
+        method: 'GET',
+        url: '/v1/quests/xp',
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+    it('grants and takes back read access; the token follows at once', async () => {
+      const t = await mintToken(s.database.db, 'scope-toggle');
+      expect((await readAs(t.token)).statusCode).toBe(403);
+
+      const grant = await post(`/admin/api/tokens/${t.id}/read`, admin, { canRead: true });
+      expect(grant.statusCode).toBe(200);
+      expect(grant.json()).toEqual({ id: t.id, canRead: true });
+      expect((await readAs(t.token)).statusCode).toBe(200);
+      const listed = (await get('/admin/api/tokens', admin)).json().items;
+      expect(listed.find((i: { id: number }) => i.id === t.id)).toMatchObject({ canRead: true });
+
+      const take = await post(`/admin/api/tokens/${t.id}/read`, admin, { canRead: false });
+      expect(take.json()).toEqual({ id: t.id, canRead: false });
+      const refused = await readAs(t.token);
+      expect(refused.statusCode).toBe(403);
+      expect(refused.json()).toEqual({ error: 'token cannot read' });
+    });
+
+    it('refuses bad bodies and unknown tokens', async () => {
+      const t = await mintToken(s.database.db, 'scope-bad');
+      for (const body of [{}, { canRead: 'true' }, { canRead: 1 }, { canRead: null }]) {
+        const res = await post(`/admin/api/tokens/${t.id}/read`, admin, body);
+        expect(res.statusCode, JSON.stringify(body)).toBe(400);
+      }
+      expect(
+        (await post('/admin/api/tokens/999999/read', admin, { canRead: true })).statusCode,
+      ).toBe(404);
+      expect((await post('/admin/api/tokens/abc/read', admin, { canRead: true })).statusCode).toBe(
+        400,
+      );
+      const { rows } = await s.database.pool.query(
+        'select can_read from api_tokens where id = $1',
+        [t.id],
+      );
+      expect(rows[0].can_read).toBe(false);
+    });
+
+    it('a revoked token stays revoked when granted read access', async () => {
+      const t = await mintToken(s.database.db, 'scope-revoked');
+      await post(`/admin/api/tokens/${t.id}/revoke`, admin);
+      expect(
+        (await post(`/admin/api/tokens/${t.id}/read`, admin, { canRead: true })).statusCode,
+      ).toBe(200);
+      expect((await readAs(t.token)).statusCode).toBe(401);
     });
   });
 
