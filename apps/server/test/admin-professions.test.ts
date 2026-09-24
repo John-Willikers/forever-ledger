@@ -3,12 +3,8 @@
 // Forever's "Classic" child skill lines, Forever-only vendors and a reagent cost setup.
 import type { UploadBatch } from '@forever-ledger/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  FOREVER_NPC_MIN,
-  locationOf,
-  reagentCost,
-  spreadSpots,
-} from '../src/routes/adminProfessions.js';
+import { locationOf, reagentCost, spreadSpots } from '../src/routes/adminProfessions.js';
+import { FOREVER_ID_THRESHOLDS } from '../src/routes/shared.js';
 import { createSession } from '../src/sessions.js';
 import { chicagoIso } from '../src/time.js';
 import { batchFromFixture, startServer } from './helpers.js';
@@ -411,6 +407,20 @@ describe('admin professions, vendors and trainers (real Postgres)', () => {
         [],
       );
     });
+
+    it('matches ?char= exactly: a key up to 128 chars, 400 above (never silently cut)', async () => {
+      const at128 = `${'É'.repeat(120)}-Bayouuu`;
+      expect(at128).toHaveLength(128);
+      const ok = await json(
+        `/admin/api/professions/skill-history?char=${encodeURIComponent(at128)}`,
+      );
+      expect(ok.items).toEqual([]);
+      const res = await get(
+        `/admin/api/professions/skill-history?char=${encodeURIComponent(`${at128}x`)}`,
+      );
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toMatch(/char/);
+    });
   });
 
   describe('crafts', () => {
@@ -603,7 +613,7 @@ describe('admin professions, vendors and trainers (real Postgres)', () => {
     it('lists one row per NPC (newest build) with counts, title and location', async () => {
       const res = await json('/admin/api/vendors');
       expect(res.total).toBe(5);
-      expect(res.foreverNpcMin).toBe(FOREVER_NPC_MIN);
+      expect(res.foreverNpcMin).toBe(FOREVER_ID_THRESHOLDS.npc);
       expect(res.items.map((v: { name: string }) => v.name)).toEqual([
         'Alexandra Bolero',
         'Beneris',
@@ -659,6 +669,13 @@ describe('admin professions, vendors and trainers (real Postgres)', () => {
       expect(page).toMatchObject({ total: 5, limit: 2, offset: 1 });
       expect(page.items.map((v: { npcId: number }) => v.npcId)).toEqual([248196, 248200]);
       expect((await json('/admin/api/vendors?limit=0&offset=-3')).items).toHaveLength(5);
+      // Text filters are trimmed and refused above their cap (search 100, title 200), not cut.
+      expect(await ids(`search=${encodeURIComponent('  bolero  ')}`)).toEqual([1347]);
+      expect(await ids(`search=${'z'.repeat(100)}`)).toEqual([]);
+      for (const q of [`search=${'z'.repeat(101)}`, `title=${'z'.repeat(201)}`]) {
+        expect((await get(`/admin/api/vendors?${q}`)).statusCode, q).toBe(400);
+        expect((await get(`/admin/api/trainers?${q}`)).statusCode, q).toBe(400);
+      }
     });
 
     it('shows a vendor’s items with prices and extended costs (cost items named from items)', async () => {

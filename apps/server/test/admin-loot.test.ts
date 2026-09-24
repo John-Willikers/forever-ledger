@@ -3,7 +3,8 @@
 import type { UploadBatch } from '@forever-ledger/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashToken } from '../src/index.js';
-import { FOREVER_ID_MIN, statDiffs } from '../src/routes/adminLoot.js';
+import { statDiffs } from '../src/routes/adminLoot.js';
+import { FOREVER_ID_THRESHOLDS } from '../src/routes/shared.js';
 import { createSession, csrfToken } from '../src/sessions.js';
 import { batchFromFixture, startServer } from './helpers.js';
 
@@ -217,7 +218,7 @@ describe('admin loot + dungeon API (real Postgres)', () => {
       expect(bolt.sources.recipes).toBe(1);
       const mark = body.items.find((i: { itemId: number }) => i.itemId === 250001);
       expect(mark.foreverOnly).toBe(true);
-      expect(FOREVER_ID_MIN.item).toBe(200000);
+      expect(FOREVER_ID_THRESHOLDS.item).toBe(200000);
       expect(body.total).toBe(body.items.length);
       expect(body.classes).toContainEqual({ name: 'Weapon', count: 2 });
     });
@@ -241,6 +242,13 @@ describe('admin loot + dungeon API (real Postgres)', () => {
         'Pattern: Red Linen Robe',
       ]);
       expect((await get('/admin/api/loot/items?quality=x')).statusCode).toBe(400);
+      // Search and class are trimmed and refused above 100 chars (never silently cut).
+      expect(await names(`search=${encodeURIComponent('  872 ')}`)).toEqual(['Rockslicer']);
+      expect(await names(`search=${'z'.repeat(100)}`)).toEqual([]);
+      for (const q of [`search=${'z'.repeat(101)}`, `class=${'z'.repeat(101)}`]) {
+        expect((await get(`/admin/api/loot/items?${q}`)).statusCode, q).toBe(400);
+      }
+      expect((await get(`/admin/api/loot/mobs?search=${'z'.repeat(101)}`)).statusCode).toBe(400);
       const page = await json('/admin/api/loot/items?limit=2&offset=2');
       expect(page).toMatchObject({ limit: 2, offset: 2 });
       expect(page.items).toHaveLength(2);
@@ -421,9 +429,13 @@ describe('admin loot + dungeon API (real Postgres)', () => {
         { slot: 2, class: 'PRIEST', level: 17 },
       ]);
       expect((await get('/admin/api/runs/nope')).statusCode).toBe(404);
-      // Fastify won't match path parameters over 100 characters (before the route's own 256 cap): 414, or 404 from
-      // the admin SPA fallback when apps/admin/dist is built.
-      expect([404, 414]).toContain((await get(`/admin/api/runs/${'x'.repeat(300)}`)).statusCode);
+      // Long run ids route (Fastify matches params up to 512 chars); the route caps them at 256.
+      expect((await get(`/admin/api/runs/${encodeURIComponent('é'.repeat(256))}`)).statusCode).toBe(
+        404,
+      );
+      const long = await get(`/admin/api/runs/${'x'.repeat(300)}`);
+      expect(long.statusCode).toBe(400);
+      expect(long.json()).toEqual({ error: 'bad run id' });
     });
 
     it('lists clear times of finished runs per instance', async () => {

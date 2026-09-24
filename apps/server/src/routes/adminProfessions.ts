@@ -10,40 +10,30 @@ import { chicagoIso } from '../time.js';
 import type { ReadGuard } from './analysis.js';
 import { buildFilter, int4Param, skillBase } from './analysis.js';
 import { intParam, rows } from './adminData.js';
-
-/** "Forever-only" heuristic: NPC ids from here up are new in Forever (tunable, shown as a badge). */
-export const FOREVER_NPC_MIN = 200_000;
+import {
+  badRequest,
+  charKeyParam,
+  containsPattern,
+  FOREVER_ID_THRESHOLDS,
+  flagParam,
+  idParam,
+  searchParam,
+  textParam,
+} from './shared.js';
+import { jarr, jint, jlen, jnum, jtext, viaItemId } from './sqlJson.js';
 
 const LIST_DEFAULT_LIMIT = 100;
 const LIST_MAX_LIMIT = 500;
-const SEARCH_MAX = 100;
+/** An NPC subtitle is at most this long (contracts `npcTitle`). */
+const TITLE_MAX = 200;
 /** Rises kept per character and profession in the skill history (the addon itself keeps 2000). */
 const SKILL_HISTORY_MAX = 2000;
 
-/** A 400 thrown from a handler (the app's error handler answers `{ error: message }`). */
-const badRequest = (message: string) => Object.assign(new Error(message), { statusCode: 400 });
-
-// ---- jsonb readers: a value of the wrong type (or an int out of int4 range) reads as null ----
-
-/** An int4 from a jsonb number, else null. */
-const jint = (e: SQL) =>
-  sql`(case when jsonb_typeof(${e}) = 'number' and abs((${e})::numeric) <= ${sql.raw(String(INT4_MAX))}
-       then round((${e})::numeric)::int end)`;
-/** A float8 from a jsonb number, else null. */
-const jnum = (e: SQL) => sql`(case when jsonb_typeof(${e}) = 'number' then (${e})::float8 end)`;
-/** Text from a jsonb string, else null. */
-const jtext = (e: SQL, key: 'name' | 'type' | 'skill' | 'zone') => {
-  const k = sql.raw(`'${key}'`);
-  return sql`(case when jsonb_typeof(${e}->${k}) = 'string' then ${e}->>${k} end)`;
-};
-/** The jsonb array, or an empty one when the column holds anything else. */
-const jarr = (e: SQL) =>
-  sql`(case when jsonb_typeof(${e}) = 'array' then ${e} else '[]'::jsonb end)`;
 /** A vendor listing paid (also) in items or currencies: `extendedCost` true / non-zero, or any `costs`. */
 const extended = (it: SQL) => sql`(
   coalesce(${it}->'extendedCost' = 'true'::jsonb, false)
-  or coalesce(jsonb_typeof(${it}->'extendedCost') = 'number' and (${it}->'extendedCost')::float8 <> 0, false)
-  or coalesce(jsonb_typeof(${it}->'costs') = 'array' and jsonb_array_length(${it}->'costs') > 0, false))`;
+  or coalesce(${jnum(sql`${it}->'extendedCost'`)} <> 0, false)
+  or ${jlen(sql`${it}->'costs'`)} > 0)`;
 
 /** `?skillLine=` (base or child) as the base line's id, for `coalesce(b.base_id, line) = <this>`. */
 const baseOf = (skillLine: number | null) =>
@@ -65,7 +55,10 @@ export interface Location {
   y: number | null;
 }
 
-/** An NPC's `loc` jsonb (the addon's `where()`: zone, subzone, mapID, x, y), keeping only well-typed fields. */
+/**
+ * An NPC's `loc` jsonb (the addon's `where()`: zone, subzone, mapID, x, y), keeping only well-typed fields; the map id
+ * must be an int4.
+ */
 export function locationOf(loc: unknown): Location | null {
   if (typeof loc !== 'object' || loc === null || Array.isArray(loc)) return null;
   const l = loc as Record<string, unknown>;
@@ -75,7 +68,7 @@ export function locationOf(loc: unknown): Location | null {
   return {
     zone: str(l.zone),
     subzone: str(l.subzone),
-    mapId: mapId !== null && Number.isInteger(mapId) ? mapId : null,
+    mapId: mapId !== null && Number.isInteger(mapId) && Math.abs(mapId) <= INT4_MAX ? mapId : null,
     x: num(l.x),
     y: num(l.y),
   };
@@ -214,35 +207,10 @@ export function reagentCost(
   };
 }
 
-/** `?<key>=` as text (trimmed, at most SEARCH_MAX characters), else null. */
-function textParam(q: unknown, key: string) {
-  const raw = (q as Record<string, unknown>)[key];
-  if (typeof raw !== 'string') return null;
-  const t = raw.trim().slice(0, SEARCH_MAX);
-  return t === '' ? null : t;
-}
-
-/** `?<key>=true|1|yes|on`. */
-function flagParam(q: unknown, key: string) {
-  const raw = (q as Record<string, unknown>)[key];
-  return typeof raw === 'string' && /^(1|true|yes|on)$/i.test(raw);
-}
-
 /** `?offset=` as a non-negative integer, else 0. */
 function offsetParam(q: unknown) {
   const raw = (q as Record<string, unknown>).offset;
   return typeof raw === 'string' && /^\d{1,9}$/.test(raw) ? Number(raw) : 0;
-}
-
-/** A `%…%` ILIKE pattern where the search's own `%`, `_` and `\` match literally. */
-const likePattern = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-
-/** An NPC id path parameter: 1…int4, else a 400. */
-function npcIdParam(raw: string) {
-  if (!/^\d{1,10}$/.test(raw)) throw badRequest('bad npc id');
-  const n = Number(raw);
-  if (n < 1 || n > INT4_MAX) throw badRequest('bad npc id');
-  return n;
 }
 
 interface NpcRow {
@@ -259,7 +227,7 @@ const npcOut = <R extends NpcRow>({ loc, seenAt, ...r }: R) => ({
   npcId: r.npcId,
   name: r.name,
   title: r.title,
-  forever: r.npcId >= FOREVER_NPC_MIN,
+  forever: r.npcId >= FOREVER_ID_THRESHOLDS.npc,
   build: r.build,
   builds: r.builds,
   location: locationOf(loc),
@@ -379,8 +347,8 @@ export function registerAdminProfessionsRoutes(
         rows<{ baseId: number; n: number }>(
           db,
           sql`with ${skillBase}, taught as (
-            select substring(via from 6)::int as item_id, recipe_id from recipes_learned
-            where via ~ '^item:[0-9]{1,9}$'
+            select ${viaItemId(sql`via`)} as item_id, recipe_id from recipes_learned
+            where ${viaItemId(sql`via`)} is not null
             union
             select i.item_id, r.recipe_id from items i
             join recipes r on i.class_id = 9 and right(i.name, length(r.name) + 2) = ': ' || r.name
@@ -449,7 +417,7 @@ export function registerAdminProfessionsRoutes(
    * current ones from `skills` (a profession only seen rising has its highest rank and no max).
    */
   app.get('/admin/api/professions/skill-history', { preHandler }, async (req) => {
-    const char = textParam(req.query, 'char');
+    const char = charKeyParam(req.query);
     const [lines, current, points] = await Promise.all([
       rows<{ id: number; baseId: number; name: string }>(
         db,
@@ -600,7 +568,11 @@ export function registerAdminProfessionsRoutes(
 
     type NodeRow = (typeof nodeRows)[number];
     const byObject = new Map<number, NodeRow[]>();
-    for (const r of nodeRows) byObject.set(r.objectId, [...(byObject.get(r.objectId) ?? []), r]);
+    for (const r of nodeRows) {
+      const list = byObject.get(r.objectId);
+      if (list) list.push(r);
+      else byObject.set(r.objectId, [r]);
+    }
 
     const maps = new Map<number, { mapId: number; opens: number; nodes: MapNode[] }>();
     for (const [objectId, src] of byObject) {
@@ -722,8 +694,8 @@ export function registerAdminProfessionsRoutes(
 
   /** Newest row per NPC (highest build, then latest scan) with all its builds, filtered; `extra` adds columns. */
   const npcList = async (table: 'vendors' | 'trainers', q: unknown, extra: SQL) => {
-    const search = textParam(q, 'search');
-    const title = textParam(q, 'title');
+    const search = searchParam(q);
+    const title = textParam(q, 'title', TITLE_MAX);
     const foreverOnly = flagParam(q, 'foreverOnly');
     const limit = intParam(q, 'limit', LIST_DEFAULT_LIMIT, LIST_MAX_LIMIT);
     const offset = offsetParam(q);
@@ -733,11 +705,11 @@ export function registerAdminProfessionsRoutes(
     ), filtered as (
       select l.* from latest l
       where (${search}::text is null
-             or l.name ilike ${search === null ? null : likePattern(search)}::text escape '\\'
-             or l.title ilike ${search === null ? null : likePattern(search)}::text escape '\\'
+             or l.name ilike ${search === null ? null : containsPattern(search)}::text escape '\\'
+             or l.title ilike ${search === null ? null : containsPattern(search)}::text escape '\\'
              or l.npc_id::text = ${search}::text)
         and (${title}::text is null or lower(l.title) = lower(${title}::text))
-        and (not ${foreverOnly}::boolean or l.npc_id >= ${FOREVER_NPC_MIN})
+        and (not ${foreverOnly}::boolean or l.npc_id >= ${FOREVER_ID_THRESHOLDS.npc})
     )`;
     const [items, total, titles] = await Promise.all([
       rows<NpcRow>(
@@ -763,16 +735,17 @@ export function registerAdminProfessionsRoutes(
       total: total[0]!.n,
       limit,
       offset,
-      foreverNpcMin: FOREVER_NPC_MIN,
+      foreverNpcMin: FOREVER_ID_THRESHOLDS.npc,
       titles,
       items: items.map(npcOut),
     };
   };
 
   /**
-   * Vendors, one row per NPC in its newest build: `?search=` (name, subtitle or npc id), `?title=` (exact subtitle,
-   * any case), `?foreverOnly=true` (npc id ≥ FOREVER_NPC_MIN), `?limit=` / `?offset=`. Counts: listings, listings of
-   * Recipe-class items (items.class_id = 9) and listings with an extended cost. `titles` lists every subtitle seen.
+   * Vendors, one row per NPC in its newest build: `?search=` (name, subtitle or npc id; ≤ 100 chars), `?title=` (exact
+   * subtitle, any case; ≤ 200 chars), `?foreverOnly=true` (npc id ≥ FOREVER_ID_THRESHOLDS.npc), `?limit=` /
+   * `?offset=`. Longer text is a 400. Counts: listings, listings of Recipe-class items (items.class_id = 9) and listings
+   * with an extended cost. `titles` lists every subtitle seen.
    */
   app.get('/admin/api/vendors', { preHandler }, async (req) =>
     npcList(
@@ -807,7 +780,7 @@ export function registerAdminProfessionsRoutes(
     '/admin/api/vendors/:npcId',
     { preHandler },
     async (req, reply) => {
-      const npcId = npcIdParam(req.params.npcId);
+      const npcId = idParam(req.params.npcId, 'npc');
       const build = buildFilter(req.query);
       const [v] = await npcRow('vendors', npcId, build);
       if (!v) return reply.status(404).send({ error: 'vendor not seen yet' });
@@ -818,7 +791,7 @@ export function registerAdminProfessionsRoutes(
                    ${jnum(sql`it->'numAvailable'`)} as "numAvailable",
                    ${jint(sql`it->'currencyId'`)} as "currencyId",
                    ${extended(sql`it`)} as "extendedCost",
-                   case when jsonb_typeof(it->'costs') = 'array' and jsonb_array_length(it->'costs') > 0 then (
+                   case when ${jlen(sql`it->'costs'`)} > 0 then (
                      select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
                               'amount', ${jnum(sql`c->'amount'`)},
                               'itemId', ${jint(sql`c->'itemId'`)},
@@ -861,7 +834,7 @@ export function registerAdminProfessionsRoutes(
     '/admin/api/trainers/:npcId',
     { preHandler },
     async (req, reply) => {
-      const npcId = npcIdParam(req.params.npcId);
+      const npcId = idParam(req.params.npcId, 'npc');
       const build = buildFilter(req.query);
       const [t] = await npcRow('trainers', npcId, build);
       if (!t) return reply.status(404).send({ error: 'trainer not seen yet' });

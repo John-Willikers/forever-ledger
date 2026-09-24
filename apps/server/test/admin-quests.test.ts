@@ -2,7 +2,8 @@
 // Postgres, with the session-v1..v5 fixtures plus one hand-built batch (more characters, turn-ins and quests).
 import type { UploadBatch } from '@forever-ledger/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { FOREVER_QUEST_ID_MIN, QUESTS_MAX_LIMIT } from '../src/routes/adminQuests.js';
+import { QUESTS_MAX_LIMIT } from '../src/routes/adminQuests.js';
+import { FOREVER_ID_THRESHOLDS } from '../src/routes/shared.js';
 import { createSession } from '../src/sessions.js';
 import { batchFromFixture, startServer } from './helpers.js';
 
@@ -308,7 +309,7 @@ describe('admin quests + character timeline (real Postgres)', () => {
     });
 
     it('flags Forever-only quests by id (≥ 90000) and filters on it', async () => {
-      expect(FOREVER_QUEST_ID_MIN).toBe(90000);
+      expect(FOREVER_ID_THRESHOLDS.quest).toBe(90000);
       const r = await list('?forever=1');
       expect(r.items.map((q) => q.questId)).toEqual([90001]);
       expect(r.total).toBe(1);
@@ -546,10 +547,23 @@ describe('admin quests + character timeline (real Postgres)', () => {
       expect(t.character).toBeNull();
       expect(t.turnIns).toHaveLength(1);
       expect((await get('/admin/api/characters/Nobody-Here/timeline')).statusCode).toBe(404);
-      // Over 128 chars: refused. (Fastify stops matching params over 100 chars first: 414 or the SPA's 404.)
-      const long = (await get(`/admin/api/characters/${'x'.repeat(129)}/timeline`)).statusCode;
-      expect(long).toBeGreaterThanOrEqual(400);
-      expect(long).toBeLessThan(500);
+      // Over 128 chars: refused by the route itself (Fastify matches params up to 512 chars).
+      const long = await get(`/admin/api/characters/${'x'.repeat(129)}/timeline`);
+      expect(long.statusCode).toBe(400);
+      expect(long.json()).toEqual({ error: 'bad character key' });
+    });
+
+    it('routes a 128-character key with accented letters', async () => {
+      const name = 'Écrevisse'.repeat(12).slice(0, 100);
+      const key = `${name}-${'Évangéline'.repeat(3).slice(0, 27)}`;
+      expect(key).toHaveLength(128);
+      await s.database.pool.query(
+        `insert into characters (key, name, realm, level, last_seen) values ($1, $2, $3, 5, now())`,
+        [key, name, key.slice(101)],
+      );
+      const res = await get(`/admin/api/characters/${encodeURIComponent(key)}/timeline`);
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json().character).toMatchObject({ key, name, level: 5 });
     });
   });
 });

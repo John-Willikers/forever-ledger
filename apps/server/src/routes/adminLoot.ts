@@ -10,22 +10,26 @@ import { chicagoIso } from '../time.js';
 import type { ReadGuard } from './analysis.js';
 import { buildFilter, int4Param } from './analysis.js';
 import { iso, rows } from './adminData.js';
-
-/** "Forever-only" heuristic (ids above the Classic ranges), shown as a badge. Tunable in one place. */
-export const FOREVER_ID_MIN = { quest: 90_000, item: 200_000, npc: 200_000 } as const;
+import { locationOf } from './adminProfessions.js';
+import {
+  badRequest,
+  containsPattern,
+  FOREVER_ID_THRESHOLDS,
+  idParam,
+  idTerm,
+  searchParam,
+} from './shared.js';
+import { jarr, jint, jlen, jnum, jtext } from './sqlJson.js';
 
 const PAGE_DEFAULT = 50;
 const PAGE_MAX = 200;
 const OFFSET_MAX = 1_000_000;
-const SEARCH_MAX = 100;
 const TOP_ITEMS = 5;
 const RUN_ID_MAX = 256;
 /** Clear times listed per instance (fastest first). */
 const CLEAR_TIMES_MAX = 1000;
 /** Item qualities (Enum.ItemQuality: 0 poor … 8 WoW token). */
 const QUALITY_MAX = 8;
-
-const badRequest = (message: string) => Object.assign(new Error(message), { statusCode: 400 });
 
 /** `?limit=` (default 50, clamped to 200) and `?offset=` (default 0); junk falls back to the defaults. */
 export function pageParams(q: unknown) {
@@ -37,29 +41,6 @@ export function pageParams(q: unknown) {
     limit: limit === null || limit < 1 ? PAGE_DEFAULT : Math.min(limit, PAGE_MAX),
     offset: offset === null ? 0 : Math.min(offset, OFFSET_MAX),
   };
-}
-
-/** `?search=` trimmed (at most 100 characters), else null. */
-function searchParam(q: unknown) {
-  const raw = (q as Record<string, unknown>).search;
-  if (typeof raw !== 'string') return null;
-  const s = raw.trim().slice(0, SEARCH_MAX);
-  return s === '' ? null : s;
-}
-
-/** An ILIKE pattern matching `s` anywhere, with `%`, `_` and `\` taken literally. */
-const containsPattern = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-
-/** A numeric search term that fits int4 (an id), else null. */
-const idTerm = (s: string | null) =>
-  s !== null && /^\d{1,10}$/.test(s) && Number(s) <= INT4_MAX ? Number(s) : null;
-
-/** A route's `:id` as a positive int4, else a 400. */
-function idParam(raw: string, what: string) {
-  const n = Number(raw);
-  if (!/^\d+$/.test(raw) || !Number.isInteger(n) || n <= 0 || n > INT4_MAX)
-    throw badRequest(`bad ${what} id`);
-  return n;
 }
 
 const intArray = (xs: number[]) => sql`${sql.param(xs)}::int[]`;
@@ -308,7 +289,7 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
         build: m.build,
         npcId: m.npc_id,
         name: m.name,
-        foreverOnly: m.npc_id >= FOREVER_ID_MIN.npc,
+        foreverOnly: m.npc_id >= FOREVER_ID_THRESHOLDS.npc,
         corpses: m.corpses,
         avgCopper: m.avg_copper,
         items: m.items,
@@ -360,7 +341,7 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
       return {
         npcId,
         name: names.get(npcId) ?? null,
-        foreverOnly: npcId >= FOREVER_ID_MIN.npc,
+        foreverOnly: npcId >= FOREVER_ID_THRESHOLDS.npc,
         builds: corpses.map((c) => ({
           build: c.build,
           corpses: c.corpses,
@@ -384,8 +365,7 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
     if (qualityRaw !== null && !(/^\d$/.test(qualityRaw) && Number(qualityRaw) <= QUALITY_MAX))
       throw badRequest(`?quality= must be 0-${QUALITY_MAX}`);
     const quality = qualityRaw === null ? null : Number(qualityRaw);
-    const cls =
-      typeof q.class === 'string' && q.class.trim() !== '' ? q.class.trim().slice(0, 64) : null;
+    const cls = searchParam(q, 'class');
     const classId = cls !== null && /^\d{1,9}$/.test(cls) ? Number(cls) : null;
     const className = cls !== null && classId === null ? cls : null;
     const { limit, offset } = pageParams(q);
@@ -443,10 +423,10 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
               union all
               select item_id, 'nodes', object_id from node_loot where item_id = any(${intArray(ids)})
               union all
-              select (it->>'itemId')::int, 'vendors', v.npc_id
-              from vendors v cross join lateral jsonb_array_elements(
-                case when jsonb_typeof(v.items) = 'array' then v.items else '[]'::jsonb end) it
-              where (it->>'itemId')::int = any(${intArray(ids)})
+              select l.item_id, 'vendors', v.npc_id
+              from vendors v cross join lateral jsonb_array_elements(${jarr(sql`v.items`)}) it
+              cross join lateral (select ${jint(sql`it->'itemId'`)} as item_id) l
+              where l.item_id = any(${intArray(ids)})
               union all
               select item_id, 'quests', quest_id from quest_reward_options where item_id = any(${intArray(ids)})
               union all
@@ -471,7 +451,7 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
         ilvl: p.ilvl,
         reqLevel: p.req_level,
         sellPrice: p.sell_price,
-        foreverOnly: p.item_id >= FOREVER_ID_MIN.item,
+        foreverOnly: p.item_id >= FOREVER_ID_THRESHOLDS.item,
         sources: {
           drops: countOf(p.item_id, 'drops'),
           nodes: countOf(p.item_id, 'nodes'),
@@ -526,24 +506,26 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
         where d.item_id = ${id}
         order by d.build desc, rate desc nulls last, d.npc_id`,
         ),
-        rows<Record<string, unknown> & { seenAt: Date }>(
+        rows<Record<string, unknown> & { loc: unknown; seenAt: Date }>(
           db,
           sql`
         select v.npc_id as "npcId", v.name as "npcName", v.title as "npcTitle", v.build, v.loc,
                v.seen_at as "seenAt",
-               (it->>'price')::int as price, (it->>'stack')::int as stack,
-               (it->>'numAvailable')::int as "numAvailable",
-               (select jsonb_agg(
-                         case when ci.name is null then c else c || jsonb_build_object('name', ci.name) end
-                         order by ord)
-                from jsonb_array_elements(case when jsonb_typeof(it->'costs') = 'array'
-                                               then it->'costs' else '[]'::jsonb end)
-                     with ordinality as e(c, ord)
-                left join items ci on ci.item_id = (c->>'itemId')::int) as costs
+               ${jnum(sql`it->'price'`)} as price, ${jnum(sql`it->'stack'`)} as stack,
+               ${jnum(sql`it->'numAvailable'`)} as "numAvailable",
+               case when ${jlen(sql`it->'costs'`)} > 0 then (
+                 select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                          'amount', ${jnum(sql`c->'amount'`)},
+                          'itemId', ${jint(sql`c->'itemId'`)},
+                          'currencyId', ${jint(sql`c->'currencyId'`)},
+                          'name', coalesce(ci.name, ${jtext(sql`c`, 'name')})))
+                        order by o)
+                 from jsonb_array_elements(it->'costs') with ordinality as k(c, o)
+                 left join items ci on ci.item_id = ${jint(sql`c->'itemId'`)}
+               ) end as costs
         from vendors v
-        cross join lateral jsonb_array_elements(
-          case when jsonb_typeof(v.items) = 'array' then v.items else '[]'::jsonb end) as it
-        where (it->>'itemId')::int = ${id}
+        cross join lateral jsonb_array_elements(${jarr(sql`v.items`)}) as it
+        where ${jint(sql`it->'itemId'`)} = ${id}
         order by v.build desc, v.npc_id`,
         ),
         rows<Record<string, unknown>>(
@@ -551,11 +533,12 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
           sql`
         select s.recipe_id as "recipeId", r.name, s.build, s.qty_min as "qtyMin", s.qty_max as "qtyMax",
                coalesce((
-                 select jsonb_agg(jsonb_build_object(
-                          'itemId', (e.reagent->>'itemId')::int, 'name', i.name, 'qty', (e.reagent->>'qty')::int)
+                 select jsonb_agg(jsonb_build_object('itemId', r.item_id, 'name', i.name, 'qty', r.qty)
                         order by e.ord)
-                 from jsonb_array_elements(s.reagents) with ordinality as e(reagent, ord)
-                 left join items i on i.item_id = (e.reagent->>'itemId')::int
+                 from jsonb_array_elements(${jarr(sql`s.reagents`)}) with ordinality as e(reagent, ord)
+                 cross join lateral (select ${jint(sql`e.reagent->'itemId'`)} as item_id,
+                                            ${jnum(sql`e.reagent->'qty'`)} as qty) r
+                 left join items i on i.item_id = r.item_id
                ), '[]'::jsonb) as reagents
         from recipe_snapshots s left join recipes r using (recipe_id)
         where s.output_item_id = ${id}
@@ -564,23 +547,27 @@ export function registerAdminLootRoutes(app: FastifyInstance, db: Db, preHandler
         rows<Record<string, unknown>>(
           db,
           sql`
-        select s.recipe_id as "recipeId", r.name, s.build, (e->>'qty')::int as qty,
+        select s.recipe_id as "recipeId", r.name, s.build, ${jnum(sql`e->'qty'`)} as qty,
                s.output_item_id as "outputItemId", o.name as "outputItemName"
         from recipe_snapshots s
-        cross join lateral jsonb_array_elements(s.reagents) e
+        cross join lateral jsonb_array_elements(${jarr(sql`s.reagents`)}) e
         left join recipes r using (recipe_id)
         left join items o on o.item_id = s.output_item_id
-        where s.reagents @> ${JSON.stringify([{ itemId: id }])}::jsonb and (e->>'itemId')::int = ${id}
+        where s.reagents @> ${JSON.stringify([{ itemId: id }])}::jsonb and ${jint(sql`e->'itemId'`)} = ${id}
         order by s.build desc, s.recipe_id`,
         ),
       ]);
       const names = await npcNames(db, [...new Set(rates.map((r) => r.npcId))]);
       return {
         itemId: id,
-        foreverOnly: id >= FOREVER_ID_MIN.item,
+        foreverOnly: id >= FOREVER_ID_THRESHOLDS.item,
         statDiffs: statDiffs(snapshots),
         dropRates: rates.map((r) => ({ ...r, npcName: names.get(r.npcId) ?? null })),
-        vendors: vendors.map((v) => ({ ...v, seenAt: chicagoIso(v.seenAt) })),
+        vendors: vendors.map(({ loc, seenAt, ...v }) => ({
+          ...v,
+          location: locationOf(loc),
+          seenAt: chicagoIso(seenAt),
+        })),
         recipes: { produces, reagentIn },
       };
     },

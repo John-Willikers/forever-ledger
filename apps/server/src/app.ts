@@ -62,6 +62,9 @@ export async function buildApp(opts: AppOptions) {
     logger: opts.logger ?? false,
     bodyLimit: opts.bodyLimit ?? DEFAULT_BODY_LIMIT,
     trustProxy: '127.0.0.1',
+    // Path params up to 512 chars (default 100) so 128-char character keys and 256-char run ids reach their routes,
+    // which enforce their own caps with a 400.
+    maxParamLength: 512,
   });
 
   await app.register(rateLimit, { global: false });

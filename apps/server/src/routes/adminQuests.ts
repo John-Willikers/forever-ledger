@@ -4,46 +4,27 @@
 import { sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { INT4_MAX } from '../addon.js';
 import type { Db } from '../db/client.js';
 import { chicagoIso } from '../time.js';
 import type { ReadGuard } from './analysis.js';
 import { buildFilter, int4Param } from './analysis.js';
 import { intParam, iso, rows } from './adminData.js';
-
-/** "Forever-only" heuristic: quest ids from this one up are new in Forever (see the admin panel plan). */
-export const FOREVER_QUEST_ID_MIN = 90_000;
+import {
+  CHAR_KEY_MAX,
+  containsPattern,
+  FOREVER_ID_THRESHOLDS,
+  flagParam,
+  idParam,
+  searchParam,
+  textParam,
+} from './shared.js';
 
 export const QUESTS_DEFAULT_LIMIT = 100;
 export const QUESTS_MAX_LIMIT = 500;
 const OFFSET_MAX = 1_000_000;
-const SEARCH_MAX = 100;
 const ZONE_MAX = 200;
-/** The addon's character key (`Name-Realm`) is at most this long (contracts `charKey`). */
-const CHAR_KEY_MAX = 128;
 /** Newest turn-ins listed on a quest's detail (`turnInsTotal` counts them all). */
 const DETAIL_TURN_INS = 500;
-
-const badRequest = (message: string) => Object.assign(new Error(message), { statusCode: 400 });
-
-/** `?<key>=` as trimmed text up to `max` chars (400 above), null when absent or empty. */
-export function textParam(q: unknown, key: string, max: number) {
-  const raw = (q as Record<string, unknown>)[key];
-  if (typeof raw !== 'string') return null;
-  const v = raw.trim();
-  if (v === '') return null;
-  if (v.length > max) throw badRequest(`?${key}= too long (max ${max})`);
-  return v;
-}
-
-/** `?<key>=1|true` → true; anything else → false. */
-export const flagParam = (q: unknown, key: string) => {
-  const raw = (q as Record<string, unknown>)[key];
-  return raw === '1' || raw === 'true';
-};
-
-/** A LIKE pattern matching `text` anywhere, with `%`, `_` and `\` taken literally (use with `escape '\'`). */
-export const containsPattern = (text: string) => `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 export interface Loc {
   zone: string | null;
@@ -93,19 +74,11 @@ export function withCumulativeXp<T extends { xp: number | null }>(list: T[]) {
   });
 }
 
-/** A positive int4 route param, else a 400. */
-function idParam(raw: string, what: string) {
-  const n = Number(raw);
-  if (!/^\d+$/.test(raw) || !Number.isInteger(n) || n <= 0 || n > INT4_MAX)
-    throw badRequest(`bad ${what}`);
-  return n;
-}
-
-/** Every (quest, build, time) the ledger saw: observations and turn-ins. */
+/** Every (quest, build) the ledger saw: observations and turn-ins. */
 const SEEN = sql`seen as (
-  select quest_id, build, observed_at as at from quest_observations
+  select quest_id, build from quest_observations
   union all
-  select quest_id, build, turned_in_at as at from turn_ins
+  select quest_id, build from turn_ins
 )`;
 
 interface ListRow {
@@ -136,7 +109,7 @@ export function registerAdminQuestRoutes(app: FastifyInstance, db: Db, preHandle
   app.get('/admin/api/quests', { preHandler }, async (req) => {
     const q = req.query;
     const build = buildFilter(q);
-    const search = textParam(q, 'search', SEARCH_MAX);
+    const search = searchParam(q);
     const zone = textParam(q, 'zone', ZONE_MAX);
     const minLevel = int4Param(q, 'minLevel');
     const maxLevel = int4Param(q, 'maxLevel');
@@ -158,8 +131,12 @@ export function registerAdminQuestRoutes(app: FastifyInstance, db: Db, preHandle
                o.xp_offered, o.money_offered, p.turn_ins, p.avg_xp_paid,
                (o.xp_offered is not null and p.avg_xp_paid is not null
                  and o.xp_offered <> p.avg_xp_paid) as xp_mismatch,
-               qb.quest_id >= ${FOREVER_QUEST_ID_MIN}::int as forever_only,
-               (select max(at) from seen s where s.quest_id = qb.quest_id and s.build = qb.build) as last_seen
+               qb.quest_id >= ${FOREVER_ID_THRESHOLDS.quest}::int as forever_only,
+               greatest(
+                 (select max(observed_at) from quest_observations x
+                  where x.quest_id = qb.quest_id and x.build = qb.build),
+                 (select max(turned_in_at) from turn_ins x where x.quest_id = qb.quest_id and x.build = qb.build)
+               ) as last_seen
         from qb
         left join quests q on q.quest_id = qb.quest_id
         cross join lateral (
@@ -288,7 +265,7 @@ export function registerAdminQuestRoutes(app: FastifyInstance, db: Db, preHandle
     '/admin/api/quests/:id',
     { preHandler },
     async (req, reply) => {
-      const id = idParam(req.params.id, 'quest id');
+      const id = idParam(req.params.id, 'quest');
       const [quest, observations, turnIns, total, rewards] = await Promise.all([
         rows<{
           title: string | null;
@@ -395,7 +372,7 @@ export function registerAdminQuestRoutes(app: FastifyInstance, db: Db, preHandle
           objectives: Array.isArray(q?.objectives)
             ? q.objectives.filter((x): x is string => typeof x === 'string')
             : [],
-          foreverOnly: id >= FOREVER_QUEST_ID_MIN,
+          foreverOnly: id >= FOREVER_ID_THRESHOLDS.quest,
         },
         builds,
         observations: observations.map((o) => ({

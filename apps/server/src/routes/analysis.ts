@@ -5,6 +5,8 @@ import { INT4_MAX } from '../addon.js';
 import { verifyBearer } from '../auth.js';
 import type { Db } from '../db/client.js';
 import { chicagoIso } from '../time.js';
+import { badRequest } from './shared.js';
+import { jarr, jint, jnum, jtext, viaItemId } from './sqlJson.js';
 
 /**
  * Any valid bearer token, whatever its scope (the addon manifest, an upload route). Read routes use
@@ -17,9 +19,6 @@ export function requireToken(db: Db) {
     }
   };
 }
-
-/** A 400 thrown from a handler (the app's error handler answers `{ error: message }`). */
-const badRequest = (message: string) => Object.assign(new Error(message), { statusCode: 400 });
 
 /** `?<key>=` as a positive integer, else null. */
 export const positiveInt = (q: unknown, key: string) => {
@@ -306,11 +305,12 @@ function registerProfessionRoutes(app: FastifyInstance, db: Db, preHandler: Read
              s.output_item_id as "outputItemId", o.name as "outputItemName",
              s.qty_min as "qtyMin", s.qty_max as "qtyMax",
              coalesce((
-               select jsonb_agg(jsonb_build_object(
-                        'itemId', (e.reagent->>'itemId')::int, 'name', i.name, 'qty', (e.reagent->>'qty')::int)
+               select jsonb_agg(jsonb_build_object('itemId', r.item_id, 'name', i.name, 'qty', r.qty)
                       order by e.ord)
-               from jsonb_array_elements(s.reagents) with ordinality as e(reagent, ord)
-               left join items i on i.item_id = (e.reagent->>'itemId')::int
+               from jsonb_array_elements(${jarr(sql`s.reagents`)}) with ordinality as e(reagent, ord)
+               cross join lateral (select ${jint(sql`e.reagent->'itemId'`)} as item_id,
+                                          ${jnum(sql`e.reagent->'qty'`)} as qty) r
+               left join items i on i.item_id = r.item_id
              ), '[]'::jsonb) as reagents,
              s.max_trivial as "maxTrivial", s.source_text as "sourceText"
       from recipe_snapshots s
@@ -416,8 +416,8 @@ function registerProfessionRoutes(app: FastifyInstance, db: Db, preHandler: Read
       db,
       sql`
       with taught as (
-        select substring(via from 6)::int as item_id from recipes_learned
-        where recipe_id = any(${intArray(ids)}) and via ~ '^item:[0-9]+$'
+        select ${viaItemId(sql`via`)} as item_id from recipes_learned
+        where recipe_id = any(${intArray(ids)}) and ${viaItemId(sql`via`)} is not null
         union
         select item_id from items
         where class_id = 9 and exists (
@@ -436,14 +436,15 @@ function registerProfessionRoutes(app: FastifyInstance, db: Db, preHandler: Read
       select t.npc_id as "npcId", t.name as "npcName", t.title as "npcTitle", t.build, t.loc,
              coalesce(b.base_id, t.skill_line_id) as "skillLineId", b.base_name as "skillLineName",
              extract(epoch from t.seen_at) as "seenAt",
-             svc->>'name' as service, svc->>'type' as type, (svc->>'cost')::int as cost,
-             svc->>'skill' as skill, (svc->>'skillRank')::int as "skillRank", (svc->>'level')::int as level,
-             (svc->>'itemId')::int as "itemId"
+             ${jtext(sql`svc`, 'name')} as service, ${jtext(sql`svc`, 'type')} as type,
+             ${jnum(sql`svc->'cost'`)} as cost, ${jtext(sql`svc`, 'skill')} as skill,
+             ${jnum(sql`svc->'skillRank'`)} as "skillRank", ${jnum(sql`svc->'level'`)} as level,
+             ${jint(sql`svc->'itemId'`)} as "itemId"
       from trainers t
-      cross join lateral jsonb_array_elements(t.services) as svc
+      cross join lateral jsonb_array_elements(${jarr(sql`t.services`)}) as svc
       left join skill_base b on b.id = t.skill_line_id
-      where svc->>'name' = any(${sql.param(names)}::text[])
-         or (svc->>'itemId')::int = any(${intArray([...outputs, ...self])})
+      where ${jtext(sql`svc`, 'name')} = any(${sql.param(names)}::text[])
+         or ${jint(sql`svc->'itemId'`)} = any(${intArray([...outputs, ...self])})
       order by t.build desc, t.npc_id, service`,
     );
     const vendors = await rows<Record<string, unknown>>(
@@ -451,21 +452,21 @@ function registerProfessionRoutes(app: FastifyInstance, db: Db, preHandler: Read
       sql`
       select v.npc_id as "npcId", v.name as "npcName", v.title as "npcTitle", v.build, v.loc,
              extract(epoch from v.seen_at) as "seenAt",
-             (it->>'itemId')::int as "itemId", i.name as "itemName",
-             (it->>'price')::int as price, (it->>'stack')::int as stack,
-             (it->>'numAvailable')::int as "numAvailable", (it->>'currencyId')::int as "currencyId",
+             l.item_id as "itemId", i.name as "itemName",
+             ${jnum(sql`it->'price'`)} as price, ${jnum(sql`it->'stack'`)} as stack,
+             ${jnum(sql`it->'numAvailable'`)} as "numAvailable", ${jint(sql`it->'currencyId'`)} as "currencyId",
              it->'extendedCost' as "extendedCost",
              (select jsonb_agg(
-                       case when ci.name is null then c else c || jsonb_build_object('name', ci.name) end
+                       case when ci.name is null or jsonb_typeof(c) <> 'object' then c
+                            else c || jsonb_build_object('name', ci.name) end
                        order by ord)
-              from jsonb_array_elements(case when jsonb_typeof(it->'costs') = 'array'
-                                             then it->'costs' else '[]'::jsonb end)
-                   with ordinality as e(c, ord)
-              left join items ci on ci.item_id = (c->>'itemId')::int) as costs
+              from jsonb_array_elements(${jarr(sql`it->'costs'`)}) with ordinality as e(c, ord)
+              left join items ci on ci.item_id = ${jint(sql`c->'itemId'`)}) as costs
       from vendors v
-      cross join lateral jsonb_array_elements(v.items) as it
-      left join items i on i.item_id = (it->>'itemId')::int
-      where (it->>'itemId')::int = any(${intArray(sold)})
+      cross join lateral jsonb_array_elements(${jarr(sql`v.items`)}) as it
+      cross join lateral (select ${jint(sql`it->'itemId'`)} as item_id) l
+      left join items i on i.item_id = l.item_id
+      where l.item_id = any(${intArray(sold)})
       order by v.build desc, v.npc_id, "itemId"`,
     );
     const drops = await rows(
@@ -528,11 +529,11 @@ function registerProfessionRoutes(app: FastifyInstance, db: Db, preHandler: Read
     const zones = await rows<{ build: number; objectId: number; mapId: number; spots: number }>(
       db,
       sql`
-      select n.build, n.object_id as "objectId", (spot->>'mapId')::int as "mapId",
+      select n.build, n.object_id as "objectId", ${jint(sql`spot->'mapId'`)} as "mapId",
              count(distinct point)::int as spots
       from nodes n
-      cross join lateral jsonb_array_elements(n.spots) as spot
-      left join lateral jsonb_array_elements(spot->'points') as point on true
+      cross join lateral jsonb_array_elements(${jarr(sql`n.spots`)}) as spot
+      left join lateral jsonb_array_elements(${jarr(sql`spot->'points'`)}) as point on true
       where ${inBuild}
       group by n.build, n.object_id, "mapId"
       order by spots desc, "mapId"`,

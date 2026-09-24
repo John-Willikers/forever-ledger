@@ -1,13 +1,7 @@
 // Pure helpers behind /admin/api/quests and the character timeline (no database).
 import { describe, expect, it } from 'vitest';
-import {
-  compressLevelRuns,
-  containsPattern,
-  flagParam,
-  locOf,
-  textParam,
-  withCumulativeXp,
-} from '../src/routes/adminQuests.js';
+import { compressLevelRuns, locOf, withCumulativeXp } from '../src/routes/adminQuests.js';
+import { containsPattern, flagParam, textParam } from '../src/routes/shared.js';
 
 describe('textParam', () => {
   it('trims, treats empty as absent and refuses oversized text with a 400', () => {
