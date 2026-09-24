@@ -622,12 +622,72 @@ describe('ingest API (real Postgres)', () => {
     });
   });
 
+  describe('schema 5 vendor costs and NPC titles (session-v5.lua)', () => {
+    const acct = 'ACCOUNT-V5';
+    const q = (text: string, params: unknown[] = []) =>
+      s.database.pool.query(text, params).then((r) => r.rows);
+    const batch = batchFromFixture('session-v5.lua', acct);
+
+    it('stores vendor and trainer titles and the extended costs of vendor items', async () => {
+      expect(batch.schemaVersion).toBe(5);
+      expect((await post(batch)).statusCode).toBe(200);
+      expect(
+        await q(`select npc_id, title from vendors where build = 61582 order by npc_id`),
+      ).toEqual([
+        { npc_id: 1347, title: null },
+        { npc_id: 248196, title: 'Tailoring' },
+      ]);
+      const [beneris] = await q(`select items from vendors where npc_id = 248196`);
+      expect(beneris.items[0]).toEqual({
+        itemId: 2598,
+        price: 0,
+        stack: 1,
+        numAvailable: -1,
+        extendedCost: true,
+        costs: [
+          { amount: 3, itemId: 250001, name: 'Mark of the Barrens' },
+          { amount: 25, currencyId: 1901, name: 'Honor Points' },
+        ],
+      });
+      expect(await q(`select name from items where item_id = 250001`)).toEqual([
+        { name: 'Mark of the Barrens' },
+      ]);
+      expect(await q(`select npc_id, title from trainers where build = 61582`)).toEqual([
+        { npc_id: 1103, title: 'Tailoring Trainer' },
+      ]);
+    });
+
+    it('a newer scan without a title keeps the known one; a newer title replaces it; an older scan changes nothing', async () => {
+      const v = batch.records.vendors.find((x) => x.npcId === 248196)!;
+      const t = batch.records.trainers[0]!;
+      const send = (seenAt: number, title: string | undefined) =>
+        post({
+          ...batch,
+          records: {
+            ...batch.records,
+            vendors: [{ ...v, seenAt, title }],
+            trainers: [{ ...t, seenAt, title }],
+          },
+        });
+      const titles = async () => [
+        ...(await q(`select title from vendors where npc_id = 248196`)),
+        ...(await q(`select title from trainers where npc_id = 1103 and build = 61582`)),
+      ];
+      expect((await send(v.seenAt + 100, undefined)).statusCode).toBe(200);
+      expect(await titles()).toEqual([{ title: 'Tailoring' }, { title: 'Tailoring Trainer' }]);
+      expect((await send(v.seenAt + 200, 'Enchanting')).statusCode).toBe(200);
+      expect(await titles()).toEqual([{ title: 'Enchanting' }, { title: 'Enchanting' }]);
+      expect((await send(v.seenAt - 100, 'Old')).statusCode).toBe(200);
+      expect(await titles()).toEqual([{ title: 'Enchanting' }, { title: 'Enchanting' }]);
+    });
+  });
+
   it('rejects unknown schema versions with 409 and malformed batches with 400', async () => {
     const batch = batchFromFixture('session-v1.lua');
-    const res409 = await post({ ...batch, schemaVersion: 5 });
+    const res409 = await post({ ...batch, schemaVersion: 6 });
     expect(res409.statusCode).toBe(409);
     expect(res409.json().error).toMatch(
-      /unsupported schemaVersion 5; this server accepts 1, 2, 3, 4$/,
+      /unsupported schemaVersion 6; this server accepts 1, 2, 3, 4, 5$/,
     );
     const bad = structuredClone(batch) as unknown as { records: { runs: { start: unknown }[] } };
     bad.records.runs[0]!.start = 'yesterday';

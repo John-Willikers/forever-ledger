@@ -186,7 +186,7 @@ describe('analysis and export routes', () => {
       'recipeId,build,uploaderId,account,session,casts,qty,procs,skillUps,updatedAt',
     );
     expect((await get('/v1/export?format=csv&table=trainers')).body.split('\n')[0]).toBe(
-      'npcId,build,name,loc,skillLineId,seenAt,complete,services,updatedAt',
+      'npcId,build,name,title,loc,skillLineId,seenAt,complete,services,updatedAt',
     );
     expect((await get('/v1/export?format=csv&table=recipe_difficulty')).statusCode).toBe(200);
     expect(json.tables).toHaveProperty('api_samples');
@@ -336,6 +336,7 @@ describe('profession routes', () => {
         {
           npcId: 1347,
           npcName: 'Alexandra Bolero',
+          npcTitle: null,
           build,
           loc: { zone: 'Stormwind City', subzone: 'The Canals', mapID: 1453, x: 43.2, y: 74.1 },
           seenAt: expect.stringMatching(/^2026-.*-0[56]:00$/),
@@ -346,6 +347,7 @@ describe('profession routes', () => {
           numAvailable: 1,
           currencyId: null,
           extendedCost: false,
+          costs: null,
         },
       ],
       drops: [
@@ -369,6 +371,7 @@ describe('profession routes', () => {
       {
         npcId: 1346,
         npcName: 'Georgio Bolero',
+        npcTitle: null,
         build,
         loc: { zone: 'Stormwind City', subzone: 'The Canals', mapID: 1453, x: 43.4, y: 73.8 },
         skillLineId: 197,
@@ -682,6 +685,90 @@ describe("the real addon's schema 4 session (session-v4.lua)", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("the real addon's schema 5 session (session-v5.lua): vendor costs and NPC titles", () => {
+  let s: Server;
+  const get = (url: string) => s.app.inject({ method: 'GET', url, headers: s.auth });
+  const batch = batchFromFixture('session-v5.lua', 'ADDON-V5');
+
+  beforeAll(async () => {
+    s = await startServer();
+  });
+  afterAll(async () => {
+    await s?.stop();
+  });
+
+  it('ingests with 200: two vendors, a titled trainer and the new API samples', async () => {
+    expect(batch.schemaVersion).toBe(5);
+    const res = await s.app.inject({
+      method: 'POST',
+      url: '/v1/ingest',
+      headers: s.auth,
+      payload: batch,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(await s.count('vendors')).toBe(2);
+    expect(await s.count('trainers')).toBe(1);
+    const { rows } = await s.database.pool.query(`select api from api_samples order by api`);
+    expect(rows.map((r) => r.api)).toEqual(
+      expect.arrayContaining([
+        'C_TooltipInfo.GetUnit',
+        'C_TooltipInfo.GetUnit:line',
+        'GetMerchantCurrencies',
+        'GetMerchantItemCostInfo',
+        'GetMerchantItemCostItem',
+        'GetMerchantItemCostItem:currency',
+      ]),
+    );
+  });
+
+  it('/v1/professions/sources: vendor title and costs (cost item names from items), trainer title', async () => {
+    const robe = await get('/v1/professions/sources?recipeId=2389');
+    expect(robe.statusCode).toBe(200);
+    const body = robe.json();
+    expect(body.trainers).toEqual([
+      expect.objectContaining({
+        npcId: 1103,
+        npcName: 'Eldrin',
+        npcTitle: 'Tailoring Trainer',
+        service: 'Red Linen Robe',
+      }),
+    ]);
+    expect(body.vendors).toEqual([
+      expect.objectContaining({
+        npcId: 1347,
+        npcName: 'Alexandra Bolero',
+        npcTitle: null,
+        itemId: 2598,
+        price: 1200,
+        costs: null,
+      }),
+      expect.objectContaining({
+        npcId: 248196,
+        npcName: 'Beneris',
+        npcTitle: 'Tailoring',
+        itemId: 2598,
+        itemName: 'Pattern: Red Linen Robe',
+        price: 0,
+        extendedCost: true,
+        costs: [
+          { amount: 3, itemId: 250001, name: 'Mark of the Barrens' },
+          { amount: 25, currencyId: 1901, name: 'Honor Points' },
+        ],
+      }),
+    ]);
+  });
+
+  it('cost item names come from the items table when the record has none', async () => {
+    await s.database.pool.query(
+      `update vendors set items = jsonb_set(items, '{0,costs,0}', '{"amount": 3, "itemId": 250001}')
+       where npc_id = 248196`,
+    );
+    const body = (await get('/v1/professions/sources?itemId=2598')).json();
+    const beneris = body.vendors.find((v: { npcId: number }) => v.npcId === 248196);
+    expect(beneris.costs[0]).toEqual({ amount: 3, itemId: 250001, name: 'Mark of the Barrens' });
   });
 });
 

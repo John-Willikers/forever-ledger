@@ -362,7 +362,9 @@ function registerProfessionRoutes(
    * services named like the recipe or creating its output item. Vendors: listings of the recipe items (items the recipe
    * was learned from, or Recipe-class items named "<Prefix>: <recipe name>"), or of the item itself. Drops: those items
    * when they are Recipe-class (items.class_id = 9), from creatures (npcId) or game objects such as chests (objectId).
-   * A trainer's `skillLineId` is folded to the base profession, named by `skillLineName`.
+   * A trainer's `skillLineId` is folded to the base profession, named by `skillLineName`. `npcTitle` is the subtitle
+   * under the trainer's or vendor's name (schema 5, else null). A vendor listing's `costs` is its extended cost (items
+   * or currencies paid besides `price`, the gold part; null when none), each cost item named from `items` when known.
    */
   app.get('/v1/professions/sources', { preHandler }, async (req, reply) => {
     const itemId = positiveInt(req.query, 'itemId');
@@ -415,7 +417,7 @@ function registerProfessionRoutes(
       db,
       sql`
       with ${skillBase}
-      select t.npc_id as "npcId", t.name as "npcName", t.build, t.loc,
+      select t.npc_id as "npcId", t.name as "npcName", t.title as "npcTitle", t.build, t.loc,
              coalesce(b.base_id, t.skill_line_id) as "skillLineId", b.base_name as "skillLineName",
              extract(epoch from t.seen_at) as "seenAt",
              svc->>'name' as service, svc->>'type' as type, (svc->>'cost')::int as cost,
@@ -431,12 +433,19 @@ function registerProfessionRoutes(
     const vendors = await rows<Record<string, unknown>>(
       db,
       sql`
-      select v.npc_id as "npcId", v.name as "npcName", v.build, v.loc,
+      select v.npc_id as "npcId", v.name as "npcName", v.title as "npcTitle", v.build, v.loc,
              extract(epoch from v.seen_at) as "seenAt",
              (it->>'itemId')::int as "itemId", i.name as "itemName",
              (it->>'price')::int as price, (it->>'stack')::int as stack,
              (it->>'numAvailable')::int as "numAvailable", (it->>'currencyId')::int as "currencyId",
-             it->'extendedCost' as "extendedCost"
+             it->'extendedCost' as "extendedCost",
+             (select jsonb_agg(
+                       case when ci.name is null then c else c || jsonb_build_object('name', ci.name) end
+                       order by ord)
+              from jsonb_array_elements(case when jsonb_typeof(it->'costs') = 'array'
+                                             then it->'costs' else '[]'::jsonb end)
+                   with ordinality as e(c, ord)
+              left join items ci on ci.item_id = (c->>'itemId')::int) as costs
       from vendors v
       cross join lateral jsonb_array_elements(v.items) as it
       left join items i on i.item_id = (it->>'itemId')::int

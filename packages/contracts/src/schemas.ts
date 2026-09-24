@@ -1,21 +1,28 @@
 import { z } from 'zod';
 
 /** SavedVariables / upload schema major. Bump together with `SCHEMA_VERSION` in the addon. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * Schema majors this code reads. Each one is additive, so older files and queued older batches stay valid:
  * 2 adds `turnIns[].choice` (addon 0.2.3); 3 adds `meta.session`, `dropQty`, `corpses` and run loot details
  * (addon 0.2.4); 4 adds professions — skills, recipes, crafts, gathering nodes, trainers, vendors, API samples and
- * `items[].classID/subclassID` (addon 0.3.0).
+ * `items[].classID/subclassID` (addon 0.3.0); 5 adds vendor and trainer `title` (the NPC's subtitle) and vendor item
+ * `costs` (extended costs paid in items or currencies) (addon 0.3.3).
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5] as const;
 export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
 
 export const isSupportedSchemaVersion = (v: unknown): v is SchemaVersion =>
   (SUPPORTED_SCHEMA_VERSIONS as readonly unknown[]).includes(v);
 
-const schemaVersion = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]);
+const schemaVersion = z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+]);
 
 /** Schema 3 `meta.session`: `<epoch>-<4 hex>`, one per SavedVariables table. '' for older files. */
 const session = z.string().max(64);
@@ -338,6 +345,9 @@ export const TrainerService = z.object({
 });
 export type TrainerService = z.infer<typeof TrainerService>;
 
+/** Schema 5: the subtitle under an NPC's name ("Enchanting", "Blacksmithing Supplies"), without the "<>". */
+const npcTitle = z.string().min(1).max(200);
+
 /**
  * A profession trainer's services in one build. `complete`: the scan saw every service (all type filters on, no
  * collapsed header) and replaces the stored list; otherwise its services are merged into it by name. A newer scan wins.
@@ -346,6 +356,7 @@ export const Trainer = z.object({
   npcId: nonNegInt,
   build,
   name: z.string().optional(),
+  title: npcTitle.optional(),
   loc: Location.optional(),
   skillLineId: nonNegInt.optional(),
   seenAt: epochSecs,
@@ -353,6 +364,18 @@ export const Trainer = z.object({
   services: z.array(TrainerService).max(1000),
 });
 export type Trainer = z.infer<typeof Trainer>;
+
+/**
+ * Schema 5: one part of an extended cost (GetMerchantItemCostItem) — `amount` of an item (`itemId`) or a currency
+ * (`currencyId`); `name` is the currency's name or the item link's.
+ */
+export const VendorCost = z.object({
+  amount: nonNegInt,
+  itemId: nonNegInt.optional(),
+  currencyId: nonNegInt.optional(),
+  name: z.string().max(200).optional(),
+});
+export type VendorCost = z.infer<typeof VendorCost>;
 
 export const VendorItem = z.object({
   itemId: nonNegInt,
@@ -363,6 +386,8 @@ export const VendorItem = z.object({
   currencyId: nonNegInt.optional(),
   /** MerchantItemInfo.hasExtendedCost (a number is tolerated too). */
   extendedCost: z.union([z.boolean(), z.number()]).optional(),
+  /** Schema 5: what an extended cost is paid in, besides `price` (the gold part). */
+  costs: z.array(VendorCost).max(10).optional(),
 });
 export type VendorItem = z.infer<typeof VendorItem>;
 
@@ -371,6 +396,7 @@ export const Vendor = z.object({
   npcId: nonNegInt,
   build,
   name: z.string().optional(),
+  title: npcTitle.optional(),
   loc: Location.optional(),
   seenAt: epochSecs,
   items: z.array(VendorItem).max(1000),

@@ -379,7 +379,8 @@ export const nodeLoot = pgTable(
 
 /**
  * A trainer's services (TrainerService[]) in one build. A complete scan replaces the list, any other merges into it by
- * service name; `complete` says some scan saw the whole list. An older scan never overwrites a newer one.
+ * service name; `complete` says some scan saw the whole list. An older scan never overwrites a newer one. `title` is
+ * the subtitle under the NPC's name (schema 5); a scan without one keeps the known title.
  */
 export const trainers = pgTable(
   'trainers',
@@ -387,6 +388,7 @@ export const trainers = pgTable(
     npcId: integer('npc_id').notNull(),
     build: integer('build').notNull(),
     name: text('name'),
+    title: text('title'),
     loc: jsonb('loc'),
     skillLineId: integer('skill_line_id'),
     seenAt: tz('seen_at').notNull(),
@@ -397,13 +399,17 @@ export const trainers = pgTable(
   (t) => [primaryKey({ columns: [t.npcId, t.build] })],
 );
 
-/** A vendor's items (VendorItem[]) in one build; the newest scan replaces the row. */
+/**
+ * A vendor's items (VendorItem[], schema 5 items carry their extended `costs`) in one build; the newest scan replaces
+ * the row, except `title` (the NPC's subtitle, schema 5): a scan without one keeps the known title.
+ */
 export const vendors = pgTable(
   'vendors',
   {
     npcId: integer('npc_id').notNull(),
     build: integer('build').notNull(),
     name: text('name'),
+    title: text('title'),
     loc: jsonb('loc'),
     seenAt: tz('seen_at').notNull(),
     items: jsonb('items').notNull(),

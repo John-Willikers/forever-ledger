@@ -114,6 +114,13 @@ function idsToCamel(v: unknown) {
   return out;
 }
 
+/** A vendor item with its schema 5 extended `costs` (`itemID` / `currencyID` renamed there too). */
+function toVendorItem(v: unknown) {
+  const item = idsToCamel(v);
+  if (!isObj(item) || item.costs === undefined) return item;
+  return { ...item, costs: list(item.costs).map(idsToCamel) };
+}
+
 /** Node spots `{ [mapID] = { "x,y", ... } }` → `[{ mapId, points: [[x, y], ...] }]`; unreadable points are skipped. */
 function toSpots(v: unknown) {
   return entries(v).map(([mapId, pts]) => ({
@@ -392,7 +399,7 @@ export function normalize(db: unknown): Normalized {
         ...rest,
         npcId: num(npc),
         build: num(b),
-        items: list(items).map(idsToCamel),
+        items: list(items).map(toVendorItem),
       });
     }
   }
