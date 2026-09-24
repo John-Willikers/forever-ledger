@@ -43,9 +43,13 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   tokens list/mint (plaintext only in the 201 response, never logged)/revoke (idempotent)/owner, users list/role
   (409 for the last admin, under the bootstrap advisory lock); `/v1/diagnostics` gains `type`/`level`/`source`
   filters (refused uploads = level `error`, source `ingest`). Pages: Overview (live feed 15 s, KPIs 60 s), Health,
-  Access (inline confirms, copy-once token box), Characters (cards; charts in phase 3). No migration (no index
-  needed). Notes: overview/characters read every payload's `records` (fine at today's 34 uploads / 241 kB; add
-  per-kind counts at ingest if it grows to many MB); pages lazy-load so ECharts (~550 kB) stays off the login page.
+  Access (inline confirms, copy-once token box), Characters (cards; charts in phase 3). No migration for the pages
+  (no index needed). Notes: overview/characters read every payload's `records` (fine at today's 34 uploads / 241 kB;
+  add per-kind counts at ingest if it grows to many MB); pages lazy-load so ECharts (~550 kB) stays off the login page.
+  Review: token read scope (migration 0009), perf follow-up — store per-upload record counts at ingest before
+  raw_uploads grows large. (`d3a5bfb` scope: `api_tokens.can_read` default false, upload-only tokens get 403 on
+  every `/v1` read, Access page toggle + "can read" at mint, `tokens-cli mint --read`; `b4e7448` int4 query params
+  → 400; mint box `reset()` so the plaintext leaves the mutation cache.)
 - ⬜ 3 📜 Quests + 🧙 Characters
 - ⬜ 4 🎒 Loot + 🏰 Dungeons
 - ⬜ 5 ⚒️ Professions + 🏪 Vendors/trainers
