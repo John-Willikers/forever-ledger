@@ -104,6 +104,23 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   (build picker).
 - ⬜ 6 🧪 Builds
 - 🟡 7 🚀 Deploy — Phase 1 live 20:45 CDT 2026-09-23: nginx /admin/ + HSTS + no-query auth log, PM2 reloaded from ecosystem (BNET env), migration 0008 applied, pm2 saved. ✅ First admin login 20:47 CDT: user #1 JohnWilliker#1292 role=admin (pinned to account id)
+- ✅ 🧾 Recipe details + vendor→item links — 2026-09-23 22:30 CDT — `81f3017` server, `2d06f2c` admin (branch
+  `feat/admin-recipe-details`, not deployed). `GET /admin/api/professions/recipes/:recipeId` (`?build=`, newest by
+  default): output item (quality, class, ilvl, req level, sell price, numeric stats, tooltip cleaned of
+  `|c|r|H|h|T|t|A|a|K|k` codes, coin atlases → g/s/c, tabs kept as columns), reagents, requirements — skill rank to
+  learn (same-named trainer service in the same profession first, else the recipe item's last own line naming the
+  profession with a "(N)"), character level (recipe item's own "Requires Level N", else its req_level > 1, else a
+  trainer level > 0), level to use the output (req_level > 1, else its tooltip), max trivial + observed bands — and
+  sources (trainers, vendors of recipe items with costs, drops from mobs/objects, learned-via). Forever recipe items
+  embed the output's tooltip ("\n<name>" … "Use: Teaches…"): that block is skipped, so the output's "Requires
+  Level" is never read as a level to learn. Vendor listings gain `teaches`, trainer services `recipeId`, the item
+  route `recipes.teaches` + makers' `profession`/`skillRank`. Pages: recipe detail card (Makes + tooltip, Learn at /
+  Character level with source hints, band bar + gray-at, reagents, where to get it; `?recipe=` opens it), vendor
+  items link to /items/:id with "teaches <recipe>", trainer services link to recipes, Item page Teaches / Made by
+  (<profession> N). Live (1011 recipes): skill rank from trainer 31, from recipe item 121, unknown 859 (only 32
+  trainer services and 121 name-matched recipe items so far); character level from any source 0; description from
+  the output tooltip 897, from the recipe item 3. Tests: 17 server unit + 11 server integration, 7 admin unit + 1
+  item tooltip; `pnpm check` green (746 vitest, 179 Lua).
 - **`apps/admin`** — React 19 + TypeScript + Vite SPA (base `/admin/`), **Apache ECharts** (`echarts` +
   `echarts-for-react`) for charts, **TanStack Query** for data + polling, **TanStack Table** for sortable/filterable
   tables, React Router. Built to `apps/admin/dist`. Dark/light via CSS vars. Times rendered America/Chicago.
