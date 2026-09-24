@@ -17,6 +17,7 @@ import { registerAddonRoutes } from './routes/addon.js';
 import { registerAdminApiRoutes } from './routes/adminApi.js';
 import { registerAdminAuth } from './routes/adminAuth.js';
 import { registerAdminQuestRoutes } from './routes/adminQuests.js';
+import { registerAdminLootRoutes } from './routes/adminLoot.js';
 import type { AdminAuthOptions } from './routes/adminAuth.js';
 import { registerAdminStatic } from './routes/adminStatic.js';
 import { registerAnalysisRoutes } from './routes/analysis.js';
@@ -163,6 +164,7 @@ export async function buildApp(opts: AppOptions) {
   });
   registerAdminApiRoutes(app, db, guards);
   registerAdminQuestRoutes(app, db, guards.requireAdmin);
+  registerAdminLootRoutes(app, db, guards.requireAdmin);
   await registerAdminStatic(app, opts.admin?.distDir);
 
   return app;

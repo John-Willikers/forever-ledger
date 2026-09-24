@@ -32,6 +32,16 @@ const CharacterDetailPage = lazy(() =>
     default: m.CharacterDetailPage,
   })),
 );
+const LootPage = lazy(() => import('./pages/loot/LootPage').then((m) => ({ default: m.LootPage })));
+const ItemPage = lazy(() =>
+  import('./pages/items/ItemPage').then((m) => ({ default: m.ItemPage })),
+);
+const DungeonsPage = lazy(() =>
+  import('./pages/dungeons/DungeonsPage').then((m) => ({ default: m.DungeonsPage })),
+);
+const RunPage = lazy(() =>
+  import('./pages/dungeons/RunPage').then((m) => ({ default: m.RunPage })),
+);
 
 /** Pages that have shipped; the rest show their placeholder until their phase lands. */
 const PAGES: Readonly<Record<string, () => ReactElement>> = {
@@ -40,7 +50,15 @@ const PAGES: Readonly<Record<string, () => ReactElement>> = {
   health: () => <HealthPage />,
   access: () => <AccessPage />,
   quests: () => <QuestsPage />,
+  loot: () => <LootPage />,
+  dungeons: () => <DungeonsPage />,
 };
+
+/** Detail pages reached from a listing (not in the sidebar). */
+const DETAIL_ROUTES: readonly { path: string; page: () => ReactElement }[] = [
+  { path: 'items/:id', page: () => <ItemPage /> },
+  { path: 'dungeons/runs/:id', page: () => <RunPage /> },
+];
 
 function pageFor(item: NavItem) {
   const page = PAGES[item.path];
@@ -76,6 +94,10 @@ const router = createBrowserRouter(
             </Suspense>
           ),
         },
+        ...DETAIL_ROUTES.map((r) => ({
+          path: r.path,
+          element: <Suspense fallback={<Loading />}>{r.page()}</Suspense>,
+        })),
         { path: '*', element: <NotFound /> },
       ],
     },

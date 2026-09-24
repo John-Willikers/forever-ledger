@@ -64,7 +64,18 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   `/v1/professions/skills`). Notes: "XP sources stacked area (quests vs mobs)" left for 🏰 Dungeons (mob XP only exists
   per run); the list scans all observations + turn-ins per request (fine now; add a per-quest/build summary table if
   it gets slow); ECharts scatter/legend registered from `pages/quests/registerScatter.ts`, not `Chart.tsx`.
-- ⬜ 4 🎒 Loot + 🏰 Dungeons
+- ✅ 4 🎒 Loot + 🏰 Dungeons — 2026-09-23 21:37 — `50a3ec1` server, `22141f7` test fix, `5fad1b4` pages (branch
+  `feat/admin-loot-dungeons`, not deployed). New `routes/adminLoot.ts` (admin session only): `/admin/api/loot/mobs`
+  (per build + npc: corpses, avg copper, items, top 5 by rate with the `/v1/drops/rates` session rules; best-known
+  npc name from quest givers/vendors/trainers, else null; `?build= ?search= ?limit=` ≤ 200 `?offset=`),
+  `/loot/mobs/:npcId`, `/loot/items` (latest snapshot, distinct source counts, `FOREVER_ID_MIN` flag, `?quality=
+  ?class=`), `/admin/api/items/:id` (stat/field diffs between consecutive builds, drop rates with names, vendors with
+  named costs + title, recipes making/using it — complements `/v1/items/:id`), `/admin/api/runs` (+ instances facet),
+  `/runs/:id`, `/dungeons/clear-times`. Pages: Loot (mob table + drop chart, item search), 🧾 Item, Dungeons (summary,
+  clear-time dots, mob vs quest XP/min), 🏃 Run (boss split timeline, loot, boss loot rolls, party). Notes: run ids
+  over 100 chars can't be fetched by path (Fastify `maxParamLength`; real ids are ~30); the clear-time chart is a dot
+  plot, not a box plot (few runs per instance so far); Chart.tsx untouched — scatter/legend register from
+  `pages/dungeons/echartsExtra.ts`.
 - ⬜ 5 ⚒️ Professions + 🏪 Vendors/trainers
 - ⬜ 6 🧪 Builds
 - 🟡 7 🚀 Deploy — Phase 1 live 20:45 CDT 2026-09-23: nginx /admin/ + HSTS + no-query auth log, PM2 reloaded from ecosystem (BNET env), migration 0008 applied, pm2 saved. ✅ First admin login 20:47 CDT: user #1 JohnWilliker#1292 role=admin (pinned to account id)
