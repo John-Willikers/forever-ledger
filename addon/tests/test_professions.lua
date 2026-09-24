@@ -1075,6 +1075,34 @@ return function(H)
     H.eq(s[3], "header")
   end)
 
+  -- The trainer window with services returned in `order` ("forever" = live order, build 69977).
+  local function atTrainerInOrder(c, order, collapse)
+    local services = P.tailorServices()
+    if collapse then services[1].expanded = false end
+    c.world.npc = { name = "Eldrin", guid = P.TRAINER }
+    c.world.trainer = { tradeskill = true, services = services, order = order }
+    c.fire("TRAINER_SHOW")
+  end
+
+  H.test("trainers: Forever's return order (type second, icon third) is read by value", function()
+    for _, order in ipairs({ "forever", "retail" }) do
+      local c = session(H)
+      atTrainerInOrder(c, order)
+      local t = c.env.ForeverLedgerDB.trainers[B][1103]
+      H.eq(#t.services, 3, order .. ": headers are left out")
+      H.eq(t.services[1].type, "available", order)
+      H.eq(t.services[2].type, "unavailable", order)
+      H.eq(t.services[3].type, "used", order)
+      H.eq(t.complete, true, order .. ": expanded headers and all filters on make a complete scan")
+    end
+  end)
+
+  H.test("trainers: a collapsed header in Forever's order makes the scan incomplete", function()
+    local c = session(H)
+    atTrainerInOrder(c, "forever", true)
+    H.eq(c.env.ForeverLedgerDB.trainers[B][1103].complete, false)
+  end)
+
   H.test("trainers: class trainers are not recorded", function()
     local c = session(H)
     atTrainer(c, nil, false)

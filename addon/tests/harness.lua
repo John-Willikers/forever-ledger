@@ -478,9 +478,16 @@ function H.new(worldOverrides)
       called("GetNumTrainerServices")
       return #((world.trainer or {}).services or {})
     end
+    -- world.trainer.order = "forever": the order Forever 1.60 really returns (live sample, build 69977):
+    -- name, serviceType, icon, isExpanded (0/1), subText, category.
     env.GetTrainerServiceInfo = function(i)
       local s = service(i)
-      if s then return s.name, s.sub or "", s.type or "available", s.type == "header" and s.expanded ~= false end
+      if not s then return end
+      local expanded = s.type == "header" and s.expanded ~= false
+      if (world.trainer or {}).order == "forever" then
+        return s.name, s.type or "available", 133476, expanded and 1 or 0, s.sub or "", "One-Handed Maces"
+      end
+      return s.name, s.sub or "", s.type or "available", expanded
     end
     -- world.trainer.filters = { available=, unavailable=, used= }: false hides that type (default: all shown)
     env.GetTrainerServiceTypeFilter = function(kind)

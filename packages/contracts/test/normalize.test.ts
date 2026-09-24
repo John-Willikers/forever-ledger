@@ -657,7 +657,7 @@ describe('normalize — schema 4 from the real addon (session-v4.lua)', () => {
 
   it('validates with no problems and fills each of the 13 professions kinds', () => {
     expect(problems).toEqual([]);
-    expect(meta).toMatchObject({ schemaVersion: 4, addonVersion: '0.3.0' });
+    expect(meta).toMatchObject({ schemaVersion: 4, addonVersion: '0.3.1' });
     expect(PROFESSION_KINDS).toHaveLength(13);
     for (const kind of PROFESSION_KINDS) {
       expect(records[kind].length, kind).toBeGreaterThanOrEqual(1);

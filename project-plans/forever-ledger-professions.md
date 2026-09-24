@@ -38,9 +38,16 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 7c 🩺 Diagnostics (tray + server) — 18:33 CDT (bcf05e2 contracts, 80f0b2b server + migration 0006, 09f4ac7
   uploader, 282a34b tray: error reports every 5 min / 10 s after a fatal, sanitized, "Send error reports" toggle;
   refused ingests kept in `ingest_errors`; `GET /v1/diagnostics`; 166 Lua / 444 vitest, smoke green)
-- ⬜ 8 🚀 Rollout (server → tray → addon 0.3.0) — migration **0006_diagnostics** ships with 0004/0005 (all additive;
-  include it in the dry run)
-- ⬜ 9 🔍 Live verification (api_samples, then data)
+- ✅ 8 🚀 Rollout — server deployed (migrations 0004–0006) + tray v0.1.3 released 18:48 CDT 2026-09-23; addon 0.3.0 published 18:50 CDT
+- 🟡 9 🔍 Live verification — first real session (Jon Willikers, miner/blacksmith, 18:58 CDT): 0 ingest errors, 0
+  diagnostics, no fieldMisses, no addon errors. 530 recipes, skills + 26 skill-ups (credited once per craft), Copper
+  Vein = 3 harvests, crafts Smelt Copper ×8 / Copper Bracers ×4, trainer + vendor, learned via trainer all correct.
+  API samples confirm the retail field names for C_SkillInfo, GetProfessionInfo, GetRecipeInfo/Schematic,
+  TRADE_SKILL_ITEM_CRAFTED_RESULT, C_MerchantFrame.GetItemInfo, UnitCastingInfo, GetBaseProfessionInfo.
+  🐛 GetTrainerServiceInfo on Forever returns name, serviceType, icon, isExpanded, subText, category (retail order
+  differs) → service `type` held the icon id and headers weren't detected → fixed in addon 0.3.1 (type read by value).
+  Note: C_SkillInfo lists each profession twice (base line + "Classic" child with parentSkillLineID) — correct data;
+  routes should fold children into the parent.
 
 > Execution note: two parallel lanes in separate worktrees — lane A = phases 1, 6, 7 (TypeScript), lane B = phases
 > 2–4 (Lua). Phase 5 happens after both merge, since the fixtures feed the contracts tests.

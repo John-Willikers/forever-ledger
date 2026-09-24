@@ -1,8 +1,8 @@
--- Forever Ledger v0.3.0 (SavedVariables schema 4)
+-- Forever Ledger v0.3.1 (SavedVariables schema 4)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.3.0"
+local VERSION = "0.3.1"
 -- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
 -- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
 -- items[].classID/subclassID and apiSamples. Each is additive: older data is valid as it is.
@@ -710,8 +710,18 @@ end
 local function trainerService(i)
   local n, r = packed(GetTrainerServiceInfo(i))
   sampleReturns("GetTrainerServiceInfo", unpack(r, 1, n))
-  local name, serviceType = r[1], r[3] -- name, subText, serviceType, isExpanded
-  if serviceType == "header" then return nil, not r[4] end
+  -- Retail returns name, subText, serviceType, isExpanded; Forever 1.60 returns name, serviceType, icon,
+  -- isExpanded (0/1), subText, category. Find the type by value so either order works.
+  -- isExpanded is 4th in both.
+  local name, serviceType = r[1], nil
+  for j = 2, n do
+    local v = r[j]
+    if v == "available" or v == "unavailable" or v == "used" or v == "header" then
+      serviceType = v
+      break
+    end
+  end
+  if serviceType == "header" then return nil, not (r[4] == true or r[4] == 1) end
   if type(name) ~= "string" then return nil end
   local s = { name = name, type = serviceType ~= nil and tostring(serviceType) or nil }
   if GetTrainerServiceCost then s.cost = tonumber((GetTrainerServiceCost(i))) end

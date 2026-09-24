@@ -99,7 +99,7 @@ return function(H)
       up.login("ForeverLedger")
       local d = up.env.ForeverLedgerDB
       H.eq(d.meta.schemaVersion, 4)
-      H.eq(d.meta.addonVersion, "0.3.0")
+      H.eq(d.meta.addonVersion, "0.3.1")
       H.eq(d.meta.session, "")
       H.eq(#d.turnIns, 1)
       H.eq(d.turnIns[1].id, before.turnIns[1].id)
