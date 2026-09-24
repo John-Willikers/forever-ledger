@@ -233,6 +233,9 @@ function tooltipNode(lines: string[]) {
   return div;
 }
 
+/** Line dash per trip through the palette. */
+const LINE_TYPES = ['solid', 'dashed', 'dotted'] as const;
+
 /** Skill rank over time: a step line per character on a Chicago time axis; a legend from two characters on. */
 export function skillRankOption(series: ReturnType<typeof skillRankSeries>, p: ChartPalette) {
   const colors = CATEGORICAL[modeOf(p)];
@@ -273,15 +276,23 @@ export function skillRankOption(series: ReturnType<typeof skillRankSeries>, p: C
       splitLine: { lineStyle: { color: p.grid, opacity: 0.6 } },
       axisLabel: { color: p.muted },
     },
-    series: series.slice(0, colors.length).map((s, i) => ({
-      type: 'line' as const,
-      name: s.char,
-      step: 'end' as const,
-      data: s.data,
-      showSymbol: true,
-      symbolSize: 8,
-      lineStyle: { color: colors[i]!, width: 2 },
-      itemStyle: { color: colors[i]!, borderColor: p.surface, borderWidth: 2 },
-    })),
+    // Every character is drawn: past the palette the colors cycle, told apart by a dashed, then dotted line.
+    series: series.map((s, i) => {
+      const color = colors[i % colors.length]!;
+      return {
+        type: 'line' as const,
+        name: s.char,
+        step: 'end' as const,
+        data: s.data,
+        showSymbol: true,
+        symbolSize: 8,
+        lineStyle: {
+          color,
+          width: 2,
+          type: LINE_TYPES[Math.floor(i / colors.length) % LINE_TYPES.length]!,
+        },
+        itemStyle: { color, borderColor: p.surface, borderWidth: 2 },
+      };
+    }),
   };
 }

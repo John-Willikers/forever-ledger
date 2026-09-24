@@ -10,6 +10,13 @@ describe('formatMoney', () => {
     expect(formatMoney(10000)).toBe('1g');
     expect(formatMoney(1234567)).toBe('123g 45s 67c');
     expect(formatMoney(10005)).toBe('1g 5c');
+    expect(formatMoney(123456)).toBe('12g 34s 56c');
+    expect(formatMoney(500)).toBe('5s');
+  });
+
+  it('groups thousands of gold', () => {
+    expect(formatMoney(12_345_670_000)).toBe('1,234,567g');
+    expect(formatMoney(-12_345_670_001)).toBe('−1,234,567g 1c');
   });
 
   it('keeps fractional copper (a unit price of a stack), signs and missing values', () => {

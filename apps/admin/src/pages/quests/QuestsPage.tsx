@@ -9,12 +9,12 @@ import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Empty, QueryState } from '../../components/State';
 import { formatNumber, plural } from '../../lib/format';
+import { formatMoney } from '../../lib/money';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { ForeverBadge } from './ForeverBadge';
 import { QuestDrawer } from './QuestDrawer';
 import {
   filtersFromParams,
-  formatMoney,
   pickSummary,
   questsPath,
   withParam,

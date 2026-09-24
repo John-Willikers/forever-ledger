@@ -5,12 +5,12 @@ import { Chart, useChartPalette } from '../../components/Chart';
 import { Empty, QueryState } from '../../components/State';
 import { classColor } from '../../lib/classes';
 import { formatNumber, plural } from '../../lib/format';
+import { formatMoney } from '../../lib/money';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { characterPath } from '../characters/timelineLib';
 import { ForeverBadge } from './ForeverBadge';
 import {
   formatLoc,
-  formatMoney,
   npcLocationGroups,
   npcLocationOption,
   pickBarOption,

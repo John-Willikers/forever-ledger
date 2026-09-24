@@ -1,10 +1,12 @@
 // WoW money: prices are copper (100 copper = 1 silver, 100 silver = 1 gold). Vendor extended costs are items or
-// currencies paid besides the gold part.
+// currencies paid besides the gold part. The one money formatter of the panel (quests, characters, professions,
+// vendors).
+import { formatNumber } from './format';
 
 const DASH = '—';
 const MINUS = '−';
 
-/** `123g 45s 67c`, `12s 50c`, `0c`; fractional copper (a stack's unit price) keeps two decimals; a dash for none. */
+/** `1,234g 45s 67c`, `12s 50c`, `0c`; fractional copper (a stack's unit price) keeps two decimals; a dash for none. */
 export function formatMoney(copper: number | null | undefined) {
   if (typeof copper !== 'number' || !Number.isFinite(copper)) return DASH;
   const sign = copper < 0 ? MINUS : '';
@@ -12,7 +14,9 @@ export function formatMoney(copper: number | null | undefined) {
   const g = Math.floor(abs / 10000);
   const s = Math.floor((abs - g * 10000) / 100);
   const c = Math.round((abs - g * 10000 - s * 100) * 100) / 100;
-  const parts = [g ? `${g}g` : '', s ? `${s}s` : '', c ? `${c}c` : ''].filter(Boolean);
+  const parts = [g ? `${formatNumber(g)}g` : '', s ? `${s}s` : '', c ? `${c}c` : ''].filter(
+    Boolean,
+  );
   return sign + (parts.length ? parts.join(' ') : '0c');
 }
 

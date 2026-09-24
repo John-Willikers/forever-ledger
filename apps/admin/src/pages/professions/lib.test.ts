@@ -276,4 +276,23 @@ describe('skill rank over time', () => {
     expect(long.legend.show).toBe(true);
     expect(long.series.map((s) => s.lineStyle.color)).toEqual(CATEGORICAL.dark.slice(0, 2));
   });
+
+  it('shows every character: past the palette, colors cycle with a dashed, then dotted line', () => {
+    const n = CATEGORICAL.light.length * 2 + 1;
+    const many = Array.from({ length: n }, (_, i) => ({
+      char: `Char${i}-Bayou`,
+      data: [[Date.parse('2026-09-01T16:00:00Z') + i * 1000, i + 1] as [number, number]],
+    }));
+    const o = skillRankOption(many, P);
+    expect(o.series).toHaveLength(n);
+    expect(o.series.map((s) => s.name)).toEqual(many.map((m) => m.char));
+    expect(o.legend.show).toBe(true);
+    const k = CATEGORICAL.light.length;
+    expect(o.series[k]!.lineStyle.color).toBe(CATEGORICAL.light[0]);
+    expect(o.series[k]!.itemStyle.color).toBe(CATEGORICAL.light[0]);
+    expect(o.series[0]!.lineStyle.type).toBe('solid');
+    expect(o.series[k]!.lineStyle.type).toBe('dashed');
+    expect(o.series[2 * k]!.lineStyle.type).toBe('dotted');
+    expect(o.series[2 * k]!.lineStyle.color).toBe(CATEGORICAL.light[0]);
+  });
 });

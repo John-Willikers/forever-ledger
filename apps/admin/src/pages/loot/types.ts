@@ -1,6 +1,7 @@
 // Shapes of the loot routes (apps/server/src/routes/adminLoot.ts) and /v1/items/:id (routes/analysis.ts).
 // Every string here is uploaded data: render it as text.
 import type { DropRate, DropSource } from '../items/itemLib';
+import type { Location } from '../vendors/types';
 import type { RateItem } from './lootLib';
 
 export interface Paged<T> {
@@ -89,8 +90,9 @@ export interface ItemV1 {
   };
 }
 
+/** One extended-cost part, field by field (a field the upload got wrong is left out). */
 export interface VendorCost {
-  amount: number;
+  amount?: number;
   itemId?: number;
   currencyId?: number;
   name?: string;
@@ -112,6 +114,7 @@ export interface ItemExtra {
     npcName: string | null;
     npcTitle: string | null;
     build: number;
+    location: Location | null;
     seenAt: string;
     price: number | null;
     stack: number | null;

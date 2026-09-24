@@ -4,7 +4,6 @@ import {
   categoricalColors,
   filtersFromParams,
   formatLoc,
-  formatMoney,
   npcLocationGroups,
   npcLocationOption,
   pickBarOption,
@@ -95,17 +94,6 @@ describe('withParam', () => {
     expect(withParam(base, 'quest', null).toString()).toBe('zone=Z&offset=200');
     // The input isn't changed.
     expect(base.toString()).toBe('zone=Z&offset=200&quest=5');
-  });
-});
-
-describe('formatMoney', () => {
-  it('splits copper into gold, silver and copper', () => {
-    expect(formatMoney(123456)).toBe('12g 34s 56c');
-    expect(formatMoney(500)).toBe('5s');
-    expect(formatMoney(10005)).toBe('1g 5c');
-    expect(formatMoney(0)).toBe('0c');
-    expect(formatMoney(null)).toBe('—');
-    expect(formatMoney(-1)).toBe('—');
   });
 });
 

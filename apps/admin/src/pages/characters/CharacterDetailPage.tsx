@@ -10,7 +10,7 @@ import { Kpi } from '../../components/Kpi';
 import { Empty, QueryState } from '../../components/State';
 import { formatCompact, formatNumber, plural } from '../../lib/format';
 import { formatChicago, formatChicagoShort, timeAgo } from '../../lib/time';
-import { formatMoney } from '../quests/questLib';
+import { formatMoney } from '../../lib/money';
 import './characters.css';
 import {
   cumulativeXpOption,

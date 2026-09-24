@@ -3,7 +3,7 @@
 // the default tooltip escapes them and the canvas draws text. No custom HTML tooltip formatters here.
 import { CHART_PALETTES } from '../../lib/charts';
 import type { ChartPalette } from '../../lib/charts';
-import { formatNumber, plural } from '../../lib/format';
+import { plural } from '../../lib/format';
 import type { Loc, QuestObservationRow, QuestReward, QuestRow, RewardChoice } from './types';
 
 /** Rows asked per page (the server caps at 500). */
@@ -68,16 +68,6 @@ export function withParam(params: URLSearchParams, key: string, value: string | 
   else next.set(key, value);
   if (key !== 'offset' && key !== 'quest') next.delete('offset');
   return next;
-}
-
-/** Copper → `12g 34s 56c` (zero parts left out); a dash when unknown. */
-export function formatMoney(copper: number | null | undefined) {
-  if (typeof copper !== 'number' || !Number.isFinite(copper) || copper < 0) return '—';
-  if (copper === 0) return '0c';
-  const g = Math.floor(copper / 10_000);
-  const s = Math.floor((copper % 10_000) / 100);
-  const c = copper % 100;
-  return [g && `${formatNumber(g)}g`, s && `${s}s`, c && `${c}c`].filter(Boolean).join(' ');
 }
 
 /** `Zone · Subzone (x, y)`; parts that are missing are left out. */

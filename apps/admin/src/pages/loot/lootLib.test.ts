@@ -91,4 +91,13 @@ describe('mobDropOption', () => {
     expect(mobDropChartHeight(20)).toBe(20 * 24 + 40);
     expect(mobDropChartHeight(1)).toBe(120);
   });
+
+  it('stretches the axis past 100% when a rate is above it', () => {
+    const over = [
+      { itemId: 2589, name: 'Linen Cloth', quality: 1, dropped: 5, quantity: 9, rate: 1.25 },
+    ];
+    expect(mobDropOption(over, 4, P).xAxis.max).toBe(125);
+    expect(mobDropOption([{ ...over[0]!, rate: 0.9 }], 4, P).xAxis.max).toBe(100);
+    expect(mobDropOption([], 0, P).xAxis.max).toBe(100);
+  });
 });

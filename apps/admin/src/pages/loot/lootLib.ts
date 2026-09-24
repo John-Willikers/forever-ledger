@@ -91,7 +91,8 @@ export function mobDropOption(items: RateItem[], corpses: number, p: ChartPalett
       textStyle: { color: p.text },
       valueFormatter: (v: unknown) => `${Number(v)}% of corpses`,
     },
-    xAxis: { type: 'value', max: 100, show: false },
+    // 100% unless a rate is above it (uploaded counts can disagree): a bar never runs off the chart.
+    xAxis: { type: 'value', max: Math.max(100, ...top.map((i) => pct(i.rate))), show: false },
     yAxis: {
       type: 'category',
       data: top.map((i) => itemLabel(i.itemId, i.name)),
