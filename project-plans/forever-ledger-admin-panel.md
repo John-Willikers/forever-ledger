@@ -63,7 +63,9 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   giver/ender zone plots), `/characters/:key` (level + cumulative XP lines, XP per day, turn-ins, professions from
   `/v1/professions/skills`). Notes: "XP sources stacked area (quests vs mobs)" left for 🏰 Dungeons (mob XP only exists
   per run); the list scans all observations + turn-ins per request (fine now; add a per-quest/build summary table if
-  it gets slow); ECharts scatter/legend registered from `pages/quests/registerScatter.ts`, not `Chart.tsx`.
+  it gets slow); ECharts scatter/legend registered from `pages/quests/registerScatter.ts`, not `Chart.tsx`. Caveat:
+  `xpMismatch` compares the max XP offered with the average XP paid across every level that turned the quest in, so
+  a quest whose reward scales with level can be flagged without a real mismatch.
 - ✅ 4 🎒 Loot + 🏰 Dungeons — 2026-09-23 21:37 — `50a3ec1` server, `22141f7` test fix, `5fad1b4` pages (branch
   `feat/admin-loot-dungeons`, not deployed). New `routes/adminLoot.ts` (admin session only): `/admin/api/loot/mobs`
   (per build + npc: corpses, avg copper, items, top 5 by rate with the `/v1/drops/rates` session rules; best-known
@@ -73,9 +75,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   named costs + title, recipes making/using it — complements `/v1/items/:id`), `/admin/api/runs` (+ instances facet),
   `/runs/:id`, `/dungeons/clear-times`. Pages: Loot (mob table + drop chart, item search), 🧾 Item, Dungeons (summary,
   clear-time dots, mob vs quest XP/min), 🏃 Run (boss split timeline, loot, boss loot rolls, party). Notes: run ids
-  over 100 chars can't be fetched by path (Fastify `maxParamLength`; real ids are ~30); the clear-time chart is a dot
-  plot, not a box plot (few runs per instance so far); Chart.tsx untouched — scatter/legend register from
-  `pages/dungeons/echartsExtra.ts`.
+  over 100 chars couldn't be fetched by path (Fastify `maxParamLength`; fixed in review, now 512); the clear-time
+  chart is a dot plot, not a box plot (few runs per instance so far); Chart.tsx untouched — scatter/legend register
+  from `pages/dungeons/echartsExtra.ts`.
+  🔧 Review fixes for phases 3–5 — 2026-09-23 21:58 CDT (branch `integrate/admin-phases-3-5`, PR #19): `340bfa2`
+  contracts int4 caps; `e52ea86` server (safe jsonb readers `routes/sqlJson.ts` for every uploaded-jsonb cast,
+  shared `routes/shared.ts` helpers + `FOREVER_ID_THRESHOLDS`, text params 400 instead of truncating, indexed quest
+  `last_seen`, `maxParamLength` 512 so long run ids / character keys route); `1794a95` admin (skill chart cycles its
+  palette, drop-rate axis past 100%, one `formatMoney`).
 - ✅ 5 ⚒️ Professions + 🏪 Vendors/trainers — 2026-09-23 21:41 — `57db63d` server, `379c434` pages (branch
   `feat/admin-professions-vendors`, not deployed). New `routes/adminProfessions.ts` (admin session only):
   professions overview (per base profession, child lines folded: characters rank/max + recipes known, recipes
