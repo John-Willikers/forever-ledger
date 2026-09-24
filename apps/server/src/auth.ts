@@ -7,12 +7,15 @@ const PREFIX = 'flt_';
 
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
-/** Creates a token; the plaintext is returned once and only its hash is stored. */
-export async function mintToken(db: Db, label: string) {
+/**
+ * Creates a token, optionally owned by a panel user; the plaintext is returned once and only its hash is stored.
+ * Never log the returned `token`.
+ */
+export async function mintToken(db: Db, label: string, opts: { userId?: number | null } = {}) {
   const token = PREFIX + randomBytes(32).toString('base64url');
   const [row] = await db
     .insert(apiTokens)
-    .values({ label, tokenHash: hashToken(token) })
+    .values({ label, tokenHash: hashToken(token), userId: opts.userId ?? null })
     .returning({ id: apiTokens.id });
   return { id: row!.id, token };
 }

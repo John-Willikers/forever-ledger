@@ -1,4 +1,8 @@
-import { DiagnosticsReport } from '@forever-ledger/contracts';
+import {
+  DIAGNOSTIC_LEVELS,
+  DIAGNOSTIC_SOURCES,
+  DiagnosticsReport,
+} from '@forever-ledger/contracts';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { verifyBearer } from '../auth.js';
@@ -30,6 +34,17 @@ function parseSince(raw: unknown): Date | null | undefined {
   if (/^\d+(\.\d+)?$/.test(raw)) return new Date(Number(raw) * 1000);
   const ms = Date.parse(raw);
   return Number.isNaN(ms) ? null : new Date(ms);
+}
+
+const LIST_TYPES = ['diagnostic', 'ingest-error'] as const;
+/** For `?source=`: refused ingests (which have no source) are listed under this one. */
+export const INGEST_SOURCE = 'ingest';
+const LIST_SOURCES: readonly string[] = [...DIAGNOSTIC_SOURCES, INGEST_SOURCE];
+
+/** `?<key>=` when it is one of `allowed`; undefined when absent, null when not allowed. */
+function oneOf(raw: unknown, allowed: readonly string[]): string | null | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  return typeof raw === 'string' && allowed.includes(raw) ? raw : null;
 }
 
 const shortText = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 128) : null);
@@ -173,7 +188,11 @@ export function registerDiagnosticsRoutes(
     },
   );
 
-  /** Recent error reports and refused ingests, newest first (`?since=` epoch secs or ISO, default 7 days). */
+  /**
+   * Recent error reports and refused ingests, newest first (`?since=` epoch secs or ISO, default 7 days). Filters:
+   * `?type=diagnostic|ingest-error`, `?level=` and `?source=`; a refused ingest counts as level `error`, source
+   * `ingest`.
+   */
   app.get(
     '/v1/diagnostics',
     {
@@ -194,6 +213,20 @@ export function registerDiagnosticsRoutes(
       const since = parsedSince ?? new Date(Date.now() - DEFAULT_LIST_DAYS * 86_400_000);
       const n = Number(q.limit);
       const limit = Number.isInteger(n) && n > 0 ? Math.min(n, MAX_LIST_LIMIT) : DEFAULT_LIST_LIMIT;
+      const type = oneOf(q.type, LIST_TYPES);
+      const level = oneOf(q.level, DIAGNOSTIC_LEVELS);
+      const source = oneOf(q.source, LIST_SOURCES);
+      if (type === null || level === null || source === null)
+        return reply.status(400).send({
+          error: `type must be one of ${LIST_TYPES.join(', ')}; level one of ${DIAGNOSTIC_LEVELS.join(', ')}; source one of ${LIST_SOURCES.join(', ')}`,
+        });
+      const withDiagnostics = type !== 'ingest-error' && source !== INGEST_SOURCE;
+      const withIngest =
+        type !== 'diagnostic' &&
+        (level === undefined || level === 'error') &&
+        (source === undefined || source === INGEST_SOURCE);
+      const levelParam = level ?? null;
+      const sourceParam = source ?? null;
 
       const res = await db.execute(sql`
       select * from (
@@ -201,12 +234,15 @@ export function registerDiagnosticsRoutes(
                level, source, message, detail,
                null::text as account, null::int as schema_version, null::int as status, null::text as error,
                null::jsonb as issues
-        from diagnostics where received_at >= ${since}
+        from diagnostics
+        where received_at >= ${since} and ${withDiagnostics}::boolean
+          and (${levelParam}::text is null or level = ${levelParam}::text)
+          and (${sourceParam}::text is null or source = ${sourceParam}::text)
         union all
         select 'ingest-error', id, received_at, received_at, token_id, uploader_id, null, null,
                null, null, null, null,
                account, schema_version, status, error, issues
-        from ingest_errors where received_at >= ${since}
+        from ingest_errors where received_at >= ${since} and ${withIngest}::boolean
       ) x
       order by received_at desc, occurred_at desc, id desc
       limit ${limit}`);

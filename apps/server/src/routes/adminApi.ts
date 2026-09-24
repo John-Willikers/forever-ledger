@@ -1,8 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import type { Db } from '../db/client.js';
+import { registerAdminAccessRoutes } from './adminAccess.js';
 import type { AdminGuards } from './adminAuth.js';
+import { registerAdminDataRoutes } from './adminData.js';
 
 /** JSON routes for the admin panel; everything under /admin/api needs an admin session (+ CSRF on writes). */
-export function registerAdminApiRoutes(app: FastifyInstance, guards: AdminGuards) {
+export function registerAdminApiRoutes(app: FastifyInstance, db: Db, guards: AdminGuards) {
   const preHandler = guards.requireAdmin;
 
   /** Proves the guard: who am I, as the admin API sees it. POST checks the CSRF header. */
@@ -15,4 +18,7 @@ export function registerAdminApiRoutes(app: FastifyInstance, guards: AdminGuards
   };
   app.get('/admin/api/ping', { preHandler }, ping);
   app.post('/admin/api/ping', { preHandler }, ping);
+
+  registerAdminDataRoutes(app, db, preHandler);
+  registerAdminAccessRoutes(app, db, preHandler, guards.session);
 }
