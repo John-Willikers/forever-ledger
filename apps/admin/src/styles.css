@@ -737,3 +737,165 @@ pre.json {
 .nowrap {
   white-space: nowrap;
 }
+
+/* ---- Phase 4: Loot, Item, Dungeons, Run ------------------------------ */
+
+/* Item quality text colors: the game's colors on dark, darker steps of the same hues on light (≥ 4.5:1). */
+:root {
+  --q0: #6b6b6b;
+  --q1: var(--text);
+  --q2: #1a7f00;
+  --q3: #0062c4;
+  --q4: #8a2bd0;
+  --q5: #a64f00;
+  --q6: #806517;
+  --q7: #007190;
+  --changed-bg: #fff1c2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --q0: #9d9d9d;
+    --q1: var(--text);
+    --q2: #1eff00;
+    --q3: #3d9bff;
+    --q4: #b86bf5;
+    --q5: #ff8000;
+    --q6: #e6cc80;
+    --q7: #00ccff;
+    --changed-bg: #3d3212;
+  }
+}
+
+.q0 {
+  color: var(--q0);
+}
+.q1,
+.q-unknown {
+  color: var(--q1);
+}
+.q2 {
+  color: var(--q2);
+}
+.q3 {
+  color: var(--q3);
+}
+.q4 {
+  color: var(--q4);
+}
+.q5 {
+  color: var(--q5);
+}
+.q6 {
+  color: var(--q6);
+}
+.q7,
+.q8 {
+  color: var(--q7);
+}
+
+a.item-name {
+  text-decoration: none;
+  font-weight: 550;
+}
+
+a.item-name:hover {
+  text-decoration: underline;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.pill.forever {
+  background: var(--surface-2);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.4rem;
+}
+
+.rate-track {
+  display: inline-block;
+  width: 4rem;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.rate-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.rate-value {
+  font-size: 0.8rem;
+  color: var(--muted);
+  min-width: 3rem;
+}
+
+ul.top-drops,
+ul.plain,
+ul.specs,
+ul.diffs,
+ul.tooltip-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+ul.top-drops li,
+ul.plain li,
+ul.specs li {
+  padding: 0.1rem 0;
+}
+
+ul.diffs {
+  margin-top: 0.5rem;
+}
+
+ul.tooltip-lines {
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+table.data tr.selected td {
+  background: var(--surface-2);
+}
+
+table.data td.changed {
+  background: var(--changed-bg);
+  font-weight: 650;
+}
+
+.pager {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 0.6rem;
+}
+
+.roll {
+  display: inline-block;
+  margin-right: 0.6rem;
+  white-space: nowrap;
+}
+
+.mob-name {
+  font-weight: 550;
+}
