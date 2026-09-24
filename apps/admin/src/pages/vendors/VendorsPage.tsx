@@ -7,13 +7,14 @@ import { Card } from '../../components/Card';
 import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Empty, QueryState } from '../../components/State';
+import { ZoneMap } from '../../components/ZoneMap';
 import { formatNumber, plural } from '../../lib/format';
 import { formatCosts, formatMoney } from '../../lib/money';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { ItemName } from '../loot/parts';
 import '../professions/professions.css';
 import { recipeHref } from '../professions/recipeLib';
-import { formatLocation, listPath, skillReq, stockLabel, unitPrice } from './lib';
+import { formatLocation, listPath, npcMapPoint, skillReq, stockLabel, unitPrice } from './lib';
 import type { ListFilters } from './lib';
 import type {
   NpcList,
@@ -300,6 +301,28 @@ function DetailHead({ n, children }: { n: VendorDetail | TrainerDetail; children
   );
 }
 
+/** Where the NPC stands, on its zone map (or the grid), when the scan recorded a map id and coordinates. */
+function NpcLocationMap({
+  n,
+  kind,
+}: {
+  n: VendorDetail | TrainerDetail;
+  kind: 'vendor' | 'trainer';
+}) {
+  const at = npcMapPoint(n.location, kind, npcName(n));
+  if (!at) return null;
+  return (
+    <details className="npc-map">
+      <summary className="small">Show on the map</summary>
+      <ZoneMap
+        uiMapId={at.uiMapId}
+        points={[at.point]}
+        label={`${npcName(n)} at ${formatLocation(n.location)}`}
+      />
+    </details>
+  );
+}
+
 const itemCol = createColumnHelper<SortableFeatures, VendorItem>();
 const itemColumns = itemCol.columns([
   itemCol.accessor((i) => i.name ?? `Item ${i.itemId ?? '?'}`, {
@@ -392,6 +415,7 @@ function VendorCard({ npcId }: { npcId: number }) {
         {(v) => (
           <>
             <DetailHead n={v} />
+            <NpcLocationMap n={v} kind="vendor" />
             {v.items.length === 0 ? (
               <Empty>This scan listed no items.</Empty>
             ) : (
@@ -424,6 +448,7 @@ function TrainerCard({ npcId }: { npcId: number }) {
         {(t) => (
           <>
             <DetailHead n={t}>{t.skillLineName ? ` · teaches ${t.skillLineName}` : ''}</DetailHead>
+            <NpcLocationMap n={t} kind="trainer" />
             {!t.complete && (
               <div className="callout warn" role="note">
                 Partial list: when this trainer was scanned, a service filter was off (usually

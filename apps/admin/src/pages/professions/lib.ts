@@ -1,8 +1,9 @@
 // Pure helpers and ECharts option mappers for the Professions page. Names come from uploads (untrusted): tooltips
 // either use ECharts' escaped defaults or build DOM with textContent, never HTML strings.
-import { CHART_PALETTES } from '../../lib/charts';
+import { CHART_PALETTES, SERIES_COLORS } from '../../lib/charts';
 import type { ChartPalette } from '../../lib/charts';
 import { formatNumber } from '../../lib/format';
+import type { MapPoint } from '../../lib/zoneMap';
 import { formatChicagoShort, TIME_ZONE } from '../../lib/time';
 import type { GatherMap, GatheringNode, SkillHistory, Threshold } from './types';
 
@@ -114,14 +115,8 @@ export const lootLine = (loot: GatheringNode['loot']) => loot.map(yieldText).joi
 
 // ---- charts ----
 
-/**
- * Categorical series colors (fixed order, never cycled), light and dark steps validated for CVD separation on the
- * panel's surfaces. Scatter marks also get a shape per series, so identity is never color alone.
- */
-export const CATEGORICAL: Readonly<Record<'light' | 'dark', readonly string[]>> = {
-  light: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'],
-  dark: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
-};
+/** Categorical series colors (see SERIES_COLORS). Scatter marks also get a shape per series, so identity is never color alone. */
+export const CATEGORICAL = SERIES_COLORS;
 const SYMBOLS = ['circle', 'diamond', 'triangle', 'rect', 'roundRect', 'pin', 'arrow', 'circle'];
 
 const modeOf = (p: ChartPalette): 'light' | 'dark' =>
@@ -191,6 +186,24 @@ export function gatheringScatterOption(map: GatherMap, p: ChartPalette) {
       emphasis: { focus: 'series' as const },
     })),
   };
+}
+
+/**
+ * Node spots of one map as zone map points: one kind per node type, in object id order like the scatter (so colors
+ * match), sized by the spot's opens.
+ */
+export function gatherPoints(map: GatherMap): MapPoint[] {
+  return [...map.nodes]
+    .sort((a, b) => a.objectId - b.objectId)
+    .flatMap((n) =>
+      n.spots.map((s) => ({
+        x: s.x,
+        y: s.y,
+        kind: nodeLabel(n),
+        label: nodeLabel(n),
+        weight: s.opens,
+      })),
+    );
 }
 
 /** One profession's rises: a series per character with at least one, as [epoch ms, rank]. */

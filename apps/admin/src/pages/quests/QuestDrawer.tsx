@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { useAdminQuery } from '../../api';
 import { Chart, useChartPalette } from '../../components/Chart';
 import { Empty, QueryState } from '../../components/State';
+import { ZoneMap } from '../../components/ZoneMap';
 import { classColor } from '../../lib/classes';
 import { formatNumber, plural } from '../../lib/format';
 import { formatMoney } from '../../lib/money';
@@ -13,6 +14,7 @@ import {
   formatLoc,
   npcLocationGroups,
   npcLocationOption,
+  npcLocationPoints,
   pickBarOption,
   pickChartHeight,
   picksFor,
@@ -167,16 +169,20 @@ function Locations({ observations }: { observations: QuestObservationRow[] }) {
   if (groups.length === 0) return <Empty>No NPC locations recorded in this build.</Empty>;
   return (
     <div className="loc-grid">
-      {groups.map((g) => (
-        <figure key={g.zone} className="loc-plot">
-          <figcaption className="small">{g.zone}</figcaption>
-          <Chart
-            option={npcLocationOption(g, palette)}
-            height={260}
-            label={`${g.zone}: givers ${g.givers.map((p) => `${p.name} (${p.x}, ${p.y})`).join(', ') || 'none'}; enders ${g.enders.map((p) => `${p.name} (${p.x}, ${p.y})`).join(', ') || 'none'}`}
-          />
-        </figure>
-      ))}
+      {groups.map((g) => {
+        const label = `${g.zone}: givers ${g.givers.map((p) => `${p.name} (${p.x}, ${p.y})`).join(', ') || 'none'}; enders ${g.enders.map((p) => `${p.name} (${p.x}, ${p.y})`).join(', ') || 'none'}`;
+        return (
+          <figure key={`${g.mapId ?? ''}:${g.zone}`} className="loc-plot">
+            <figcaption className="small">{g.zone}</figcaption>
+            <ZoneMap
+              uiMapId={g.mapId}
+              points={npcLocationPoints(g)}
+              label={label}
+              fallback={<Chart option={npcLocationOption(g, palette)} height={260} label={label} />}
+            />
+          </figure>
+        );
+      })}
     </div>
   );
 }

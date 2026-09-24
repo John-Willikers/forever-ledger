@@ -4,6 +4,7 @@
 import { CHART_PALETTES } from '../../lib/charts';
 import type { ChartPalette } from '../../lib/charts';
 import { plural } from '../../lib/format';
+import type { MapPoint } from '../../lib/zoneMap';
 import type { Loc, QuestObservationRow, QuestReward, QuestRow, RewardChoice } from './types';
 
 /** Rows asked per page (the server caps at 500). */
@@ -208,18 +209,26 @@ export interface NpcPoint {
 
 export interface NpcLocationGroup {
   zone: string;
+  /** The uiMapID the points were recorded on (null for locations without one). */
+  mapId: number | null;
   givers: NpcPoint[];
   enders: NpcPoint[];
 }
 
 /**
- * Where the quest's NPCs stand, per zone: givers (detail/accept windows) and enders (complete), from the NPC's own
- * location. Points without coordinates are skipped; the same NPC at the same spot counts once.
+ * Where the quest's NPCs stand, per map (uiMapID, else zone name): givers (detail/accept windows) and enders
+ * (complete), from the NPC's own location. Points without coordinates are skipped; the same NPC at the same spot counts
+ * once.
  */
 export function npcLocationGroups(observations: QuestObservationRow[]): NpcLocationGroup[] {
   const groups = new Map<
     string,
-    { givers: Map<string, NpcPoint>; enders: Map<string, NpcPoint> }
+    {
+      zone: string;
+      mapId: number | null;
+      givers: Map<string, NpcPoint>;
+      enders: Map<string, NpcPoint>;
+    }
   >();
   for (const o of observations) {
     const role =
@@ -230,16 +239,36 @@ export function npcLocationGroups(observations: QuestObservationRow[]): NpcLocat
           : null;
     const loc = o.npc?.loc;
     if (!role || !o.npc || !loc || loc.x === null || loc.y === null) continue;
-    const zone = loc.zone || UNKNOWN_ZONE;
-    if (!groups.has(zone)) groups.set(zone, { givers: new Map(), enders: new Map() });
+    const mapId = loc.mapID !== null && Number.isInteger(loc.mapID) ? loc.mapID : null;
+    const key = mapId !== null ? `map:${mapId}` : `zone:${loc.zone || UNKNOWN_ZONE}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        zone: loc.zone || (mapId !== null ? `Map ${mapId}` : UNKNOWN_ZONE),
+        mapId,
+        givers: new Map(),
+        enders: new Map(),
+      };
+      groups.set(key, g);
+    }
     const name = o.npc.name ?? (o.npc.id !== null ? `NPC ${o.npc.id}` : 'NPC');
-    const points = groups.get(zone)![role];
-    points.set(`${name}\u0000${loc.x}\u0000${loc.y}`, { name, x: loc.x, y: loc.y });
+    g[role].set(`${name}\u0000${loc.x}\u0000${loc.y}`, { name, x: loc.x, y: loc.y });
   }
-  return [...groups]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([zone, g]) => ({ zone, givers: [...g.givers.values()], enders: [...g.enders.values()] }));
+  return [...groups.values()]
+    .sort((a, b) => a.zone.localeCompare(b.zone) || (a.mapId ?? -1) - (b.mapId ?? -1))
+    .map((g) => ({
+      zone: g.zone,
+      mapId: g.mapId,
+      givers: [...g.givers.values()],
+      enders: [...g.enders.values()],
+    }));
 }
+
+/** A group's givers and enders as zone map points. */
+export const npcLocationPoints = (g: NpcLocationGroup): MapPoint[] => [
+  ...g.givers.map((p) => ({ x: p.x, y: p.y, kind: 'giver', label: p.name })),
+  ...g.enders.map((p) => ({ x: p.x, y: p.y, kind: 'ender', label: p.name })),
+];
 
 /** One zone's givers and enders on the 0–100 map grid (y grows downwards, like the game's map coordinates). */
 export function npcLocationOption(g: NpcLocationGroup, p: ChartPalette) {

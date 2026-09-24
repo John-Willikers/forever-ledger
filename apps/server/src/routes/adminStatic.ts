@@ -10,18 +10,26 @@ export const DEFAULT_ADMIN_DIST_DIR = fileURLToPath(
   new URL('../../../admin/dist', import.meta.url),
 );
 
-/** JSON namespaces under /admin that never fall back to the SPA. */
+/** JSON namespaces under /admin (private, never cached, never the SPA). */
 const API_PATH = /^\/admin\/(api|auth)(\/|$)/;
+/** Server paths under /admin that never fall back to the SPA: the JSON namespaces and zone map images. The Maps page
+ * itself (/admin/maps) is a client route. */
+const SERVER_PATH = /^\/admin\/((api|auth)(\/|$)|maps\/)/;
+
+const pathOf = (url: string) => url.split('?', 1)[0]!;
 
 /** /admin/api or /admin/auth, judged on the path alone (a query string must not change the answer). */
-export const isAdminApiPath = (url: string) => API_PATH.test(url.split('?', 1)[0]!);
+export const isAdminApiPath = (url: string) => API_PATH.test(pathOf(url));
+
+/** /admin/api, /admin/auth or /admin/maps/…: answered by the server (JSON 404 when unknown), never by the SPA. */
+export const isAdminServerPath = (url: string) => SERVER_PATH.test(pathOf(url));
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
   'referrer-policy': 'same-origin',
   'content-security-policy':
-    "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
+    "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; " +
     "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
 };
 
@@ -34,7 +42,7 @@ export async function registerAdminStatic(app: FastifyInstance, distDir = DEFAUL
   await app.register(
     async (scope) => {
       scope.addHook('onSend', async (req, reply) => {
-        if (!isAdminApiPath(req.url)) reply.headers(SECURITY_HEADERS);
+        if (!isAdminServerPath(req.url)) reply.headers(SECURITY_HEADERS);
       });
       if (built) {
         await scope.register(fastifyStatic, {
@@ -55,7 +63,7 @@ export async function registerAdminStatic(app: FastifyInstance, distDir = DEFAUL
         });
       }
       scope.setNotFoundHandler(async (req, reply) => {
-        if (isAdminApiPath(req.url) || (req.method !== 'GET' && req.method !== 'HEAD')) {
+        if (isAdminServerPath(req.url) || (req.method !== 'GET' && req.method !== 'HEAD')) {
           return reply.status(404).send({ error: 'not found' });
         }
         if (!built) return reply.status(503).type('text/plain').send('admin panel not built');

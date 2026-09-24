@@ -247,17 +247,22 @@ API samples with the addon's `ForeverLedger.errors` / `fieldMisses` reports firs
 tokens: mint with an owner and an optional "can read", assign owners, grant or take back read access, revoke).
 Admin API (admin session; writes need `x-csrf-token`):
 
-| Route                                                     | What                                                                                              |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `GET /admin/api/overview`                                 | KPIs, records by kind, builds, versions in use, 7-day health                                      |
-| `GET /admin/api/uploads?limit=&before=`                   | Recent uploads: token, owner, versions, counts per kind (no data)                                 |
-| `GET /admin/api/uploads/hourly?days=`                     | Uploads per hour (America/Chicago), empty hours included, ≤ 31 d                                  |
-| `GET /admin/api/characters`                               | Characters with the owners of the tokens that uploaded them                                       |
-| `GET /admin/api/api-samples`, `…/api-samples/:api?build=` | Client API samples (list without JSON; one sample)                                                |
-| `GET /admin/api/tokens`, `POST /admin/api/tokens`         | List (with `canRead`); mint `{ label, ownerUserId?, canRead? }` (plaintext in that response only) |
-| `POST /admin/api/tokens/:id/revoke`, `…/:id/owner`        | Revoke (idempotent); set owner `{ userId \| null }`                                               |
-| `POST /admin/api/tokens/:id/read`                         | Read scope `{ canRead: boolean }` (all data via the API/export)                                   |
-| `GET /admin/api/users`, `POST /admin/api/users/:id/role`  | Users with token counts; `{ role }` (409 for the last admin)                                      |
+| Route                                                     | What                                                                                               |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET /admin/api/overview`                                 | KPIs, records by kind, builds, versions in use, 7-day health                                       |
+| `GET /admin/api/uploads?limit=&before=`                   | Recent uploads: token, owner, versions, counts per kind (no data)                                  |
+| `GET /admin/api/uploads/hourly?days=`                     | Uploads per hour (America/Chicago), empty hours included, ≤ 31 d                                   |
+| `GET /admin/api/characters`                               | Characters with the owners of the tokens that uploaded them                                        |
+| `GET /admin/api/api-samples`, `…/api-samples/:api?build=` | Client API samples (list without JSON; one sample)                                                 |
+| `GET /admin/api/tokens`, `POST /admin/api/tokens`         | List (with `canRead`); mint `{ label, ownerUserId?, canRead? }` (plaintext in that response only)  |
+| `POST /admin/api/tokens/:id/revoke`, `…/:id/owner`        | Revoke (idempotent); set owner `{ userId \| null }`                                                |
+| `POST /admin/api/tokens/:id/read`                         | Read scope `{ canRead: boolean }` (all data via the API/export)                                    |
+| `GET /admin/api/users`, `POST /admin/api/users/:id/role`  | Users with token counts; `{ role }` (409 for the last admin)                                       |
+| `GET /admin/api/maps`, `GET /admin/api/map-images`        | uiMapIDs with points (zone name, counts, image metadata); uploaded maps only                       |
+| `PUT /admin/api/maps/:uiMapId?build=&name=`               | Upload a zone map (raw PNG/WebP/JPEG body, ≤ 8 MB, ≤ 4096 px per side; see "Zone maps" below)      |
+| `DELETE /admin/api/maps/:uiMapId`                         | Remove an uploaded map                                                                             |
+| `GET /admin/api/maps/:uiMapId/points`                     | Our points on one map (node spots, quest givers/enders, vendors, trainers), for the upload preview |
+| `GET /admin/maps/:uiMapId`                                | The image (admin session; `ETag` = sha256, `private, max-age=86400`)                               |
 
 Deploy: `pnpm install && pnpm build` (builds `apps/admin/dist` too), fill `deploy/.env`, copy the Nginx site
 (`deploy/nginx/ledger.willikers.dev.conf`) **and** its `log_format` snippet (`deploy/nginx/ledger-noquery-log.conf` →
@@ -277,6 +282,27 @@ pnpm --filter @forever-ledger/admin dev    # Vite on http://localhost:5173/admin
 To log in locally, add `http://localhost:5173/admin/auth/callback` as a second redirect URL on the Battle.net
 client (if Blizzard accepts it for your client) and start the API with `BNET_CLIENT_ID`, `BNET_CLIENT_SECRET` and
 `BNET_REDIRECT_URI=http://localhost:5173/admin/auth/callback`. `LEDGER_API` points the Vite proxy elsewhere.
+
+### 🗺️ Zone maps
+
+The panel draws our points (gathering spots, quest givers and enders, vendors, trainers) on the real in-game zone
+maps. The map art is exported **from your own game client** with [wow.export](https://github.com/Kruithne/wow.export)
+and uploaded by an admin on the **Maps** page; nothing changes for the tray app or the addon. Plan:
+[`project-plans/forever-ledger-zone-maps.md`](project-plans/forever-ledger-zone-maps.md).
+
+1. Download wow.export (github.com/Kruithne/wow.export/releases) on the gaming PC.
+2. Open it → **Open Local Installation** → pick the WoW: Forever folder → choose the `wow_classic_beta` 1.60.1 build.
+3. **Zones** tab → pick the zone (e.g. Durotar, The Barrens) → export as **PNG** (or WebP) at full size (1002×668).
+4. Admin panel → **Maps** → **Upload** on that zone's row → check the dots line up in the preview → Save.
+
+If a patch changes a zone's art, export it again and replace the upload (the client build is recorded for reference).
+How it lines up: the addon stores `C_Map.GetPlayerMapPosition` × 100 per uiMapID and the game draws a pin at canvas
+width · x, canvas height · y, so the panel overlays points at x % / y % of the image (an SVG with `viewBox 0 0 100 100`
+stretched over it). A map that isn't ≈ 1002:668 gets a warning. Uploads are PNG, WebP or JPEG only (checked by magic
+bytes, never SVG), ≤ 8 MB and ≤ 4096 px per side, stored in Postgres (`zone_maps`, so backups cover them) and served
+only to admin sessions. Views without an uploaded map keep the plain 0–100 grid with a link to the Maps page. The map
+art is Blizzard's: it stays in this private, login-only panel (personal, non-commercial use); never hotlink third-party
+map images. Deploy note: the Nginx site allows 8 MB bodies on `/admin/api/maps/` only (the site default is 6 MB).
 
 ## 🏷️ Releasing
 

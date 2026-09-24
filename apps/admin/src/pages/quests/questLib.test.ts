@@ -6,6 +6,7 @@ import {
   formatLoc,
   npcLocationGroups,
   npcLocationOption,
+  npcLocationPoints,
   pickBarOption,
   picksFor,
   pickSummary,
@@ -220,15 +221,45 @@ describe('npcLocationGroups / npcLocationOption', () => {
 
   it('groups giver and ender locations by zone, deduped', () => {
     expect(npcLocationGroups(list)).toEqual([
-      { zone: 'Barrens', givers: [], enders: [{ name: 'Ender', x: 50, y: 60 }] },
+      { zone: 'Barrens', mapId: null, givers: [], enders: [{ name: 'Ender', x: 50, y: 60 }] },
       {
         zone: 'Elwynn',
+        mapId: null,
         givers: [{ name: 'Giver', x: 10, y: 20 }],
         enders: [{ name: 'NPC 3', x: 11, y: 21 }],
       },
     ]);
     expect(npcLocationGroups([obs({ npc: { id: 1, name: 'N', loc: at(null, 1, 2) } })])).toEqual([
-      { zone: 'Unknown zone', givers: [{ name: 'N', x: 1, y: 2 }], enders: [] },
+      { zone: 'Unknown zone', mapId: null, givers: [{ name: 'N', x: 1, y: 2 }], enders: [] },
+    ]);
+  });
+
+  it('groups by uiMapID when the location has one (the zone map to draw them on)', () => {
+    const onMap = (zone: string | null, mapID: number, x: number, y: number) => ({
+      ...at(zone, x, y),
+      mapID,
+    });
+    const groups = npcLocationGroups([
+      obs({
+        stage: 'detail',
+        npc: { id: 1, name: 'Kaltunk', loc: onMap('Durotar', 1411, 43.2, 68.5) },
+      }),
+      obs({
+        stage: 'complete',
+        npc: { id: 2, name: 'Gornek', loc: onMap('Durotar', 1411, 42.1, 68.3) },
+      }),
+      // The same zone name on another map (a subzone map) stays apart; no zone name → "Map <id>".
+      obs({ stage: 'complete', npc: { id: 3, name: 'Inside', loc: onMap('Durotar', 1412, 5, 5) } }),
+      obs({ stage: 'accept', npc: { id: 4, name: 'X', loc: onMap(null, 1413, 50, 50) } }),
+    ]);
+    expect(groups.map((g) => [g.zone, g.mapId])).toEqual([
+      ['Durotar', 1411],
+      ['Durotar', 1412],
+      ['Map 1413', 1413],
+    ]);
+    expect(npcLocationPoints(groups[0]!)).toEqual([
+      { x: 43.2, y: 68.5, kind: 'giver', label: 'Kaltunk' },
+      { x: 42.1, y: 68.3, kind: 'ender', label: 'Gornek' },
     ]);
   });
 
