@@ -421,8 +421,9 @@ describe('admin loot + dungeon API (real Postgres)', () => {
         { slot: 2, class: 'PRIEST', level: 17 },
       ]);
       expect((await get('/admin/api/runs/nope')).statusCode).toBe(404);
-      // Fastify refuses path parameters over 100 characters (414) before the route's own 256 cap.
-      expect((await get(`/admin/api/runs/${'x'.repeat(300)}`)).statusCode).toBe(414);
+      // Fastify won't match path parameters over 100 characters (before the route's own 256 cap): 414, or 404 from
+      // the admin SPA fallback when apps/admin/dist is built.
+      expect([404, 414]).toContain((await get(`/admin/api/runs/${'x'.repeat(300)}`)).statusCode);
     });
 
     it('lists clear times of finished runs per instance', async () => {
