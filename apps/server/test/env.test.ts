@@ -9,6 +9,7 @@ describe('readEnv admin settings', () => {
     const env = readEnv(base);
     expect(env.admin.bnet).toBeUndefined();
     expect(env.admin.adminBattletags).toEqual([]);
+    expect(env.admin.adminBnetSubs).toEqual([]);
     expect(env.admin.cookieSecret).toBeUndefined();
     expect(env.admin.cookieInsecure).toBe(false);
     expect(env.admin.distDir).toBeUndefined();
@@ -58,6 +59,16 @@ describe('readEnv admin settings', () => {
   it('refuses BattleTags without their #number (an unquoted .env value loses it)', () => {
     expect(() => readEnv({ ...base, ADMIN_BATTLETAGS: 'JohnWilliker' })).toThrow(/quote the value/);
     expect(() => readEnv({ ...base, ADMIN_BATTLETAGS: 'A#1, B' })).toThrow(/"B"/);
+  });
+
+  it('reads ADMIN_BNET_SUBS (Battle.net account ids) and refuses anything else', () => {
+    expect(readEnv({ ...base, ADMIN_BNET_SUBS: ' 1234 ,98765,, ' }).admin.adminBnetSubs).toEqual([
+      '1234',
+      '98765',
+    ]);
+    expect(() => readEnv({ ...base, ADMIN_BNET_SUBS: 'JohnWilliker#1292' })).toThrow(
+      /ADMIN_BNET_SUBS/,
+    );
   });
 
   it('refuses a short COOKIE_SECRET', () => {

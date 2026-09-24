@@ -54,10 +54,23 @@ function readAdminEnv(env: NodeJS.ProcessEnv) {
       );
     }
   }
+  const adminBnetSubs = (env.ADMIN_BNET_SUBS ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  for (const sub of adminBnetSubs) {
+    if (!/^\d+$/.test(sub)) {
+      throw new Error(
+        `ADMIN_BNET_SUBS entry "${sub}" is not a Battle.net account id (digits only)`,
+      );
+    }
+  }
   return {
     bnet,
-    /** Exact BattleTags (case-sensitive, with #number) made admin on login. */
+    /** Exact BattleTags (case-sensitive, with #number) made admin at login while no admin exists yet. */
     adminBattletags,
+    /** Battle.net account ids (`sub`) always made admin at login. */
+    adminBnetSubs,
     cookieSecret,
     /** Local http development only: drops the Secure flag from cookies. */
     cookieInsecure: env.COOKIE_INSECURE === '1' || env.COOKIE_INSECURE === 'true',

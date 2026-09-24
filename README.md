@@ -192,7 +192,7 @@ sees "not authorized yet". Plan: [`project-plans/forever-ledger-admin-panel.md`]
 ```bash
 BNET_CLIENT_ID=...
 BNET_CLIENT_SECRET=...
-ADMIN_BATTLETAGS="JohnWilliker#1292"      # quoted (# starts a comment); exact, case-sensitive; comma-separated
+ADMIN_BATTLETAGS="JohnWilliker#1292"      # first-login bootstrap only; quoted (# starts a comment); exact, case-sensitive
 COOKIE_SECRET=...                         # output of `openssl rand -hex 32`; signs cookies and CSRF tokens
 ```
 
@@ -201,15 +201,21 @@ COOKIE_SECRET=...                         # output of `openssl rand -hex 32`; si
 | `BNET_CLIENT_ID`     | unset → `/admin/auth/login` answers 503            | Battle.net OAuth client                                             |
 | `BNET_CLIENT_SECRET` | required with `BNET_CLIENT_ID`                     | Battle.net OAuth secret                                             |
 | `BNET_REDIRECT_URI`  | `https://ledger.willikers.dev/admin/auth/callback` | Must match the client's redirect URL                                |
-| `ADMIN_BATTLETAGS`   | empty                                              | BattleTags made admin when they log in                              |
+| `ADMIN_BATTLETAGS`   | empty                                              | Bootstrap: BattleTags made admin at login while no admin exists yet |
+| `ADMIN_BNET_SUBS`    | empty                                              | Battle.net account ids (`sub`, digits) always made admin at login   |
 | `COOKIE_SECRET`      | required with `BNET_CLIENT_ID` (≥ 32 chars)        | Signs the session/state cookies and derives CSRF tokens             |
 | `COOKIE_INSECURE`    | off                                                | `1` drops the cookies' `Secure` flag — local http dev only          |
 | `ADMIN_DIST_DIR`     | `apps/admin/dist`                                  | Built SPA; `/admin/` answers 503 "admin panel not built" if missing |
 
 How it works: `/admin/auth/login` → Battle.net (`scope=openid`, signed `state` cookie) → `/admin/auth/callback`
 exchanges the code, reads the account id + BattleTag, and starts a 7-day sliding session (`fl_session` cookie:
-httpOnly, Secure, SameSite=Lax; the database keeps only its sha256). A listed BattleTag becomes `admin` on login;
-after that the account id pins the role, so a BattleTag change keeps it and `ADMIN_BATTLETAGS` can be emptied.
+httpOnly, Secure, SameSite=Lax; the database keeps only its sha256). `ADMIN_BATTLETAGS` is a first-login bootstrap
+only: a listed BattleTag becomes `admin` at login **while no admin exists yet** (checked in the same transaction).
+Once any admin exists, the list grants nothing — a second account with the same BattleTag stays `member` and a
+demoted admin stays demoted; roles change only in the database (Phase 2 Access page). Empty it after your first
+login (if the last admin is ever demoted, a listed tag would bootstrap again). The account id pins the user, so a
+BattleTag change keeps the role. `ADMIN_BNET_SUBS` (account ids) always grants admin — pinned to the account, not
+the tag.
 The panel reads the `/v1/*` routes with its session and calls `/admin/api/*` (non-GET requests send the
 `x-csrf-token` from `/admin/auth/me`). Nginx proxies `/admin/` to the API like `/v1/`.
 

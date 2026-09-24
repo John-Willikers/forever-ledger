@@ -28,34 +28,58 @@ export interface ActiveSession {
   renewed: boolean;
 }
 
+/** Who becomes admin at login (see upsertUser). */
+export interface AdminPolicy {
+  /** BattleTags made admin only while no admin exists yet: a first-login bootstrap. */
+  adminBattletags?: readonly string[];
+  /** Battle.net account ids (`sub`) that are always admin. */
+  adminBnetSubs?: readonly string[];
+}
+
+/** Serialises logins that may bootstrap the first admin (pg_advisory_xact_lock key). */
+const BOOTSTRAP_LOCK = 0x464c_4144; // "FLAD"
+
 /**
- * Creates the user on first login, refreshes the BattleTag on later ones (the `sub` is the identity), and makes the
- * user admin when their BattleTag is listed. Never demotes.
+ * Creates the user on first login and refreshes the BattleTag on later ones (the `sub` is the identity). Roles:
+ * a sub in `adminBnetSubs` is always admin; a BattleTag in `adminBattletags` becomes admin only while no admin exists
+ * (checked in the same transaction, under a lock, so two first logins can't both bootstrap). Otherwise the stored
+ * role is kept: once an admin exists, roles change only in the database.
  */
 export async function upsertUser(
   db: Db,
   bnet: { sub: string; battletag: string },
-  adminBattletags: readonly string[],
+  policy: AdminPolicy = {},
 ): Promise<SessionUser> {
-  const bootstrap = adminBattletags.includes(bnet.battletag);
-  const [row] = await db
-    .insert(users)
-    .values({
-      bnetSub: bnet.sub,
-      battletag: bnet.battletag,
-      role: bootstrap ? 'admin' : 'member',
-      lastLoginAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: users.bnetSub,
-      set: {
+  return db.transaction(async (tx) => {
+    let admin = policy.adminBnetSubs?.includes(bnet.sub) ?? false;
+    if (!admin && policy.adminBattletags?.includes(bnet.battletag)) {
+      await tx.execute(sql`select pg_advisory_xact_lock(${BOOTSTRAP_LOCK})`);
+      const [existing] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.role, 'admin'))
+        .limit(1);
+      admin = existing === undefined;
+    }
+    const [row] = await tx
+      .insert(users)
+      .values({
+        bnetSub: bnet.sub,
         battletag: bnet.battletag,
+        role: admin ? 'admin' : 'member',
         lastLoginAt: new Date(),
-        role: bootstrap ? 'admin' : sql`${users.role}`,
-      },
-    })
-    .returning({ id: users.id, battletag: users.battletag, role: users.role });
-  return row!;
+      })
+      .onConflictDoUpdate({
+        target: users.bnetSub,
+        set: {
+          battletag: bnet.battletag,
+          lastLoginAt: new Date(),
+          role: admin ? 'admin' : sql`${users.role}`,
+        },
+      })
+      .returning({ id: users.id, battletag: users.battletag, role: users.role });
+    return row!;
+  });
 }
 
 /** Starts a session; returns the cookie value (shown to the browser only). */

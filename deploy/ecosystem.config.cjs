@@ -34,6 +34,7 @@ module.exports = {
         BNET_CLIENT_SECRET: process.env.BNET_CLIENT_SECRET,
         BNET_REDIRECT_URI: process.env.BNET_REDIRECT_URI,
         ADMIN_BATTLETAGS: process.env.ADMIN_BATTLETAGS,
+        ADMIN_BNET_SUBS: process.env.ADMIN_BNET_SUBS,
         COOKIE_SECRET: process.env.COOKIE_SECRET,
         COOKIE_INSECURE: process.env.COOKIE_INSECURE,
         ADMIN_DIST_DIR: process.env.ADMIN_DIST_DIR,

@@ -18,6 +18,8 @@ const COOKIE_SECRET = 'test-cookie-secret-0123456789abcdef0123456789';
 const ACCESS_TOKEN = 'bnet-access-token-SHOULD-NEVER-LEAK';
 const CODE = 'bnet-auth-code-SHOULD-NEVER-LEAK';
 const ADMIN_TAG = 'JohnWilliker#1292';
+const SESSION = 'fl_session';
+const STATE = 'fl_oauth_state';
 
 /** A stand-in for oauth.battle.net: records calls, answers token + userinfo. */
 function fakeBattleNet() {
@@ -58,20 +60,20 @@ const cookieOf = (res: { cookies: { name: string; value: string }[] }, name: str
 async function login(app: App, code = CODE) {
   const start = await app.inject({ method: 'GET', url: '/admin/auth/login' });
   const state = new URL(start.headers.location as string).searchParams.get('state')!;
-  const stateCookie = cookieOf(start, 'fl_oauth_state')!.value;
+  const stateCookie = cookieOf(start, STATE)!.value;
   const cb = await app.inject({
     method: 'GET',
     url: `/admin/auth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
-    cookies: { fl_oauth_state: stateCookie },
+    cookies: { [STATE]: stateCookie },
   });
-  return { cb, session: cookieOf(cb, 'fl_session')?.value };
+  return { cb, session: cookieOf(cb, SESSION)?.value };
 }
 
 const me = (app: App, session?: string) =>
   app.inject({
     method: 'GET',
     url: '/admin/auth/me',
-    cookies: session ? { fl_session: session } : {},
+    cookies: session ? { [SESSION]: session } : {},
   });
 
 describe('admin auth (real Postgres, stubbed Battle.net)', () => {
@@ -127,7 +129,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const state = loc.searchParams.get('state')!;
       expect(state.length).toBeGreaterThanOrEqual(32);
 
-      const cookie = cookieOf(res, 'fl_oauth_state') as Record<string, unknown>;
+      const cookie = cookieOf(res, STATE) as Record<string, unknown>;
       expect(cookie).toBeDefined();
       expect(cookie.value).not.toBe(state); // signed
       expect(String(cookie.value).startsWith(`${state}.`)).toBe(true);
@@ -184,14 +186,14 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         `Bearer ${ACCESS_TOKEN}`,
       );
 
-      const cookie = cookieOf(cb, 'fl_session') as Record<string, unknown>;
+      const cookie = cookieOf(cb, SESSION) as Record<string, unknown>;
       expect(cookie.httpOnly).toBe(true);
       expect(cookie.secure).toBe(true);
       expect(cookie.path).toBe('/');
       expect(String(cookie.sameSite).toLowerCase()).toBe('lax');
       expect(cookie.maxAge).toBe(7 * 86400);
       // The state cookie is cleared.
-      expect(cookieOf(cb, 'fl_oauth_state')?.value).toBe('');
+      expect(cookieOf(cb, STATE)?.value).toBe('');
 
       const { rows: users } = await s.database.pool.query('select * from users');
       expect(users).toHaveLength(1);
@@ -218,15 +220,15 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
 
     it('refuses a state that does not match the cookie', async () => {
       const start = await app.inject({ method: 'GET', url: '/admin/auth/login' });
-      const stateCookie = cookieOf(start, 'fl_oauth_state')!.value;
+      const stateCookie = cookieOf(start, STATE)!.value;
       const cb = await app.inject({
         method: 'GET',
         url: `/admin/auth/callback?code=${CODE}&state=someone-elses-state-value-0123456789`,
-        cookies: { fl_oauth_state: stateCookie },
+        cookies: { [STATE]: stateCookie },
       });
       expect(cb.statusCode).toBe(302);
       expect(cb.headers.location).toMatch(/^\/admin\/\?error=/);
-      expect(cookieOf(cb, 'fl_session')).toBeUndefined();
+      expect(cookieOf(cb, SESSION)).toBeUndefined();
       expect(bnet.calls).toHaveLength(0);
       expect(await s.count('sessions')).toBe(0);
     });
@@ -234,7 +236,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
     it('refuses a missing state cookie and a forged (unsigned) one', async () => {
       const start = await app.inject({ method: 'GET', url: '/admin/auth/login' });
       const state = new URL(start.headers.location as string).searchParams.get('state')!;
-      for (const cookies of [{}, { fl_oauth_state: state }] as Record<string, string>[]) {
+      for (const cookies of [{}, { [STATE]: state }] as Record<string, string>[]) {
         const cb = await app.inject({
           method: 'GET',
           url: `/admin/auth/callback?code=${CODE}&state=${state}`,
@@ -242,7 +244,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         });
         expect(cb.statusCode).toBe(302);
         expect(cb.headers.location).toMatch(/^\/admin\/\?error=/);
-        expect(cookieOf(cb, 'fl_session')).toBeUndefined();
+        expect(cookieOf(cb, SESSION)).toBeUndefined();
       }
       const noState = await app.inject({ method: 'GET', url: `/admin/auth/callback?code=${CODE}` });
       expect(noState.headers.location).toMatch(/^\/admin\/\?error=/);
@@ -274,7 +276,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const cancelled = await app.inject({
         method: 'GET',
         url: `/admin/auth/callback?error=access_denied&error_description=%3Cscript%3E&state=${state}`,
-        cookies: { fl_oauth_state: cookieOf(start, 'fl_oauth_state')!.value },
+        cookies: { [STATE]: cookieOf(start, STATE)!.value },
       });
       expect(cancelled.statusCode).toBe(302);
       const loc = new URL(cancelled.headers.location as string, 'https://x.test');
@@ -299,7 +301,116 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       });
     });
 
-    it('promotes an existing member whose BattleTag is later listed', async () => {
+    it('bootstraps the first admin from the BattleTag list on an empty users table', async () => {
+      expect(await s.count('users')).toBe(0);
+      await login(app);
+      const { rows } = await s.database.pool.query('select bnet_sub, role from users');
+      expect(rows).toEqual([{ bnet_sub: '1234', role: 'admin' }]);
+    });
+
+    it('a second account with a listed BattleTag stays a member once an admin exists', async () => {
+      await login(app);
+      bnet.state.user = { sub: '777', id: 777, battletag: ADMIN_TAG };
+      const { session } = await login(app);
+      const { rows } = await s.database.pool.query('select bnet_sub, role from users order by id');
+      expect(rows).toEqual([
+        { bnet_sub: '1234', role: 'admin' },
+        { bnet_sub: '777', role: 'member' },
+      ]);
+      expect((await me(app, session)).json().user.role).toBe('member');
+    });
+
+    it('never bootstraps when an admin already exists, even on a first login', async () => {
+      await s.database.pool.query(
+        `insert into users (bnet_sub, battletag, role) values ('1', 'Owner#1', 'admin')`,
+      );
+      await login(app);
+      const { rows } = await s.database.pool.query(
+        `select role from users where bnet_sub = '1234'`,
+      );
+      expect(rows).toEqual([{ role: 'member' }]);
+    });
+
+    it('a demoted admin stays demoted on relogin', async () => {
+      await login(app);
+      await s.database.pool.query(
+        `insert into users (bnet_sub, battletag, role) values ('1', 'Owner#1', 'admin')`,
+      );
+      await s.database.pool.query(`update users set role = 'member' where bnet_sub = '1234'`);
+      const { session } = await login(app);
+      const { rows } = await s.database.pool.query(
+        `select role from users where bnet_sub = '1234'`,
+      );
+      expect(rows).toEqual([{ role: 'member' }]);
+      expect((await me(app, session)).json().user.role).toBe('member');
+    });
+
+    it('bootstraps only one admin when two listed accounts log in at once', async () => {
+      const first = await app.inject({ method: 'GET', url: '/admin/auth/login' });
+      const second = await app.inject({ method: 'GET', url: '/admin/auth/login' });
+      const users = [
+        { sub: '801', id: 801, battletag: ADMIN_TAG },
+        { sub: '802', id: 802, battletag: ADMIN_TAG },
+      ];
+      // Each callback reads its own Battle.net user.
+      let i = 0;
+      const fetchTwo = (async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input) === BNET_USERINFO_URL) return Response.json(users[i++]);
+        return bnet.fetch(input, init);
+      }) as typeof fetch;
+      const racing = await buildApp({
+        database: s.database,
+        admin: adminOptions({ fetch: fetchTwo }),
+      });
+      try {
+        await Promise.all(
+          [first, second].map((start) => {
+            const state = new URL(start.headers.location as string).searchParams.get('state')!;
+            return racing.inject({
+              method: 'GET',
+              url: `/admin/auth/callback?code=${CODE}&state=${state}`,
+              cookies: { [STATE]: cookieOf(start, STATE)!.value },
+            });
+          }),
+        );
+      } finally {
+        await racing.close();
+      }
+      const { rows } = await s.database.pool.query('select role from users order by role');
+      expect(rows).toEqual([{ role: 'admin' }, { role: 'member' }]);
+    });
+
+    it('ADMIN_BNET_SUBS always grants admin to those account ids', async () => {
+      const pinned = await buildApp({
+        database: s.database,
+        admin: adminOptions({ adminBattletags: [], adminBnetSubs: ['4242'] }),
+      });
+      try {
+        await s.database.pool.query(
+          `insert into users (bnet_sub, battletag, role) values ('1', 'Owner#1', 'admin')`,
+        );
+        bnet.state.user = { sub: '4242', id: 4242, battletag: 'Pinned#4242' };
+        await login(pinned);
+        // Re-promoted even after a demotion: the sub is pinned in the environment.
+        await s.database.pool.query(`update users set role = 'member' where bnet_sub = '4242'`);
+        const { session } = await login(pinned);
+        expect((await me(pinned, session)).json().user.role).toBe('admin');
+        // Another account with the same BattleTag gets nothing from it.
+        bnet.state.user = { sub: '4343', id: 4343, battletag: 'Pinned#4242' };
+        await login(pinned);
+        const { rows } = await s.database.pool.query(
+          `select bnet_sub, role from users where bnet_sub <> '1' order by id`,
+        );
+        expect(rows).toEqual([
+          { bnet_sub: '4242', role: 'admin' },
+          { bnet_sub: '4343', role: 'member' },
+        ]);
+      } finally {
+        await pinned.close();
+      }
+    });
+
+    it('promotes an existing member whose BattleTag is listed while no admin exists', async () => {
       await s.database.pool.query(
         `insert into users (bnet_sub, battletag, role) values ('1234', '${ADMIN_TAG}', 'member')`,
       );
@@ -328,7 +439,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const ping = await app.inject({
         method: 'GET',
         url: '/admin/api/ping',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
       });
       expect(ping.statusCode).toBe(403);
       expect(ping.json()).toEqual({ error: 'not authorized' });
@@ -336,7 +447,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const quests = await app.inject({
         method: 'GET',
         url: '/v1/quests/xp',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
       });
       expect(quests.statusCode).toBe(403);
       expect(quests.json()).toEqual({ error: 'not authorized' });
@@ -355,7 +466,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const ok = await app.inject({
         method: 'GET',
         url: '/admin/api/ping',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
       });
       expect(ok.statusCode).toBe(200);
       expect(ok.json()).toEqual({
@@ -380,13 +491,13 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/admin/api/ping',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
       });
       expect(res.statusCode).toBe(401);
       const v1 = await app.inject({
         method: 'GET',
         url: '/v1/quests/xp',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
       });
       expect(v1.statusCode).toBe(401);
       expect(v1.json()).toEqual({ error: 'invalid or revoked token' });
@@ -396,12 +507,12 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const { session } = await login(app);
       // Fresh session: no renewal.
       const fresh = await me(app, session);
-      expect(cookieOf(fresh, 'fl_session')).toBeUndefined();
+      expect(cookieOf(fresh, SESSION)).toBeUndefined();
 
       await s.database.pool.query(`update sessions set expires_at = now() + interval '5 days'`);
       const renewed = await me(app, session);
       expect(renewed.json().user).not.toBeNull();
-      const cookie = cookieOf(renewed, 'fl_session') as Record<string, unknown>;
+      const cookie = cookieOf(renewed, SESSION) as Record<string, unknown>;
       expect(cookie?.maxAge).toBe(7 * 86400);
       expect(cookie?.value).toBe(session);
       const { rows } = await s.database.pool.query('select expires_at from sessions');
@@ -418,7 +529,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         const refused = await app.inject({
           method: 'POST',
           url: '/admin/auth/logout',
-          cookies: { fl_session: session! },
+          cookies: { [SESSION]: session! },
           headers,
         });
         expect(refused.statusCode).toBe(403);
@@ -428,11 +539,11 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const out = await app.inject({
         method: 'POST',
         url: '/admin/auth/logout',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
         headers: { 'x-csrf-token': csrf },
       });
       expect(out.statusCode).toBe(204);
-      expect(cookieOf(out, 'fl_session')?.value).toBe('');
+      expect(cookieOf(out, SESSION)?.value).toBe('');
       expect(await s.count('sessions')).toBe(0);
       expect((await me(app, session)).json().user).toBeNull();
     });
@@ -446,7 +557,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const cross = await app.inject({
         method: 'POST',
         url: '/admin/auth/logout',
-        cookies: { fl_session: b.session! },
+        cookies: { [SESSION]: b.session! },
         headers: { 'x-csrf-token': csrfA },
       });
       expect(cross.statusCode).toBe(403);
@@ -458,14 +569,14 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const without = await app.inject({
         method: 'POST',
         url: '/admin/api/ping',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
       });
       expect(without.statusCode).toBe(403);
       expect(without.json()).toEqual({ error: 'invalid csrf token' });
       const withCsrf = await app.inject({
         method: 'POST',
         url: '/admin/api/ping',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
         headers: { 'x-csrf-token': csrf },
       });
       expect(withCsrf.statusCode).toBe(200);
@@ -487,7 +598,7 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         '/v1/export',
         '/v1/diagnostics',
       ]) {
-        const res = await app.inject({ method: 'GET', url, cookies: { fl_session: session! } });
+        const res = await app.inject({ method: 'GET', url, cookies: { [SESSION]: session! } });
         expect(res.statusCode, url).toBe(200);
       }
       const { rows } = await s.database.pool.query(
@@ -505,13 +616,13 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       const manifest = await app.inject({
         method: 'GET',
         url: '/v1/addon/manifest',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
       });
       expect(manifest.statusCode).toBe(401);
       const ingest = await app.inject({
         method: 'POST',
         url: '/v1/ingest',
-        cookies: { fl_session: session! },
+        cookies: { [SESSION]: session! },
         payload: {},
       });
       expect(ingest.statusCode).toBe(401);
@@ -613,12 +724,12 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
         await logged.inject({
           method: 'GET',
           url: `/admin/auth/callback?code=${CODE}&state=${state}`,
-          cookies: { fl_oauth_state: cookieOf(start, 'fl_oauth_state')!.value },
+          cookies: { [STATE]: cookieOf(start, STATE)!.value },
         });
         await logged.inject({
           method: 'POST',
           url: '/admin/auth/logout',
-          cookies: { fl_session: session! },
+          cookies: { [SESSION]: session! },
           headers: { 'x-csrf-token': csrf },
         });
         const out = lines.join('');

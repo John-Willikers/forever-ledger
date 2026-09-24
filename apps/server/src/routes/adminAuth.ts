@@ -26,8 +26,10 @@ const PANEL = '/admin/';
 export interface AdminAuthOptions {
   /** Battle.net client; without it /admin/auth/login answers 503. */
   bnet?: BnetConfig;
-  /** Exact BattleTags that become admin on login. */
+  /** Exact BattleTags that become admin on login while no admin exists yet (first-login bootstrap). */
   adminBattletags?: readonly string[];
+  /** Battle.net account ids that are always admin. */
+  adminBnetSubs?: readonly string[];
   /** Signs cookies and CSRF tokens. */
   cookieSecret: string;
   /** Local http development only: no Secure flag. */
@@ -64,7 +66,7 @@ export function registerAdminAuth(
   opts: AdminAuthOptions,
 ): AdminGuards {
   const secure = !opts.cookieInsecure;
-  const adminTags = opts.adminBattletags ?? [];
+  const policy = { adminBattletags: opts.adminBattletags, adminBnetSubs: opts.adminBnetSubs };
   const fetchImpl = opts.fetch ?? fetch;
   const sessionCookie: CookieSerializeOptions = {
     httpOnly: true,
@@ -173,7 +175,7 @@ export function registerAdminAuth(
       return failed(reply, 'Battle.net login failed. Please try again.');
     }
 
-    const user = await upsertUser(db, bnetUser, adminTags);
+    const user = await upsertUser(db, bnetUser, policy);
     const value = await createSession(db, user.id, {
       userAgent: req.headers['user-agent'],
       ip: req.ip,

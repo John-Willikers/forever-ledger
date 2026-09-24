@@ -19,6 +19,7 @@ app.log.info(
   {
     battleNetLogin: env.admin.bnet !== undefined,
     adminBattletags: env.admin.adminBattletags.length,
+    adminBnetSubs: env.admin.adminBnetSubs.length,
   },
   'admin panel settings',
 );
