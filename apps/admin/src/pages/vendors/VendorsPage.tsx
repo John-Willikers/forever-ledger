@@ -1,7 +1,7 @@
 import { createColumnHelper } from '@tanstack/react-table';
 import { useDeferredValue, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useAdminQuery } from '../../api';
 import { Card } from '../../components/Card';
 import { DataTable } from '../../components/DataTable';
@@ -14,8 +14,16 @@ import { formatCosts, formatMoney } from '../../lib/money';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { ItemName } from '../loot/parts';
 import { recipeHref } from '../professions/recipeLib';
-import { formatLocation, listPath, npcMapPoint, skillReq, stockLabel, unitPrice } from './lib';
-import type { ListFilters } from './lib';
+import {
+  formatLocation,
+  listPath,
+  npcMapPoint,
+  npcParam,
+  skillReq,
+  stockLabel,
+  unitPrice,
+} from './lib';
+import type { ListFilters, NpcKind } from './lib';
 import type {
   NpcList,
   TrainerDetail,
@@ -24,8 +32,6 @@ import type {
   VendorItem,
   VendorRow,
 } from './types';
-
-type Tab = 'vendors' | 'trainers';
 
 const npcName = (n: { npcId: number; name: string | null }) => n.name ?? `NPC ${n.npcId}`;
 
@@ -60,14 +66,25 @@ export function VendorsPage() {
   );
 }
 
-function NpcBrowser({ kind }: { kind: Tab }) {
+function NpcBrowser({ kind }: { kind: NpcKind }) {
   const [filters, setFilters] = useState<ListFilters>({
     search: '',
     title: '',
     foreverOnly: false,
   });
   const deferred = useDeferredValue(filters);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [params, setParams] = useSearchParams();
+  const selected = npcParam(params, kind);
+  const setSelected = (id: number | null) =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        if (id === null) next.delete('npc');
+        else next.set('npc', `${kind[0]}${id}`);
+        return next;
+      },
+      { replace: true },
+    );
   const list = useAdminQuery<NpcList<VendorRow | TrainerRow>>(
     [kind, deferred],
     listPath(kind, deferred),
@@ -77,6 +94,12 @@ function NpcBrowser({ kind }: { kind: Tab }) {
   const titles = list.data?.titles ?? [];
   return (
     <>
+      {selected !== null &&
+        (kind === 'vendors' ? (
+          <VendorCard npcId={selected} key={`v${selected}`} onClose={() => setSelected(null)} />
+        ) : (
+          <TrainerCard npcId={selected} key={`t${selected}`} onClose={() => setSelected(null)} />
+        ))}
       <Card
         title={kind === 'vendors' ? 'Vendors' : 'Trainers'}
         actions={
@@ -126,6 +149,8 @@ function NpcBrowser({ kind }: { kind: Tab }) {
                   columns={vendorColumns(selected, setSelected)}
                   rowKey={(v) => v.npcId}
                   rowClassName={(v) => (v.npcId === selected ? 'selected' : undefined)}
+                  pageSize={50}
+                  resetKey={JSON.stringify(deferred)}
                   empty="No vendor matches."
                 />
               ) : (
@@ -134,6 +159,8 @@ function NpcBrowser({ kind }: { kind: Tab }) {
                   columns={trainerColumns(selected, setSelected)}
                   rowKey={(t) => t.npcId}
                   rowClassName={(t) => (t.npcId === selected ? 'selected' : undefined)}
+                  pageSize={50}
+                  resetKey={JSON.stringify(deferred)}
                   empty="No trainer matches."
                 />
               )}
@@ -141,12 +168,6 @@ function NpcBrowser({ kind }: { kind: Tab }) {
           )}
         </QueryState>
       </Card>
-      {selected !== null &&
-        (kind === 'vendors' ? (
-          <VendorCard npcId={selected} key={`v${selected}`} />
-        ) : (
-          <TrainerCard npcId={selected} key={`t${selected}`} />
-        ))}
     </>
   );
 }
@@ -392,7 +413,7 @@ const itemColumns = itemCol.columns([
   }),
 ]);
 
-function VendorCard({ npcId }: { npcId: number }) {
+function VendorCard({ npcId, onClose }: { npcId: number; onClose: () => void }) {
   const [build, setBuild] = useState<number | null>(null);
   const detail = useAdminQuery<VendorDetail>(
     ['vendor', npcId, build],
@@ -401,7 +422,14 @@ function VendorCard({ npcId }: { npcId: number }) {
   return (
     <Card
       title={detail.data ? npcName(detail.data) : `Vendor #${npcId}`}
-      actions={<BuildPicker builds={detail.data?.builds ?? []} value={build} onChange={setBuild} />}
+      actions={
+        <>
+          <BuildPicker builds={detail.data?.builds ?? []} value={build} onChange={setBuild} />
+          <button type="button" className="secondary small" onClick={onClose}>
+            Close
+          </button>
+        </>
+      }
     >
       <QueryState query={detail}>
         {(v) => (
@@ -424,7 +452,7 @@ function VendorCard({ npcId }: { npcId: number }) {
   );
 }
 
-function TrainerCard({ npcId }: { npcId: number }) {
+function TrainerCard({ npcId, onClose }: { npcId: number; onClose: () => void }) {
   const [build, setBuild] = useState<number | null>(null);
   const detail = useAdminQuery<TrainerDetail>(
     ['trainer', npcId, build],
@@ -434,7 +462,14 @@ function TrainerCard({ npcId }: { npcId: number }) {
   return (
     <Card
       title={detail.data ? npcName(detail.data) : `Trainer #${npcId}`}
-      actions={<BuildPicker builds={detail.data?.builds ?? []} value={build} onChange={setBuild} />}
+      actions={
+        <>
+          <BuildPicker builds={detail.data?.builds ?? []} value={build} onChange={setBuild} />
+          <button type="button" className="secondary small" onClick={onClose}>
+            Close
+          </button>
+        </>
+      }
     >
       <QueryState query={detail}>
         {(t) => (
