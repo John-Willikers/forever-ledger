@@ -261,7 +261,7 @@ describe('itemFit', () => {
       equipLoc: 'INVTYPE_RELIC',
       reqLevel: 55,
     });
-    expect(idol.classes).toEqual([{ cls: 'DRUID', canEquip: true, bestArmor: false }]);
+    expect(idol.classes).toEqual([{ cls: 'DRUID', canEquip: true, bestArmor: false, wants: true }]);
     const trinket = itemFit({
       type: 'Armor',
       subtype: 'Miscellaneous',
@@ -274,6 +274,51 @@ describe('itemFit', () => {
     expect(idol.roles).toEqual([]);
     expect(itemFit({ type: 'Armor', subtype: 'Librams' }).classes[0]?.cls).toBe('PALADIN');
     expect(itemFit({ type: 'Armor', subtype: 'Totems' }).classes[0]?.cls).toBe('SHAMAN');
+  });
+
+  it('flags the classes whose roles match the item, and keeps the rest as holders', () => {
+    // Dreamstaff (249454): healer/caster, but any staff class can hold it
+    const fit = itemFit({
+      type: 'Weapon',
+      subtype: 'Staves',
+      equipLoc: 'INVTYPE_2HWEAPON',
+      reqLevel: 45,
+      stats: {
+        ITEM_MOD_SPIRIT_SHORT: 19,
+        ITEM_MOD_STAMINA_SHORT: 19,
+        ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 32.3,
+        ITEM_MOD_SPELL_DAMAGE_DONE_SHORT: 35,
+        ITEM_MOD_SPELL_HEALING_DONE_SHORT: 105,
+      },
+    });
+    expect(fit.roles.map((r) => r.role)).toEqual(['healer', 'caster']);
+    expect(fit.classes.filter((c) => c.wants).map((c) => c.cls)).toEqual([
+      'PRIEST',
+      'SHAMAN',
+      'MAGE',
+      'WARLOCK',
+      'DRUID',
+    ]);
+    expect(fit.classes.filter((c) => !c.wants).map((c) => c.cls)).toEqual(['WARRIOR', 'HUNTER']);
+    // a Strength two-hander: melee/tank, so no Hunter and no casters
+    const axe = itemFit({
+      type: 'Weapon',
+      subtype: 'Two-Handed Axes',
+      stats: { ITEM_MOD_STRENGTH_SHORT: 7, ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 20 },
+    });
+    expect(axe.classes.filter((c) => c.wants).map((c) => c.cls)).toEqual([
+      'WARRIOR',
+      'PALADIN',
+      'SHAMAN',
+    ]);
+    expect(axe.classes.filter((c) => !c.wants).map((c) => c.cls)).toEqual(['HUNTER']);
+  });
+
+  it('treats every wearer as wanting an item that has no role signal', () => {
+    const mail = itemFit({ type: 'Armor', subtype: 'Mail', equipLoc: 'INVTYPE_LEGS', reqLevel: 0 });
+    expect(mail.roles).toEqual([]);
+    expect(mail.classes.every((c) => c.wants)).toBe(true);
+    expect(itemFit({ type: 'Armor', subtype: 'Idols' }).classes[0]?.wants).toBe(true);
   });
 
   it('carries the rules version and lists nobody for a non-equippable item', () => {

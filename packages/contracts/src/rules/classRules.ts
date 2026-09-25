@@ -8,7 +8,7 @@
  * Edit this file as Forever's class design is confirmed and bump RULES_VERSION so query results say which rules
  * they used. Subtype strings are the enUS values GetItemInfo returns.
  */
-export const RULES_VERSION = '2026-09-25.1';
+export const RULES_VERSION = '2026-09-25.2';
 
 export type ClassToken =
   'WARRIOR' | 'PALADIN' | 'HUNTER' | 'ROGUE' | 'PRIEST' | 'SHAMAN' | 'MAGE' | 'WARLOCK' | 'DRUID';
@@ -221,6 +221,8 @@ export interface ClassFit {
   cls: ClassToken;
   /** Proficiency at `atLevel`. */
   canEquip: boolean;
+  /** One of the class's roles is a role the item scored (always true when the item has no role signal). */
+  wants: boolean;
   /** When `canEquip` is false: the level the class gains the proficiency (Hunter/Shaman Mail at 40). */
   fromLevel?: number;
   /** True when the item is the class's best armor type at `atLevel` (Mail for a level-20 Warrior). */
@@ -235,6 +237,19 @@ export interface ItemFit {
   /** Classes that can equip the item now or later, in class order. */
   classes: ClassFit[];
 }
+
+/** The roles each Classic class can play; a class wants an item when one of them is a role the item scored. */
+export const CLASS_ROLES: Record<ClassToken, Role[]> = {
+  WARRIOR: ['melee', 'tank'],
+  PALADIN: ['tank', 'healer', 'melee'],
+  HUNTER: ['ranged'],
+  ROGUE: ['melee'],
+  PRIEST: ['healer', 'caster'],
+  SHAMAN: ['healer', 'caster', 'melee'],
+  MAGE: ['caster'],
+  WARLOCK: ['caster'],
+  DRUID: ['tank', 'healer', 'caster', 'melee'],
+};
 
 type Weights = Partial<Record<Role, number>>;
 
@@ -362,8 +377,12 @@ const tieredArmor = (item: ItemForRules) =>
 /** Highest level any Classic proficiency unlocks at. */
 const MAX_LEVEL = 60;
 
-/** Every class that can equip the item at `level` or later, with the level it becomes wearable. */
-export function classFits(item: ItemForRules, level: number): ClassFit[] {
+/**
+ * Every class that can equip the item at `level` or later, with the level it becomes wearable and whether the
+ * item's roles are roles the class plays (`wants`). With no role signal every wearer wants it.
+ */
+export function classFits(item: ItemForRules, level: number, roles: RoleFit[] = []): ClassFit[] {
+  const wanted = new Set(roles.map((r) => r.role));
   const out: ClassFit[] = [];
   for (const cls of Object.keys(CLASS_RULES) as ClassToken[]) {
     const rule = CLASS_RULES[cls];
@@ -373,6 +392,7 @@ export function classFits(item: ItemForRules, level: number): ClassFit[] {
       cls,
       canEquip: now,
       bestArmor: tieredArmor(item) && item.subtype === bestArmorAt(rule, level),
+      wants: wanted.size === 0 || CLASS_ROLES[cls].some((role) => wanted.has(role)),
     };
     if (!now) {
       const unlock = rule.armor
@@ -395,10 +415,6 @@ export function classFits(item: ItemForRules, level: number): ClassFit[] {
  */
 export function itemFit(item: ItemForRules & { reqLevel?: number | null | undefined }): ItemFit {
   const atLevel = item.reqLevel && item.reqLevel > 0 ? item.reqLevel : 1;
-  return {
-    rulesVersion: RULES_VERSION,
-    atLevel,
-    roles: rolesFromStats(item),
-    classes: classFits(item, atLevel),
-  };
+  const roles = rolesFromStats(item);
+  return { rulesVersion: RULES_VERSION, atLevel, roles, classes: classFits(item, atLevel, roles) };
 }

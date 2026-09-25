@@ -11,6 +11,7 @@ import { ForeverBadge, ItemName, RateBar } from '../loot/parts';
 import type { ItemExtra, ItemV1, VendorCost } from '../loot/types';
 import { makerRank, recipeHref } from '../professions/recipeLib';
 import {
+  classGroups,
   classNote,
   containerLabel,
   contentsByBuild,
@@ -535,6 +536,7 @@ function RecipesCard({ extra }: { extra: ItemExtra }) {
 function SpecsCard({ item }: { item: ItemV1 }) {
   const { roles, classes, atLevel } = item.specs;
   if (roles.length === 0 && classes.length === 0) return null;
+  const { wanting, holders } = classGroups(classes);
   return (
     <Card title="Who wants it">
       <p className="muted small">
@@ -552,9 +554,9 @@ function SpecsCard({ item }: { item: ItemV1 }) {
       ) : (
         <Empty>No stat says which role this is for.</Empty>
       )}
-      {classes.length > 0 && (
+      {wanting.length > 0 && (
         <div className="class-fits">
-          {classes.map((c) => {
+          {wanting.map((c) => {
             const note = classNote(c);
             return (
               <span key={c.cls} className={c.canEquip ? undefined : 'later'}>
@@ -565,6 +567,7 @@ function SpecsCard({ item }: { item: ItemV1 }) {
           })}
         </div>
       )}
+      {holders.length > 0 && <p className="muted small">Can also hold it: {holders.join(', ')}</p>}
     </Card>
   );
 }

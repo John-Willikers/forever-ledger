@@ -104,6 +104,8 @@ export interface ClassFit {
   /** When `canEquip` is false: the level the class gains the proficiency. */
   fromLevel?: number;
   bestArmor: boolean;
+  /** One of the class's roles matches a role the item scored. */
+  wants: boolean;
 }
 
 /** One extended-cost part, field by field (a field the upload got wrong is left out). */

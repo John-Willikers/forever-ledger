@@ -44,6 +44,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   Idol of the Dream Druid, Truefaith Gloves healer 57% / caster 43%. `deploy/.first-token` (#1) is revoked; mint a
   temporary `--read` token for checks like this.
 
+- 🟡 9 🎯 Follow-up (owner, 01:10 CDT): Dreamstaff (249454, healer/caster) showed a Warrior chip because the class row
+  was pure proficiency. `ClassFit.wants` (class roles ∩ item roles, `CLASS_ROLES`, `RULES_VERSION 2026-09-25.2`);
+  the card shows wanting classes as chips and the rest as one "Can also hold it" line. Branch `fix/class-wants`,
+  `pnpm check` green (922) — 01:20 CDT
+
 ## 📌 Context
 
 The item page's "Who wants it" card scores every class/spec 0–100%. Checked against the live Postgres on 2026-09-25

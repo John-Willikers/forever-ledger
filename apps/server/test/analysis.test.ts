@@ -193,7 +193,13 @@ describe('analysis and export routes', () => {
     expect(item.specs.rulesVersion).toEqual(expect.any(String));
     expect(item.specs.atLevel).toBe(16);
     expect(item.specs.roles[0]).toMatchObject({ role: 'melee' });
-    expect(item.specs.classes).toContainEqual({ cls: 'WARRIOR', canEquip: true, bestArmor: false });
+    expect(item.specs.classes).toContainEqual({
+      cls: 'WARRIOR',
+      canEquip: true,
+      bestArmor: false,
+      wants: true,
+    });
+    expect(item.specs.classes.find((c: { cls: string }) => c.cls === 'HUNTER')?.wants).toBe(false);
     expect(item.specs.classes.map((c: { cls: string }) => c.cls)).not.toContain('ROGUE');
     expect((await get('/v1/items/5556')).json().questRewards[0]).toMatchObject({
       questId: 1234,
