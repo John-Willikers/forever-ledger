@@ -218,10 +218,11 @@ export function classNote(c: ClassFit) {
 
 /** Classes that want the item (chips) and the ones that can merely hold it (one muted line). */
 export function classGroups(classes: ClassFit[]) {
-  return {
-    wanting: classes.filter((c) => c.wants),
-    holders: classes
-      .filter((c) => !c.wants)
-      .map((c) => (c.canEquip ? classLabel(c.cls) : `${classLabel(c.cls)} (${classNote(c)})`)),
-  };
+  return { wanting: classes.filter((c) => c.wants), holders: classes.filter((c) => !c.wants) };
+}
+
+/** "Warrior", "Hunter (at 40)", "Warrior (best armor)": one holder in the "Can also hold it" line. */
+export function holderLabel(c: ClassFit) {
+  const note = classNote(c);
+  return note ? `${classLabel(c.cls)} (${note})` : classLabel(c.cls);
 }

@@ -48,6 +48,12 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   was pure proficiency. `ClassFit.wants` (class roles ∩ item roles, `CLASS_ROLES`, `RULES_VERSION 2026-09-25.2`);
   the card shows wanting classes as chips and the rest as one "Can also hold it" line. Branch `fix/class-wants`,
   `pnpm check` green (922) — 01:20 CDT
+  - ✅ 🔍 PR #33 review: 6 findings, 5 fixed — 01:40 CDT (923 tests): generic crit/hit only amplify roles an item
+    already has (a crit robe no longer grows a 14% melee role that hands Warriors a chip); a shield is a tank item
+    only when its stats say nothing (a healing shield is Paladin/Shaman); a stat-less weapon says nothing about
+    class preference, so every wielder wants it; `classFits` requires the wanted roles; holders keep their
+    "best armor" / "at 40" note. Skipped: admin's hand-copied `ClassFit` type (predates this work; a type-only
+    contracts dependency for the Vite app is its own change).
 
 ## 📌 Context
 

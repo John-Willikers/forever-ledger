@@ -13,6 +13,7 @@ import { makerRank, recipeHref } from '../professions/recipeLib';
 import {
   classGroups,
   classNote,
+  holderLabel,
   containerLabel,
   contentsByBuild,
   formatAvgQuantity,
@@ -567,7 +568,9 @@ function SpecsCard({ item }: { item: ItemV1 }) {
           })}
         </div>
       )}
-      {holders.length > 0 && <p className="muted small">Can also hold it: {holders.join(', ')}</p>}
+      {holders.length > 0 && (
+        <p className="muted small">Can also hold it: {holders.map(holderLabel).join(', ')}</p>
+      )}
     </Card>
   );
 }

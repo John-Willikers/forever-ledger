@@ -313,6 +313,11 @@ function add(total: Weights, w: Weights, scale = 1) {
  * Empty when nothing on the item says anything (plain armor, resistances, profession mods).
  */
 export function rolesFromStats(item: ItemForRules): RoleFit[] {
+  return analyzeStats(item).roles;
+}
+
+/** `roles`, plus whether any came from the item's stats (a subtype alone says nothing about class preference). */
+function analyzeStats(item: ItemForRules): { roles: RoleFit[]; fromStats: boolean } {
   const stats = item.stats ?? {};
   const total: Weights = {};
   const primary: Partial<Record<Stat, number>> = {};
@@ -329,6 +334,7 @@ export function rolesFromStats(item: ItemForRules): RoleFit[] {
 
   const healing = stats.ITEM_MOD_SPELL_HEALING_DONE_SHORT ?? 0;
   let secondarySignal = false;
+  const nudges: Weights[] = [];
   for (const [key, value] of Object.entries(stats)) {
     if (!(value > 0)) continue;
     const name = key.replace(/^ITEM_MOD_/, '').replace(/_SHORT$/, '');
@@ -347,17 +353,34 @@ export function rolesFromStats(item: ItemForRules): RoleFit[] {
             ? { ranged: 1 }
             : { melee: 1 };
     } else if (name.startsWith('ATTACK_POWER_VS_')) w = SECONDARY.ATTACK_POWER;
-    if (w) {
+    if (!w) continue;
+    if (AMBIGUOUS.has(name)) nudges.push(w);
+    else {
       add(total, w);
-      if (!AMBIGUOUS.has(name)) secondarySignal = true;
+      secondarySignal = true;
     }
   }
 
   const subtype = item.subtype ?? '';
-  if (item.type === 'Weapon' && WEAPON_TYPE[subtype] && primarySum === 0 && !secondarySignal)
-    add(total, WEAPON_TYPE[subtype]);
-  if (item.type === 'Armor' && subtype === 'Shields') add(total, { tank: 1.5 });
+  const silent = primarySum === 0 && !secondarySignal;
+  if (item.type === 'Weapon' && WEAPON_TYPE[subtype] && silent) add(total, WEAPON_TYPE[subtype]);
+  if (item.type === 'Armor' && subtype === 'Shields' && silent) add(total, { tank: 1 });
 
+  // Generic crit/hit amplify the roles the item already has; only on an otherwise silent item do they add roles.
+  const present = new Set(Object.keys(total) as Role[]);
+  for (const w of nudges) {
+    for (const [role, v] of Object.entries(w) as [Role, number][])
+      if (present.size === 0 || present.has(role)) total[role] = (total[role] ?? 0) + v;
+  }
+
+  return {
+    roles: shares(total),
+    fromStats: primarySum > 0 || secondarySignal || nudges.length > 0,
+  };
+}
+
+/** Normalises role weights to two-decimal shares, highest first; empty when nothing scored. */
+function shares(total: Weights): RoleFit[] {
   const sum = Object.values(total).reduce((a, b) => a + b, 0);
   if (sum <= 0) return [];
   return ROLES.map((role) => ({
@@ -378,11 +401,11 @@ const tieredArmor = (item: ItemForRules) =>
 const MAX_LEVEL = 60;
 
 /**
- * Every class that can equip the item at `level` or later, with the level it becomes wearable and whether the
- * item's roles are roles the class plays (`wants`). With no role signal every wearer wants it.
+ * Every class that can equip the item at `level` or later, with the level it becomes wearable and whether one of
+ * the class's roles is in `wantedRoles`. Pass no roles when the item's stats say nothing: every wearer wants it.
  */
-export function classFits(item: ItemForRules, level: number, roles: RoleFit[] = []): ClassFit[] {
-  const wanted = new Set(roles.map((r) => r.role));
+export function classFits(item: ItemForRules, level: number, wantedRoles: Role[]): ClassFit[] {
+  const wanted = new Set(wantedRoles);
   const out: ClassFit[] = [];
   for (const cls of Object.keys(CLASS_RULES) as ClassToken[]) {
     const rule = CLASS_RULES[cls];
@@ -415,6 +438,7 @@ export function classFits(item: ItemForRules, level: number, roles: RoleFit[] = 
  */
 export function itemFit(item: ItemForRules & { reqLevel?: number | null | undefined }): ItemFit {
   const atLevel = item.reqLevel && item.reqLevel > 0 ? item.reqLevel : 1;
-  const roles = rolesFromStats(item);
-  return { rulesVersion: RULES_VERSION, atLevel, roles, classes: classFits(item, atLevel, roles) };
+  const { roles, fromStats } = analyzeStats(item);
+  const wanted = fromStats ? roles.map((r) => r.role) : [];
+  return { rulesVersion: RULES_VERSION, atLevel, roles, classes: classFits(item, atLevel, wanted) };
 }

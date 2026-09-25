@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classGroups,
   classNote,
+  holderLabel,
   containerLabel,
   contentsByBuild,
   formatAvgQuantity,
@@ -207,7 +208,11 @@ describe('who wants it', () => {
     ];
     const g = classGroups(classes);
     expect(g.wanting.map((c) => c.cls)).toEqual(['PRIEST', 'DRUID']);
-    expect(g.holders).toEqual(['Warrior', 'Hunter (at 40)']);
+    expect(g.holders.map((c) => c.cls)).toEqual(['WARRIOR', 'HUNTER']);
+    expect(g.holders.map(holderLabel)).toEqual(['Warrior', 'Hunter (at 40)']);
+    expect(holderLabel({ cls: 'WARRIOR', canEquip: true, bestArmor: true, wants: false })).toBe(
+      'Warrior (best armor)',
+    );
   });
 
   it('notes whether a class can wear it now, later, and if it is their best armor', () => {
