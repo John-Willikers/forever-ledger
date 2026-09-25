@@ -66,13 +66,13 @@ Design decisions (approved 2026-09-25):
 
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/Chicago.
 
-- ✅ 1 🧩 `tabsLib` + `Tabs` component + global tab CSS — 2026-09-25 16:20 — `a2a4e04`, review fixes `43f55ae`
-- ✅ 2 🔁 Run, Builds, Vendors onto `Tabs`; drop the borrowed `professions.css` imports — 2026-09-25 16:20 — `b774b60`,
+- ✅ 1 🧩 `tabsLib` + `Tabs` component + global tab CSS — 2026-09-25 16:09 — `a2a4e04`, review fixes `43f55ae`
+- ✅ 2 🔁 Run, Builds, Vendors onto `Tabs`; drop the borrowed `professions.css` imports — 2026-09-25 16:09 — `b774b60`,
   shared CSS rescued in `59a9e43` (review caught a cold-load styling regression, see Context).
   Vendors/Trainers choice now lives in `?tab=trainers` (was local state); Builds category counts render as
   `.tab-count`.
-- ✅ 3 📂 `Collapsible` component — 2026-09-25 16:20 — `5b12fa1` (+ `43f55ae`: `defaultOpen`; body mounts on open)
-- ✅ 4 📄 `DataTable` `pageSize` (with `tableLib.pageSlice`) — 2026-09-25 16:20 — `d0ef9a6` (+ `43f55ae`: offset resets
+- ✅ 3 📂 `Collapsible` component — 2026-09-25 16:09 — `5b12fa1` (+ `43f55ae`: `defaultOpen`; body mounts on open)
+- ✅ 4 📄 `DataTable` `pageSize` (with `tableLib.pageSlice`) — 2026-09-25 16:09 — `d0ef9a6` (+ `43f55ae`: offset resets
   on sort and on `resetKey` change)
 - 🟡 5 🛒 Vendors: page at 50, picked NPC above the list in `?npc=` — implementing
 - ⬜ 6 ⚒️ Professions: Recipes / Crafts / Skill history / Gathering tabs
