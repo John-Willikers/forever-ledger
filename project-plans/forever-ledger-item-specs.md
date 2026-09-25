@@ -32,13 +32,17 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   proficiency; `/v1/items/:id` returns `{ rulesVersion, atLevel, roles, classes }` (13 contracts tests) — 00:40 CDT
 - ✅ 6 🖥️ Admin "Who wants it": role rows with a confidence bar, class chips with "best armor" / "at 40" /
   "later", an "estimated" note (admin `roleLabel` / `classNote` tests) — 00:45 CDT
-- 🟡 7 🔍 PR #31 → review → CI → merge
+- ✅ 7 🔍 PR #31 → review → CI → merged (41c8f27) — 01:00 CDT
   - ✅ 🔍 Review: 6 findings, all fixed — 00:58 CDT (contracts 15 tests, +2): the weapon-subtype signal applies only
     when the stats say nothing (every weapon carries DPS, so a caster dagger read as melee); staves are caster first;
     physical damage no longer matches the spell-school regex; per-school crit/hit keys map to their role; cloaks,
     trinkets, shields and relics never show "best armor"; CLAUDE.md answer column notes the build per row.
   - ✅ CI green on the first push — 00:50 CDT
-- ⬜ 8 🚀 Rollout: server deploy only (no migration, no addon or tray release)
+- ✅ 8 🚀 Rollout: `pnpm build` + `pm2 restart forever-ledger-api` on master — 01:02 CDT (no migration, no addon or
+  tray release). Verified live with a temporary read token (minted, used, revoked): Hillman's Cloak caster 59% /
+  healer 41%, Cutlass melee 67% / tank 33%, Battleworn Chain Leggings Warrior* Paladin* Hunter at 40 Shaman at 40,
+  Idol of the Dream Druid, Truefaith Gloves healer 57% / caster 43%. `deploy/.first-token` (#1) is revoked; mint a
+  temporary `--read` token for checks like this.
 
 ## 📌 Context
 
