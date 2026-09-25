@@ -55,6 +55,9 @@ Design decisions (approved 2026-09-25):
 - Only the active tab's panel mounts, so a hidden tab's queries don't run until opened.
 - `Collapsible` has no `actions` slot (interactive controls inside `<summary>` toggle it). Cards that need actions stay
   `Card`.
+- `Collapsible` mounts its body only while open (controlled `open` + `onToggle`). `Chart` (echarts-for-react) only
+  listens for window resize, so a chart mounted inside a closed `<details>` would stay a 0-width canvas; lazy mounting
+  also keeps a folded card's queries from running until someone opens it.
 - Vendors: after paging at 50, a "Selected" tab is overkill. The picked NPC's card renders **above** the list instead,
   with a Close action, and the pick lives in `?npc=` so it is linkable. (Small change from the design sketch; noted.)
 - Quests page size drops from 200 to 50 (`QUESTS_PAGE_SIZE`); the server already pages by `limit`/`offset`.
@@ -63,11 +66,15 @@ Design decisions (approved 2026-09-25):
 
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/Chicago.
 
-- ⬜ 1 🧩 `tabsLib` + `Tabs` component + global tab CSS
-- ⬜ 2 🔁 Run, Builds, Vendors onto `Tabs`; drop the borrowed `professions.css` imports
-- ⬜ 3 📂 `Collapsible` component
-- ⬜ 4 📄 `DataTable` `pageSize` (with `tableLib.pageSlice`)
-- ⬜ 5 🛒 Vendors: page at 50, picked NPC above the list in `?npc=`
+- ✅ 1 🧩 `tabsLib` + `Tabs` component + global tab CSS — 2026-09-25 16:20 — `a2a4e04`, review fixes `43f55ae`
+- ✅ 2 🔁 Run, Builds, Vendors onto `Tabs`; drop the borrowed `professions.css` imports — 2026-09-25 16:20 — `b774b60`,
+  shared CSS rescued in `59a9e43` (review caught a cold-load styling regression, see Context).
+  Vendors/Trainers choice now lives in `?tab=trainers` (was local state); Builds category counts render as
+  `.tab-count`.
+- ✅ 3 📂 `Collapsible` component — 2026-09-25 16:20 — `5b12fa1` (+ `43f55ae`: `defaultOpen`; body mounts on open)
+- ✅ 4 📄 `DataTable` `pageSize` (with `tableLib.pageSlice`) — 2026-09-25 16:20 — `d0ef9a6` (+ `43f55ae`: offset resets
+  on sort and on `resetKey` change)
+- 🟡 5 🛒 Vendors: page at 50, picked NPC above the list in `?npc=` — implementing
 - ⬜ 6 ⚒️ Professions: Recipes / Crafts / Skill history / Gathering tabs
 - ⬜ 7 🎒 Item: Stats / Sources / Trade / Who wants it tabs
 - ⬜ 8 🧙 Character: Overview / Quests / Professions tabs, quests paged
@@ -1000,11 +1007,9 @@ keep it). If any assertion hard-codes `limit=200`, change it to use `QUESTS_PAGE
 
 **Step 2: Change** `export const QUESTS_PAGE_SIZE = 50;` and in `ScatterCard` replace
 `<Card title="XP offered vs quest level (this page)">` with
-`<Collapsible title="XP offered vs quest level (this page)">` (and the closing tag). The `Chart` inside a closed
-`<details>` mounts with zero width; ECharts resizes on open only if the `Chart` component observes size. Check
-`apps/admin/src/components/Chart.tsx`: if it does not use a `ResizeObserver` or `echarts-for-react`'s autoresize, pass
-`autoResize` / add `opts={{ }}` per that component's API, or keep the chart card open by default (`open`) and note it.
-Decide by testing in the browser: open the details and confirm the scatter has width.
+`<Collapsible title="XP offered vs quest level (this page)">` (and the closing tag). `Collapsible` mounts its body
+on open (see Context), so the scatter chart gets its real width. Confirm in the browser: open the card and the scatter
+has width.
 
 **Step 3: Verify**
 
