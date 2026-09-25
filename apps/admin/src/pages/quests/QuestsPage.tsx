@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router';
 import { useAdminQuery } from '../../api';
 import { Card } from '../../components/Card';
 import { Chart, useChartPalette } from '../../components/Chart';
+import { Collapsible } from '../../components/Collapsible';
 import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Empty, QueryState } from '../../components/State';
@@ -374,7 +375,7 @@ function ScatterCard({ rows }: { rows: QuestRow[] }) {
   const plotted = zoneSeriesOf(rows).reduce((n, g) => n + g.rows.length, 0);
   const forever = rows.filter((r) => r.foreverOnly && r.level !== null && r.xpOffered !== null);
   return (
-    <Card title="XP offered vs quest level (this page)">
+    <Collapsible title="XP offered vs quest level (this page)">
       {plotted === 0 ? (
         <Empty>No quest on this page has both a level and offered XP.</Empty>
       ) : (
@@ -393,6 +394,6 @@ function ScatterCard({ rows }: { rows: QuestRow[] }) {
           </p>
         </>
       )}
-    </Card>
+    </Collapsible>
   );
 }

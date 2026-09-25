@@ -8,7 +8,7 @@ import type { MapPoint } from '../../lib/zoneMap';
 import type { Loc, QuestObservationRow, QuestReward, QuestRow, RewardChoice } from './types';
 
 /** Rows asked per page (the server caps at 500). */
-export const QUESTS_PAGE_SIZE = 200;
+export const QUESTS_PAGE_SIZE = 50;
 
 export interface QuestFilters {
   search: string | null;
