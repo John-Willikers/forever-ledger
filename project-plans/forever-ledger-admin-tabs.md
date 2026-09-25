@@ -652,7 +652,8 @@ return (
 );
 ```
 
-- Both `DataTable`s in the list card get `pageSize={50}`.
+- Both `DataTable`s in the list card get `pageSize={50}` and `resetKey={JSON.stringify(deferred)}` (the deferred
+  filter state; the search string alone would do), so paging goes back to the first page when the filters change.
 - `VendorCard` and `TrainerCard` take `onClose: () => void` and add a close button to their `actions`, next to the
   `BuildPicker`:
 

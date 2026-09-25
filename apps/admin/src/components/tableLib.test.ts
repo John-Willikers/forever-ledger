@@ -7,6 +7,10 @@ describe('pageSlice', () => {
   it('returns everything when there is no page size', () => {
     expect(pageSlice(rows, 0, undefined)).toEqual({ rows, offset: 0 });
   });
+  it('treats a page size that is not positive as unpaged', () => {
+    expect(pageSlice(rows, 3, 0)).toEqual({ rows, offset: 0 });
+    expect(pageSlice(rows, 3, -1)).toEqual({ rows, offset: 0 });
+  });
   it('slices one page', () => {
     expect(pageSlice(rows, 2, 2)).toEqual({ rows: ['c', 'd'], offset: 2 });
   });

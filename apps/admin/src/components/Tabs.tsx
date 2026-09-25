@@ -30,6 +30,7 @@ export function Tabs({
   if (tabs.length === 0) return null;
 
   const select = (key: string) => {
+    if (key === active) return;
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);

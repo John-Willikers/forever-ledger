@@ -36,4 +36,8 @@ describe('stepTab', () => {
   it('starts from the first tab when current is unknown', () => {
     expect(stepTab(tabs, 'nope', 1)).toBe('sources');
   });
+  it('wraps for any delta, past a full turn either way', () => {
+    expect(stepTab(tabs, 'stats', -4)).toBe('trade');
+    expect(stepTab(tabs, 'stats', 7)).toBe('sources');
+  });
 });

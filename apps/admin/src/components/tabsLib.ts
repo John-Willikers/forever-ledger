@@ -18,10 +18,11 @@ export function tabParamValue(tabs: readonly TabDef[], key: string): string | nu
 
 /** The tab `delta` steps from `current`, wrapping around; an unknown `current` counts as the first tab. */
 export function stepTab(tabs: readonly TabDef[], current: string, delta: number): string {
-  if (tabs.length === 0) return '';
+  const n = tabs.length;
+  if (n === 0) return '';
   const at = Math.max(
     0,
     tabs.findIndex((t) => t.key === current),
   );
-  return tabs[(at + delta + tabs.length) % tabs.length]!.key;
+  return tabs[(((at + delta) % n) + n) % n]!.key;
 }

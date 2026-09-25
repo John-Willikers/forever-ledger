@@ -34,6 +34,7 @@ export function DataTable<T extends object>({
   rowClassName,
   empty = 'Nothing yet.',
   pageSize,
+  resetKey,
 }: {
   data: T[];
   columns: ColumnDef<SortableFeatures, T>[];
@@ -43,15 +44,26 @@ export function DataTable<T extends object>({
   empty?: string;
   /** Client-side paging: show this many rows with a Pager under the table. */
   pageSize?: number;
+  /** Paging goes back to the first page whenever this changes (pass your filter state). */
+  resetKey?: string | number;
 }) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [offset, setOffset] = useState(0);
+  // Adjust state during render (no effect): a new filter state starts over from the first page.
+  const [seenKey, setSeenKey] = useState(resetKey);
+  if (seenKey !== resetKey) {
+    setSeenKey(resetKey);
+    setOffset(0);
+  }
   const table = useTable({
     features: sortableFeatures,
     columns,
     data,
     state: { sorting },
-    onSortingChange: setSorting,
+    onSortingChange: (u) => {
+      setSorting(u);
+      setOffset(0);
+    },
     getRowId: (row) => String(rowKey(row)),
   });
   const all = table.getRowModel().rows;
