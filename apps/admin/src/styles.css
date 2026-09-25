@@ -943,6 +943,40 @@ table.data td.changed {
   gap: 1rem;
 }
 
+/* ---- collapsible panels (components/Collapsible.tsx) ---- */
+
+.collapsible > summary {
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 0;
+}
+
+.collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible > summary h2::before {
+  content: '▸';
+  display: inline-block;
+  width: 1.1em;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.collapsible[open] > summary h2::before {
+  transform: rotate(90deg);
+}
+
+.collapsible[open] > summary {
+  margin-bottom: 0.6rem;
+}
+
+.collapsible > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
 .roll {
   display: inline-block;
   margin-right: 0.6rem;
