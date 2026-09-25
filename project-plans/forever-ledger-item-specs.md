@@ -44,6 +44,22 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   Idol of the Dream Druid, Truefaith Gloves healer 57% / caster 43%. `deploy/.first-token` (#1) is revoked; mint a
   temporary `--read` token for checks like this.
 
+- 🟡 9 🎯 Follow-up (owner, 01:10 CDT): Dreamstaff (249454, healer/caster) showed a Warrior chip because the class row
+  was pure proficiency. `ClassFit.wants` (class roles ∩ item roles, `CLASS_ROLES`, `RULES_VERSION 2026-09-25.2`);
+  the card shows wanting classes as chips and the rest as one "Can also hold it" line. Branch `fix/class-wants`,
+  `pnpm check` green (922) — 01:20 CDT
+  - ✅ 🔍 PR #33 review: 6 findings, 5 fixed — 01:40 CDT (923 tests): generic crit/hit only amplify roles an item
+    already has (a crit robe no longer grows a 14% melee role that hands Warriors a chip); a shield is a tank item
+    only when its stats say nothing (a healing shield is Paladin/Shaman); a stat-less weapon says nothing about
+    class preference, so every wielder wants it; `classFits` requires the wanted roles; holders keep their
+    "best armor" / "at 40" note. Skipped: admin's hand-copied `ClassFit` type (predates this work; a type-only
+    contracts dependency for the Vite app is its own change).
+  - ✅ 🔍 Second pass: 6 findings, 4 fixed + cleanup — 01:55 CDT: crit/hit nudges count as a stat signal only when
+    they added a role (a +hit gun no longer demotes Warriors and Rogues); shields stay tank items unless their stats
+    say healer/caster (an Agility shield leads with tank, a healing shield doesn't); a role needs a 15% share
+    before it decides who wants the item (a stray point of Strength on a caster chest hands out no chips); the only
+    class that can equip an item always wants it (spell-damage Libram → Paladin). Same skipped item as above.
+
 ## 📌 Context
 
 The item page's "Who wants it" card scores every class/spec 0–100%. Checked against the live Postgres on 2026-09-25

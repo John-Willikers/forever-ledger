@@ -1,4 +1,5 @@
 // Pure helpers for the Item page: stat names, the per-build stat table, drop sources, tooltip text.
+import { classLabel } from '../../lib/classes';
 import type { ClassFit } from '../loot/types';
 
 const FIELD_LABELS: Readonly<Record<string, string>> = {
@@ -213,4 +214,15 @@ export const roleLabel = (role: string) => ROLE_LABELS[role] ?? role;
 export function classNote(c: ClassFit) {
   if (c.canEquip) return c.bestArmor ? 'best armor' : '';
   return c.fromLevel ? `at ${c.fromLevel}` : 'later';
+}
+
+/** Classes that want the item (chips) and the ones that can merely hold it (one muted line). */
+export function classGroups(classes: ClassFit[]) {
+  return { wanting: classes.filter((c) => c.wants), holders: classes.filter((c) => !c.wants) };
+}
+
+/** "Warrior", "Hunter (at 40)", "Warrior (best armor)": one holder in the "Can also hold it" line. */
+export function holderLabel(c: ClassFit) {
+  const note = classNote(c);
+  return note ? `${classLabel(c.cls)} (${note})` : classLabel(c.cls);
 }

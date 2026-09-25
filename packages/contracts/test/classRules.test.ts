@@ -95,13 +95,36 @@ describe('rolesFromStats', () => {
     expect(bow).toEqual([{ role: 'ranged', confidence: 1 }]);
     const wand = rolesFromStats({ type: 'Weapon', subtype: 'Wands', stats: {} });
     expect(wand).toEqual([{ role: 'caster', confidence: 1 }]);
-    const shield = rolesFromStats({
+    const plainShield = rolesFromStats({
       type: 'Armor',
       subtype: 'Shields',
-      stats: { RESISTANCE0_NAME: 300, ITEM_MOD_INTELLECT_SHORT: 5 },
+      stats: { RESISTANCE0_NAME: 300, ITEM_MOD_STAMINA_SHORT: 5 },
     });
-    expect(shield[0]?.role).toBe('tank');
-    expect(shield.map((r) => r.role)).toContain('healer');
+    expect(plainShield).toEqual([{ role: 'tank', confidence: 1 }]);
+    // physical stats keep a shield a tank item first
+    const agiShield = rolesFromStats({
+      type: 'Armor',
+      subtype: 'Shields',
+      stats: { ITEM_MOD_AGILITY_SHORT: 5, ITEM_MOD_STAMINA_SHORT: 5 },
+    });
+    expect(agiShield[0]?.role).toBe('tank');
+    const strShield = rolesFromStats({
+      type: 'Armor',
+      subtype: 'Shields',
+      stats: { ITEM_MOD_STRENGTH_SHORT: 5 },
+    });
+    expect(strShield[0]?.role).toBe('tank');
+    // a healing shield is a healer's shield, not a tank's
+    const healingShield = rolesFromStats({
+      type: 'Armor',
+      subtype: 'Shields',
+      stats: {
+        RESISTANCE0_NAME: 300,
+        ITEM_MOD_INTELLECT_SHORT: 10,
+        ITEM_MOD_SPELL_HEALING_DONE_SHORT: 20,
+      },
+    });
+    expect(healingShield.map((r) => r.role)).toEqual(['healer', 'caster']);
   });
 
   it('weights primary stats by their share and adds tank signals', () => {
@@ -154,13 +177,13 @@ describe('rolesFromStats', () => {
       subtype: 'Two-Handed Swords',
       stats: { ITEM_MOD_CRIT_RATING_SHORT: 14, ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 28.8 },
     });
-    expect(sword[0]).toEqual({ role: 'melee', confidence: 0.6 });
+    expect(sword).toEqual([{ role: 'melee', confidence: 1 }]);
     const rifle = rolesFromStats({
       type: 'Weapon',
       subtype: 'Guns',
       stats: { ITEM_MOD_HIT_RATING_SHORT: 3, ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 11.8 },
     });
-    expect(rifle[0]).toEqual({ role: 'ranged', confidence: 0.6 });
+    expect(rifle).toEqual([{ role: 'ranged', confidence: 1 }]);
     // a plain staff is a caster weapon first
     const staff = rolesFromStats({
       type: 'Weapon',
@@ -168,6 +191,27 @@ describe('rolesFromStats', () => {
       stats: { ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 12 },
     });
     expect(staff[0]?.role).toBe('caster');
+  });
+
+  it('lets generic crit and hit amplify the roles an item already has, never add new ones', () => {
+    const robe = rolesFromStats({
+      type: 'Armor',
+      subtype: 'Cloth',
+      stats: {
+        ITEM_MOD_INTELLECT_SHORT: 15,
+        ITEM_MOD_STAMINA_SHORT: 10,
+        ITEM_MOD_CRIT_RATING_SHORT: 1,
+      },
+    });
+    expect(robe.map((r) => r.role)).toEqual(['caster', 'healer']);
+    // nothing else on the item: crit fits every damage role
+    const ring = rolesFromStats({
+      type: 'Armor',
+      subtype: 'Miscellaneous',
+      equipLoc: 'INVTYPE_FINGER',
+      stats: { ITEM_MOD_CRIT_RATING_SHORT: 14 },
+    });
+    expect(ring.map((r) => r.role).sort()).toEqual(['caster', 'melee', 'ranged']);
   });
 
   it('keeps physical damage on the physical side and reads per-school crit and hit', () => {
@@ -261,7 +305,7 @@ describe('itemFit', () => {
       equipLoc: 'INVTYPE_RELIC',
       reqLevel: 55,
     });
-    expect(idol.classes).toEqual([{ cls: 'DRUID', canEquip: true, bestArmor: false }]);
+    expect(idol.classes).toEqual([{ cls: 'DRUID', canEquip: true, bestArmor: false, wants: true }]);
     const trinket = itemFit({
       type: 'Armor',
       subtype: 'Miscellaneous',
@@ -274,6 +318,118 @@ describe('itemFit', () => {
     expect(idol.roles).toEqual([]);
     expect(itemFit({ type: 'Armor', subtype: 'Librams' }).classes[0]?.cls).toBe('PALADIN');
     expect(itemFit({ type: 'Armor', subtype: 'Totems' }).classes[0]?.cls).toBe('SHAMAN');
+  });
+
+  it('flags the classes whose roles match the item, and keeps the rest as holders', () => {
+    // Dreamstaff (249454): healer/caster, but any staff class can hold it
+    const fit = itemFit({
+      type: 'Weapon',
+      subtype: 'Staves',
+      equipLoc: 'INVTYPE_2HWEAPON',
+      reqLevel: 45,
+      stats: {
+        ITEM_MOD_SPIRIT_SHORT: 19,
+        ITEM_MOD_STAMINA_SHORT: 19,
+        ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 32.3,
+        ITEM_MOD_SPELL_DAMAGE_DONE_SHORT: 35,
+        ITEM_MOD_SPELL_HEALING_DONE_SHORT: 105,
+      },
+    });
+    expect(fit.roles.map((r) => r.role)).toEqual(['healer', 'caster']);
+    expect(fit.classes.filter((c) => c.wants).map((c) => c.cls)).toEqual([
+      'PRIEST',
+      'SHAMAN',
+      'MAGE',
+      'WARLOCK',
+      'DRUID',
+    ]);
+    expect(fit.classes.filter((c) => !c.wants).map((c) => c.cls)).toEqual(['WARRIOR', 'HUNTER']);
+    // a Strength two-hander: melee/tank, so no Hunter and no casters
+    const axe = itemFit({
+      type: 'Weapon',
+      subtype: 'Two-Handed Axes',
+      stats: { ITEM_MOD_STRENGTH_SHORT: 7, ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 20 },
+    });
+    expect(axe.classes.filter((c) => c.wants).map((c) => c.cls)).toEqual([
+      'WARRIOR',
+      'PALADIN',
+      'SHAMAN',
+    ]);
+    expect(axe.classes.filter((c) => !c.wants).map((c) => c.cls)).toEqual(['HUNTER']);
+    // a stat-less weapon says nothing about class preference: every wielder wants it
+    const bow = itemFit({
+      type: 'Weapon',
+      subtype: 'Bows',
+      stats: { ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 5 },
+    });
+    expect(bow.roles).toEqual([{ role: 'ranged', confidence: 1 }]);
+    expect(bow.classes.every((c) => c.wants)).toBe(true);
+    expect(bow.classes.map((c) => c.cls)).toEqual(['WARRIOR', 'HUNTER', 'ROGUE']);
+    const cutlass = itemFit({
+      type: 'Weapon',
+      subtype: 'One-Handed Swords',
+      stats: { ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 6.8 },
+    });
+    expect(cutlass.classes.every((c) => c.wants)).toBe(true);
+    // generic hit on that gun amplifies ranged but still says nothing about who wants it
+    const hitGun = itemFit({
+      type: 'Weapon',
+      subtype: 'Guns',
+      stats: { ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 12, ITEM_MOD_HIT_RATING_SHORT: 3 },
+    });
+    expect(hitGun.roles).toEqual([{ role: 'ranged', confidence: 1 }]);
+    expect(hitGun.classes.every((c) => c.wants)).toBe(true);
+    // a healing shield: Paladin and Shaman want it, the Warrior can hold it
+    const shield = itemFit({
+      type: 'Armor',
+      subtype: 'Shields',
+      stats: { ITEM_MOD_INTELLECT_SHORT: 10, ITEM_MOD_SPELL_HEALING_DONE_SHORT: 20 },
+    });
+    expect(shield.classes.filter((c) => c.wants).map((c) => c.cls)).toEqual(['PALADIN', 'SHAMAN']);
+    expect(shield.classes.filter((c) => !c.wants).map((c) => c.cls)).toEqual(['WARRIOR']);
+  });
+
+  it('ignores roles with a tiny share when deciding who wants an item', () => {
+    // a caster chest with a stray point of Strength must not hand Warriors a chip
+    const chest = itemFit({
+      type: 'Armor',
+      subtype: 'Cloth',
+      equipLoc: 'INVTYPE_CHEST',
+      stats: {
+        ITEM_MOD_INTELLECT_SHORT: 20,
+        ITEM_MOD_SPIRIT_SHORT: 10,
+        ITEM_MOD_STRENGTH_SHORT: 1,
+      },
+    });
+    expect(chest.roles.map((r) => r.role)).toEqual(['healer', 'caster', 'melee', 'tank']);
+    expect(chest.classes.filter((c) => c.wants).map((c) => c.cls)).toEqual([
+      'PALADIN',
+      'PRIEST',
+      'SHAMAN',
+      'MAGE',
+      'WARLOCK',
+      'DRUID',
+    ]);
+  });
+
+  it('always lets the only class that can equip an item want it', () => {
+    // a spell-damage Libram: Paladins are not casters, but nobody else can use it
+    const libram = itemFit({
+      type: 'Armor',
+      subtype: 'Librams',
+      stats: { ITEM_MOD_SPELL_DAMAGE_DONE_SHORT: 10 },
+    });
+    expect(libram.roles).toEqual([{ role: 'caster', confidence: 1 }]);
+    expect(libram.classes).toEqual([
+      { cls: 'PALADIN', canEquip: true, bestArmor: false, wants: true },
+    ]);
+  });
+
+  it('treats every wearer as wanting an item that has no role signal', () => {
+    const mail = itemFit({ type: 'Armor', subtype: 'Mail', equipLoc: 'INVTYPE_LEGS', reqLevel: 0 });
+    expect(mail.roles).toEqual([]);
+    expect(mail.classes.every((c) => c.wants)).toBe(true);
+    expect(itemFit({ type: 'Armor', subtype: 'Idols' }).classes[0]?.wants).toBe(true);
   });
 
   it('carries the rules version and lists nobody for a non-equippable item', () => {

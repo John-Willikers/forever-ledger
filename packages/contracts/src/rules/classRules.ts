@@ -8,7 +8,7 @@
  * Edit this file as Forever's class design is confirmed and bump RULES_VERSION so query results say which rules
  * they used. Subtype strings are the enUS values GetItemInfo returns.
  */
-export const RULES_VERSION = '2026-09-25.1';
+export const RULES_VERSION = '2026-09-25.2';
 
 export type ClassToken =
   'WARRIOR' | 'PALADIN' | 'HUNTER' | 'ROGUE' | 'PRIEST' | 'SHAMAN' | 'MAGE' | 'WARLOCK' | 'DRUID';
@@ -221,6 +221,8 @@ export interface ClassFit {
   cls: ClassToken;
   /** Proficiency at `atLevel`. */
   canEquip: boolean;
+  /** One of the class's roles is a role the item scored (always true when the item has no role signal). */
+  wants: boolean;
   /** When `canEquip` is false: the level the class gains the proficiency (Hunter/Shaman Mail at 40). */
   fromLevel?: number;
   /** True when the item is the class's best armor type at `atLevel` (Mail for a level-20 Warrior). */
@@ -235,6 +237,19 @@ export interface ItemFit {
   /** Classes that can equip the item now or later, in class order. */
   classes: ClassFit[];
 }
+
+/** The roles each Classic class can play; a class wants an item when one of them is a role the item scored. */
+export const CLASS_ROLES: Record<ClassToken, Role[]> = {
+  WARRIOR: ['melee', 'tank'],
+  PALADIN: ['tank', 'healer', 'melee'],
+  HUNTER: ['ranged'],
+  ROGUE: ['melee'],
+  PRIEST: ['healer', 'caster'],
+  SHAMAN: ['healer', 'caster', 'melee'],
+  MAGE: ['caster'],
+  WARLOCK: ['caster'],
+  DRUID: ['tank', 'healer', 'caster', 'melee'],
+};
 
 type Weights = Partial<Record<Role, number>>;
 
@@ -256,7 +271,7 @@ const SECONDARY: Record<string, Weights> = {
   PHYSICAL_DAMAGE_DONE: { melee: 1, ranged: 0.7, tank: 0.3 },
   EXPERTISE_RATING: { melee: 1, ranged: 0.7, tank: 0.3 },
   RANGED_ATTACK_POWER: { ranged: 1 },
-  // generic crit and hit fit every damage role: a nudge, never the deciding signal
+  // generic crit and hit fit every damage role: they amplify roles the item already has (see AMBIGUOUS)
   CRIT_RATING: { melee: 0.5, ranged: 0.5, caster: 0.5 },
   HIT_RATING: { melee: 0.5, ranged: 0.5, caster: 0.5 },
   DEFENSE_SKILL_RATING: { tank: 1 },
@@ -268,6 +283,12 @@ const SECONDARY: Record<string, Weights> = {
 
 /** Secondary stats that don't say which role: they never keep the weapon subtype from deciding. */
 const AMBIGUOUS = new Set(['CRIT_RATING', 'HIT_RATING']);
+
+/** A wearer wants an item only for roles with at least this share; a stray point of Strength is not a melee item. */
+const WANT_MIN_SHARE = 0.15;
+
+/** Shields are tank items unless their stats say healer or caster; physical stats only pick the tank flavour. */
+const SHIELD_TANK = 1.5;
 
 /** Weapon subtypes say who swings them; applied only when the stats say nothing (every weapon has DPS). */
 const WEAPON_TYPE: Record<string, Weights> = {
@@ -298,6 +319,11 @@ function add(total: Weights, w: Weights, scale = 1) {
  * Empty when nothing on the item says anything (plain armor, resistances, profession mods).
  */
 export function rolesFromStats(item: ItemForRules): RoleFit[] {
+  return analyzeStats(item).roles;
+}
+
+/** `roles`, plus whether any came from the item's stats (a subtype alone says nothing about class preference). */
+function analyzeStats(item: ItemForRules): { roles: RoleFit[]; fromStats: boolean } {
   const stats = item.stats ?? {};
   const total: Weights = {};
   const primary: Partial<Record<Stat, number>> = {};
@@ -314,6 +340,7 @@ export function rolesFromStats(item: ItemForRules): RoleFit[] {
 
   const healing = stats.ITEM_MOD_SPELL_HEALING_DONE_SHORT ?? 0;
   let secondarySignal = false;
+  const nudges: Weights[] = [];
   for (const [key, value] of Object.entries(stats)) {
     if (!(value > 0)) continue;
     const name = key.replace(/^ITEM_MOD_/, '').replace(/_SHORT$/, '');
@@ -332,17 +359,34 @@ export function rolesFromStats(item: ItemForRules): RoleFit[] {
             ? { ranged: 1 }
             : { melee: 1 };
     } else if (name.startsWith('ATTACK_POWER_VS_')) w = SECONDARY.ATTACK_POWER;
-    if (w) {
+    if (!w) continue;
+    if (AMBIGUOUS.has(name)) nudges.push(w);
+    else {
       add(total, w);
-      if (!AMBIGUOUS.has(name)) secondarySignal = true;
+      secondarySignal = true;
     }
   }
 
   const subtype = item.subtype ?? '';
-  if (item.type === 'Weapon' && WEAPON_TYPE[subtype] && primarySum === 0 && !secondarySignal)
-    add(total, WEAPON_TYPE[subtype]);
-  if (item.type === 'Armor' && subtype === 'Shields') add(total, { tank: 1.5 });
+  const silent = primarySum === 0 && !secondarySignal;
+  if (item.type === 'Weapon' && WEAPON_TYPE[subtype] && silent) add(total, WEAPON_TYPE[subtype]);
+  if (item.type === 'Armor' && subtype === 'Shields' && !total.healer && !total.caster)
+    add(total, { tank: SHIELD_TANK });
 
+  // Generic crit/hit amplify the roles the item already has; only on an otherwise silent item do they add roles,
+  // and only then do they count as the item's stats saying something about who wants it.
+  const present = new Set(Object.keys(total) as Role[]);
+  for (const w of nudges) {
+    if (present.size === 0) add(total, w);
+    else for (const role of present) if (w[role]) total[role] = (total[role] ?? 0) + w[role]!;
+  }
+  const nudgesAddedRoles = nudges.length > 0 && present.size === 0;
+
+  return { roles: shares(total), fromStats: primarySum > 0 || secondarySignal || nudgesAddedRoles };
+}
+
+/** Normalises role weights to two-decimal shares, highest first; empty when nothing scored. */
+function shares(total: Weights): RoleFit[] {
   const sum = Object.values(total).reduce((a, b) => a + b, 0);
   if (sum <= 0) return [];
   return ROLES.map((role) => ({
@@ -362,8 +406,12 @@ const tieredArmor = (item: ItemForRules) =>
 /** Highest level any Classic proficiency unlocks at. */
 const MAX_LEVEL = 60;
 
-/** Every class that can equip the item at `level` or later, with the level it becomes wearable. */
-export function classFits(item: ItemForRules, level: number): ClassFit[] {
+/**
+ * Every class that can equip the item at `level` or later, with the level it becomes wearable and whether one of
+ * the class's roles is in `wantedRoles`. Pass no roles when the item's stats say nothing: every wearer wants it.
+ */
+export function classFits(item: ItemForRules, level: number, wantedRoles: Role[]): ClassFit[] {
+  const wanted = new Set(wantedRoles);
   const out: ClassFit[] = [];
   for (const cls of Object.keys(CLASS_RULES) as ClassToken[]) {
     const rule = CLASS_RULES[cls];
@@ -373,6 +421,7 @@ export function classFits(item: ItemForRules, level: number): ClassFit[] {
       cls,
       canEquip: now,
       bestArmor: tieredArmor(item) && item.subtype === bestArmorAt(rule, level),
+      wants: wanted.size === 0 || CLASS_ROLES[cls].some((role) => wanted.has(role)),
     };
     if (!now) {
       const unlock = rule.armor
@@ -386,6 +435,8 @@ export function classFits(item: ItemForRules, level: number): ClassFit[] {
     }
     out.push(fit);
   }
+  // Nobody else can use it (relics, class-locked gear): the one class wants it whatever the stats say.
+  if (out.length === 1) out[0]!.wants = true;
   return out;
 }
 
@@ -395,10 +446,9 @@ export function classFits(item: ItemForRules, level: number): ClassFit[] {
  */
 export function itemFit(item: ItemForRules & { reqLevel?: number | null | undefined }): ItemFit {
   const atLevel = item.reqLevel && item.reqLevel > 0 ? item.reqLevel : 1;
-  return {
-    rulesVersion: RULES_VERSION,
-    atLevel,
-    roles: rolesFromStats(item),
-    classes: classFits(item, atLevel),
-  };
+  const { roles, fromStats } = analyzeStats(item);
+  const wanted = fromStats
+    ? roles.filter((r) => r.confidence >= WANT_MIN_SHARE).map((r) => r.role)
+    : [];
+  return { rulesVersion: RULES_VERSION, atLevel, roles, classes: classFits(item, atLevel, wanted) };
 }

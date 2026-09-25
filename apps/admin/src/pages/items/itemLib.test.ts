@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classGroups,
   classNote,
+  holderLabel,
   containerLabel,
   contentsByBuild,
   formatAvgQuantity,
@@ -197,12 +199,32 @@ describe('who wants it', () => {
     expect(roleLabel('ranged')).toBe('Ranged DPS');
   });
 
-  it('notes whether a class can wear it now, later, and if it is their best armor', () => {
-    expect(classNote({ cls: 'WARRIOR', canEquip: true, bestArmor: true })).toBe('best armor');
-    expect(classNote({ cls: 'ROGUE', canEquip: true, bestArmor: false })).toBe('');
-    expect(classNote({ cls: 'HUNTER', canEquip: false, fromLevel: 40, bestArmor: false })).toBe(
-      'at 40',
+  it('splits classes into the ones that want the item and the ones that can merely hold it', () => {
+    const classes = [
+      { cls: 'WARRIOR', canEquip: true, bestArmor: false, wants: false },
+      { cls: 'PRIEST', canEquip: true, bestArmor: false, wants: true },
+      { cls: 'HUNTER', canEquip: false, fromLevel: 40, bestArmor: false, wants: false },
+      { cls: 'DRUID', canEquip: true, bestArmor: false, wants: true },
+    ];
+    const g = classGroups(classes);
+    expect(g.wanting.map((c) => c.cls)).toEqual(['PRIEST', 'DRUID']);
+    expect(g.holders.map((c) => c.cls)).toEqual(['WARRIOR', 'HUNTER']);
+    expect(g.holders.map(holderLabel)).toEqual(['Warrior', 'Hunter (at 40)']);
+    expect(holderLabel({ cls: 'WARRIOR', canEquip: true, bestArmor: true, wants: false })).toBe(
+      'Warrior (best armor)',
     );
-    expect(classNote({ cls: 'MAGE', canEquip: false, bestArmor: false })).toBe('later');
+  });
+
+  it('notes whether a class can wear it now, later, and if it is their best armor', () => {
+    expect(classNote({ cls: 'WARRIOR', canEquip: true, bestArmor: true, wants: true })).toBe(
+      'best armor',
+    );
+    expect(classNote({ cls: 'ROGUE', canEquip: true, bestArmor: false, wants: true })).toBe('');
+    expect(
+      classNote({ cls: 'HUNTER', canEquip: false, fromLevel: 40, bestArmor: false, wants: true }),
+    ).toBe('at 40');
+    expect(classNote({ cls: 'MAGE', canEquip: false, bestArmor: false, wants: true })).toBe(
+      'later',
+    );
   });
 });
