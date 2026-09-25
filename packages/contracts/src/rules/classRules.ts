@@ -256,6 +256,7 @@ const SECONDARY: Record<string, Weights> = {
   PHYSICAL_DAMAGE_DONE: { melee: 1, ranged: 0.7, tank: 0.3 },
   EXPERTISE_RATING: { melee: 1, ranged: 0.7, tank: 0.3 },
   RANGED_ATTACK_POWER: { ranged: 1 },
+  // generic crit and hit fit every damage role: a nudge, never the deciding signal
   CRIT_RATING: { melee: 0.5, ranged: 0.5, caster: 0.5 },
   HIT_RATING: { melee: 0.5, ranged: 0.5, caster: 0.5 },
   DEFENSE_SKILL_RATING: { tank: 1 },
@@ -265,14 +266,17 @@ const SECONDARY: Record<string, Weights> = {
   BLOCK_VALUE: { tank: 1 },
 };
 
-/** Weapon subtypes say who swings them; applied when the item has DPS or no other signal. */
+/** Secondary stats that don't say which role: they never keep the weapon subtype from deciding. */
+const AMBIGUOUS = new Set(['CRIT_RATING', 'HIT_RATING']);
+
+/** Weapon subtypes say who swings them; applied only when the stats say nothing (every weapon has DPS). */
 const WEAPON_TYPE: Record<string, Weights> = {
   Bows: { ranged: 1 },
   Crossbows: { ranged: 1 },
   Guns: { ranged: 1 },
   Thrown: { ranged: 1 },
   Wands: { caster: 1 },
-  Staves: { melee: 0.6, caster: 0.4 },
+  Staves: { caster: 0.6, melee: 0.4 },
   Polearms: { melee: 1 },
   'Two-Handed Axes': { melee: 1 },
   'Two-Handed Maces': { melee: 1 },
@@ -314,25 +318,28 @@ export function rolesFromStats(item: ItemForRules): RoleFit[] {
     if (!(value > 0)) continue;
     const name = key.replace(/^ITEM_MOD_/, '').replace(/_SHORT$/, '');
     let w: Weights | undefined = SECONDARY[name];
-    if (name === 'SPELL_DAMAGE_DONE' || /^[A-Z]+_DAMAGE_DONE$/.test(name)) {
+    const school = /^(SPELL|FIRE|FROST|NATURE|SHADOW|ARCANE|HOLY)_DAMAGE_DONE$/.exec(name)?.[1];
+    const rating = /^(CRIT|HIT)_(MELEE|RANGED|SPELL)_RATING$/.exec(name)?.[2];
+    if (school) {
       // "+N damage and healing" items list both; when healing is the larger, damage is the side effect.
-      const caster = healing > value ? 0.5 : 1;
-      w = { caster };
-      if (name === 'HOLY_DAMAGE_DONE' || name === 'NATURE_DAMAGE_DONE') w.healer = 0.5;
+      w = { caster: healing > value ? 0.5 : 1 };
+      if (school === 'HOLY' || school === 'NATURE') w.healer = 0.5;
+    } else if (rating) {
+      w =
+        rating === 'SPELL'
+          ? { caster: 1, healer: 0.5 }
+          : rating === 'RANGED'
+            ? { ranged: 1 }
+            : { melee: 1 };
     } else if (name.startsWith('ATTACK_POWER_VS_')) w = SECONDARY.ATTACK_POWER;
     if (w) {
       add(total, w);
-      secondarySignal = true;
+      if (!AMBIGUOUS.has(name)) secondarySignal = true;
     }
   }
 
   const subtype = item.subtype ?? '';
-  const hasDps = (stats.ITEM_MOD_DAMAGE_PER_SECOND_SHORT ?? 0) > 0;
-  if (
-    item.type === 'Weapon' &&
-    WEAPON_TYPE[subtype] &&
-    (hasDps || (primarySum === 0 && !secondarySignal))
-  )
+  if (item.type === 'Weapon' && WEAPON_TYPE[subtype] && primarySum === 0 && !secondarySignal)
     add(total, WEAPON_TYPE[subtype]);
   if (item.type === 'Armor' && subtype === 'Shields') add(total, { tank: 1.5 });
 
@@ -345,6 +352,12 @@ export function rolesFromStats(item: ItemForRules): RoleFit[] {
     .filter((r) => r.confidence > 0)
     .sort((a, b) => b.confidence - a.confidence || ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
 }
+
+/** Cloth/Leather/Mail/Plate in a class-restricted slot: cloaks, trinkets, shields and relics have no "best" tier. */
+const tieredArmor = (item: ItemForRules) =>
+  item.type === 'Armor' &&
+  !(item.equipLoc && ARMOR_SLOTS_ANY_CLASS.has(item.equipLoc)) &&
+  (Object.keys(ALL_ARMOR_BELOW) as string[]).includes(item.subtype ?? '');
 
 /** Highest level any Classic proficiency unlocks at. */
 const MAX_LEVEL = 60;
@@ -359,7 +372,7 @@ export function classFits(item: ItemForRules, level: number): ClassFit[] {
     const fit: ClassFit = {
       cls,
       canEquip: now,
-      bestArmor: item.type === 'Armor' && item.subtype === bestArmorAt(rule, level),
+      bestArmor: tieredArmor(item) && item.subtype === bestArmorAt(rule, level),
     };
     if (!now) {
       const unlock = rule.armor

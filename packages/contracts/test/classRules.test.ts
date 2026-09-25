@@ -52,6 +52,8 @@ describe('rolesFromStats', () => {
     expect(fit.roles.map((r) => r.role)).toEqual(['caster', 'healer']);
     expect(roleMap(fit)).toEqual({ caster: 0.59, healer: 0.41 });
     expect(equippable(fit)).toHaveLength(9);
+    // a cloak is not anyone's "best armor"
+    expect(fit.classes.some((c) => c.bestArmor)).toBe(false);
   });
 
   it('puts healing above damage when both are on the item', () => {
@@ -128,6 +130,77 @@ describe('rolesFromStats', () => {
     expect(agi.map((r) => r.role)).toEqual(['ranged', 'melee', 'tank']);
   });
 
+  it('uses the weapon subtype only when the stats say nothing', () => {
+    // every weapon carries DPS, so a caster dagger must not read as melee
+    const dagger = rolesFromStats({
+      type: 'Weapon',
+      subtype: 'Daggers',
+      stats: {
+        ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 10,
+        ITEM_MOD_INTELLECT_SHORT: 5,
+        ITEM_MOD_SPIRIT_SHORT: 5,
+      },
+    });
+    expect(dagger.map((r) => r.role)).toEqual(['healer', 'caster']);
+    const healingMace = rolesFromStats({
+      type: 'Weapon',
+      subtype: 'One-Handed Maces',
+      stats: { ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 20, ITEM_MOD_SPELL_HEALING_DONE_SHORT: 30 },
+    });
+    expect(healingMace).toEqual([{ role: 'healer', confidence: 1 }]);
+    // generic crit and hit fit every role, so the subtype still decides
+    const sword = rolesFromStats({
+      type: 'Weapon',
+      subtype: 'Two-Handed Swords',
+      stats: { ITEM_MOD_CRIT_RATING_SHORT: 14, ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 28.8 },
+    });
+    expect(sword[0]).toEqual({ role: 'melee', confidence: 0.6 });
+    const rifle = rolesFromStats({
+      type: 'Weapon',
+      subtype: 'Guns',
+      stats: { ITEM_MOD_HIT_RATING_SHORT: 3, ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 11.8 },
+    });
+    expect(rifle[0]).toEqual({ role: 'ranged', confidence: 0.6 });
+    // a plain staff is a caster weapon first
+    const staff = rolesFromStats({
+      type: 'Weapon',
+      subtype: 'Staves',
+      stats: { ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 12 },
+    });
+    expect(staff[0]?.role).toBe('caster');
+  });
+
+  it('keeps physical damage on the physical side and reads per-school crit and hit', () => {
+    const physical = rolesFromStats({
+      type: 'Armor',
+      subtype: 'Leather',
+      stats: { ITEM_MOD_PHYSICAL_DAMAGE_DONE_SHORT: 5 },
+    });
+    expect(physical[0]?.role).toBe('melee');
+    expect(physical.find((r) => r.role === 'caster')).toBeUndefined();
+    expect(
+      rolesFromStats({
+        type: 'Armor',
+        subtype: 'Cloth',
+        stats: { ITEM_MOD_CRIT_SPELL_RATING_SHORT: 14 },
+      })[0]?.role,
+    ).toBe('caster');
+    expect(
+      rolesFromStats({
+        type: 'Armor',
+        subtype: 'Mail',
+        stats: { ITEM_MOD_HIT_RANGED_RATING_SHORT: 10 },
+      }),
+    ).toEqual([{ role: 'ranged', confidence: 1 }]);
+    expect(
+      rolesFromStats({
+        type: 'Armor',
+        subtype: 'Plate',
+        stats: { ITEM_MOD_CRIT_MELEE_RATING_SHORT: 10 },
+      }),
+    ).toEqual([{ role: 'melee', confidence: 1 }]);
+  });
+
   it('gives no role to armor with no signal, resistances or profession mods', () => {
     expect(
       rolesFromStats({ type: 'Armor', subtype: 'Cloth', stats: { RESISTANCE0_NAME: 10 } }),
@@ -189,6 +262,15 @@ describe('itemFit', () => {
       reqLevel: 55,
     });
     expect(idol.classes).toEqual([{ cls: 'DRUID', canEquip: true, bestArmor: false }]);
+    const trinket = itemFit({
+      type: 'Armor',
+      subtype: 'Miscellaneous',
+      equipLoc: 'INVTYPE_TRINKET',
+    });
+    expect(trinket.classes.some((c) => c.bestArmor)).toBe(false);
+    const shield = itemFit({ type: 'Armor', subtype: 'Shields', equipLoc: 'INVTYPE_SHIELD' });
+    expect(shield.classes.map((c) => c.cls)).toEqual(['WARRIOR', 'PALADIN', 'SHAMAN']);
+    expect(shield.classes.some((c) => c.bestArmor)).toBe(false);
     expect(idol.roles).toEqual([]);
     expect(itemFit({ type: 'Armor', subtype: 'Librams' }).classes[0]?.cls).toBe('PALADIN');
     expect(itemFit({ type: 'Armor', subtype: 'Totems' }).classes[0]?.cls).toBe('SHAMAN');
