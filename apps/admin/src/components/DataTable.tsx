@@ -11,6 +11,8 @@ import {
 } from '@tanstack/react-table';
 import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import { useState } from 'react';
+import { Pager } from './Pager';
+import { pageSlice } from './tableLib';
 
 export const sortableFeatures = tableFeatures({
   rowSortingFeature,
@@ -31,6 +33,8 @@ export function DataTable<T extends object>({
   rowKey,
   rowClassName,
   empty = 'Nothing yet.',
+  pageSize,
+  resetKey,
 }: {
   data: T[];
   columns: ColumnDef<SortableFeatures, T>[];
@@ -38,72 +42,93 @@ export function DataTable<T extends object>({
   rowKey: (row: T) => string | number;
   rowClassName?: (row: T) => string | undefined;
   empty?: string;
+  /** Client-side paging: show this many rows with a Pager under the table. */
+  pageSize?: number;
+  /** Paging goes back to the first page whenever this changes (pass your filter state). */
+  resetKey?: string | number;
 }) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
+  const [offset, setOffset] = useState(0);
+  // Adjust state during render (no effect): a new filter state starts over from the first page.
+  const [seenKey, setSeenKey] = useState(resetKey);
+  if (seenKey !== resetKey) {
+    setSeenKey(resetKey);
+    setOffset(0);
+  }
   const table = useTable({
     features: sortableFeatures,
     columns,
     data,
     state: { sorting },
-    onSortingChange: setSorting,
+    onSortingChange: (u) => {
+      setSorting(u);
+      setOffset(0);
+    },
     getRowId: (row) => String(rowKey(row)),
   });
+  const all = table.getRowModel().rows;
+  const page = pageSlice(all, offset, pageSize);
   return (
-    <div className="table-wrap">
-      <table className="data">
-        <thead>
-          {table.getHeaderGroups().map((group) => (
-            <tr key={group.id}>
-              {group.headers.map((header) => {
-                const dir = header.column.getIsSorted();
-                const canSort = header.column.getCanSort();
-                return (
-                  <th
-                    key={header.id}
-                    aria-sort={
-                      dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined
-                    }
-                  >
-                    {header.isPlaceholder ? null : canSort ? (
-                      <button
-                        type="button"
-                        className="th-sort"
-                        onClick={header.column.getToggleSortingHandler()}
-                      >
+    <>
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            {table.getHeaderGroups().map((group) => (
+              <tr key={group.id}>
+                {group.headers.map((header) => {
+                  const dir = header.column.getIsSorted();
+                  const canSort = header.column.getCanSort();
+                  return (
+                    <th
+                      key={header.id}
+                      aria-sort={
+                        dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined
+                      }
+                    >
+                      {header.isPlaceholder ? null : canSort ? (
+                        <button
+                          type="button"
+                          className="th-sort"
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          <table.FlexRender header={header} />
+                          <span className="sort-mark" aria-hidden>
+                            {dir === 'asc' ? '▲' : dir === 'desc' ? '▼' : ''}
+                          </span>
+                        </button>
+                      ) : (
                         <table.FlexRender header={header} />
-                        <span className="sort-mark" aria-hidden>
-                          {dir === 'asc' ? '▲' : dir === 'desc' ? '▼' : ''}
-                        </span>
-                      </button>
-                    ) : (
-                      <table.FlexRender header={header} />
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length} className="muted empty-row">
-                {empty}
-              </td>
-            </tr>
-          ) : (
-            table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className={rowClassName?.(row.original)}>
-                {row.getAllCells().map((cell) => (
-                  <td key={cell.id}>
-                    <table.FlexRender cell={cell} />
-                  </td>
-                ))}
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+            ))}
+          </thead>
+          <tbody>
+            {all.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="muted empty-row">
+                  {empty}
+                </td>
+              </tr>
+            ) : (
+              page.rows.map((row) => (
+                <tr key={row.id} className={rowClassName?.(row.original)}>
+                  {row.getAllCells().map((cell) => (
+                    <td key={cell.id}>
+                      <table.FlexRender cell={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {pageSize !== undefined && (
+        <Pager total={all.length} limit={pageSize} offset={page.offset} onOffset={setOffset} />
+      )}
+    </>
   );
 }

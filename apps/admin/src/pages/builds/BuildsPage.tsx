@@ -6,11 +6,11 @@ import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Kpi } from '../../components/Kpi';
 import { Empty, QueryState } from '../../components/State';
+import { Tabs } from '../../components/Tabs';
 import { formatNumber, plural } from '../../lib/format';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { ItemName } from '../loot/parts';
 import { mobLabel } from '../loot/lootLib';
-import '../professions/professions.css';
 import './builds.css';
 import {
   CATEGORIES,
@@ -65,8 +65,6 @@ export function BuildsPage() {
 function Compare({ builds }: { builds: BuildRow[] }) {
   const [params, setParams] = useSearchParams();
   const pair = pairFromParams(params, builds);
-  const tabParam = params.get('tab');
-  const tab: CategoryKey = isCategory(tabParam) ? tabParam : 'items';
   const minRaw = Number(params.get('minCorpses'));
   const minCorpses = MIN_CORPSES_CHOICES.includes(minRaw) ? minRaw : 5;
 
@@ -133,8 +131,6 @@ function Compare({ builds }: { builds: BuildRow[] }) {
         from={pair.from}
         to={pair.to}
         fromRow={builds.find((b) => b.build === pair.from)}
-        tab={tab}
-        onTab={(t) => set({ tab: t })}
         minCorpses={minCorpses}
         onMinCorpses={(n) => set({ minCorpses: String(n) })}
       />
@@ -146,16 +142,12 @@ function DiffView({
   from,
   to,
   fromRow,
-  tab,
-  onTab,
   minCorpses,
   onMinCorpses,
 }: {
   from: number;
   to: number;
   fromRow: BuildRow | undefined;
-  tab: CategoryKey;
-  onTab: (t: CategoryKey) => void;
   minCorpses: number;
   onMinCorpses: (n: number) => void;
 }) {
@@ -199,36 +191,24 @@ function DiffView({
                 />
               ))}
             </div>
-            <div className="tabs" role="tablist" aria-label="Change category">
-              {CATEGORIES.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  role="tab"
-                  id={`build-tab-${c.key}`}
-                  aria-selected={tab === c.key}
-                  aria-controls="build-tab-panel"
-                  className={tab === c.key ? 'tab active' : 'tab'}
-                  onClick={() => onTab(c.key)}
-                >
-                  {c.label} ({formatNumber(d[c.key].total)})
-                </button>
-              ))}
-            </div>
-            <div
-              className="tab-panel"
-              role="tabpanel"
-              id="build-tab-panel"
-              aria-labelledby={`build-tab-${tab}`}
+            <Tabs
+              id="build"
+              tabs={CATEGORIES.map((c) => ({ key: c.key, label: c.label, count: d[c.key].total }))}
+              label="Change category"
             >
-              <CategoryPanel
-                diff={d}
-                category={tab}
-                overlap={overlapCount(fromRow, d, tab)}
-                minCorpses={minCorpses}
-                onMinCorpses={onMinCorpses}
-              />
-            </div>
+              {(key) => {
+                const category = isCategory(key) ? key : 'items';
+                return (
+                  <CategoryPanel
+                    diff={d}
+                    category={category}
+                    overlap={overlapCount(fromRow, d, category)}
+                    minCorpses={minCorpses}
+                    onMinCorpses={onMinCorpses}
+                  />
+                );
+              }}
+            </Tabs>
           </div>
         );
       }}

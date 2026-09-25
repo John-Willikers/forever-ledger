@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { formatLocation, listPath, npcMapPoint, skillReq, stockLabel, unitPrice } from './lib';
+import {
+  formatLocation,
+  listPath,
+  npcMapPoint,
+  npcParam,
+  skillReq,
+  stockLabel,
+  unitPrice,
+} from './lib';
 
 describe('vendors & trainers helpers', () => {
   it('formats a location as zone · subzone (x, y)', () => {
@@ -56,5 +64,18 @@ describe('npcMapPoint', () => {
     expect(npcMapPoint({ ...loc, mapId: null }, 'trainer', 'T')).toBeNull();
     expect(npcMapPoint({ ...loc, x: null }, 'trainer', 'T')).toBeNull();
     expect(npcMapPoint(null, 'trainer', 'T')).toBeNull();
+  });
+});
+
+describe('npcParam', () => {
+  it('reads the id only when the kind prefix matches', () => {
+    expect(npcParam(new URLSearchParams('npc=v1234'), 'vendors')).toBe(1234);
+    expect(npcParam(new URLSearchParams('npc=v1234'), 'trainers')).toBeNull();
+    expect(npcParam(new URLSearchParams('npc=t7'), 'trainers')).toBe(7);
+    expect(npcParam(new URLSearchParams(''), 'vendors')).toBeNull();
+    expect(npcParam(new URLSearchParams('npc=1234'), 'vendors')).toBeNull();
+    expect(npcParam(new URLSearchParams('npc=v0'), 'vendors')).toBeNull();
+    expect(npcParam(new URLSearchParams('npc=v'), 'vendors')).toBeNull();
+    expect(npcParam(new URLSearchParams('npc=v12x'), 'vendors')).toBeNull();
   });
 });

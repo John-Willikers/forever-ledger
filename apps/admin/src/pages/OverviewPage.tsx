@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { useAdminQuery } from '../api';
 import { Card } from '../components/Card';
 import { Chart, useChartPalette } from '../components/Chart';
+import { Collapsible } from '../components/Collapsible';
 import { DataTable } from '../components/DataTable';
 import type { SortableFeatures } from '../components/DataTable';
 import { Kpi } from '../components/Kpi';
@@ -95,11 +96,20 @@ function Kpis({ o }: { o: Overview }) {
         value={problems === 0 && flagged === 0 ? 'OK' : formatNumber(problems)}
         tone={problems > 0 ? 'bad' : flagged > 0 || (diag.warn ?? 0) > 0 ? 'warn' : undefined}
         hint={
-          <Link to="/health">
-            {plural(o.health.ingestErrors7d, 'refused batch', 'refused batches')} ·{' '}
-            {plural(diag.error ?? 0, 'error')} · {plural(diag.warn ?? 0, 'warning')}
-            {flagged > 0 ? ` · ${plural(flagged, 'addon report')}` : ''}
-          </Link>
+          <>
+            <Link to="/health">
+              {plural(o.health.ingestErrors7d, 'refused batch', 'refused batches')} ·{' '}
+              {plural(diag.error ?? 0, 'error')} · {plural(diag.warn ?? 0, 'warning')}
+            </Link>
+            {flagged > 0 ? (
+              <>
+                {' · '}
+                <Link to="/health?tab=samples">{plural(flagged, 'addon report')}</Link>
+              </>
+            ) : (
+              ''
+            )}
+          </>
         }
       />
     </div>
@@ -237,7 +247,7 @@ function LiveFeed() {
 
 function BuildsCard({ builds }: { builds: BuildSeen[] }) {
   return (
-    <Card title="Builds">
+    <Collapsible title="Builds" count={builds.length}>
       {builds.length === 0 ? (
         <Empty>No builds yet.</Empty>
       ) : (
@@ -266,7 +276,7 @@ function BuildsCard({ builds }: { builds: BuildSeen[] }) {
           </table>
         </div>
       )}
-    </Card>
+    </Collapsible>
   );
 }
 
@@ -302,7 +312,7 @@ function VersionList({
 
 function VersionsCard({ addon, tray }: { addon: VersionInUse[]; tray: VersionInUse[] }) {
   return (
-    <Card title="Versions in use">
+    <Collapsible title="Versions in use">
       <div className="grid-2 tight">
         <VersionList title="Addon (latest upload per PC)" versions={addon} none="No uploads yet." />
         <VersionList
@@ -311,6 +321,6 @@ function VersionsCard({ addon, tray }: { addon: VersionInUse[]; tray: VersionInU
           none="No tray app reports yet (it only reports problems)."
         />
       </div>
-    </Card>
+    </Collapsible>
   );
 }

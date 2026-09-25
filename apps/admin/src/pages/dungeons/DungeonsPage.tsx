@@ -9,6 +9,7 @@ import { Chart, useChartPalette } from '../../components/Chart';
 import { ClassBadge } from '../../components/ClassBadge';
 import { Pager } from '../../components/Pager';
 import { Empty, QueryState } from '../../components/State';
+import { Tabs } from '../../components/Tabs';
 import { formatNumber, plural } from '../../lib/format';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { BuildSelect } from '../loot/parts';
@@ -42,12 +43,6 @@ function Members({ members }: { members: RunMember[] }) {
 /** Runs per instance: clear times, XP per minute (mob vs quest), deaths; the runs table links to each run. */
 export function DungeonsPage() {
   const [build, setBuild] = useState<number | null>(null);
-  const q = build === null ? '' : `?build=${build}`;
-  const summary = useAdminQuery<RunSummary[]>(['runs-summary', build], `/v1/runs/summary${q}`);
-  const clear = useAdminQuery<ClearTimes[]>(
-    ['clear-times', build],
-    `/admin/api/dungeons/clear-times${q}`,
-  );
   return (
     <div className="page">
       <header className="page-head">
@@ -61,13 +56,42 @@ export function DungeonsPage() {
       <div className="filters">
         <BuildSelect value={build} onChange={setBuild} />
       </div>
+      <Tabs
+        id="dungeons"
+        tabs={[
+          { key: 'instances', label: 'Per instance' },
+          { key: 'runs', label: 'Runs' },
+        ]}
+        label="Dungeon sections"
+      >
+        {(key) =>
+          key === 'runs' ? (
+            <RunsCard key={build ?? 'all'} build={build} />
+          ) : (
+            <InstancesPanel build={build} />
+          )
+        }
+      </Tabs>
+    </div>
+  );
+}
+
+/** The Per instance tab: owns its queries so they only run while the tab is showing. */
+function InstancesPanel({ build }: { build: number | null }) {
+  const q = build === null ? '' : `?build=${build}`;
+  const summary = useAdminQuery<RunSummary[]>(['runs-summary', build], `/v1/runs/summary${q}`);
+  const clear = useAdminQuery<ClearTimes[]>(
+    ['clear-times', build],
+    `/admin/api/dungeons/clear-times${q}`,
+  );
+  return (
+    <>
       <QueryState query={summary}>{(s) => <SummaryCard rows={s} />}</QueryState>
       <div className="grid-2">
         <ClearTimesCard query={clear} />
         <QueryState query={summary}>{(s) => <XpRateCard rows={s} />}</QueryState>
       </div>
-      <RunsCard key={build ?? 'all'} build={build} />
-    </div>
+    </>
   );
 }
 

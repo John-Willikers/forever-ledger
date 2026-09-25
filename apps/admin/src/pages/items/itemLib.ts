@@ -1,6 +1,6 @@
 // Pure helpers for the Item page: stat names, the per-build stat table, drop sources, tooltip text.
 import { classLabel } from '../../lib/classes';
-import type { ClassFit } from '../loot/types';
+import type { ClassFit, ItemV1 } from '../loot/types';
 
 const FIELD_LABELS: Readonly<Record<string, string>> = {
   ilvl: 'Item level',
@@ -209,6 +209,11 @@ const ROLE_LABELS: Record<string, string> = {
 
 /** "Who wants it" role names. */
 export const roleLabel = (role: string) => ROLE_LABELS[role] ?? role;
+
+/** Whether the spec estimate says anything (a role or a class), so the "Who wants it" section is worth showing. */
+export function hasSpecFit(specs: ItemV1['specs']): boolean {
+  return specs.roles.length > 0 || specs.classes.length > 0;
+}
 
 /** The note after a class chip: their best armor type, or when they can wear it. */
 export function classNote(c: ClassFit) {

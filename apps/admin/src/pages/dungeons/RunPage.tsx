@@ -1,13 +1,13 @@
 import './echartsExtra';
-import '../professions/professions.css';
 import type { ReactNode } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { useAdminQuery } from '../../api';
 import { Card } from '../../components/Card';
 import { Chart, useChartPalette } from '../../components/Chart';
 import { ClassBadge } from '../../components/ClassBadge';
 import { Kpi } from '../../components/Kpi';
 import { Empty, QueryState } from '../../components/State';
+import { Tabs } from '../../components/Tabs';
 import { formatNumber, plural } from '../../lib/format';
 import { formatChicago } from '../../lib/time';
 import { mobLabel } from '../loot/lootLib';
@@ -19,7 +19,6 @@ import {
   formatDuration,
   instanceLabel,
   perMinute,
-  pickTab,
   rowsChartHeight,
   runTabs,
 } from './runLib';
@@ -41,7 +40,7 @@ export function RunPage() {
   return (
     <div className="page">
       <p className="small">
-        <Link to="/dungeons">← Dungeons</Link>
+        <Link to="/dungeons?tab=runs">← Dungeons</Link>
       </p>
       <QueryState query={run}>{(g) => <RunGroup g={g} />}</QueryState>
     </div>
@@ -49,43 +48,15 @@ export function RunPage() {
 }
 
 function RunGroup({ g }: { g: RunGroupDetail }) {
-  const [params, setParams] = useSearchParams();
   const tabs = runTabs(g.perspectives);
   if (tabs.length === 0) return <Run r={g.perspectives[0]!} />;
-  const tab = pickTab(tabs, params.get('view'));
-  const member = g.perspectives.find((p) => p.id === tab);
   return (
-    <>
-      <div className="tabs" role="tablist" aria-label="Group or member view">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            id={`tab-${t.key}`}
-            aria-selected={tab === t.key}
-            aria-controls="run-panel"
-            className={tab === t.key ? 'tab active' : 'tab'}
-            onClick={() =>
-              setParams(
-                (p) => {
-                  const next = new URLSearchParams(p);
-                  if (t.key === 'group') next.delete('view');
-                  else next.set('view', t.key);
-                  return next;
-                },
-                { replace: true },
-              )
-            }
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div className="tab-panel" role="tabpanel" id="run-panel" aria-labelledby={`tab-${tab}`}>
-        {member ? <Run r={member} /> : <Group g={g} />}
-      </div>
-    </>
+    <Tabs id="run" tabs={tabs} param="view" label="Group or member view">
+      {(key) => {
+        const member = g.perspectives.find((p) => p.id === key);
+        return member ? <Run r={member} /> : <Group g={g} />;
+      }}
+    </Tabs>
   );
 }
 

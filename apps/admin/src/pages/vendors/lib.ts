@@ -30,6 +30,8 @@ export const stockLabel = (n: number | null) =>
 export const unitPrice = (price: number | null, stack: number | null) =>
   price === null ? null : price / (stack !== null && stack > 0 ? stack : 1);
 
+export type NpcKind = 'vendors' | 'trainers';
+
 export interface ListFilters {
   search: string;
   title: string;
@@ -37,12 +39,20 @@ export interface ListFilters {
 }
 
 /** The list route with its filters (the server's max page; the panel filters and sorts in the table). */
-export function listPath(kind: 'vendors' | 'trainers', f: ListFilters) {
+export function listPath(kind: NpcKind, f: ListFilters) {
   const q = new URLSearchParams({ limit: '500' });
   if (f.search.trim()) q.set('search', f.search.trim());
   if (f.title) q.set('title', f.title);
   if (f.foreverOnly) q.set('foreverOnly', 'true');
   return `/admin/api/${kind}?${q.toString()}`;
+}
+
+/** `?npc=v<id>` / `?npc=t<id>`: the vendor or trainer whose card is open, when the prefix matches `kind`. */
+export function npcParam(params: URLSearchParams, kind: NpcKind): number | null {
+  const m = /^([vt])(\d{1,10})$/.exec(params.get('npc') ?? '');
+  if (!m || m[1] !== kind[0]) return null;
+  const id = Number(m[2]);
+  return id > 0 ? id : null;
 }
 
 /** An NPC's location as one zone map point (with its uiMapID), or null without a map id and coordinates. */

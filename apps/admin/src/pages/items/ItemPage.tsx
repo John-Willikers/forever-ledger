@@ -4,6 +4,7 @@ import { useAdminQuery } from '../../api';
 import { Card } from '../../components/Card';
 import { ClassBadge } from '../../components/ClassBadge';
 import { Empty, QueryState } from '../../components/State';
+import { Tabs } from '../../components/Tabs';
 import { formatNumber } from '../../lib/format';
 import { formatChicagoShort } from '../../lib/time';
 import { formatCopper, mobLabel, qualityClass, qualityLabel } from '../loot/lootLib';
@@ -17,6 +18,7 @@ import {
   containerLabel,
   contentsByBuild,
   formatAvgQuantity,
+  hasSpecFit,
   mergeDropSources,
   roleLabel,
   statLabel,
@@ -24,7 +26,10 @@ import {
   tooltipText,
 } from './itemLib';
 
-/** One item across builds: stats with changes highlighted, where it comes from, what uses it. */
+/**
+ * One item across builds, in tabs: stats with changes highlighted and the tooltip; where it comes from; who sells,
+ * rewards or crafts it; and (when the estimate says anything) who wants it.
+ */
 export function ItemPage() {
   const { id = '' } = useParams();
   const valid = /^\d{1,10}$/.test(id) && Number(id) > 0;
@@ -56,28 +61,50 @@ export function ItemPage() {
                 <ForeverBadge show={extra.data?.foreverOnly ?? false} />
               </p>
             </header>
-            <div className="grid-2">
-              <StatsCard item={i} extra={extra.data} />
-              <TooltipCard item={i} />
-            </div>
-            <QueryState query={extra}>
-              {(x) => (
-                <>
+            <Tabs
+              id="item"
+              tabs={[
+                { key: 'stats', label: 'Stats & tooltip' },
+                { key: 'sources', label: 'Sources' },
+                { key: 'trade', label: 'Trade' },
+                ...(hasSpecFit(i.specs) ? [{ key: 'wants', label: 'Who wants it' }] : []),
+              ]}
+              label="Item sections"
+            >
+              {(key) =>
+                key === 'sources' || key === 'trade' ? (
+                  <QueryState query={extra}>
+                    {(x) =>
+                      key === 'sources' ? (
+                        <>
+                          <div className="grid-2">
+                            <DropsCard item={i} extra={x} />
+                            <NodesCard item={i} />
+                          </div>
+                          <ContentsCard extra={x} />
+                          <OpenedFromCard extra={x} />
+                        </>
+                      ) : (
+                        <>
+                          <VendorsCard extra={x} />
+                          <div className="grid-2">
+                            <QuestsCard item={i} />
+                            <RecipesCard extra={x} />
+                          </div>
+                        </>
+                      )
+                    }
+                  </QueryState>
+                ) : key === 'wants' ? (
+                  <SpecsCard item={i} />
+                ) : (
                   <div className="grid-2">
-                    <DropsCard item={i} extra={x} />
-                    <NodesCard item={i} />
+                    <StatsCard item={i} extra={extra.data} />
+                    <TooltipCard item={i} />
                   </div>
-                  <ContentsCard extra={x} />
-                  <OpenedFromCard extra={x} />
-                  <VendorsCard extra={x} />
-                  <div className="grid-2">
-                    <QuestsCard item={i} />
-                    <RecipesCard extra={x} />
-                  </div>
-                </>
-              )}
-            </QueryState>
-            <SpecsCard item={i} />
+                )
+              }
+            </Tabs>
           </>
         )}
       </QueryState>
@@ -536,7 +563,7 @@ function RecipesCard({ extra }: { extra: ItemExtra }) {
 
 function SpecsCard({ item }: { item: ItemV1 }) {
   const { roles, classes, atLevel } = item.specs;
-  if (roles.length === 0 && classes.length === 0) return null;
+  if (!hasSpecFit(item.specs)) return null;
   const { wanting, holders } = classGroups(classes);
   return (
     <Card title="Who wants it">

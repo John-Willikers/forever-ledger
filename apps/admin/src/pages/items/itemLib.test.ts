@@ -6,6 +6,7 @@ import {
   containerLabel,
   contentsByBuild,
   formatAvgQuantity,
+  hasSpecFit,
   mergeDropSources,
   roleLabel,
   statLabel,
@@ -226,5 +227,17 @@ describe('who wants it', () => {
     expect(classNote({ cls: 'MAGE', canEquip: false, bestArmor: false, wants: true })).toBe(
       'later',
     );
+  });
+
+  it('has a spec fit when a role or a class was estimated', () => {
+    const none = { rulesVersion: '1', atLevel: 20, roles: [], classes: [] };
+    expect(hasSpecFit(none)).toBe(false);
+    expect(hasSpecFit({ ...none, roles: [{ role: 'tank', confidence: 0.6 }] })).toBe(true);
+    expect(
+      hasSpecFit({
+        ...none,
+        classes: [{ cls: 'WARRIOR', canEquip: true, bestArmor: true, wants: false }],
+      }),
+    ).toBe(true);
   });
 });

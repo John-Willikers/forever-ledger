@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAdminQuery } from '../api';
 import { Card } from '../components/Card';
 import { Empty, QueryState } from '../components/State';
+import { Tabs } from '../components/Tabs';
 import { formatBytes, formatNumber, plural } from '../lib/format';
 import {
   DIAGNOSTIC_LEVELS,
@@ -19,6 +20,7 @@ import type { ApiSample, ApiSampleInfo, DiagnosticsList, HealthItem, Items } fro
 
 const WINDOWS = [1, 7, 30, 90] as const;
 
+/** Two tabs: Diagnostics (tray reports and refused batches) and API samples (what the addon saw of the client API). */
 export function HealthPage() {
   return (
     <div className="page">
@@ -29,8 +31,16 @@ export function HealthPage() {
           client API.
         </p>
       </header>
-      <Feed />
-      <Samples />
+      <Tabs
+        id="health"
+        tabs={[
+          { key: 'diagnostics', label: 'Diagnostics' },
+          { key: 'samples', label: 'API samples' },
+        ]}
+        label="Health sections"
+      >
+        {(key) => (key === 'samples' ? <Samples /> : <Feed />)}
+      </Tabs>
     </div>
   );
 }

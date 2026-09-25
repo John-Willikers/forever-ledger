@@ -1,21 +1,29 @@
 import { createColumnHelper } from '@tanstack/react-table';
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useAdminQuery } from '../../api';
 import { Card } from '../../components/Card';
 import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Empty, QueryState } from '../../components/State';
+import { Tabs } from '../../components/Tabs';
 import { ZoneMap } from '../../components/ZoneMap';
 import { formatNumber, plural } from '../../lib/format';
 import { formatCosts, formatMoney } from '../../lib/money';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { ItemName } from '../loot/parts';
-import '../professions/professions.css';
 import { recipeHref } from '../professions/recipeLib';
-import { formatLocation, listPath, npcMapPoint, skillReq, stockLabel, unitPrice } from './lib';
-import type { ListFilters } from './lib';
+import {
+  formatLocation,
+  listPath,
+  npcMapPoint,
+  npcParam,
+  skillReq,
+  stockLabel,
+  unitPrice,
+} from './lib';
+import type { ListFilters, NpcKind } from './lib';
 import type {
   NpcList,
   TrainerDetail,
@@ -25,13 +33,10 @@ import type {
   VendorRow,
 } from './types';
 
-type Tab = 'vendors' | 'trainers';
-
 const npcName = (n: { npcId: number; name: string | null }) => n.name ?? `NPC ${n.npcId}`;
 
 /** Vendors and trainers seen by the addon: searchable lists, a Forever-only filter, and each NPC's catalog. */
 export function VendorsPage() {
-  const [tab, setTab] = useState<Tab>('vendors');
   return (
     <div className="page">
       <header className="page-head">
@@ -41,50 +46,67 @@ export function VendorsPage() {
           under a name is the NPC's subtitle in game.
         </p>
       </header>
-      <div className="tabs" role="tablist" aria-label="Vendors or trainers">
-        {(['vendors', 'trainers'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            id={`tab-${t}`}
-            aria-selected={tab === t}
-            aria-controls={`panel-${t}`}
-            className={tab === t ? 'tab active' : 'tab'}
-            onClick={() => setTab(t)}
-          >
-            {t === 'vendors' ? 'Vendors' : 'Trainers'}
-          </button>
-        ))}
-      </div>
-      <div className="tab-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'vendors' ? (
-          <NpcBrowser kind="vendors" key="v" />
-        ) : (
-          <NpcBrowser kind="trainers" key="t" />
-        )}
-      </div>
+      <Tabs
+        id="npc"
+        tabs={[
+          { key: 'vendors', label: 'Vendors' },
+          { key: 'trainers', label: 'Trainers' },
+        ]}
+        label="Vendors or trainers"
+      >
+        {(key) =>
+          key === 'trainers' ? (
+            <NpcBrowser kind="trainers" key="t" />
+          ) : (
+            <NpcBrowser kind="vendors" key="v" />
+          )
+        }
+      </Tabs>
     </div>
   );
 }
 
-function NpcBrowser({ kind }: { kind: Tab }) {
+function NpcBrowser({ kind }: { kind: NpcKind }) {
   const [filters, setFilters] = useState<ListFilters>({
     search: '',
     title: '',
     foreverOnly: false,
   });
   const deferred = useDeferredValue(filters);
-  const [selected, setSelected] = useState<number | null>(null);
-  const list = useAdminQuery<NpcList<VendorRow | TrainerRow>>(
-    [kind, deferred],
-    listPath(kind, deferred),
-    { placeholderData: (prev) => prev },
-  );
+  const [params, setParams] = useSearchParams();
+  const selected = npcParam(params, kind);
+  const setSelected = (id: number | null) =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        if (id === null) next.delete('npc');
+        else next.set('npc', `${kind[0]}${id}`);
+        return next;
+      },
+      { replace: true },
+    );
+  const path = listPath(kind, deferred);
+  const list = useAdminQuery<NpcList<VendorRow | TrainerRow>>([kind, deferred], path, {
+    placeholderData: (prev) => prev,
+  });
   const set = (patch: Partial<ListFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const titles = list.data?.titles ?? [];
+  // The card opens above the list: a pick far down the page would otherwise land out of view.
+  const detailRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selected !== null) detailRef.current?.scrollIntoView({ block: 'start' });
+  }, [selected]);
   return (
     <>
+      {selected !== null && (
+        <div id="npc-detail" ref={detailRef}>
+          {kind === 'vendors' ? (
+            <VendorCard npcId={selected} key={`v${selected}`} onClose={() => setSelected(null)} />
+          ) : (
+            <TrainerCard npcId={selected} key={`t${selected}`} onClose={() => setSelected(null)} />
+          )}
+        </div>
+      )}
       <Card
         title={kind === 'vendors' ? 'Vendors' : 'Trainers'}
         actions={
@@ -134,6 +156,8 @@ function NpcBrowser({ kind }: { kind: Tab }) {
                   columns={vendorColumns(selected, setSelected)}
                   rowKey={(v) => v.npcId}
                   rowClassName={(v) => (v.npcId === selected ? 'selected' : undefined)}
+                  pageSize={50}
+                  resetKey={path}
                   empty="No vendor matches."
                 />
               ) : (
@@ -142,6 +166,8 @@ function NpcBrowser({ kind }: { kind: Tab }) {
                   columns={trainerColumns(selected, setSelected)}
                   rowKey={(t) => t.npcId}
                   rowClassName={(t) => (t.npcId === selected ? 'selected' : undefined)}
+                  pageSize={50}
+                  resetKey={path}
                   empty="No trainer matches."
                 />
               )}
@@ -149,12 +175,6 @@ function NpcBrowser({ kind }: { kind: Tab }) {
           )}
         </QueryState>
       </Card>
-      {selected !== null &&
-        (kind === 'vendors' ? (
-          <VendorCard npcId={selected} key={`v${selected}`} />
-        ) : (
-          <TrainerCard npcId={selected} key={`t${selected}`} />
-        ))}
     </>
   );
 }
@@ -162,10 +182,14 @@ function NpcBrowser({ kind }: { kind: Tab }) {
 function NpcCell({
   n,
   selected,
+  open,
   onSelect,
 }: {
   n: { npcId: number; name: string | null; title: string | null; forever: boolean };
+  /** This row's NPC is the one whose card is open. */
   selected: boolean;
+  /** Some NPC card is on the page (the `aria-controls` target only exists then). */
+  open: boolean;
   onSelect: (id: number | null) => void;
 }) {
   return (
@@ -174,6 +198,7 @@ function NpcCell({
         type="button"
         className="linkish"
         aria-expanded={selected}
+        aria-controls={open ? 'npc-detail' : undefined}
         onClick={() => onSelect(selected ? null : n.npcId)}
       >
         {npcName(n)}
@@ -205,6 +230,7 @@ function vendorColumns(selected: number | null, onSelect: (id: number | null) =>
         <NpcCell
           n={c.row.original}
           selected={selected === c.row.original.npcId}
+          open={selected !== null}
           onSelect={onSelect}
         />
       ),
@@ -233,6 +259,7 @@ function trainerColumns(selected: number | null, onSelect: (id: number | null) =
         <NpcCell
           n={c.row.original}
           selected={selected === c.row.original.npcId}
+          open={selected !== null}
           onSelect={onSelect}
         />
       ),
@@ -400,7 +427,7 @@ const itemColumns = itemCol.columns([
   }),
 ]);
 
-function VendorCard({ npcId }: { npcId: number }) {
+function VendorCard({ npcId, onClose }: { npcId: number; onClose: () => void }) {
   const [build, setBuild] = useState<number | null>(null);
   const detail = useAdminQuery<VendorDetail>(
     ['vendor', npcId, build],
@@ -409,7 +436,14 @@ function VendorCard({ npcId }: { npcId: number }) {
   return (
     <Card
       title={detail.data ? npcName(detail.data) : `Vendor #${npcId}`}
-      actions={<BuildPicker builds={detail.data?.builds ?? []} value={build} onChange={setBuild} />}
+      actions={
+        <>
+          <BuildPicker builds={detail.data?.builds ?? []} value={build} onChange={setBuild} />
+          <button type="button" className="secondary small" onClick={onClose}>
+            Close
+          </button>
+        </>
+      }
     >
       <QueryState query={detail}>
         {(v) => (
@@ -432,7 +466,7 @@ function VendorCard({ npcId }: { npcId: number }) {
   );
 }
 
-function TrainerCard({ npcId }: { npcId: number }) {
+function TrainerCard({ npcId, onClose }: { npcId: number; onClose: () => void }) {
   const [build, setBuild] = useState<number | null>(null);
   const detail = useAdminQuery<TrainerDetail>(
     ['trainer', npcId, build],
@@ -442,7 +476,14 @@ function TrainerCard({ npcId }: { npcId: number }) {
   return (
     <Card
       title={detail.data ? npcName(detail.data) : `Trainer #${npcId}`}
-      actions={<BuildPicker builds={detail.data?.builds ?? []} value={build} onChange={setBuild} />}
+      actions={
+        <>
+          <BuildPicker builds={detail.data?.builds ?? []} value={build} onChange={setBuild} />
+          <button type="button" className="secondary small" onClick={onClose}>
+            Close
+          </button>
+        </>
+      }
     >
       <QueryState query={detail}>
         {(t) => (

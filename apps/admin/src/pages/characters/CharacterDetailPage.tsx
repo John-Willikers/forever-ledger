@@ -8,6 +8,7 @@ import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Kpi } from '../../components/Kpi';
 import { Empty, QueryState } from '../../components/State';
+import { Tabs } from '../../components/Tabs';
 import { formatCompact, formatNumber, plural } from '../../lib/format';
 import { formatChicago, formatChicagoShort, timeAgo } from '../../lib/time';
 import { formatMoney } from '../../lib/money';
@@ -21,7 +22,7 @@ import {
 } from './timelineLib';
 import type { CharacterSkills, CharacterTimeline, TimelineTurnIn } from './types';
 
-/** One character: level over time, quest XP over time and per day, quests turned in, professions. */
+/** One character, in tabs: level and quest XP over time and per day; quests turned in; professions. */
 export function CharacterDetailPage() {
   const key = useParams().key ?? '';
   const timeline = useAdminQuery<CharacterTimeline>(
@@ -76,23 +77,40 @@ function Timeline({ charKey, t }: { charKey: string; t: CharacterTimeline }) {
         />
         <Kpi label="Days with quests" value={formatNumber(t.perDay.length)} />
       </div>
-      <div className="grid-2">
-        <LevelCard t={t} />
-        <XpCard t={t} />
-      </div>
-      <PerDayCard t={t} />
-      <div className="grid-2">
-        <Card title="Quests turned in">
-          <DataTable
-            data={[...t.turnIns].reverse()}
-            columns={turnInColumns}
-            rowKey={(r) => `${r.questId}:${r.turnedInAt}`}
-            initialSorting={[{ id: 'turnedInAt', desc: true }]}
-            empty="No quests turned in yet."
-          />
-        </Card>
-        <Professions charKey={charKey} />
-      </div>
+      <Tabs
+        id="char"
+        tabs={[
+          { key: 'overview', label: 'Overview' },
+          { key: 'quests', label: 'Quests turned in', count: t.turnIns.length },
+          { key: 'professions', label: 'Professions' },
+        ]}
+        label="Character sections"
+      >
+        {(key) =>
+          key === 'quests' ? (
+            <Card title="Quests turned in">
+              <DataTable
+                data={t.turnIns}
+                columns={turnInColumns}
+                rowKey={(r) => `${r.questId}:${r.turnedInAt}`}
+                initialSorting={[{ id: 'turnedInAt', desc: true }]}
+                pageSize={50}
+                empty="No quests turned in yet."
+              />
+            </Card>
+          ) : key === 'professions' ? (
+            <Professions charKey={charKey} />
+          ) : (
+            <>
+              <div className="grid-2">
+                <LevelCard t={t} />
+                <XpCard t={t} />
+              </div>
+              <PerDayCard t={t} />
+            </>
+          )
+        }
+      </Tabs>
     </>
   );
 }
