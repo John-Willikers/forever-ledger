@@ -87,8 +87,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 11 📜 Quests: scatter collapsed, page size 50 — 2026-09-25 16:26 — `5c8787a` + `4cfc627` (point count on the fold)
 - ✅ 12 🏠 Overview: Builds and Versions collapsed — 2026-09-25 16:26 — `b08f3fe` + `4cfc627` (the Health KPI's "addon reports"
   link now opens the API samples tab)
-- 🟡 13 🚀 `pnpm check`, PR, merge, deploy, ntfy — 2026-09-25 16:32 — `pnpm check` green at `dfc4e78` (76 files, 938 tests);
-  final whole-branch review: ready to merge (a11y touch-up `dfc4e78`). PR open; merge + deploy next.
+- ✅ 13 🚀 `pnpm check`, PR, merge, deploy, ntfy — 2026-09-25 16:37 — `pnpm check` green at `dfc4e78` (76 files, 938 tests);
+  final whole-branch review: ready to merge (a11y touch-up `dfc4e78`). PR #35 merged as `dfcd611`, CI green; deployed
+  on the VPS (`pnpm build` + `pm2 restart forever-ledger-api`), `/admin/` 200 and the live `index-*.css` carries
+  `.tabs`, `.collapsible`, `.npc-cell`, `.quality`. Smoke the pages in a browser: Vendors pick + Close, Professions
+  `?tab=gathering`, an Item page, Quests scatter fold.
 
 Follow-ups noted in review, not in this PR:
 
