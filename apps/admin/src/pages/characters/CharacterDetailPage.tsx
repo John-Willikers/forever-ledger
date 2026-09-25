@@ -81,7 +81,7 @@ function Timeline({ charKey, t }: { charKey: string; t: CharacterTimeline }) {
         id="char"
         tabs={[
           { key: 'overview', label: 'Overview' },
-          { key: 'quests', label: 'Quests turned in', count: t.totals.turnIns },
+          { key: 'quests', label: 'Quests turned in', count: t.turnIns.length },
           { key: 'professions', label: 'Professions' },
         ]}
         label="Character sections"

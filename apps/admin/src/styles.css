@@ -872,12 +872,12 @@ a.item-name {
   font-weight: 550;
 }
 
-.teaches {
-  margin-left: 0.25rem;
-}
-
 a.item-name:hover {
   text-decoration: underline;
+}
+
+.teaches {
+  margin-left: 0.25rem;
 }
 
 .sr-only {

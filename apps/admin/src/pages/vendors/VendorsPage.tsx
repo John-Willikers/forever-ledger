@@ -182,10 +182,14 @@ function NpcBrowser({ kind }: { kind: NpcKind }) {
 function NpcCell({
   n,
   selected,
+  open,
   onSelect,
 }: {
   n: { npcId: number; name: string | null; title: string | null; forever: boolean };
+  /** This row's NPC is the one whose card is open. */
   selected: boolean;
+  /** Some NPC card is on the page (the `aria-controls` target only exists then). */
+  open: boolean;
   onSelect: (id: number | null) => void;
 }) {
   return (
@@ -194,7 +198,7 @@ function NpcCell({
         type="button"
         className="linkish"
         aria-expanded={selected}
-        aria-controls="npc-detail"
+        aria-controls={open ? 'npc-detail' : undefined}
         onClick={() => onSelect(selected ? null : n.npcId)}
       >
         {npcName(n)}
@@ -226,6 +230,7 @@ function vendorColumns(selected: number | null, onSelect: (id: number | null) =>
         <NpcCell
           n={c.row.original}
           selected={selected === c.row.original.npcId}
+          open={selected !== null}
           onSelect={onSelect}
         />
       ),
@@ -254,6 +259,7 @@ function trainerColumns(selected: number | null, onSelect: (id: number | null) =
         <NpcCell
           n={c.row.original}
           selected={selected === c.row.original.npcId}
+          open={selected !== null}
           onSelect={onSelect}
         />
       ),
