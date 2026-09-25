@@ -375,7 +375,7 @@ function ScatterCard({ rows }: { rows: QuestRow[] }) {
   const plotted = zoneSeriesOf(rows).reduce((n, g) => n + g.rows.length, 0);
   const forever = rows.filter((r) => r.foreverOnly && r.level !== null && r.xpOffered !== null);
   return (
-    <Collapsible title="XP offered vs quest level (this page)">
+    <Collapsible title="XP offered vs quest level (this page)" count={plotted}>
       {plotted === 0 ? (
         <Empty>No quest on this page has both a level and offered XP.</Empty>
       ) : (

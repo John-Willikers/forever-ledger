@@ -96,11 +96,20 @@ function Kpis({ o }: { o: Overview }) {
         value={problems === 0 && flagged === 0 ? 'OK' : formatNumber(problems)}
         tone={problems > 0 ? 'bad' : flagged > 0 || (diag.warn ?? 0) > 0 ? 'warn' : undefined}
         hint={
-          <Link to="/health">
-            {plural(o.health.ingestErrors7d, 'refused batch', 'refused batches')} ·{' '}
-            {plural(diag.error ?? 0, 'error')} · {plural(diag.warn ?? 0, 'warning')}
-            {flagged > 0 ? ` · ${plural(flagged, 'addon report')}` : ''}
-          </Link>
+          <>
+            <Link to="/health">
+              {plural(o.health.ingestErrors7d, 'refused batch', 'refused batches')} ·{' '}
+              {plural(diag.error ?? 0, 'error')} · {plural(diag.warn ?? 0, 'warning')}
+            </Link>
+            {flagged > 0 ? (
+              <>
+                {' · '}
+                <Link to="/health?tab=samples">{plural(flagged, 'addon report')}</Link>
+              </>
+            ) : (
+              ''
+            )}
+          </>
         }
       />
     </div>

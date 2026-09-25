@@ -20,6 +20,7 @@ import type { ApiSample, ApiSampleInfo, DiagnosticsList, HealthItem, Items } fro
 
 const WINDOWS = [1, 7, 30, 90] as const;
 
+/** Two tabs: Diagnostics (tray reports and refused batches) and API samples (what the addon saw of the client API). */
 export function HealthPage() {
   return (
     <div className="page">

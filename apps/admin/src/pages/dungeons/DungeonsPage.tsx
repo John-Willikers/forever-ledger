@@ -68,7 +68,7 @@ export function DungeonsPage() {
           key === 'runs' ? (
             <RunsCard key={build ?? 'all'} build={build} />
           ) : (
-            <InstancesPanel key={build ?? 'all'} build={build} />
+            <InstancesPanel build={build} />
           )
         }
       </Tabs>
