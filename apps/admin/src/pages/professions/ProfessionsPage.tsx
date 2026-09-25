@@ -7,6 +7,7 @@ import { Chart, useChartPalette } from '../../components/Chart';
 import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Empty, ErrorState, QueryState } from '../../components/State';
+import { Tabs } from '../../components/Tabs';
 import { formatNumber, plural } from '../../lib/format';
 import { formatChicagoShort } from '../../lib/time';
 import './echarts';
@@ -33,8 +34,8 @@ const professionName = (p: { skillLineId: number; name: string | null }) =>
   p.name ?? `Skill line ${p.skillLineId}`;
 
 /**
- * Professions: a card per base profession, then the picked one's skill-ups, recipes and crafts; gathering below.
- * `?recipe=<id>` (links from vendors, trainers and items) opens that recipe's details under its profession.
+ * Professions: a card per base profession, then the picked one's recipes, crafts and skill-ups, and gathering, as
+ * tabs. `?recipe=<id>` (links from vendors, trainers and items) opens that recipe's details under its profession.
  */
 export function ProfessionsPage() {
   const overview = useAdminQuery<ProfessionsOverview>(
@@ -72,7 +73,13 @@ export function ProfessionsPage() {
       </header>
       <QueryState query={overview}>
         {({ professions }) => {
-          if (professions.length === 0) return <Empty>No professions seen yet.</Empty>;
+          if (professions.length === 0)
+            return (
+              <>
+                <Empty>No professions seen yet.</Empty>
+                <GatheringCard />
+              </>
+            );
           const current =
             professions.find((p) => p.skillLineId === selected) ??
             professions.find((p) => p.skillLineId === linkedProfession?.skillLineId) ??
@@ -107,20 +114,38 @@ export function ProfessionsPage() {
                   <ErrorState error={linked.error} retry={() => void linked.refetch()} />
                 </Card>
               )}
-              <SkillRankCard prof={current} />
-              <RecipesCard
-                key={current.skillLineId}
-                skillLineId={current.skillLineId}
-                name={professionName(current)}
-                selected={recipeId}
-                onSelect={setRecipe}
-              />
-              <CraftsCard prof={current} />
+              <Tabs
+                id="prof"
+                tabs={[
+                  { key: 'recipes', label: 'Recipes' },
+                  { key: 'crafts', label: 'Crafts' },
+                  { key: 'skill', label: 'Skill history' },
+                  { key: 'gathering', label: 'Gathering' },
+                ]}
+                label={`${professionName(current)} sections`}
+              >
+                {(key) =>
+                  key === 'crafts' ? (
+                    <CraftsCard prof={current} />
+                  ) : key === 'skill' ? (
+                    <SkillRankCard prof={current} />
+                  ) : key === 'gathering' ? (
+                    <GatheringCard />
+                  ) : (
+                    <RecipesCard
+                      key={current.skillLineId}
+                      skillLineId={current.skillLineId}
+                      name={professionName(current)}
+                      selected={recipeId}
+                      onSelect={setRecipe}
+                    />
+                  )
+                }
+              </Tabs>
             </>
           );
         }}
       </QueryState>
-      <GatheringCard />
     </div>
   );
 }
