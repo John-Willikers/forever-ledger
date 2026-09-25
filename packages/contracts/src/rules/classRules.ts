@@ -271,7 +271,7 @@ const SECONDARY: Record<string, Weights> = {
   PHYSICAL_DAMAGE_DONE: { melee: 1, ranged: 0.7, tank: 0.3 },
   EXPERTISE_RATING: { melee: 1, ranged: 0.7, tank: 0.3 },
   RANGED_ATTACK_POWER: { ranged: 1 },
-  // generic crit and hit fit every damage role: a nudge, never the deciding signal
+  // generic crit and hit fit every damage role: they amplify roles the item already has (see AMBIGUOUS)
   CRIT_RATING: { melee: 0.5, ranged: 0.5, caster: 0.5 },
   HIT_RATING: { melee: 0.5, ranged: 0.5, caster: 0.5 },
   DEFENSE_SKILL_RATING: { tank: 1 },
@@ -283,6 +283,12 @@ const SECONDARY: Record<string, Weights> = {
 
 /** Secondary stats that don't say which role: they never keep the weapon subtype from deciding. */
 const AMBIGUOUS = new Set(['CRIT_RATING', 'HIT_RATING']);
+
+/** A wearer wants an item only for roles with at least this share; a stray point of Strength is not a melee item. */
+const WANT_MIN_SHARE = 0.15;
+
+/** Shields are tank items unless their stats say healer or caster; physical stats only pick the tank flavour. */
+const SHIELD_TANK = 1.5;
 
 /** Weapon subtypes say who swings them; applied only when the stats say nothing (every weapon has DPS). */
 const WEAPON_TYPE: Record<string, Weights> = {
@@ -364,19 +370,19 @@ function analyzeStats(item: ItemForRules): { roles: RoleFit[]; fromStats: boolea
   const subtype = item.subtype ?? '';
   const silent = primarySum === 0 && !secondarySignal;
   if (item.type === 'Weapon' && WEAPON_TYPE[subtype] && silent) add(total, WEAPON_TYPE[subtype]);
-  if (item.type === 'Armor' && subtype === 'Shields' && silent) add(total, { tank: 1 });
+  if (item.type === 'Armor' && subtype === 'Shields' && !total.healer && !total.caster)
+    add(total, { tank: SHIELD_TANK });
 
-  // Generic crit/hit amplify the roles the item already has; only on an otherwise silent item do they add roles.
+  // Generic crit/hit amplify the roles the item already has; only on an otherwise silent item do they add roles,
+  // and only then do they count as the item's stats saying something about who wants it.
   const present = new Set(Object.keys(total) as Role[]);
   for (const w of nudges) {
-    for (const [role, v] of Object.entries(w) as [Role, number][])
-      if (present.size === 0 || present.has(role)) total[role] = (total[role] ?? 0) + v;
+    if (present.size === 0) add(total, w);
+    else for (const role of present) if (w[role]) total[role] = (total[role] ?? 0) + w[role]!;
   }
+  const nudgesAddedRoles = nudges.length > 0 && present.size === 0;
 
-  return {
-    roles: shares(total),
-    fromStats: primarySum > 0 || secondarySignal || nudges.length > 0,
-  };
+  return { roles: shares(total), fromStats: primarySum > 0 || secondarySignal || nudgesAddedRoles };
 }
 
 /** Normalises role weights to two-decimal shares, highest first; empty when nothing scored. */
@@ -429,6 +435,8 @@ export function classFits(item: ItemForRules, level: number, wantedRoles: Role[]
     }
     out.push(fit);
   }
+  // Nobody else can use it (relics, class-locked gear): the one class wants it whatever the stats say.
+  if (out.length === 1) out[0]!.wants = true;
   return out;
 }
 
@@ -439,6 +447,8 @@ export function classFits(item: ItemForRules, level: number, wantedRoles: Role[]
 export function itemFit(item: ItemForRules & { reqLevel?: number | null | undefined }): ItemFit {
   const atLevel = item.reqLevel && item.reqLevel > 0 ? item.reqLevel : 1;
   const { roles, fromStats } = analyzeStats(item);
-  const wanted = fromStats ? roles.map((r) => r.role) : [];
+  const wanted = fromStats
+    ? roles.filter((r) => r.confidence >= WANT_MIN_SHARE).map((r) => r.role)
+    : [];
   return { rulesVersion: RULES_VERSION, atLevel, roles, classes: classFits(item, atLevel, wanted) };
 }

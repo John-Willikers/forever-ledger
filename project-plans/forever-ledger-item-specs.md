@@ -54,6 +54,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
     class preference, so every wielder wants it; `classFits` requires the wanted roles; holders keep their
     "best armor" / "at 40" note. Skipped: admin's hand-copied `ClassFit` type (predates this work; a type-only
     contracts dependency for the Vite app is its own change).
+  - ✅ 🔍 Second pass: 6 findings, 4 fixed + cleanup — 01:55 CDT: crit/hit nudges count as a stat signal only when
+    they added a role (a +hit gun no longer demotes Warriors and Rogues); shields stay tank items unless their stats
+    say healer/caster (an Agility shield leads with tank, a healing shield doesn't); a role needs a 15% share
+    before it decides who wants the item (a stray point of Strength on a caster chest hands out no chips); the only
+    class that can equip an item always wants it (spell-damage Libram → Paladin). Same skipped item as above.
 
 ## 📌 Context
 

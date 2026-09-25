@@ -101,6 +101,19 @@ describe('rolesFromStats', () => {
       stats: { RESISTANCE0_NAME: 300, ITEM_MOD_STAMINA_SHORT: 5 },
     });
     expect(plainShield).toEqual([{ role: 'tank', confidence: 1 }]);
+    // physical stats keep a shield a tank item first
+    const agiShield = rolesFromStats({
+      type: 'Armor',
+      subtype: 'Shields',
+      stats: { ITEM_MOD_AGILITY_SHORT: 5, ITEM_MOD_STAMINA_SHORT: 5 },
+    });
+    expect(agiShield[0]?.role).toBe('tank');
+    const strShield = rolesFromStats({
+      type: 'Armor',
+      subtype: 'Shields',
+      stats: { ITEM_MOD_STRENGTH_SHORT: 5 },
+    });
+    expect(strShield[0]?.role).toBe('tank');
     // a healing shield is a healer's shield, not a tank's
     const healingShield = rolesFromStats({
       type: 'Armor',
@@ -358,6 +371,14 @@ describe('itemFit', () => {
       stats: { ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 6.8 },
     });
     expect(cutlass.classes.every((c) => c.wants)).toBe(true);
+    // generic hit on that gun amplifies ranged but still says nothing about who wants it
+    const hitGun = itemFit({
+      type: 'Weapon',
+      subtype: 'Guns',
+      stats: { ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 12, ITEM_MOD_HIT_RATING_SHORT: 3 },
+    });
+    expect(hitGun.roles).toEqual([{ role: 'ranged', confidence: 1 }]);
+    expect(hitGun.classes.every((c) => c.wants)).toBe(true);
     // a healing shield: Paladin and Shaman want it, the Warrior can hold it
     const shield = itemFit({
       type: 'Armor',
@@ -366,6 +387,42 @@ describe('itemFit', () => {
     });
     expect(shield.classes.filter((c) => c.wants).map((c) => c.cls)).toEqual(['PALADIN', 'SHAMAN']);
     expect(shield.classes.filter((c) => !c.wants).map((c) => c.cls)).toEqual(['WARRIOR']);
+  });
+
+  it('ignores roles with a tiny share when deciding who wants an item', () => {
+    // a caster chest with a stray point of Strength must not hand Warriors a chip
+    const chest = itemFit({
+      type: 'Armor',
+      subtype: 'Cloth',
+      equipLoc: 'INVTYPE_CHEST',
+      stats: {
+        ITEM_MOD_INTELLECT_SHORT: 20,
+        ITEM_MOD_SPIRIT_SHORT: 10,
+        ITEM_MOD_STRENGTH_SHORT: 1,
+      },
+    });
+    expect(chest.roles.map((r) => r.role)).toEqual(['healer', 'caster', 'melee', 'tank']);
+    expect(chest.classes.filter((c) => c.wants).map((c) => c.cls)).toEqual([
+      'PALADIN',
+      'PRIEST',
+      'SHAMAN',
+      'MAGE',
+      'WARLOCK',
+      'DRUID',
+    ]);
+  });
+
+  it('always lets the only class that can equip an item want it', () => {
+    // a spell-damage Libram: Paladins are not casters, but nobody else can use it
+    const libram = itemFit({
+      type: 'Armor',
+      subtype: 'Librams',
+      stats: { ITEM_MOD_SPELL_DAMAGE_DONE_SHORT: 10 },
+    });
+    expect(libram.roles).toEqual([{ role: 'caster', confidence: 1 }]);
+    expect(libram.classes).toEqual([
+      { cls: 'PALADIN', canEquip: true, bestArmor: false, wants: true },
+    ]);
   });
 
   it('treats every wearer as wanting an item that has no role signal', () => {
