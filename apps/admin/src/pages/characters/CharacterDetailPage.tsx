@@ -90,7 +90,7 @@ function Timeline({ charKey, t }: { charKey: string; t: CharacterTimeline }) {
           key === 'quests' ? (
             <Card title="Quests turned in">
               <DataTable
-                data={[...t.turnIns].reverse()}
+                data={t.turnIns}
                 columns={turnInColumns}
                 rowKey={(r) => `${r.questId}:${r.turnedInAt}`}
                 initialSorting={[{ id: 'turnedInAt', desc: true }]}

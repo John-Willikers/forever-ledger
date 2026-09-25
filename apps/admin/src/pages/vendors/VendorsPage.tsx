@@ -1,5 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table';
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useAdminQuery } from '../../api';
@@ -85,21 +85,28 @@ function NpcBrowser({ kind }: { kind: NpcKind }) {
       },
       { replace: true },
     );
-  const list = useAdminQuery<NpcList<VendorRow | TrainerRow>>(
-    [kind, deferred],
-    listPath(kind, deferred),
-    { placeholderData: (prev) => prev },
-  );
+  const path = listPath(kind, deferred);
+  const list = useAdminQuery<NpcList<VendorRow | TrainerRow>>([kind, deferred], path, {
+    placeholderData: (prev) => prev,
+  });
   const set = (patch: Partial<ListFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const titles = list.data?.titles ?? [];
+  // The card opens above the list: a pick far down the page would otherwise land out of view.
+  const detailRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selected !== null) detailRef.current?.scrollIntoView({ block: 'start' });
+  }, [selected]);
   return (
     <>
-      {selected !== null &&
-        (kind === 'vendors' ? (
-          <VendorCard npcId={selected} key={`v${selected}`} onClose={() => setSelected(null)} />
-        ) : (
-          <TrainerCard npcId={selected} key={`t${selected}`} onClose={() => setSelected(null)} />
-        ))}
+      {selected !== null && (
+        <div id="npc-detail" ref={detailRef}>
+          {kind === 'vendors' ? (
+            <VendorCard npcId={selected} key={`v${selected}`} onClose={() => setSelected(null)} />
+          ) : (
+            <TrainerCard npcId={selected} key={`t${selected}`} onClose={() => setSelected(null)} />
+          )}
+        </div>
+      )}
       <Card
         title={kind === 'vendors' ? 'Vendors' : 'Trainers'}
         actions={
@@ -150,7 +157,7 @@ function NpcBrowser({ kind }: { kind: NpcKind }) {
                   rowKey={(v) => v.npcId}
                   rowClassName={(v) => (v.npcId === selected ? 'selected' : undefined)}
                   pageSize={50}
-                  resetKey={JSON.stringify(deferred)}
+                  resetKey={path}
                   empty="No vendor matches."
                 />
               ) : (
@@ -160,7 +167,7 @@ function NpcBrowser({ kind }: { kind: NpcKind }) {
                   rowKey={(t) => t.npcId}
                   rowClassName={(t) => (t.npcId === selected ? 'selected' : undefined)}
                   pageSize={50}
-                  resetKey={JSON.stringify(deferred)}
+                  resetKey={path}
                   empty="No trainer matches."
                 />
               )}
@@ -187,6 +194,7 @@ function NpcCell({
         type="button"
         className="linkish"
         aria-expanded={selected}
+        aria-controls="npc-detail"
         onClick={() => onSelect(selected ? null : n.npcId)}
       >
         {npcName(n)}

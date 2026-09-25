@@ -75,5 +75,7 @@ describe('npcParam', () => {
     expect(npcParam(new URLSearchParams(''), 'vendors')).toBeNull();
     expect(npcParam(new URLSearchParams('npc=1234'), 'vendors')).toBeNull();
     expect(npcParam(new URLSearchParams('npc=v0'), 'vendors')).toBeNull();
+    expect(npcParam(new URLSearchParams('npc=v'), 'vendors')).toBeNull();
+    expect(npcParam(new URLSearchParams('npc=v12x'), 'vendors')).toBeNull();
   });
 });

@@ -122,7 +122,7 @@ export function ProfessionsPage() {
                   { key: 'skill', label: 'Skill history' },
                   { key: 'gathering', label: 'Gathering' },
                 ]}
-                label={`${professionName(current)} sections`}
+                label="Profession sections"
               >
                 {(key) =>
                   key === 'crafts' ? (

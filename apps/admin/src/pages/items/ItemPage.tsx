@@ -18,6 +18,7 @@ import {
   containerLabel,
   contentsByBuild,
   formatAvgQuantity,
+  hasSpecFit,
   mergeDropSources,
   roleLabel,
   statLabel,
@@ -66,37 +67,33 @@ export function ItemPage() {
                 { key: 'stats', label: 'Stats & tooltip' },
                 { key: 'sources', label: 'Sources' },
                 { key: 'trade', label: 'Trade' },
-                ...(i.specs.roles.length > 0 || i.specs.classes.length > 0
-                  ? [{ key: 'wants', label: 'Who wants it' }]
-                  : []),
+                ...(hasSpecFit(i.specs) ? [{ key: 'wants', label: 'Who wants it' }] : []),
               ]}
               label="Item sections"
             >
               {(key) =>
-                key === 'sources' ? (
+                key === 'sources' || key === 'trade' ? (
                   <QueryState query={extra}>
-                    {(x) => (
-                      <>
-                        <div className="grid-2">
-                          <DropsCard item={i} extra={x} />
-                          <NodesCard item={i} />
-                        </div>
-                        <ContentsCard extra={x} />
-                        <OpenedFromCard extra={x} />
-                      </>
-                    )}
-                  </QueryState>
-                ) : key === 'trade' ? (
-                  <QueryState query={extra}>
-                    {(x) => (
-                      <>
-                        <VendorsCard extra={x} />
-                        <div className="grid-2">
-                          <QuestsCard item={i} />
-                          <RecipesCard extra={x} />
-                        </div>
-                      </>
-                    )}
+                    {(x) =>
+                      key === 'sources' ? (
+                        <>
+                          <div className="grid-2">
+                            <DropsCard item={i} extra={x} />
+                            <NodesCard item={i} />
+                          </div>
+                          <ContentsCard extra={x} />
+                          <OpenedFromCard extra={x} />
+                        </>
+                      ) : (
+                        <>
+                          <VendorsCard extra={x} />
+                          <div className="grid-2">
+                            <QuestsCard item={i} />
+                            <RecipesCard extra={x} />
+                          </div>
+                        </>
+                      )
+                    }
                   </QueryState>
                 ) : key === 'wants' ? (
                   <SpecsCard item={i} />
@@ -566,7 +563,7 @@ function RecipesCard({ extra }: { extra: ItemExtra }) {
 
 function SpecsCard({ item }: { item: ItemV1 }) {
   const { roles, classes, atLevel } = item.specs;
-  if (roles.length === 0 && classes.length === 0) return null;
+  if (!hasSpecFit(item.specs)) return null;
   const { wanting, holders } = classGroups(classes);
   return (
     <Card title="Who wants it">
