@@ -9,6 +9,7 @@ import { Chart, useChartPalette } from '../../components/Chart';
 import { ClassBadge } from '../../components/ClassBadge';
 import { Pager } from '../../components/Pager';
 import { Empty, QueryState } from '../../components/State';
+import { Tabs } from '../../components/Tabs';
 import { formatNumber, plural } from '../../lib/format';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { BuildSelect } from '../loot/parts';
@@ -61,12 +62,28 @@ export function DungeonsPage() {
       <div className="filters">
         <BuildSelect value={build} onChange={setBuild} />
       </div>
-      <QueryState query={summary}>{(s) => <SummaryCard rows={s} />}</QueryState>
-      <div className="grid-2">
-        <ClearTimesCard query={clear} />
-        <QueryState query={summary}>{(s) => <XpRateCard rows={s} />}</QueryState>
-      </div>
-      <RunsCard key={build ?? 'all'} build={build} />
+      <Tabs
+        id="dungeons"
+        tabs={[
+          { key: 'instances', label: 'Per instance' },
+          { key: 'runs', label: 'Runs' },
+        ]}
+        label="Dungeon sections"
+      >
+        {(key) =>
+          key === 'runs' ? (
+            <RunsCard key={build ?? 'all'} build={build} />
+          ) : (
+            <>
+              <QueryState query={summary}>{(s) => <SummaryCard rows={s} />}</QueryState>
+              <div className="grid-2">
+                <ClearTimesCard query={clear} />
+                <QueryState query={summary}>{(s) => <XpRateCard rows={s} />}</QueryState>
+              </div>
+            </>
+          )
+        }
+      </Tabs>
     </div>
   );
 }

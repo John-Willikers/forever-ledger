@@ -40,7 +40,7 @@ export function RunPage() {
   return (
     <div className="page">
       <p className="small">
-        <Link to="/dungeons">← Dungeons</Link>
+        <Link to="/dungeons?tab=runs">← Dungeons</Link>
       </p>
       <QueryState query={run}>{(g) => <RunGroup g={g} />}</QueryState>
     </div>
