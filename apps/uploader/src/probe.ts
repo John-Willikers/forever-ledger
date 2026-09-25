@@ -64,11 +64,64 @@ export interface ProbeIoSummary {
   builds: ProbeIoBuild[];
 }
 
+/** One spec of the client's catalog (`/flprobe specs`, probe 0.3.0+). */
+export interface ProbeSpecEntry {
+  id: number;
+  name?: string;
+  role?: string;
+  /** Client index: 1 STR, 2 AGI, 3 STA, 4 INT, 5 SPI (retail numbering; confirm on Forever). */
+  primaryStat?: number;
+}
+
+export interface ProbeSpecClass {
+  classId: number;
+  class?: string;
+  specs: ProbeSpecEntry[];
+}
+
+export interface ProbeSpecItem {
+  id?: number;
+  where?: string;
+  equippable?: boolean;
+  /** `[62, 253]` for a table, else `missing` / `error: …`. */
+  specInfo: string;
+  /** Spec ids `C_Item.DoesItemContainSpec` said yes to. */
+  contains: number[];
+  containsErr?: string;
+  statKeys: string[];
+}
+
+export interface ProbeSpecsBuild {
+  build: string;
+  at?: number;
+  probeVersion?: string;
+  /** `name → type` for the spec functions the probe looked for. */
+  api: Record<string, string>;
+  player?: { class?: string; classId?: number; level?: number; specIndex?: number };
+  /** Classes with at least one spec. */
+  catalog: ProbeSpecClass[];
+  classes: number;
+  specs: number;
+  items: number;
+  equippable: number;
+  withSpecInfo: number;
+  emptySpecInfo: number;
+  specInfoErrors: number;
+  /** GetItemSpecInfo answered but not with a table (nil, false, a number). */
+  specInfoOther: number;
+  specInfoMissing: boolean;
+  containsAvailable: boolean;
+  containsAny: number;
+  sample: ProbeSpecItem[];
+}
+
 export interface ProbeSummary {
   probeVersion?: string;
   builds: ProbeBuildSummary[];
   /** Absent for probe 0.1.0 files. */
   io?: ProbeIoSummary;
+  /** Absent before probe 0.3.0 or when `/flprobe specs` never ran. */
+  specs?: ProbeSpecsBuild[];
 }
 
 type Obj = Record<string, unknown>;
@@ -216,6 +269,159 @@ function formatIo(io: ProbeIoSummary): string[] {
   return lines;
 }
 
+/** Items shown per build in the specs summary. */
+export const PROBE_SPECS_SAMPLE = 5;
+
+/** Lua tables keyed 1..n parse as arrays; anything else as an object. Yields `[key, value]` with 1-based keys. */
+const luaEntries = (v: unknown): [string, unknown][] =>
+  Array.isArray(v) ? v.map((x, i) => [String(i + 1), x]) : isObj(v) ? Object.entries(v) : [];
+
+/** First `values` entry of a recorded pcall result, when it succeeded. */
+const firstValue = (r: unknown) => (isObj(r) && r.ok === true ? list(r.values)[0] : undefined);
+const valueAt = (r: unknown, i: number) =>
+  isObj(r) && r.ok === true ? list(r.values)[i] : undefined;
+const numList = (v: unknown) => list(v).filter((x): x is number => typeof x === 'number');
+
+function specEntry(s: unknown): ProbeSpecEntry | undefined {
+  if (!isObj(s)) return undefined;
+  const id = num(firstValue(s.forClass)) || num(firstValue(s.info));
+  if (!id || id <= 0) return undefined;
+  return {
+    id,
+    name: str(valueAt(s.forClass, 1)) ?? str(valueAt(s.info, 1)),
+    role: str(valueAt(s.forClass, 4)) ?? str(valueAt(s.info, 4)),
+    primaryStat: num(valueAt(s.info, 5)),
+  };
+}
+
+function specItem(it: Obj): ProbeSpecItem {
+  const answer = firstValue(it.specInfo);
+  // A table answer prints as a list; a nil/false/number answer keeps showResult's rendering (`"<nil>"`, `false`).
+  const specInfo =
+    Array.isArray(answer) || isObj(answer)
+      ? `[${numList(answer).join(', ')}]`
+      : showResult(it.specInfo);
+  // Spec ids 1..n would parse as a Lua list, so read the keys 1-based either way.
+  const contains = luaEntries(it.contains)
+    .filter(([, yes]) => yes === true)
+    .map(([id]) => Number(id))
+    .filter((id) => Number.isFinite(id))
+    .sort((a, b) => a - b);
+  return {
+    id: num(it.id),
+    where: str(it.where),
+    equippable: bool(firstValue(it.equippable)),
+    specInfo,
+    contains,
+    containsErr: str(it.containsErr),
+    statKeys: list(it.statKeys).filter((k): k is string => typeof k === 'string'),
+  };
+}
+
+function summarizeSpecs(db: Obj): ProbeSpecsBuild[] | undefined {
+  const out: ProbeSpecsBuild[] = [];
+  for (const [build, raw] of luaEntries(db.specs)) {
+    if (!isObj(raw)) continue;
+    const api: Record<string, string> = {};
+    for (const [k, v] of Object.entries(isObj(raw.api) ? raw.api : {}))
+      if (str(v)) api[k] = str(v)!;
+    const catalog: ProbeSpecClass[] = [];
+    for (const [classKey, c] of luaEntries(raw.catalog)) {
+      if (!isObj(c)) continue;
+      const specs = list(c.specs)
+        .map(specEntry)
+        .filter((s): s is ProbeSpecEntry => s !== undefined);
+      if (specs.length === 0) continue;
+      catalog.push({ classId: Number(classKey), class: str(valueAt(c.info, 1)), specs });
+    }
+    catalog.sort((a, b) => a.classId - b.classId);
+    const items = list(raw.items).filter(isObj);
+    const counts = isObj(raw.counts) ? raw.counts : {};
+    const count = (k: string) => num(counts[k]) ?? 0;
+    const p = isObj(raw.player) ? raw.player : undefined;
+    const specInfoType = api['C_Item.GetItemSpecInfo'];
+    out.push({
+      build,
+      at: num(raw.at),
+      probeVersion: str(raw.probeVersion),
+      api,
+      player: p && {
+        class: str(p.class),
+        classId: num(p.classID),
+        level: num(p.level),
+        specIndex: num(firstValue(p.specIndex)),
+      },
+      catalog,
+      classes: catalog.length,
+      specs: catalog.reduce((n, c) => n + c.specs.length, 0),
+      items: count('items'),
+      equippable: count('equippable'),
+      withSpecInfo: count('withSpecInfo'),
+      emptySpecInfo: count('emptySpecInfo'),
+      specInfoErrors: count('specInfoErrors'),
+      specInfoOther: count('specInfoOther'),
+      specInfoMissing: specInfoType
+        ? specInfoType !== 'function'
+        : items.length > 0 &&
+          items.every((it) => isObj(it.specInfo) && it.specInfo.missing === true),
+      containsAvailable: api['C_Item.DoesItemContainSpec'] === 'function',
+      containsAny: count('containsAny'),
+      sample: items.slice(0, PROBE_SPECS_SAMPLE).map(specItem),
+    });
+  }
+  out.sort((a, b) => Number(a.build) - Number(b.build));
+  return out.length ? out : undefined;
+}
+
+function formatSpecs(builds: ProbeSpecsBuild[]): string[] {
+  const lines = ['', 'specs (/flprobe specs)'];
+  for (const b of builds) {
+    lines.push(
+      `  build ${b.build} (${when(b.at)}): catalog ${b.classes} class(es) / ${b.specs} spec(s); ${b.items} item(s), ${
+        b.equippable
+      } equippable, ${b.withSpecInfo} with GetItemSpecInfo (${b.emptySpecInfo} empty, ${
+        b.specInfoErrors
+      } errors, ${b.specInfoOther} non-table), ${b.containsAny} matched by DoesItemContainSpec`,
+    );
+    if (b.specInfoMissing || !b.containsAvailable)
+      lines.push(
+        `    api: GetItemSpecInfo ${b.specInfoMissing ? 'missing' : 'present'}, DoesItemContainSpec ${
+          b.containsAvailable ? 'present' : 'missing'
+        }`,
+      );
+    if (b.player)
+      lines.push(
+        `    player: ${b.player.class ?? '?'} (class ${b.player.classId ?? '?'}) level ${
+          b.player.level ?? '?'
+        }, spec index ${b.player.specIndex ?? '?'}`,
+      );
+    for (const c of b.catalog)
+      lines.push(
+        `    ${c.class ?? '?'} (${c.classId}): ${c.specs
+          .map((s) => `${s.name ?? s.id} (${s.role ?? '?'}, stat ${s.primaryStat ?? '?'})`)
+          .join(', ')}`,
+      );
+    if (b.sample.length) lines.push(`    items (first ${b.sample.length}):`);
+    for (const it of b.sample) {
+      const parts = [
+        `${it.id ?? '?'} ${it.where ?? '?'} ${
+          it.equippable === undefined
+            ? 'equippable ?'
+            : it.equippable
+              ? 'equippable'
+              : 'not equippable'
+        }`,
+        `specInfo ${it.specInfo}`,
+      ];
+      if (it.contains.length) parts.push(`contains [${it.contains.join(', ')}]`);
+      if (it.containsErr) parts.push(`contains error: ${it.containsErr}`);
+      if (it.statKeys.length) parts.push(`stats ${it.statKeys.join(', ')}`);
+      lines.push(`      ${parts.join('  ')}`);
+    }
+  }
+  return lines;
+}
+
 export function summarizeProbe(db: unknown): ProbeSummary {
   if (!isObj(db)) throw new TypeError(`${PROBE_VARIABLE} is not a table`);
   const dumps = isObj(db.dumps) ? db.dumps : Array.isArray(db.dumps) ? { ...db.dumps } : {};
@@ -259,7 +465,13 @@ export function summarizeProbe(db: unknown): ProbeSummary {
   }
   builds.sort((a, b) => Number(a.build) - Number(b.build));
   const io = summarizeIo(db);
-  return { probeVersion: str(db.probeVersion), builds, ...(io ? { io } : {}) };
+  const specs = summarizeSpecs(db);
+  return {
+    probeVersion: str(db.probeVersion),
+    builds,
+    ...(io ? { io } : {}),
+    ...(specs ? { specs } : {}),
+  };
 }
 
 export function formatProbeSummary(s: ProbeSummary): string {
@@ -286,6 +498,7 @@ export function formatProbeSummary(s: ProbeSummary): string {
       );
   }
   if (s.io) lines.push(...formatIo(s.io));
+  if (s.specs) lines.push(...formatSpecs(s.specs));
   return lines.join('\n');
 }
 
