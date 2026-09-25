@@ -8,7 +8,6 @@ import {
   formatDuration,
   median,
   perMinute,
-  pickTab,
   runTabs,
   SECOND_SERIES,
   secondSeries,
@@ -179,18 +178,5 @@ describe('runTabs', () => {
       'Sam-R1',
       'Sam-R2',
     ]);
-  });
-});
-
-describe('pickTab', () => {
-  const tabs = runTabs([
-    { id: 'a', char: 'Sam-R' },
-    { id: 'b', char: 'Vic-R' },
-  ]);
-  it('keeps a known tab, else the group', () => {
-    expect(pickTab(tabs, 'b')).toBe('b');
-    expect(pickTab(tabs, 'zzz')).toBe('group');
-    expect(pickTab(tabs, null)).toBe('group');
-    expect(pickTab([], 'a')).toBe('group');
   });
 });

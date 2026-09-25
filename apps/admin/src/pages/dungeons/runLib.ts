@@ -68,10 +68,6 @@ export function runTabs(members: { id: string; char: string }[]): RunTab[] {
   ];
 }
 
-/** The tab to show: `wanted` when it is one of `tabs`, else the Group tab. */
-export const pickTab = (tabs: RunTab[], wanted: string | null) =>
-  tabs.some((t) => t.key === wanted) ? wanted! : 'group';
-
 export interface BossLike {
   ord: number;
   encounterId: number | null;

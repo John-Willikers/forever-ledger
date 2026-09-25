@@ -7,12 +7,12 @@ import { Card } from '../../components/Card';
 import { DataTable } from '../../components/DataTable';
 import type { SortableFeatures } from '../../components/DataTable';
 import { Empty, QueryState } from '../../components/State';
+import { Tabs } from '../../components/Tabs';
 import { ZoneMap } from '../../components/ZoneMap';
 import { formatNumber, plural } from '../../lib/format';
 import { formatCosts, formatMoney } from '../../lib/money';
 import { formatChicago, formatChicagoShort } from '../../lib/time';
 import { ItemName } from '../loot/parts';
-import '../professions/professions.css';
 import { recipeHref } from '../professions/recipeLib';
 import { formatLocation, listPath, npcMapPoint, skillReq, stockLabel, unitPrice } from './lib';
 import type { ListFilters } from './lib';
@@ -31,7 +31,6 @@ const npcName = (n: { npcId: number; name: string | null }) => n.name ?? `NPC ${
 
 /** Vendors and trainers seen by the addon: searchable lists, a Forever-only filter, and each NPC's catalog. */
 export function VendorsPage() {
-  const [tab, setTab] = useState<Tab>('vendors');
   return (
     <div className="page">
       <header className="page-head">
@@ -41,29 +40,22 @@ export function VendorsPage() {
           under a name is the NPC's subtitle in game.
         </p>
       </header>
-      <div className="tabs" role="tablist" aria-label="Vendors or trainers">
-        {(['vendors', 'trainers'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            id={`tab-${t}`}
-            aria-selected={tab === t}
-            aria-controls={`panel-${t}`}
-            className={tab === t ? 'tab active' : 'tab'}
-            onClick={() => setTab(t)}
-          >
-            {t === 'vendors' ? 'Vendors' : 'Trainers'}
-          </button>
-        ))}
-      </div>
-      <div className="tab-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'vendors' ? (
-          <NpcBrowser kind="vendors" key="v" />
-        ) : (
-          <NpcBrowser kind="trainers" key="t" />
-        )}
-      </div>
+      <Tabs
+        id="npc"
+        tabs={[
+          { key: 'vendors', label: 'Vendors' },
+          { key: 'trainers', label: 'Trainers' },
+        ]}
+        label="Vendors or trainers"
+      >
+        {(key) =>
+          key === 'trainers' ? (
+            <NpcBrowser kind="trainers" key="t" />
+          ) : (
+            <NpcBrowser kind="vendors" key="v" />
+          )
+        }
+      </Tabs>
     </div>
   );
 }
