@@ -74,15 +74,31 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 3 📂 `Collapsible` component — 2026-09-25 16:09 — `5b12fa1` (+ `43f55ae`: `defaultOpen`; body mounts on open)
 - ✅ 4 📄 `DataTable` `pageSize` (with `tableLib.pageSlice`) — 2026-09-25 16:09 — `d0ef9a6` (+ `43f55ae`: offset resets
   on sort and on `resetKey` change)
-- 🟡 5 🛒 Vendors: page at 50, picked NPC above the list in `?npc=` — implementing
-- ⬜ 6 ⚒️ Professions: Recipes / Crafts / Skill history / Gathering tabs
-- ⬜ 7 🎒 Item: Stats / Sources / Trade / Who wants it tabs
-- ⬜ 8 🧙 Character: Overview / Quests / Professions tabs, quests paged
-- ⬜ 9 🏰 Dungeons: Instances / Runs tabs
-- ⬜ 10 🩺 Health: Diagnostics / API samples tabs
-- ⬜ 11 📜 Quests: scatter collapsed, page size 50
-- ⬜ 12 🏠 Overview: Builds and Versions collapsed
-- ⬜ 13 🚀 `pnpm check`, PR, merge, deploy, ntfy
+- ✅ 5 🛒 Vendors: page at 50, picked NPC above the list in `?npc=` — 2026-09-25 16:23 — `4c48b19` + review fixes `b9405ef`. `?npc=v<id>` / `t<id>` (prefix per kind, so a vendor pick is ignored on the Trainers tab); the card
+  scrolls into view when picked (also on a deep link).
+- ✅ 6 ⚒️ Professions: Recipes / Crafts / Skill history / Gathering tabs — 2026-09-25 16:23 — `fca0251` + `b9405ef`. `RecipesCard` stays
+  unpaged: a `?recipe=` deep link can select a row on any page. Gathering now sits inside the overview query's state.
+- ✅ 7 🎒 Item: Stats / Sources / Trade / Who wants it tabs — 2026-09-25 16:23 — `8db690e` + `b9405ef` (`hasSpecFit` helper
+  decides both the tab and the card)
+- ✅ 8 🧙 Character: Overview / Quests / Professions tabs, quests paged — 2026-09-25 16:23 — `797c04d` + `b9405ef`
+- ✅ 9 🏰 Dungeons: Instances / Runs tabs — 2026-09-25 16:26 — `cdf1f55` + `b81996e` (summary queries moved into the Instances
+  panel so they don't fire under Runs) + `4cfc627`. Run page's back link returns to the Runs tab.
+- ✅ 10 🩺 Health: Diagnostics / API samples tabs — 2026-09-25 16:26 — `76946b0` + `4cfc627`
+- ✅ 11 📜 Quests: scatter collapsed, page size 50 — 2026-09-25 16:26 — `5c8787a` + `4cfc627` (point count on the fold)
+- ✅ 12 🏠 Overview: Builds and Versions collapsed — 2026-09-25 16:26 — `b08f3fe` + `4cfc627` (the Health KPI's "addon reports"
+  link now opens the API samples tab)
+- 🟡 13 🚀 `pnpm check`, PR, merge, deploy, ntfy — 2026-09-25 16:32 — `pnpm check` green at `dfc4e78` (76 files, 938 tests);
+  final whole-branch review: ready to merge (a11y touch-up `dfc4e78`). PR open; merge + deploy next.
+
+Follow-ups noted in review, not in this PR:
+
+- Health: put the Diagnostics filters in the URL (as Quests does) so they survive a tab switch and are linkable from the
+  Overview KPI.
+- Dungeons: put the build filter in `?build=` so the Run page's back link restores it and other pages can deep-link.
+- `pages/quests/quests.css` has its own `.pill.forever` (filled accent, bold) that restyles every page's Forever pill
+  once Quests has loaded; fold it into the global rule.
+- `Collapsible` open state is per mount; a `localStorage`-backed `defaultOpen` keyed by title is the cheap fix if
+  re-folding on every visit gets annoying.
 
 ---
 
