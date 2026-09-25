@@ -1,8 +1,9 @@
--- Forever Ledger Probe v0.2.0
+-- Forever Ledger Probe v0.3.0
 -- Read-only: records what this client supports so Forever Ledger can be built against the real API.
 -- Nothing is automated. Output lands in WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedgerProbe.lua on /reload.
 --
 --   /flprobe             dump build info, API docs (same data as /api), globals and event support
+--   /flprobe specs       spec catalog per class and, for every bag/equipped item, which specs the client says want it
 --   /flprobe sniff on    record the first few payloads of every event while you play (off after /reload unless on)
 --   /flprobe sniff off
 --   /flprobe io          record chat/combat logging state (plus the SavedVariables load check)
@@ -14,7 +15,7 @@
 --   /flprobe status
 --   /flprobe reset confirm
 
-local VERSION = "0.2.0"
+local VERSION = "0.3.0"
 local SAMPLE_LIMIT = 5     -- payloads kept per event
 local MAX_EVENTS = 1500    -- distinct events tracked per build while sniffing
 local MAX_STRING = 200
@@ -488,6 +489,165 @@ local function ledgerCheck()
   db.ledgerCheck = c
 end
 
+---------------------------------------------------------------- /flprobe specs
+-- Does this client say which specs an item is for? Retail's GetItemSpecInfo answers for the player's class only;
+-- DoesItemContainSpec takes any class, so both are asked for every bag and equipped item, over the spec catalog.
+local SPEC_API = {
+  "C_Item.GetItemSpecInfo", "C_Item.DoesItemContainSpec", "C_Item.IsEquippableItem",
+  "C_Item.IsItemSpecificToPlayerClass", "C_SpecializationInfo",
+  "C_SpecializationInfo.GetNumSpecializationsForClassID", "C_SpecializationInfo.GetSpecializationInfo",
+  "C_SpecializationInfo.GetSpecialization", "C_SpecializationInfo.GetSpecIDs", "GetSpecializationInfoForClassID",
+  "GetNumSpecializations", "GetClassInfo", "GetInventoryItemLink", "C_Container.GetContainerNumSlots",
+  "C_Container.GetContainerItemLink",
+}
+local MAX_CLASS_ID = 13       -- Classic has 9 classes; retail ids go to 13 (Evoker)
+local SPECS_WHEN_UNKNOWN = 3  -- indexes to try per class when the count call is missing
+local MAX_SPECS_PER_CLASS = 8
+local MAX_SPEC_ITEMS = 200
+local MAX_LIST = 64
+
+-- Like try, but a table first return is kept as a list (try clips tables to "<table>").
+local function tryList(fn, ...)
+  if type(fn) ~= "function" then return { ok = false, missing = true, err = "missing" } end
+  local ok, first = pcall(fn, ...)
+  if not ok then return { ok = false, err = clip(tostring(first)) } end
+  if type(first) ~= "table" then return { ok = true, values = { clip(first) } } end
+  local list = {}
+  for i, v in ipairs(first) do
+    if i > MAX_LIST then break end
+    list[i] = clip(v)
+  end
+  return { ok = true, values = { list } }
+end
+
+local function specId(entry)
+  local id = entry.ok and tonumber(entry.values[1])
+  return id and id > 0 and id or nil
+end
+
+-- catalog[classID] = { info, count, specs = { { forClass, info }, ... } }; list = { { classID, specID }, ... }
+local function specCatalog()
+  local numFor = resolve("C_SpecializationInfo.GetNumSpecializationsForClassID")
+  local infoFor = resolve("C_SpecializationInfo.GetSpecializationInfo")
+  local forClass = resolve("GetSpecializationInfoForClassID")
+  local classInfo = resolve("GetClassInfo")
+  local catalog, list = {}, {}
+  for classID = 1, MAX_CLASS_ID do
+    local c = { info = try(classInfo, classID), count = try(numFor, classID), specs = {} }
+    local n = c.count.ok and tonumber(c.count.values[1]) or SPECS_WHEN_UNKNOWN
+    for i = 1, math.min(n, MAX_SPECS_PER_CLASS) do
+      local s = { forClass = try(forClass, classID, i),
+                  info = try(infoFor, i, false, false, nil, nil, nil, classID) }
+      c.specs[i] = s
+      local id = specId(s.forClass) or specId(s.info)
+      if id then list[#list + 1] = { classID = classID, specID = id } end
+    end
+    catalog[classID] = c
+  end
+  return catalog, list
+end
+
+local function playerSpecs()
+  local infoFor = resolve("C_SpecializationInfo.GetSpecializationInfo")
+  local _, token, classID = UnitClass("player")
+  local p = { class = token, classID = classID, level = UnitLevel("player"),
+              specIndex = try(resolve("C_SpecializationInfo.GetSpecialization")), specs = {} }
+  local count = try(resolve("GetNumSpecializations"))
+  local n = count.ok and tonumber(count.values[1]) or (type(infoFor) == "function" and SPECS_WHEN_UNKNOWN or 0)
+  for i = 1, math.min(n, MAX_SPECS_PER_CLASS) do p.specs[i] = try(infoFor, i, false, false) end
+  return p
+end
+
+-- fn(where, link) for every bag slot (0..4) and equipped slot (1..19) that holds an item, up to MAX_SPEC_ITEMS.
+local function eachOwnedItem(fn)
+  local numSlots = resolve("C_Container.GetContainerNumSlots")
+  local slotLink = resolve("C_Container.GetContainerItemLink")
+  local invLink = resolve("GetInventoryItemLink")
+  local seen = 0
+  local function visit(where, link)
+    if seen >= MAX_SPEC_ITEMS then return end
+    seen = seen + 1
+    fn(where, link)
+  end
+  if numSlots and slotLink then
+    for bag = 0, 4 do
+      local okN, n = pcall(numSlots, bag)
+      for slot = 1, (okN and tonumber(n)) or 0 do
+        local okL, link = pcall(slotLink, bag, slot)
+        if okL and type(link) == "string" then visit("bag:" .. bag .. ":" .. slot, link) end
+      end
+    end
+  end
+  if invLink then
+    for slot = 1, 19 do
+      local ok, link = pcall(invLink, "player", slot)
+      if ok and type(link) == "string" then visit("slot:" .. slot, link) end
+    end
+  end
+end
+
+local function dumpSpecs()
+  local getSpecInfo = resolve("C_Item.GetItemSpecInfo")
+  local contains = resolve("C_Item.DoesItemContainSpec")
+  local isEquippable = resolve("C_Item.IsEquippableItem")
+  local classSpecific = resolve("C_Item.IsItemSpecificToPlayerClass")
+  local getStats = resolve("C_Item.GetItemStats") or resolve("GetItemStats")
+
+  local api = {}
+  for _, name in ipairs(SPEC_API) do api[name] = type(resolve(name)) end
+  local catalog, specList = specCatalog()
+  local counts = { items = 0, equippable = 0, withSpecInfo = 0, emptySpecInfo = 0, specInfoErrors = 0,
+                   containsAny = 0 }
+  local items = {}
+
+  eachOwnedItem(function(where, link)
+    local it = { id = tonumber(link:match("item:(%d+)")), link = clip(link), where = where }
+    it.specInfo = tryList(getSpecInfo, link)
+    it.equippable = try(isEquippable, link)
+    it.classSpecific = try(classSpecific, link)
+    if getStats then
+      local ok, stats = pcall(getStats, link)
+      if ok and type(stats) == "table" then it.statKeys = sortedKeys(stats) end
+    end
+    counts.items = counts.items + 1
+    local equippable = it.equippable.ok and it.equippable.values[1] == true
+    if equippable then counts.equippable = counts.equippable + 1 end
+    if it.specInfo.ok then
+      local key = #it.specInfo.values[1] > 0 and "withSpecInfo" or "emptySpecInfo"
+      counts[key] = counts[key] + 1
+    elseif not it.specInfo.missing then
+      counts.specInfoErrors = counts.specInfoErrors + 1
+    end
+    if contains and equippable and #specList > 0 then
+      it.contains = {}
+      local any = false
+      for _, s in ipairs(specList) do
+        local ok, r = pcall(contains, link, s.classID, s.specID)
+        if not ok then
+          it.containsErr = clip(tostring(r))
+          break
+        end
+        it.contains[s.specID] = r == true
+        any = any or r == true
+      end
+      if any then counts.containsAny = counts.containsAny + 1 end
+    end
+    items[#items + 1] = it
+  end)
+
+  db.specs[build] = { at = time(), probeVersion = VERSION, api = api, player = playerSpecs(), catalog = catalog,
+                      items = items, counts = counts }
+  local classIDs, classes = {}, 0
+  for _, s in ipairs(specList) do
+    if not classIDs[s.classID] then classes = classes + 1 end
+    classIDs[s.classID] = true
+  end
+  say(format("%d item(s): %d equippable, %d with spec info (%d empty, %d errors), %d matched by " ..
+    "DoesItemContainSpec; catalog %d class(es) / %d spec(s).", counts.items, counts.equippable, counts.withSpecInfo,
+    counts.emptySpecInfo, counts.specInfoErrors, counts.containsAny, classes, #specList))
+  say("Type /reload to write ForeverLedgerProbe.lua.")
+end
+
 ---------------------------------------------------------------- lifecycle
 local lifecycle = CreateFrame("Frame")
 lifecycle:RegisterEvent("ADDON_LOADED")
@@ -500,7 +660,7 @@ lifecycle:SetScript("OnEvent", function(_, event, name, func)
     local arrived = ForeverLedgerProbeDB
     ForeverLedgerProbeDB = type(arrived) == "table" and arrived or {}
     db = ForeverLedgerProbeDB
-    db.dumps, db.sniff, db.io = db.dumps or {}, db.sniff or {}, db.io or {}
+    db.dumps, db.sniff, db.io, db.specs = db.dumps or {}, db.sniff or {}, db.io or {}, db.specs or {}
     db.probeVersion = VERSION
     local _, buildStr = GetBuildInfo()
     build = tonumber(buildStr) or 0
@@ -536,16 +696,20 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
     ioOff()
   elseif msg == "io reloadbtn" or msg == "io reloadbtn hide" then
     ioReloadButtons(msg == "io reloadbtn hide")
+  elseif msg == "specs" then
+    dumpSpecs()
   elseif msg == "reset confirm" then
-    wipe(db.dumps); wipe(db.sniff); wipe(db.io); db.sniffEventCount = 0
+    wipe(db.dumps); wipe(db.sniff); wipe(db.io); wipe(db.specs); db.sniffEventCount = 0
     say("probe data wiped.")
   else
     local ndumps = 0
     for _ in pairs(db.dumps) do ndumps = ndumps + 1 end
     local nev = 0
     for _ in pairs(db.sniff[build] or {}) do nev = nev + 1 end
-    say(format("build %d: %d dump(s), sniffer %s, %d events seen this build, %d io entries, load #%d.",
-      build, ndumps, db.sniffing and "ON" or "off", nev, #(db.io[build] or {}), db.loadCount or 0))
-    say("/flprobe  |  /flprobe sniff on|off  |  /flprobe io [on|toggle|off|reloadbtn]  |  /flprobe reset confirm")
+    say(format("build %d: %d dump(s), specs %s, sniffer %s, %d events seen this build, %d io entries, load #%d.",
+      build, ndumps, db.specs[build] and "recorded" or "not run", db.sniffing and "ON" or "off", nev,
+      #(db.io[build] or {}), db.loadCount or 0))
+    say("/flprobe  |  /flprobe specs  |  /flprobe sniff on|off  |  /flprobe io [on|toggle|off|reloadbtn]  |  " ..
+      "/flprobe reset confirm")
   end
 end

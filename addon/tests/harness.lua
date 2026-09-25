@@ -649,6 +649,119 @@ function H.new(worldOverrides)
     end
   end
 
+  -- Specialization and item-spec API (probe 0.3.0 `/flprobe specs`, ledger schema 7). Opt-in only, so the probe's
+  -- global census (probe-dump fixture) stays as it was. world.specAPI = {
+  --   classes = { [classID] = { token=, name=, specs = { { id=, name=, role=, primaryStat= }, ... } } },
+  --   itemSpecs = { [itemID] = { specID, ... } },   -- what GetItemSpecInfo / DoesItemContainSpec answer
+  --   equipped = { [slot] = itemID },               -- GetInventoryItemLink("player", slot)
+  --   player = { classID=, specIndex= },
+  --   errors = { [fnName] = "message" },            -- C_Item.<fnName> throws it
+  -- }
+  if world.specAPI then
+    local sa = world.specAPI
+    local player = sa.player or {}
+    local function specsOf(classID) return (sa.classes[classID] or {}).specs or {} end
+    local function called(name)
+      world.calls = world.calls or {}
+      world.calls[name] = (world.calls[name] or 0) + 1
+      if sa.errors and sa.errors[name] then error(sa.errors[name]) end
+    end
+    env.C_SpecializationInfo = {
+      GetNumSpecializationsForClassID = function(classID) return #specsOf(classID) end,
+      -- (index, isInspect, isPet, inspectTarget, sex, groupIndex, classID)
+      GetSpecializationInfo = function(i, _, _, _, _, _, classID)
+        local s = specsOf(classID or player.classID)[i]
+        if not s then return 0 end
+        return s.id, s.name, s.desc or "", 134400, s.role, s.primaryStat, 0, nil, 0, true
+      end,
+      GetSpecialization = function() return player.specIndex end,
+      GetSpecIDs = function()
+        local out = {}
+        for _, c in pairs(sa.classes) do
+          for _, s in ipairs(c.specs or {}) do out[#out + 1] = s.id end
+        end
+        table.sort(out)
+        return out
+      end,
+      GetClassIDFromSpecID = function(specID)
+        for classID, c in pairs(sa.classes) do
+          for _, s in ipairs(c.specs or {}) do
+            if s.id == specID then return classID end
+          end
+        end
+      end,
+    }
+    env.GetNumSpecializations = function() return #specsOf(player.classID) end
+    env.GetSpecializationInfoForClassID = function(classID, i)
+      local s = specsOf(classID)[i]
+      if not s then return nil end
+      return s.id, s.name, s.desc or "", 134400, s.role, false, true
+    end
+    env.GetClassInfo = function(classID)
+      local c = sa.classes[classID]
+      if c then return c.name, c.token, classID end
+    end
+    env.GetInventoryItemLink = function(_, slot)
+      local id = (sa.equipped or {})[slot]
+      return id and world.items[id] and itemLink(id, world.items[id]) or nil
+    end
+    local unitClass = env.UnitClass
+    env.UnitClass = function(u)
+      if u == "player" then
+        local c = sa.classes[player.classID]
+        return c and c.name or "Hunter", c and c.token or world.player.class, player.classID
+      end
+      return unitClass(u)
+    end
+    env.C_Item = env.C_Item or {}
+    env.C_Item.GetItemStats = env.C_Item.GetItemStats or env.GetItemStats
+    env.C_Item.GetItemSpecInfo = function(link)
+      called("GetItemSpecInfo")
+      return copy(sa.itemSpecs[linkID(link)] or {})
+    end
+    env.C_Item.DoesItemContainSpec = function(link, classID, specID)
+      called("DoesItemContainSpec")
+      for _, id in ipairs(sa.itemSpecs[linkID(link)] or {}) do
+        if specID and specID ~= 0 then
+          if id == specID then return true end
+        else
+          for _, s in ipairs(specsOf(classID)) do
+            if s.id == id then return true end
+          end
+        end
+      end
+      return false
+    end
+    env.C_Item.IsEquippableItem = function(link)
+      called("IsEquippableItem")
+      local it = world.items[linkID(link)]
+      return it ~= nil and it.equipLoc ~= nil and it.equipLoc ~= ""
+    end
+    env.C_Item.IsItemSpecificToPlayerClass = function(link)
+      called("IsItemSpecificToPlayerClass")
+      local ids = sa.itemSpecs[linkID(link)] or {}
+      if #ids == 0 then return false end
+      local mine = {}
+      for _, s in ipairs(specsOf(player.classID)) do mine[s.id] = true end
+      for _, id in ipairs(ids) do
+        if not mine[id] then return false end
+      end
+      return true
+    end
+    if world.bags then
+      env.C_Container = env.C_Container or {}
+      env.C_Container.GetContainerNumSlots = function(bag)
+        local n = 0
+        for slot in pairs(world.bags[bag] or {}) do n = math.max(n, slot) end
+        return n
+      end
+      env.C_Container.GetContainerItemLink = function(bag, slot)
+        local id = (world.bags[bag] or {})[slot]
+        return id and world.items[id] and itemLink(id, world.items[id]) or nil
+      end
+    end
+  end
+
   -- frame:RegisterUnitEvent(ev, unit, ...): the event only reaches the frame for those units (its first argument).
   -- world.noUnitEvents: a client without it. (Added here, not in CreateFrame above, so harness line numbers that the
   -- probe fixture records stay put.)

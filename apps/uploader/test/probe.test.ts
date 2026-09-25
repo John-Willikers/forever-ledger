@@ -21,7 +21,7 @@ describe('probe-dump', () => {
     };
     expect(json.dumps['61582']?.buildInfo.build).toBe(61582);
 
-    expect(summary.probeVersion).toBe('0.2.0');
+    expect(summary.probeVersion).toBe('0.3.0');
     expect(summary.builds).toHaveLength(1);
     const b = summary.builds[0]!;
     expect(b).toMatchObject({
@@ -108,7 +108,131 @@ describe('probe-dump', () => {
 
     const old = summarizeProbe({ probeVersion: '0.1.0', dumps: {}, sniff: {} });
     expect(old.io).toBeUndefined();
+    expect(old.specs).toBeUndefined();
     expect(formatProbeSummary(old)).not.toMatch(/^io /m);
+    expect(formatProbeSummary(old)).not.toMatch(/^specs /m);
+  });
+
+  it('summarises /flprobe specs: the catalog, items with spec info and DoesItemContainSpec hits', async () => {
+    const summary = await probeDump(fixturePath('probe-dump.lua'), join(env.dir, 'api.json'), {
+      stableIntervalMs: 5,
+    });
+    expect(summary.specs).toHaveLength(1);
+    const s = summary.specs![0]!;
+    expect(s).toMatchObject({
+      build: '61582',
+      probeVersion: '0.3.0',
+      at: 1790000000,
+      classes: 3,
+      specs: 6,
+      items: 3,
+      equippable: 2,
+      withSpecInfo: 2,
+      emptySpecInfo: 1,
+      specInfoErrors: 0,
+      specInfoMissing: false,
+      containsAvailable: true,
+      containsAny: 2,
+      player: { class: 'HUNTER', classId: 3, level: 10, specIndex: 1 },
+    });
+    expect(s.api['C_Item.GetItemSpecInfo']).toBe('function');
+    expect(s.catalog).toContainEqual({
+      classId: 1,
+      class: 'WARRIOR',
+      specs: [
+        { id: 71, name: 'Arms', role: 'DAMAGER', primaryStat: 1 },
+        { id: 72, name: 'Fury', role: 'DAMAGER', primaryStat: 1 },
+        { id: 73, name: 'Protection', role: 'TANK', primaryStat: 1 },
+      ],
+    });
+    expect(s.catalog.map((c) => c.classId)).toEqual([1, 3, 8]);
+    // bags are walked before equipped slots
+    expect(s.sample[0]).toMatchObject({
+      id: 2308,
+      where: 'bag:0:1',
+      equippable: true,
+      specInfo: '[62, 253, 254]',
+      contains: [62, 253, 254],
+      statKeys: ['ITEM_MOD_STAMINA_SHORT', 'RESISTANCE0_NAME'],
+    });
+    expect(s.sample[1]).toMatchObject({
+      id: 2589,
+      equippable: false,
+      specInfo: '[]',
+      contains: [],
+    });
+    expect(s.sample[2]).toMatchObject({ id: 872, where: 'slot:16', contains: [71, 72, 73] });
+
+    const text = formatProbeSummary(summary);
+    expect(text).toMatch(/^specs \(\/flprobe specs\)$/m);
+    expect(text).toMatch(
+      /build 61582 \(.* C[DS]T\): catalog 3 class\(es\) \/ 6 spec\(s\); 3 item\(s\), 2 equippable, 2 with GetItemSpecInfo \(1 empty, 0 errors\), 2 matched by DoesItemContainSpec/,
+    );
+    expect(text).toMatch(/player: HUNTER \(class 3\) level 10, spec index 1/);
+    expect(text).toMatch(
+      /WARRIOR \(1\): Arms \(DAMAGER, stat 1\), Fury \(DAMAGER, stat 1\), Protection \(TANK, stat 1\)/,
+    );
+    expect(text).toMatch(
+      /2308 bag:0:1 equippable {2}specInfo \[62, 253, 254\] {2}contains \[62, 253, 254\]/,
+    );
+    expect(text).toMatch(/2589 bag:0:3 not equippable {2}specInfo \[\]/);
+  });
+
+  it('flags missing spec APIs in the specs summary', () => {
+    const s = summarizeProbe({
+      probeVersion: '0.3.0',
+      dumps: {},
+      sniff: {},
+      specs: {
+        '69913': {
+          at: 1790000000,
+          probeVersion: '0.3.0',
+          api: { 'C_Item.GetItemSpecInfo': 'nil', 'C_Item.DoesItemContainSpec': 'nil' },
+          player: {
+            class: 'MAGE',
+            classID: 8,
+            level: 20,
+            specIndex: { ok: false, missing: true },
+            specs: {},
+          },
+          catalog: {
+            '1': {
+              info: { ok: true, values: ['Warrior', 'WARRIOR', 1] },
+              count: { ok: false, missing: true },
+              specs: {},
+            },
+          },
+          items: [
+            {
+              id: 5,
+              link: 'x',
+              where: 'bag:0:1',
+              specInfo: { ok: false, missing: true },
+              equippable: { ok: true, values: [true] },
+            },
+          ],
+          counts: {
+            items: 1,
+            equippable: 1,
+            withSpecInfo: 0,
+            emptySpecInfo: 0,
+            specInfoErrors: 0,
+            containsAny: 0,
+          },
+        },
+      },
+    });
+    const b = s.specs![0]!;
+    expect(b).toMatchObject({
+      build: '69913',
+      specInfoMissing: true,
+      containsAvailable: false,
+      classes: 0,
+      specs: 0,
+    });
+    expect(b.sample[0]).toMatchObject({ id: 5, specInfo: 'missing', contains: [] });
+    const text = formatProbeSummary(s);
+    expect(text).toMatch(/GetItemSpecInfo missing, DoesItemContainSpec missing/);
   });
 
   it('rejects a file without ForeverLedgerProbeDB', async () => {

@@ -260,7 +260,7 @@ ForeverLedgerProbeDB = {
 					"GetNumQuestLogEntries", -- [2]
 				},
 			},
-			["probeVersion"] = "0.2.0",
+			["probeVersion"] = "0.3.0",
 		},
 	},
 	["io"] = {
@@ -586,14 +586,14 @@ ForeverLedgerProbeDB = {
 	},
 	["loadCheck"] = {
 		["arrivedEmpty"] = false,
-		["arrivedKeys"] = 9,
+		["arrivedKeys"] = 10,
 		["arrivedNil"] = false,
 		["arrivedType"] = "table",
 		["at"] = 1790000000,
 		["build"] = 61582,
 		["loadCount"] = 2,
 		["previousLoadAt"] = 1790000000,
-		["probeVersion"] = "0.2.0",
+		["probeVersion"] = "0.3.0",
 	},
 	["loadCount"] = 2,
 	["loadHistory"] = {
@@ -604,13 +604,13 @@ ForeverLedgerProbeDB = {
 			["loadCount"] = 1,
 		}, -- [1]
 		{
-			["arrivedKeys"] = 9,
+			["arrivedKeys"] = 10,
 			["at"] = 1790000000,
 			["build"] = 61582,
 			["loadCount"] = 2,
 		}, -- [2]
 	},
-	["probeVersion"] = "0.2.0",
+	["probeVersion"] = "0.3.0",
 	["sniff"] = {
 		[61582] = {
 			["ADDON_ACTION_BLOCKED"] = {
@@ -707,4 +707,563 @@ ForeverLedgerProbeDB = {
 	},
 	["sniffEventCount"] = 6,
 	["sniffing"] = false,
+	["specs"] = {
+		[61582] = {
+			["api"] = {
+				["C_Container.GetContainerItemLink"] = "function",
+				["C_Container.GetContainerNumSlots"] = "function",
+				["C_Item.DoesItemContainSpec"] = "function",
+				["C_Item.GetItemSpecInfo"] = "function",
+				["C_Item.IsEquippableItem"] = "function",
+				["C_Item.IsItemSpecificToPlayerClass"] = "function",
+				["C_SpecializationInfo"] = "table",
+				["C_SpecializationInfo.GetNumSpecializationsForClassID"] = "function",
+				["C_SpecializationInfo.GetSpecIDs"] = "function",
+				["C_SpecializationInfo.GetSpecialization"] = "function",
+				["C_SpecializationInfo.GetSpecializationInfo"] = "function",
+				["GetClassInfo"] = "function",
+				["GetInventoryItemLink"] = "function",
+				["GetNumSpecializations"] = "function",
+				["GetSpecializationInfoForClassID"] = "function",
+			},
+			["at"] = 1790000000,
+			["catalog"] = {
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							3, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+							"Warrior", -- [1]
+							"WARRIOR", -- [2]
+							1, -- [3]
+						},
+					},
+					["specs"] = {
+						{
+							["forClass"] = {
+								["ok"] = true,
+								["values"] = {
+									71, -- [1]
+									"Arms", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									false, -- [6]
+									true, -- [7]
+								},
+							},
+							["info"] = {
+								["ok"] = true,
+								["values"] = {
+									71, -- [1]
+									"Arms", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									1, -- [6]
+									0, -- [7]
+									"<nil>", -- [8]
+									0, -- [9]
+									true, -- [10]
+								},
+							},
+						}, -- [1]
+						{
+							["forClass"] = {
+								["ok"] = true,
+								["values"] = {
+									72, -- [1]
+									"Fury", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									false, -- [6]
+									true, -- [7]
+								},
+							},
+							["info"] = {
+								["ok"] = true,
+								["values"] = {
+									72, -- [1]
+									"Fury", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									1, -- [6]
+									0, -- [7]
+									"<nil>", -- [8]
+									0, -- [9]
+									true, -- [10]
+								},
+							},
+						}, -- [2]
+						{
+							["forClass"] = {
+								["ok"] = true,
+								["values"] = {
+									73, -- [1]
+									"Protection", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"TANK", -- [5]
+									false, -- [6]
+									true, -- [7]
+								},
+							},
+							["info"] = {
+								["ok"] = true,
+								["values"] = {
+									73, -- [1]
+									"Protection", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"TANK", -- [5]
+									1, -- [6]
+									0, -- [7]
+									"<nil>", -- [8]
+									0, -- [9]
+									true, -- [10]
+								},
+							},
+						}, -- [3]
+					},
+				}, -- [1]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [2]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							2, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+							"Hunter", -- [1]
+							"HUNTER", -- [2]
+							3, -- [3]
+						},
+					},
+					["specs"] = {
+						{
+							["forClass"] = {
+								["ok"] = true,
+								["values"] = {
+									253, -- [1]
+									"Beast Mastery", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									false, -- [6]
+									true, -- [7]
+								},
+							},
+							["info"] = {
+								["ok"] = true,
+								["values"] = {
+									253, -- [1]
+									"Beast Mastery", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									2, -- [6]
+									0, -- [7]
+									"<nil>", -- [8]
+									0, -- [9]
+									true, -- [10]
+								},
+							},
+						}, -- [1]
+						{
+							["forClass"] = {
+								["ok"] = true,
+								["values"] = {
+									254, -- [1]
+									"Marksmanship", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									false, -- [6]
+									true, -- [7]
+								},
+							},
+							["info"] = {
+								["ok"] = true,
+								["values"] = {
+									254, -- [1]
+									"Marksmanship", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									2, -- [6]
+									0, -- [7]
+									"<nil>", -- [8]
+									0, -- [9]
+									true, -- [10]
+								},
+							},
+						}, -- [2]
+					},
+				}, -- [3]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [4]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [5]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [6]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [7]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							1, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+							"Mage", -- [1]
+							"MAGE", -- [2]
+							8, -- [3]
+						},
+					},
+					["specs"] = {
+						{
+							["forClass"] = {
+								["ok"] = true,
+								["values"] = {
+									62, -- [1]
+									"Arcane", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									false, -- [6]
+									true, -- [7]
+								},
+							},
+							["info"] = {
+								["ok"] = true,
+								["values"] = {
+									62, -- [1]
+									"Arcane", -- [2]
+									"", -- [3]
+									134400, -- [4]
+									"DAMAGER", -- [5]
+									4, -- [6]
+									0, -- [7]
+									"<nil>", -- [8]
+									0, -- [9]
+									true, -- [10]
+								},
+							},
+						}, -- [1]
+					},
+				}, -- [8]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [9]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [10]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [11]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [12]
+				{
+					["count"] = {
+						["ok"] = true,
+						["values"] = {
+							0, -- [1]
+						},
+					},
+					["info"] = {
+						["ok"] = true,
+						["values"] = {
+						},
+					},
+					["specs"] = {
+					},
+				}, -- [13]
+			},
+			["counts"] = {
+				["containsAny"] = 2,
+				["emptySpecInfo"] = 1,
+				["equippable"] = 2,
+				["items"] = 3,
+				["specInfoErrors"] = 0,
+				["withSpecInfo"] = 2,
+			},
+			["items"] = {
+				{
+					["classSpecific"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+					["contains"] = {
+						[62] = true,
+						[71] = false,
+						[72] = false,
+						[73] = false,
+						[253] = true,
+						[254] = true,
+					},
+					["equippable"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["id"] = 2308,
+					["link"] = "|cffffffff|Hitem:2308::::::::|h[Fine Leather Cloak]|h|r",
+					["specInfo"] = {
+						["ok"] = true,
+						["values"] = {
+							{
+								62, -- [1]
+								253, -- [2]
+								254, -- [3]
+							}, -- [1]
+						},
+					},
+					["statKeys"] = {
+						"ITEM_MOD_STAMINA_SHORT", -- [1]
+						"RESISTANCE0_NAME", -- [2]
+					},
+					["where"] = "bag:0:1",
+				}, -- [1]
+				{
+					["classSpecific"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+					["equippable"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+					["id"] = 2589,
+					["link"] = "|cffffffff|Hitem:2589::::::::|h[Linen Cloth]|h|r",
+					["specInfo"] = {
+						["ok"] = true,
+						["values"] = {
+							{
+							}, -- [1]
+						},
+					},
+					["statKeys"] = {
+					},
+					["where"] = "bag:0:3",
+				}, -- [2]
+				{
+					["classSpecific"] = {
+						["ok"] = true,
+						["values"] = {
+							false, -- [1]
+						},
+					},
+					["contains"] = {
+						[62] = false,
+						[71] = true,
+						[72] = true,
+						[73] = true,
+						[253] = false,
+						[254] = false,
+					},
+					["equippable"] = {
+						["ok"] = true,
+						["values"] = {
+							true, -- [1]
+						},
+					},
+					["id"] = 872,
+					["link"] = "|cff1eff00|Hitem:872::::::::|h[Rockslicer]|h|r",
+					["specInfo"] = {
+						["ok"] = true,
+						["values"] = {
+							{
+								71, -- [1]
+								72, -- [2]
+								73, -- [3]
+							}, -- [1]
+						},
+					},
+					["statKeys"] = {
+						"ITEM_MOD_STRENGTH_SHORT", -- [1]
+					},
+					["where"] = "slot:16",
+				}, -- [3]
+			},
+			["player"] = {
+				["class"] = "HUNTER",
+				["classID"] = 3,
+				["level"] = 10,
+				["specIndex"] = {
+					["ok"] = true,
+					["values"] = {
+						1, -- [1]
+					},
+				},
+				["specs"] = {
+					{
+						["ok"] = true,
+						["values"] = {
+							253, -- [1]
+							"Beast Mastery", -- [2]
+							"", -- [3]
+							134400, -- [4]
+							"DAMAGER", -- [5]
+							2, -- [6]
+							0, -- [7]
+							"<nil>", -- [8]
+							0, -- [9]
+							true, -- [10]
+						},
+					}, -- [1]
+					{
+						["ok"] = true,
+						["values"] = {
+							254, -- [1]
+							"Marksmanship", -- [2]
+							"", -- [3]
+							134400, -- [4]
+							"DAMAGER", -- [5]
+							2, -- [6]
+							0, -- [7]
+							"<nil>", -- [8]
+							0, -- [9]
+							true, -- [10]
+						},
+					}, -- [2]
+				},
+			},
+			["probeVersion"] = "0.3.0",
+		},
+	},
 }

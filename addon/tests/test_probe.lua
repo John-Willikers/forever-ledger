@@ -116,7 +116,7 @@ return function(H)
     H.eq(pdb.loadCheck.arrivedEmpty, true)
     H.eq(pdb.loadCheck.arrivedKeys, 0)
     H.eq(pdb.loadCheck.arrivedType, "nil")
-    H.eq(pdb.loadCheck.probeVersion, "0.2.0")
+    H.eq(pdb.loadCheck.probeVersion, "0.3.0")
     H.eq(#pdb.loadHistory, 1)
   end)
 
@@ -345,6 +345,162 @@ return function(H)
     H.eq(e.action, "blocked")
     H.eq(e.event, "ADDON_ACTION_BLOCKED")
     H.eq(e.func, "ReloadUI()")
+  end)
+
+  ---------------------------------------------------------------- /flprobe specs
+  local function specWorld()
+    return {
+      classes = {
+        [1] = { token = "WARRIOR", name = "Warrior", specs = {
+          { id = 71, name = "Arms", role = "DAMAGER", primaryStat = 1 },
+          { id = 72, name = "Fury", role = "DAMAGER", primaryStat = 1 },
+          { id = 73, name = "Protection", role = "TANK", primaryStat = 1 } } },
+        [3] = { token = "HUNTER", name = "Hunter", specs = {
+          { id = 253, name = "Beast Mastery", role = "DAMAGER", primaryStat = 2 },
+          { id = 254, name = "Marksmanship", role = "DAMAGER", primaryStat = 2 } } },
+        [8] = { token = "MAGE", name = "Mage", specs = {
+          { id = 62, name = "Arcane", role = "DAMAGER", primaryStat = 4 } } },
+      },
+      itemSpecs = { [872] = { 71, 72, 73 }, [2308] = { 62, 253, 254 } },
+      equipped = { [16] = 872 },
+      player = { classID = 3, specIndex = 1 },
+    }
+  end
+  local SPEC_ITEMS = {
+    [872] = { name = "Rockslicer", quality = 2, ilvl = 21, reqLevel = 16, type = "Weapon",
+              subtype = "Two-Handed Axes", equipLoc = "INVTYPE_2HWEAPON", stats = { ITEM_MOD_STRENGTH_SHORT = 7 } },
+    [2308] = { name = "Fine Leather Cloak", quality = 1, ilvl = 15, reqLevel = 10, type = "Armor", subtype = "Cloth",
+               equipLoc = "INVTYPE_CLOAK", stats = { ITEM_MOD_STAMINA_SHORT = 2, RESISTANCE0_NAME = 14 } },
+    [2589] = { name = "Linen Cloth", quality = 1, type = "Trade Goods", subtype = "Trade Goods", equipLoc = "" },
+  }
+  local SPEC_BAGS = { [0] = { [1] = 2308, [3] = 2589 } }
+
+  -- A probe on a client with the spec API; `savedDB` shares the main fixture table so the dump carries `specs`.
+  local function specProbe(overrides, savedDB)
+    local o = { specAPI = specWorld(), items = H.copy(SPEC_ITEMS), bags = H.copy(SPEC_BAGS) }
+    for k, v in pairs(overrides or {}) do o[k] = v end
+    return freshProbe(o, savedDB)
+  end
+  local function itemById(s, id)
+    for _, it in ipairs(s.items) do
+      if it.id == id then return it end
+    end
+  end
+
+  -- Loading the shared table again counts as another SavedVariables load; keep the fixture's load check as it was.
+  local keepLoad = { loadCount = db.loadCount, loadCheck = db.loadCheck, loadHistory = H.copy(db.loadHistory) }
+  local sc = specProbe({}, db)
+  sc.slash("FOREVERLEDGERPROBE", "specs")
+  db.loadCount, db.loadCheck, db.loadHistory = keepLoad.loadCount, keepLoad.loadCheck, keepLoad.loadHistory
+  local specs = db.specs and db.specs[61582] or {}
+
+  H.test("probe specs: the catalog lists every class's specs with role and primary stat", function()
+    H.ok(specs, "specs for build 61582")
+    H.eq(specs.probeVersion, "0.3.0")
+    H.eq(specs.at, sc.world.clock)
+    local warrior = specs.catalog[1]
+    H.eq(warrior.info.values[2], "WARRIOR")
+    H.eq(warrior.count.values[1], 3)
+    H.eq(warrior.specs[3].forClass.values[1], 73)
+    H.eq(warrior.specs[3].forClass.values[2], "Protection")
+    H.eq(warrior.specs[3].forClass.values[5], "TANK")
+    H.eq(warrior.specs[3].info.values[1], 73)
+    H.eq(warrior.specs[3].info.values[6], 1, "primaryStat")
+    H.eq(specs.catalog[3].specs[1].info.values[6], 2)
+    H.eq(specs.catalog[2].count.values[1], 0, "a class id with no specs is still asked")
+    H.eq(specs.catalog[8].specs[1].forClass.values[1], 62)
+    H.eq(specs.player.classID, 3)
+    H.eq(specs.player.class, "HUNTER")
+    H.eq(specs.player.level, 10)
+    H.eq(specs.player.specIndex.values[1], 1)
+    H.eq(specs.player.specs[1].values[1], 253)
+    H.eq(specs.api["C_Item.GetItemSpecInfo"], "function")
+    H.eq(specs.api["C_Item.DoesItemContainSpec"], "function")
+    H.eq(specs.api["C_SpecializationInfo.GetSpecializationInfo"], "function")
+  end)
+
+  H.test("probe specs: bag and equipped items record spec info, contains and stat keys", function()
+    local axe = itemById(specs, 872)
+    H.ok(axe, "equipped axe listed")
+    H.eq(axe.where, "slot:16")
+    H.eq(axe.link, H.itemLink(872, SPEC_ITEMS[872]))
+    H.eq(axe.specInfo.ok, true)
+    H.eq(#axe.specInfo.values[1], 3)
+    H.eq(axe.specInfo.values[1][3], 73)
+    H.eq(axe.contains[73], true)
+    H.eq(axe.contains[62], false)
+    H.eq(axe.equippable.values[1], true)
+    H.eq(axe.classSpecific.values[1], false)
+    H.eq(axe.statKeys[1], "ITEM_MOD_STRENGTH_SHORT")
+    local cloak = itemById(specs, 2308)
+    H.eq(cloak.where, "bag:0:1")
+    H.eq(cloak.contains[253], true)
+    H.eq(cloak.contains[71], false)
+    H.eq(cloak.statKeys[1], "ITEM_MOD_STAMINA_SHORT")
+    H.eq(cloak.statKeys[2], "RESISTANCE0_NAME")
+    local cloth = itemById(specs, 2589)
+    H.eq(cloth.where, "bag:0:3")
+    H.eq(cloth.equippable.values[1], false)
+    H.eq(#cloth.specInfo.values[1], 0)
+    H.eq(cloth.contains, nil, "non-equippable items are not asked per spec")
+    H.eq(specs.counts.items, 3)
+    H.eq(specs.counts.equippable, 2)
+    H.eq(specs.counts.withSpecInfo, 2)
+    H.eq(specs.counts.emptySpecInfo, 1)
+    H.eq(specs.counts.specInfoErrors, 0)
+    H.eq(specs.counts.containsAny, 2)
+    H.eq(sc.world.calls.DoesItemContainSpec, 12, "6 catalog specs × 2 equippable items")
+    H.ok(printedHas(sc, "3 item(s)"), "summary printed")
+    H.ok(printedHas(sc, "/reload"), "tells the user to reload")
+  end)
+
+  H.test("probe specs: missing spec APIs are recorded, not thrown", function()
+    local c = specProbe({ missing = { C_SpecializationInfo = true, GetSpecializationInfoForClassID = true } })
+    c.env.C_Item.GetItemSpecInfo = nil
+    c.env.C_Item.DoesItemContainSpec = nil
+    c.slash("FOREVERLEDGERPROBE", "specs")
+    local s = c.env.ForeverLedgerProbeDB.specs[61582]
+    H.eq(s.api["C_Item.GetItemSpecInfo"], "nil")
+    H.eq(s.api.C_SpecializationInfo, "nil")
+    H.eq(s.catalog[1].count.missing, true)
+    H.eq(s.catalog[1].specs[1].forClass.missing, true)
+    H.eq(s.player.specIndex.missing, true)
+    local axe = itemById(s, 872)
+    H.eq(axe.specInfo.missing, true)
+    H.eq(axe.contains, nil)
+    H.eq(axe.equippable.values[1], true)
+    H.eq(s.counts.items, 3)
+    H.eq(s.counts.withSpecInfo, 0)
+    H.eq(s.counts.containsAny, 0)
+  end)
+
+  H.test("probe specs: errors from the item calls are recorded per item", function()
+    local w = specWorld()
+    w.errors = { GetItemSpecInfo = "GetItemSpecInfo(): item not loaded", DoesItemContainSpec = "no such spec" }
+    local c = specProbe({ specAPI = w })
+    c.slash("FOREVERLEDGERPROBE", "specs")
+    local s = c.env.ForeverLedgerProbeDB.specs[61582]
+    local axe = itemById(s, 872)
+    H.eq(axe.specInfo.ok, false)
+    H.ok(axe.specInfo.err:find("item not loaded", 1, true), "error text kept")
+    H.ok(axe.containsErr:find("no such spec", 1, true), "contains error kept")
+    H.eq(H.count(axe.contains), 0)
+    H.eq(s.counts.specInfoErrors, 3)
+    H.eq(s.counts.containsAny, 0)
+  end)
+
+  H.test("probe specs: a second run replaces the build's entry and reset wipes it", function()
+    local c = specProbe()
+    c.slash("FOREVERLEDGERPROBE", "specs")
+    c.advance(30)
+    c.slash("FOREVERLEDGERPROBE", "specs")
+    local pdb = c.env.ForeverLedgerProbeDB
+    H.eq(pdb.specs[61582].at, c.world.clock)
+    H.eq(#pdb.specs[61582].items, 3)
+    c.slash("FOREVERLEDGERPROBE", "reset confirm")
+    H.eq(H.count(pdb.specs), 0)
+    c.slash("FOREVERLEDGERPROBE", "status")
+    H.ok(printedHas(c, "specs"), "help mentions specs")
   end)
 
   H.writeFile(FIXTURES .. "probe-dump.lua", H.serialize("ForeverLedgerProbeDB", db))
