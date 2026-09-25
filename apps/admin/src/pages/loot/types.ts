@@ -89,11 +89,21 @@ export interface ItemV1 {
     kind: string;
     count: number;
   }[];
+  /** Estimated from stats, subtype and proficiency (Forever has no spec data); see contracts' classRules. */
   specs: {
-    rulesVersion: number;
+    rulesVersion: string;
     atLevel: number;
-    fits: { cls: string; spec: string; role: string; score: number; bestArmor: boolean }[];
+    roles: { role: string; confidence: number }[];
+    classes: ClassFit[];
   };
+}
+
+export interface ClassFit {
+  cls: string;
+  canEquip: boolean;
+  /** When `canEquip` is false: the level the class gains the proficiency. */
+  fromLevel?: number;
+  bestArmor: boolean;
 }
 
 /** One extended-cost part, field by field (a field the upload got wrong is left out). */

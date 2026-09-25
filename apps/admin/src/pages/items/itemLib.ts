@@ -1,4 +1,5 @@
 // Pure helpers for the Item page: stat names, the per-build stat table, drop sources, tooltip text.
+import type { ClassFit } from '../loot/types';
 
 const FIELD_LABELS: Readonly<Record<string, string>> = {
   ilvl: 'Item level',
@@ -195,4 +196,21 @@ const quantityFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2
 /** An average stack: `1`, `1.33`; a dash when unknown. */
 export function formatAvgQuantity(n: number | null | undefined) {
   return typeof n === 'number' && Number.isFinite(n) ? quantityFormat.format(n) : '—';
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  tank: 'Tank',
+  healer: 'Healer',
+  caster: 'Caster DPS',
+  melee: 'Melee DPS',
+  ranged: 'Ranged DPS',
+};
+
+/** "Who wants it" role names. */
+export const roleLabel = (role: string) => ROLE_LABELS[role] ?? role;
+
+/** The note after a class chip: their best armor type, or when they can wear it. */
+export function classNote(c: ClassFit) {
+  if (c.canEquip) return c.bestArmor ? 'best armor' : '';
+  return c.fromLevel ? `at ${c.fromLevel}` : 'later';
 }

@@ -14,7 +14,7 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   `DoesItemContainSpec` / `IsEquippableItem` for bag + equipped items), harness `world.specAPI` stubs, 5 Lua tests
   (harness 210 passed, +5), uploader `probe-dump` specs summary (2 vitest, 904 passed total), CLAUDE.md
   open-question rows — 00:00 CDT
-- 🟡 1b 🔍 PR #30 review + CI green → merge
+- ✅ 1b 🔍 PR #30 review + CI green → merged (080bad8) — 00:30 CDT
   - ✅ 🔍 Review: 8 findings, 7 fixed — 00:20 CDT (Lua harness 212 passed, +2; uploader probe tests 7): a nil or
     non-table `GetItemSpecInfo` answer is counted as `specInfoOther` instead of aborting the run or passing as "with
     spec info"; `contains` stores hits only (+ `askedSpecs`) so a 200-item run doesn't write thousands of `false`
@@ -22,17 +22,18 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
     `equippable ?` when the API is missing, and prints the non-table count. Skipped: the pre-existing `{ ...arr }`
     build-key convention in untouched io/dumps code (keys there are build numbers, never lists).
   - ✅ CI green on the first push — 00:12 CDT
-- ⬜ 2 🎮 Owner runs `/flprobe specs` in game, `/reload`, sends `ForeverLedgerProbe.lua`; `probe-dump` →
-  `fixtures/real/api-<build>.json`; CLAUDE.md open-questions rows answered; gate decision recorded below
-- ⬜ 3 🧩 Addon 0.4.0 (schema 7): spec catalog at login, `byBuild[].specs` per equippable item, legacy 0.3.4 copy,
-  `test_specs.lua`, session-v7 fixture
-- ⬜ 4 📐 Contracts: `ItemBuildSnapshot.specs`, `specCatalog` records, normalize, keys, `SCHEMA_VERSION = 7`
-- ⬜ 5 🗄️ Server: migration 0013 (`item_snapshots.specs`, `spec_catalog`), ingest upserts (coalesce, never null
-  known specs), export
-- ⬜ 6 🧮 Query-time fit: `itemFit()` (client source when specs join the catalog, repaired heuristic otherwise),
-  level-0 fix, relics, `RULES_VERSION` bump; `/v1/items/:id` returns roles + classes
-- ⬜ 7 🖥️ Admin "Who wants it": role rows with confidence + source badge, class chips
-- ⬜ 8 🚀 Rollout: server (backup + 0013) → tray v0.1.6 → `addon-v0.4.0` + `addon-cli publish 0.4.0`
+- ✅ 2 🎮 Owner ran `/flprobe specs` on build **70009** (00:20 CDT); `probe-dump` → `fixtures/real/probe-70009-specs.json`;
+  CLAUDE.md rows answered; **gate: branch D** (see below) — 00:25 CDT
+- ⛔ 3 🧩 Addon 0.4.0 (schema 7) — **not needed**: the client has nothing worth capturing (gate D)
+- ⛔ 4 📐 Contracts schema 7 / 🗄️ migration 0013 — **not needed** (gate D)
+- ✅ 5 🧮 Query-time fit on branch `feat/item-fit`: `itemFit()` / `rolesFromStats()` / `classFits()` replace
+  `specsWanting` (`RULES_VERSION 2026-09-25.1`): primary stats by share (Stamina neutral), secondary stats by
+  presence, weapon subtype / shield signals, reqLevel 0 → level 1, relics → one class, `fromLevel` for later
+  proficiency; `/v1/items/:id` returns `{ rulesVersion, atLevel, roles, classes }` (13 contracts tests) — 00:40 CDT
+- ✅ 6 🖥️ Admin "Who wants it": role rows with a confidence bar, class chips with "best armor" / "at 40" /
+  "later", an "estimated" note (admin `roleLabel` / `classNote` tests) — 00:45 CDT
+- ⬜ 7 🔍 `pnpm check` → PR → review → CI → merge
+- ⬜ 8 🚀 Rollout: server deploy only (no migration, no addon or tray release)
 
 ## 📌 Context
 
@@ -93,6 +94,16 @@ global `GetSpecializationInfoForClassID`. None of it is captured today.
 3. Send `WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedgerProbe.lua`; on the VPS:
    `node --conditions=development --import tsx apps/uploader/src/cli.ts probe-dump <file> fixtures/real/api-<build>.json`.
 
-## 📓 Gate decision
+## 📓 Gate decision — **D: the client does not know** (build 70009, 2026-09-25 00:20 CDT)
 
-_Pending the owner's probe run._
+From `fixtures/real/probe-70009-specs.json` (46 bag/equipped items, 18 equippable, Warrior level 13):
+
+- `C_Item.GetItemSpecInfo` → nil for 42 items, `{}` for 4. Never a spec id.
+- `C_Item.DoesItemContainSpec` → **true for all 9 class specs on all 18 equippable items**, mail chest and
+  two-handed axes included. It carries no information.
+- Spec catalog: one placeholder spec per class (ids 1482–1491, named after the class, role `DAMAGER`, `primaryStat`
+  4 for everyone). No role or primary-stat signal.
+- `C_Item.IsItemSpecificToPlayerClass` → false everywhere; `IsEquippableItem` works and is the one useful call.
+
+So there is no schema bump and nothing for the addon to capture. Phases 5–7 repair the estimate at query time and
+say so on the card.

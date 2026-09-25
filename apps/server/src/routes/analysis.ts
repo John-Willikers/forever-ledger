@@ -1,4 +1,4 @@
-import { RULES_VERSION, specsWanting } from '@forever-ledger/contracts';
+import { itemFit } from '@forever-ledger/contracts';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { INT4_MAX } from '../addon.js';
@@ -241,27 +241,21 @@ export function registerAnalysisRoutes(app: FastifyInstance, db: Db, preHandler:
       from l left join n using (build, object_id)
       order by l.build desc, l.count desc, l.object_id`,
     );
+    // Fit is estimated from the newest snapshot (Forever has no spec data: see contracts' classRules).
     const latest = snapshots[0];
-    const level = latest?.reqLevel ?? 20;
     return {
       ...item,
       snapshots,
       dropSources,
       nodeSources,
       questRewards,
-      specs: {
-        rulesVersion: RULES_VERSION,
-        atLevel: level,
-        fits: specsWanting(
-          {
-            type: item.type as string | undefined,
-            subtype: item.subtype as string | undefined,
-            equipLoc: item.equipLoc as string | undefined,
-            stats: latest?.stats,
-          },
-          level,
-        ),
-      },
+      specs: itemFit({
+        type: item.type as string | undefined,
+        subtype: item.subtype as string | undefined,
+        equipLoc: item.equipLoc as string | undefined,
+        stats: latest?.stats,
+        reqLevel: latest?.reqLevel,
+      }),
     };
   });
 }
