@@ -38,7 +38,11 @@ Facts that shape the work:
 - `DataTable` (`apps/admin/src/components/DataTable.tsx`) renders every row it gets; only tables fed by `Pager`
   (Dungeons runs, Loot) and Quests (server-paged at 200) are bounded.
 - Tab CSS (`.tabs`, `.tab`, `.tab.active`, `.tab-panel`) lives in `apps/admin/src/pages/professions/professions.css`
-  lines 225–250; `RunPage`, `VendorsPage` and `BuildsPage` import that file only to get it.
+  lines 225–250; `RunPage`, `VendorsPage` and `BuildsPage` import that file to get it. The file also held shared rules
+  those pages use (`.chip`, `.npc-cell`, `.quality` dots, `.pill.svc-*`, `.visually-hidden`, `button.linkish`,
+  `.teaches`, `.filters label.checkbox`); routes are lazy-loaded, so dropping the import would unstyle them on a cold
+  load. Those rules moved to `styles.css` in Task 2 (duplicates of `table.data tr.selected td` and `.pill.forever`
+  were simply deleted), and `professions.css` now holds Professions-only rules.
 - Three hand-rolled tab bars share the same markup: `div.tabs[role=tablist]` > `button.tab[role=tab]` + `div.tab-panel`.
   Run keeps its tab in `?view=` (`pickTab` in `runLib.ts`), Builds in `?tab=`, Vendors in local state.
 - `apps/admin/vitest.config.ts` is `environment: 'node'`, `include: ['src/**/*.test.ts']`: tests are pure functions only.

@@ -1,31 +1,4 @@
-/* Professions + Vendors & trainers pages (phase 5). Loaded with those lazy pages only. */
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-button.linkish {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--accent);
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-}
-
-button.linkish:hover {
-  text-decoration: underline;
-}
-
-table.data tr.selected td {
-  background: var(--surface-2);
-}
+/* Professions page. Loaded with that lazy page only: anything another page needs belongs in styles.css. */
 
 .section-gap {
   margin-top: 1.25rem;
@@ -38,23 +11,6 @@ table.data tr.selected td {
   gap: 0.25rem 1rem;
   margin: 0.4rem 0 0;
   padding: 0;
-}
-
-.chip {
-  display: inline-block;
-  font-size: 0.75rem;
-  padding: 0.05rem 0.45rem;
-  margin: 0 0.35rem;
-  border-radius: 4px;
-  background: var(--surface-2);
-  color: var(--muted);
-  border: 1px solid var(--border);
-  white-space: nowrap;
-}
-
-.pill.forever {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 /* ---- profession cards ---- */
@@ -220,62 +176,6 @@ table.data tfoot th {
   max-width: 44rem;
 }
 
-/* ---- vendors & trainers ---- */
-
-.filters label.checkbox {
-  gap: 0.35rem;
-}
-
-.npc-cell {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.15rem;
-}
-
-.npc-cell .chip,
-.npc-cell .pill {
-  margin: 0 0.2rem;
-}
-
-.quality {
-  display: inline-block;
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  margin-right: 0.4rem;
-  background: var(--border);
-}
-
-.quality.q0 {
-  background: #9d9d9d;
-}
-.quality.q1 {
-  background: #d8d8d8;
-  border: 1px solid #9d9d9d;
-}
-.quality.q2 {
-  background: #1eff00;
-}
-.quality.q3 {
-  background: #0070dd;
-}
-.quality.q4 {
-  background: #a335ee;
-}
-.quality.q5 {
-  background: #ff8000;
-}
-
-.pill.svc-available {
-  color: var(--ok);
-  border-color: var(--ok);
-}
-
-.pill.svc-unavailable {
-  color: var(--danger-text);
-}
-
 /* ---- recipe details ---- */
 
 .recipe-info {
@@ -319,8 +219,4 @@ dl.recipe-reqs dt {
 
 dl.recipe-reqs dd {
   margin: 0;
-}
-
-.teaches {
-  margin-left: 0.25rem;
 }

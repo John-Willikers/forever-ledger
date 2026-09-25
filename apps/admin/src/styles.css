@@ -296,6 +296,20 @@ button.danger {
   color: #fff;
 }
 
+button.linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.linkish:hover {
+  text-decoration: underline;
+}
+
 select,
 input {
   font: inherit;
@@ -496,6 +510,31 @@ table.data tr.dim td {
   font-weight: 700;
 }
 
+.chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.05rem 0.45rem;
+  margin: 0 0.35rem;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* An NPC's name, tag chip, Forever pill and id, wrapping as one unit (Vendors, Builds). */
+.npc-cell {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem;
+}
+
+.npc-cell .chip,
+.npc-cell .pill {
+  margin: 0 0.2rem;
+}
+
 .confirm {
   display: inline-flex;
   gap: 0.35rem;
@@ -514,6 +553,10 @@ table.data tr.dim td {
   align-items: center;
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.filters label.checkbox {
+  gap: 0.35rem;
 }
 
 .feed {
@@ -794,9 +837,43 @@ pre.json {
   color: var(--q7);
 }
 
+/* Quality dot before an item name (Vendors). */
+.quality {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  background: var(--border);
+}
+
+.quality.q0 {
+  background: #9d9d9d;
+}
+.quality.q1 {
+  background: #d8d8d8;
+  border: 1px solid #9d9d9d;
+}
+.quality.q2 {
+  background: #1eff00;
+}
+.quality.q3 {
+  background: #0070dd;
+}
+.quality.q4 {
+  background: #a335ee;
+}
+.quality.q5 {
+  background: #ff8000;
+}
+
 a.item-name {
   text-decoration: none;
   font-weight: 550;
+}
+
+.teaches {
+  margin-left: 0.25rem;
 }
 
 a.item-name:hover {
@@ -812,10 +889,28 @@ a.item-name:hover {
   white-space: nowrap;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .pill.forever {
   background: var(--surface-2);
   color: var(--accent);
   border-color: var(--accent);
+}
+
+.pill.svc-available {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.pill.svc-unavailable {
+  color: var(--danger-text);
 }
 
 .rate {
@@ -956,7 +1051,7 @@ table.data td.changed {
 }
 
 .collapsible > summary h2::before {
-  content: '▸';
+  content: '▸' / '';
   display: inline-block;
   width: 1.1em;
   color: var(--muted);
