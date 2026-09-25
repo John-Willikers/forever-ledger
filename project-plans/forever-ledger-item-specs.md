@@ -44,7 +44,7 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   Idol of the Dream Druid, Truefaith Gloves healer 57% / caster 43%. `deploy/.first-token` (#1) is revoked; mint a
   temporary `--read` token for checks like this.
 
-- 🟡 9 🎯 Follow-up (owner, 01:10 CDT): Dreamstaff (249454, healer/caster) showed a Warrior chip because the class row
+- ✅ 9 🎯 Follow-up (owner, 01:10 CDT): Dreamstaff (249454, healer/caster) showed a Warrior chip because the class row
   was pure proficiency. `ClassFit.wants` (class roles ∩ item roles, `CLASS_ROLES`, `RULES_VERSION 2026-09-25.2`);
   the card shows wanting classes as chips and the rest as one "Can also hold it" line. Branch `fix/class-wants`,
   `pnpm check` green (922) — 01:20 CDT
@@ -59,6 +59,8 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
     say healer/caster (an Agility shield leads with tank, a healing shield doesn't); a role needs a 15% share
     before it decides who wants the item (a stray point of Strength on a caster chest hands out no chips); the only
     class that can equip an item always wants it (spell-damage Libram → Paladin). Same skipped item as above.
+  - ✅ 🚀 PR #33 merged (addcf99), `pnpm build` + `pm2 restart` — 02:05 CDT. Live (temporary token, revoked):
+    Dreamstaff wants Priest, Shaman, Mage, Warlock, Druid; holds Warrior, Hunter. `RULES_VERSION 2026-09-25.2`.
 
 ## 📌 Context
 
