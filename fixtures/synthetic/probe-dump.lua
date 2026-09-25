@@ -717,6 +717,8 @@ ForeverLedgerProbeDB = {
 				["C_Item.IsEquippableItem"] = "function",
 				["C_Item.IsItemSpecificToPlayerClass"] = "function",
 				["C_SpecializationInfo"] = "table",
+				["C_SpecializationInfo.GetAllClassIDs"] = "function",
+				["C_SpecializationInfo.GetClassIDFromSpecID"] = "function",
 				["C_SpecializationInfo.GetNumSpecializationsForClassID"] = "function",
 				["C_SpecializationInfo.GetSpecIDs"] = "function",
 				["C_SpecializationInfo.GetSpecialization"] = "function",
@@ -1113,10 +1115,12 @@ ForeverLedgerProbeDB = {
 				["equippable"] = 2,
 				["items"] = 3,
 				["specInfoErrors"] = 0,
+				["specInfoOther"] = 0,
 				["withSpecInfo"] = 2,
 			},
 			["items"] = {
 				{
+					["askedSpecs"] = 6,
 					["classSpecific"] = {
 						["ok"] = true,
 						["values"] = {
@@ -1125,9 +1129,6 @@ ForeverLedgerProbeDB = {
 					},
 					["contains"] = {
 						[62] = true,
-						[71] = false,
-						[72] = false,
-						[73] = false,
 						[253] = true,
 						[254] = true,
 					},
@@ -1182,6 +1183,7 @@ ForeverLedgerProbeDB = {
 					["where"] = "bag:0:3",
 				}, -- [2]
 				{
+					["askedSpecs"] = 6,
 					["classSpecific"] = {
 						["ok"] = true,
 						["values"] = {
@@ -1189,12 +1191,9 @@ ForeverLedgerProbeDB = {
 						},
 					},
 					["contains"] = {
-						[62] = false,
 						[71] = true,
 						[72] = true,
 						[73] = true,
-						[253] = false,
-						[254] = false,
 					},
 					["equippable"] = {
 						["ok"] = true,

@@ -107,6 +107,8 @@ export interface ProbeSpecsBuild {
   withSpecInfo: number;
   emptySpecInfo: number;
   specInfoErrors: number;
+  /** GetItemSpecInfo answered but not with a table (nil, false, a number). */
+  specInfoOther: number;
   specInfoMissing: boolean;
   containsAvailable: boolean;
   containsAny: number;
@@ -293,11 +295,14 @@ function specEntry(s: unknown): ProbeSpecEntry | undefined {
 }
 
 function specItem(it: Obj): ProbeSpecItem {
+  const answer = firstValue(it.specInfo);
+  // A table answer prints as a list; a nil/false/number answer keeps showResult's rendering (`"<nil>"`, `false`).
   const specInfo =
-    isObj(it.specInfo) && it.specInfo.ok === true
-      ? `[${numList(firstValue(it.specInfo)).join(', ')}]`
+    Array.isArray(answer) || isObj(answer)
+      ? `[${numList(answer).join(', ')}]`
       : showResult(it.specInfo);
-  const contains = Object.entries(isObj(it.contains) ? it.contains : {})
+  // Spec ids 1..n would parse as a Lua list, so read the keys 1-based either way.
+  const contains = luaEntries(it.contains)
     .filter(([, yes]) => yes === true)
     .map(([id]) => Number(id))
     .filter((id) => Number.isFinite(id))
@@ -354,6 +359,7 @@ function summarizeSpecs(db: Obj): ProbeSpecsBuild[] | undefined {
       withSpecInfo: count('withSpecInfo'),
       emptySpecInfo: count('emptySpecInfo'),
       specInfoErrors: count('specInfoErrors'),
+      specInfoOther: count('specInfoOther'),
       specInfoMissing: specInfoType
         ? specInfoType !== 'function'
         : items.length > 0 &&
@@ -375,7 +381,7 @@ function formatSpecs(builds: ProbeSpecsBuild[]): string[] {
         b.equippable
       } equippable, ${b.withSpecInfo} with GetItemSpecInfo (${b.emptySpecInfo} empty, ${
         b.specInfoErrors
-      } errors), ${b.containsAny} matched by DoesItemContainSpec`,
+      } errors, ${b.specInfoOther} non-table), ${b.containsAny} matched by DoesItemContainSpec`,
     );
     if (b.specInfoMissing || !b.containsAvailable)
       lines.push(
@@ -398,7 +404,13 @@ function formatSpecs(builds: ProbeSpecsBuild[]): string[] {
     if (b.sample.length) lines.push(`    items (first ${b.sample.length}):`);
     for (const it of b.sample) {
       const parts = [
-        `${it.id ?? '?'} ${it.where ?? '?'} ${it.equippable ? 'equippable' : 'not equippable'}`,
+        `${it.id ?? '?'} ${it.where ?? '?'} ${
+          it.equippable === undefined
+            ? 'equippable ?'
+            : it.equippable
+              ? 'equippable'
+              : 'not equippable'
+        }`,
         `specInfo ${it.specInfo}`,
       ];
       if (it.contains.length) parts.push(`contains [${it.contains.join(', ')}]`);

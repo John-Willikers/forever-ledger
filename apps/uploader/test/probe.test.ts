@@ -130,6 +130,7 @@ describe('probe-dump', () => {
       withSpecInfo: 2,
       emptySpecInfo: 1,
       specInfoErrors: 0,
+      specInfoOther: 0,
       specInfoMissing: false,
       containsAvailable: true,
       containsAny: 2,
@@ -166,7 +167,7 @@ describe('probe-dump', () => {
     const text = formatProbeSummary(summary);
     expect(text).toMatch(/^specs \(\/flprobe specs\)$/m);
     expect(text).toMatch(
-      /build 61582 \(.* C[DS]T\): catalog 3 class\(es\) \/ 6 spec\(s\); 3 item\(s\), 2 equippable, 2 with GetItemSpecInfo \(1 empty, 0 errors\), 2 matched by DoesItemContainSpec/,
+      /build 61582 \(.* C[DS]T\): catalog 3 class\(es\) \/ 6 spec\(s\); 3 item\(s\), 2 equippable, 2 with GetItemSpecInfo \(1 empty, 0 errors, 0 non-table\), 2 matched by DoesItemContainSpec/,
     );
     expect(text).toMatch(/player: HUNTER \(class 3\) level 10, spec index 1/);
     expect(text).toMatch(
@@ -233,6 +234,50 @@ describe('probe-dump', () => {
     expect(b.sample[0]).toMatchObject({ id: 5, specInfo: 'missing', contains: [] });
     const text = formatProbeSummary(s);
     expect(text).toMatch(/GetItemSpecInfo missing, DoesItemContainSpec missing/);
+  });
+
+  it('keeps a non-table GetItemSpecInfo apart from an empty one and reads 1..n contains keys', () => {
+    const s = summarizeProbe({
+      probeVersion: '0.3.0',
+      dumps: {},
+      sniff: {},
+      specs: {
+        '69913': {
+          at: 1790000000,
+          api: { 'C_Item.GetItemSpecInfo': 'function', 'C_Item.DoesItemContainSpec': 'function' },
+          catalog: {},
+          items: [
+            // GetItemSpecInfo returned nil (recorded as the string "<nil>"); IsEquippableItem is missing
+            {
+              id: 5,
+              where: 'bag:0:1',
+              specInfo: { ok: true, values: ['<nil>'] },
+              equippable: { ok: false, missing: true },
+              contains: [true, true, false], // spec ids 1..3 parse as a Lua list
+              askedSpecs: 3,
+            },
+          ],
+          counts: {
+            items: 1,
+            withSpecInfo: 0,
+            emptySpecInfo: 0,
+            specInfoErrors: 0,
+            specInfoOther: 1,
+          },
+        },
+      },
+    });
+    const b = s.specs![0]!;
+    expect(b.specInfoOther).toBe(1);
+    expect(b.sample[0]).toMatchObject({
+      id: 5,
+      specInfo: '"<nil>"',
+      contains: [1, 2],
+      equippable: undefined,
+    });
+    const text = formatProbeSummary(s);
+    expect(text).toMatch(/\(0 empty, 0 errors, 1 non-table\)/);
+    expect(text).toMatch(/5 bag:0:1 equippable \? {2}specInfo "<nil>" {2}contains \[1, 2\]/);
   });
 
   it('rejects a file without ForeverLedgerProbeDB', async () => {

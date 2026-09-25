@@ -656,6 +656,7 @@ function H.new(worldOverrides)
   --   equipped = { [slot] = itemID },               -- GetInventoryItemLink("player", slot)
   --   player = { classID=, specIndex= },
   --   errors = { [fnName] = "message" },            -- C_Item.<fnName> throws it
+  --   specInfoNil = true | specInfoValue = <v>,     -- GetItemSpecInfo returns nil / <v> instead of a table
   -- }
   if world.specAPI then
     local sa = world.specAPI
@@ -675,6 +676,12 @@ function H.new(worldOverrides)
         return s.id, s.name, s.desc or "", 134400, s.role, s.primaryStat, 0, nil, 0, true
       end,
       GetSpecialization = function() return player.specIndex end,
+      GetAllClassIDs = function()
+        local out = {}
+        for classID in pairs(sa.classes) do out[#out + 1] = classID end
+        table.sort(out)
+        return out
+      end,
       GetSpecIDs = function()
         local out = {}
         for _, c in pairs(sa.classes) do
@@ -715,8 +722,11 @@ function H.new(worldOverrides)
     end
     env.C_Item = env.C_Item or {}
     env.C_Item.GetItemStats = env.C_Item.GetItemStats or env.GetItemStats
+    -- specInfoNil / specInfoValue: what GetItemSpecInfo returns instead of a table (nil, or that value).
     env.C_Item.GetItemSpecInfo = function(link)
       called("GetItemSpecInfo")
+      if sa.specInfoNil then return nil end
+      if sa.specInfoValue ~= nil then return sa.specInfoValue end
       return copy(sa.itemSpecs[linkID(link)] or {})
     end
     env.C_Item.DoesItemContainSpec = function(link, classID, specID)

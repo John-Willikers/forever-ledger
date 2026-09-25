@@ -14,7 +14,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   `DoesItemContainSpec` / `IsEquippableItem` for bag + equipped items), harness `world.specAPI` stubs, 5 Lua tests
   (harness 210 passed, +5), uploader `probe-dump` specs summary (2 vitest, 904 passed total), CLAUDE.md
   open-question rows — 00:00 CDT
-- ⬜ 1b 🔍 PR review + CI green → merge
+- 🟡 1b 🔍 PR #30 review + CI green → merge
+  - ✅ 🔍 Review: 8 findings, 7 fixed — 00:20 CDT (Lua harness 212 passed, +2; uploader probe tests 7): a nil or
+    non-table `GetItemSpecInfo` answer is counted as `specInfoOther` instead of aborting the run or passing as "with
+    spec info"; `contains` stores hits only (+ `askedSpecs`) so a 200-item run doesn't write thousands of `false`
+    rows; class ids come from `GetAllClassIDs` as well as 1..13; the summary reads 1..n `contains` keys, shows
+    `equippable ?` when the API is missing, and prints the non-table count. Skipped: the pre-existing `{ ...arr }`
+    build-key convention in untouched io/dumps code (keys there are build numbers, never lists).
+  - ✅ CI green on the first push — 00:12 CDT
 - ⬜ 2 🎮 Owner runs `/flprobe specs` in game, `/reload`, sends `ForeverLedgerProbe.lua`; `probe-dump` →
   `fixtures/real/api-<build>.json`; CLAUDE.md open-questions rows answered; gate decision recorded below
 - ⬜ 3 🧩 Addon 0.4.0 (schema 7): spec catalog at login, `byBuild[].specs` per equippable item, legacy 0.3.4 copy,

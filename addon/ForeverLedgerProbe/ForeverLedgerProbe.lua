@@ -496,7 +496,8 @@ local SPEC_API = {
   "C_Item.GetItemSpecInfo", "C_Item.DoesItemContainSpec", "C_Item.IsEquippableItem",
   "C_Item.IsItemSpecificToPlayerClass", "C_SpecializationInfo",
   "C_SpecializationInfo.GetNumSpecializationsForClassID", "C_SpecializationInfo.GetSpecializationInfo",
-  "C_SpecializationInfo.GetSpecialization", "C_SpecializationInfo.GetSpecIDs", "GetSpecializationInfoForClassID",
+  "C_SpecializationInfo.GetSpecialization", "C_SpecializationInfo.GetSpecIDs",
+  "C_SpecializationInfo.GetAllClassIDs", "C_SpecializationInfo.GetClassIDFromSpecID", "GetSpecializationInfoForClassID",
   "GetNumSpecializations", "GetClassInfo", "GetInventoryItemLink", "C_Container.GetContainerNumSlots",
   "C_Container.GetContainerItemLink",
 }
@@ -525,15 +526,28 @@ local function specId(entry)
   return id and id > 0 and id or nil
 end
 
--- catalog[classID] = { info, count, specs = { { forClass, info }, ... } }; list = { { classID, specID }, ... }
+-- Class ids 1..MAX_CLASS_ID plus whatever GetAllClassIDs adds (a client may number classes differently).
+local function classIDs()
+  local ids, seen = {}, {}
+  for classID = 1, MAX_CLASS_ID do ids[#ids + 1] = classID; seen[classID] = true end
+  local all = tryList(resolve("C_SpecializationInfo.GetAllClassIDs"))
+  for _, id in ipairs(all.ok and all.values[1] or {}) do
+    if type(id) == "number" and not seen[id] then ids[#ids + 1] = id; seen[id] = true end
+  end
+  return ids
+end
+
+-- catalog[classID] = { info, count, specs = { { forClass, info }, ... } }; list = { { classID, specID }, ... };
+-- classes = how many classes resolved at least one spec id.
 local function specCatalog()
   local numFor = resolve("C_SpecializationInfo.GetNumSpecializationsForClassID")
   local infoFor = resolve("C_SpecializationInfo.GetSpecializationInfo")
   local forClass = resolve("GetSpecializationInfoForClassID")
   local classInfo = resolve("GetClassInfo")
-  local catalog, list = {}, {}
-  for classID = 1, MAX_CLASS_ID do
+  local catalog, list, classes = {}, {}, 0
+  for _, classID in ipairs(classIDs()) do
     local c = { info = try(classInfo, classID), count = try(numFor, classID), specs = {} }
+    local before = #list
     local n = c.count.ok and tonumber(c.count.values[1]) or SPECS_WHEN_UNKNOWN
     for i = 1, math.min(n, MAX_SPECS_PER_CLASS) do
       local s = { forClass = try(forClass, classID, i),
@@ -542,9 +556,10 @@ local function specCatalog()
       local id = specId(s.forClass) or specId(s.info)
       if id then list[#list + 1] = { classID = classID, specID = id } end
     end
+    if #list > before then classes = classes + 1 end
     catalog[classID] = c
   end
-  return catalog, list
+  return catalog, list, classes
 end
 
 local function playerSpecs()
@@ -595,9 +610,9 @@ local function dumpSpecs()
 
   local api = {}
   for _, name in ipairs(SPEC_API) do api[name] = type(resolve(name)) end
-  local catalog, specList = specCatalog()
+  local catalog, specList, classes = specCatalog()
   local counts = { items = 0, equippable = 0, withSpecInfo = 0, emptySpecInfo = 0, specInfoErrors = 0,
-                   containsAny = 0 }
+                   specInfoOther = 0, containsAny = 0 }
   local items = {}
 
   eachOwnedItem(function(where, link)
@@ -612,14 +627,20 @@ local function dumpSpecs()
     counts.items = counts.items + 1
     local equippable = it.equippable.ok and it.equippable.values[1] == true
     if equippable then counts.equippable = counts.equippable + 1 end
-    if it.specInfo.ok then
-      local key = #it.specInfo.values[1] > 0 and "withSpecInfo" or "emptySpecInfo"
+    -- A table answer is the expected shape; nil/false/number answers are counted apart (specInfoOther) so the
+    -- summary can tell "always empty" from "not a table".
+    local answer = it.specInfo.ok and it.specInfo.values[1]
+    if type(answer) == "table" then
+      local key = #answer > 0 and "withSpecInfo" or "emptySpecInfo"
       counts[key] = counts[key] + 1
+    elseif it.specInfo.ok then
+      counts.specInfoOther = counts.specInfoOther + 1
     elseif not it.specInfo.missing then
       counts.specInfoErrors = counts.specInfoErrors + 1
     end
+    -- Only hits are stored (a miss for every catalog spec would bloat the file); askedSpecs says how many were asked.
     if contains and equippable and #specList > 0 then
-      it.contains = {}
+      it.contains, it.askedSpecs = {}, #specList
       local any = false
       for _, s in ipairs(specList) do
         local ok, r = pcall(contains, link, s.classID, s.specID)
@@ -627,8 +648,7 @@ local function dumpSpecs()
           it.containsErr = clip(tostring(r))
           break
         end
-        it.contains[s.specID] = r == true
-        any = any or r == true
+        if r == true then it.contains[s.specID] = true; any = true end
       end
       if any then counts.containsAny = counts.containsAny + 1 end
     end
@@ -637,14 +657,9 @@ local function dumpSpecs()
 
   db.specs[build] = { at = time(), probeVersion = VERSION, api = api, player = playerSpecs(), catalog = catalog,
                       items = items, counts = counts }
-  local classIDs, classes = {}, 0
-  for _, s in ipairs(specList) do
-    if not classIDs[s.classID] then classes = classes + 1 end
-    classIDs[s.classID] = true
-  end
-  say(format("%d item(s): %d equippable, %d with spec info (%d empty, %d errors), %d matched by " ..
+  say(format("%d item(s): %d equippable, %d with spec info (%d empty, %d errors, %d non-table), %d matched by " ..
     "DoesItemContainSpec; catalog %d class(es) / %d spec(s).", counts.items, counts.equippable, counts.withSpecInfo,
-    counts.emptySpecInfo, counts.specInfoErrors, counts.containsAny, classes, #specList))
+    counts.emptySpecInfo, counts.specInfoErrors, counts.specInfoOther, counts.containsAny, classes, #specList))
   say("Type /reload to write ForeverLedgerProbe.lua.")
 end
 
