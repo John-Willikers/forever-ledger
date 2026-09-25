@@ -11,10 +11,12 @@ import { ForeverBadge, ItemName, RateBar } from '../loot/parts';
 import type { ItemExtra, ItemV1, VendorCost } from '../loot/types';
 import { makerRank, recipeHref } from '../professions/recipeLib';
 import {
+  classNote,
   containerLabel,
   contentsByBuild,
   formatAvgQuantity,
   mergeDropSources,
+  roleLabel,
   statLabel,
   statMatrix,
   tooltipText,
@@ -531,20 +533,38 @@ function RecipesCard({ extra }: { extra: ItemExtra }) {
 }
 
 function SpecsCard({ item }: { item: ItemV1 }) {
-  const fits = [...item.specs.fits].sort((a, b) => b.score - a.score).slice(0, 12);
-  if (fits.length === 0) return null;
+  const { roles, classes, atLevel } = item.specs;
+  if (roles.length === 0 && classes.length === 0) return null;
   return (
-    <Card title={`Who wants it (at level ${item.specs.atLevel})`}>
-      <ul className="specs">
-        {fits.map((f) => (
-          <li key={`${f.cls}-${f.spec}`}>
-            <ClassBadge cls={f.cls} /> {f.spec}{' '}
-            <span className="muted small">
-              {f.role} · {Math.round(f.score * 100)}%{f.bestArmor ? ' · best armor' : ''}
-            </span>
-          </li>
-        ))}
-      </ul>
+    <Card title="Who wants it">
+      <p className="muted small">
+        Estimated from the item's stats, type and class proficiency at level {atLevel}. Forever has
+        no per-spec item data, so this is a guide, not the game's answer.
+      </p>
+      {roles.length > 0 ? (
+        <ul className="specs">
+          {roles.map((r) => (
+            <li key={r.role}>
+              <span className="role">{roleLabel(r.role)}</span> <RateBar rate={r.confidence} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Empty>No stat says which role this is for.</Empty>
+      )}
+      {classes.length > 0 && (
+        <div className="class-fits">
+          {classes.map((c) => {
+            const note = classNote(c);
+            return (
+              <span key={c.cls} className={c.canEquip ? undefined : 'later'}>
+                <ClassBadge cls={c.cls} />
+                {note ? <span className="muted small"> · {note}</span> : null}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 }

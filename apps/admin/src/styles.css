@@ -863,6 +863,22 @@ ul.specs li {
   padding: 0.1rem 0;
 }
 
+ul.specs li .role {
+  display: inline-block;
+  min-width: 6.5rem;
+}
+
+.class-fits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.class-fits .later {
+  opacity: 0.55;
+}
+
 ul.diffs {
   margin-top: 0.5rem;
 }

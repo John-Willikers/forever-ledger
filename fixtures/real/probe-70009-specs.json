@@ -1,0 +1,1967 @@
+{
+  "specs": {
+    "70009": {
+      "at": 1790313613,
+      "player": {
+        "specIndex": {
+          "ok": true,
+          "values": [
+            1
+          ]
+        },
+        "specs": [
+          {
+            "ok": true,
+            "values": [
+              1491,
+              "Warrior",
+              "",
+              626008,
+              "DAMAGER",
+              4,
+              0,
+              "<nil>",
+              0,
+              true
+            ]
+          }
+        ],
+        "class": "WARRIOR",
+        "classID": 1,
+        "level": 13
+      },
+      "catalog": [
+        {
+          "specs": [
+            {
+              "forClass": {
+                "ok": true,
+                "values": [
+                  1491,
+                  "Warrior",
+                  "",
+                  626008,
+                  "DAMAGER",
+                  false,
+                  false,
+                  "<nil>",
+                  "<nil>"
+                ]
+              },
+              "info": {
+                "ok": true,
+                "values": [
+                  1491,
+                  "Warrior",
+                  "",
+                  626008,
+                  "DAMAGER",
+                  4,
+                  0,
+                  "<nil>",
+                  0,
+                  true
+                ]
+              }
+            }
+          ],
+          "info": {
+            "ok": true,
+            "values": [
+              "Warrior",
+              "WARRIOR",
+              1
+            ]
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          }
+        },
+        {
+          "specs": [
+            {
+              "forClass": {
+                "ok": true,
+                "values": [
+                  1486,
+                  "Paladin",
+                  "",
+                  626003,
+                  "DAMAGER",
+                  false,
+                  false,
+                  "<nil>",
+                  "<nil>"
+                ]
+              },
+              "info": {
+                "ok": true,
+                "values": [
+                  1486,
+                  "Paladin",
+                  "",
+                  626003,
+                  "DAMAGER",
+                  4,
+                  0,
+                  "<nil>",
+                  0,
+                  true
+                ]
+              }
+            }
+          ],
+          "info": {
+            "ok": true,
+            "values": [
+              "Paladin",
+              "PALADIN",
+              2
+            ]
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          }
+        },
+        {
+          "specs": [
+            {
+              "forClass": {
+                "ok": true,
+                "values": [
+                  1485,
+                  "Hunter",
+                  "",
+                  626000,
+                  "DAMAGER",
+                  false,
+                  false,
+                  "<nil>",
+                  "<nil>"
+                ]
+              },
+              "info": {
+                "ok": true,
+                "values": [
+                  1485,
+                  "Hunter",
+                  "",
+                  626000,
+                  "DAMAGER",
+                  4,
+                  0,
+                  "<nil>",
+                  0,
+                  true
+                ]
+              }
+            }
+          ],
+          "info": {
+            "ok": true,
+            "values": [
+              "Hunter",
+              "HUNTER",
+              3
+            ]
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          }
+        },
+        {
+          "specs": [
+            {
+              "forClass": {
+                "ok": true,
+                "values": [
+                  1488,
+                  "Rogue",
+                  "",
+                  626005,
+                  "DAMAGER",
+                  false,
+                  false,
+                  "<nil>",
+                  "<nil>"
+                ]
+              },
+              "info": {
+                "ok": true,
+                "values": [
+                  1488,
+                  "Rogue",
+                  "",
+                  626005,
+                  "DAMAGER",
+                  4,
+                  0,
+                  "<nil>",
+                  0,
+                  true
+                ]
+              }
+            }
+          ],
+          "info": {
+            "ok": true,
+            "values": [
+              "Rogue",
+              "ROGUE",
+              4
+            ]
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          }
+        },
+        {
+          "specs": [
+            {
+              "forClass": {
+                "ok": true,
+                "values": [
+                  1487,
+                  "Priest",
+                  "",
+                  626004,
+                  "DAMAGER",
+                  false,
+                  false,
+                  "<nil>",
+                  "<nil>"
+                ]
+              },
+              "info": {
+                "ok": true,
+                "values": [
+                  1487,
+                  "Priest",
+                  "",
+                  626004,
+                  "DAMAGER",
+                  4,
+                  0,
+                  "<nil>",
+                  0,
+                  true
+                ]
+              }
+            }
+          ],
+          "info": {
+            "ok": true,
+            "values": [
+              "Priest",
+              "PRIEST",
+              5
+            ]
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          }
+        },
+        {
+          "specs": {},
+          "info": {
+            "ok": true,
+            "values": {}
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          }
+        },
+        {
+          "specs": [
+            {
+              "forClass": {
+                "ok": true,
+                "values": [
+                  1489,
+                  "Shaman",
+                  "",
+                  626006,
+                  "DAMAGER",
+                  false,
+                  false,
+                  "<nil>",
+                  "<nil>"
+                ]
+              },
+              "info": {
+                "ok": true,
+                "values": [
+                  1489,
+                  "Shaman",
+                  "",
+                  626006,
+                  "DAMAGER",
+                  4,
+                  0,
+                  "<nil>",
+                  0,
+                  true
+                ]
+              }
+            }
+          ],
+          "info": {
+            "ok": true,
+            "values": [
+              "Shaman",
+              "SHAMAN",
+              7
+            ]
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          }
+        },
+        {
+          "specs": [
+            {
+              "forClass": {
+                "ok": true,
+                "values": [
+                  1482,
+                  "Mage",
+                  "",
+                  626001,
+                  "DAMAGER",
+                  false,
+                  false,
+                  "<nil>",
+                  "<nil>"
+                ]
+              },
+              "info": {
+                "ok": true,
+                "values": [
+                  1482,
+                  "Mage",
+                  "",
+                  626001,
+                  "DAMAGER",
+                  4,
+                  0,
+                  "<nil>",
+                  0,
+                  true
+                ]
+              }
+            }
+          ],
+          "info": {
+            "ok": true,
+            "values": [
+              "Mage",
+              "MAGE",
+              8
+            ]
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          }
+        },
+        {
+          "specs": [
+            {
+              "forClass": {
+                "ok": true,
+                "values": [
+                  1490,
+                  "Warlock",
+                  "",
+                  626007,
+                  "DAMAGER",
+                  false,
+                  false,
+                  "<nil>",
+                  "<nil>"
+                ]
+              },
+              "info": {
+                "ok": true,
+                "values": [
+                  1490,
+                  "Warlock",
+                  "",
+                  626007,
+                  "DAMAGER",
+                  4,
+                  0,
+                  "<nil>",
+                  0,
+                  true
+                ]
+              }
+            }
+          ],
+          "info": {
+            "ok": true,
+            "values": [
+              "Warlock",
+              "WARLOCK",
+              9
+            ]
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          }
+        },
+        {
+          "specs": {},
+          "info": {
+            "ok": true,
+            "values": {}
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          }
+        },
+        {
+          "specs": [
+            {
+              "forClass": {
+                "ok": true,
+                "values": [
+                  1484,
+                  "Druid",
+                  "",
+                  625999,
+                  "DAMAGER",
+                  false,
+                  false,
+                  "<nil>",
+                  "<nil>"
+                ]
+              },
+              "info": {
+                "ok": true,
+                "values": [
+                  1484,
+                  "Druid",
+                  "",
+                  625999,
+                  "DAMAGER",
+                  4,
+                  0,
+                  "<nil>",
+                  0,
+                  true
+                ]
+              }
+            }
+          ],
+          "info": {
+            "ok": true,
+            "values": [
+              "Druid",
+              "DRUID",
+              11
+            ]
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          }
+        },
+        {
+          "specs": {},
+          "info": {
+            "ok": true,
+            "values": {}
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          }
+        },
+        {
+          "specs": {},
+          "info": {
+            "ok": true,
+            "values": {}
+          },
+          "count": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          }
+        }
+      ],
+      "api": {
+        "C_Item.IsEquippableItem": "function",
+        "C_Container.GetContainerNumSlots": "function",
+        "GetNumSpecializations": "function",
+        "C_SpecializationInfo.GetSpecializationInfo": "function",
+        "C_SpecializationInfo": "table",
+        "C_Item.DoesItemContainSpec": "function",
+        "C_SpecializationInfo.GetSpecialization": "function",
+        "C_SpecializationInfo.GetAllClassIDs": "function",
+        "C_Item.GetItemSpecInfo": "function",
+        "C_SpecializationInfo.GetNumSpecializationsForClassID": "function",
+        "GetInventoryItemLink": "function",
+        "C_SpecializationInfo.GetClassIDFromSpecID": "function",
+        "C_SpecializationInfo.GetSpecIDs": "function",
+        "GetSpecializationInfoForClassID": "function",
+        "GetClassInfo": "function",
+        "C_Item.IsItemSpecificToPlayerClass": "function",
+        "C_Container.GetContainerItemLink": "function"
+      },
+      "probeVersion": "0.3.0",
+      "counts": {
+        "items": 46,
+        "equippable": 18,
+        "withSpecInfo": 0,
+        "specInfoOther": 42,
+        "emptySpecInfo": 4,
+        "containsAny": 18,
+        "specInfoErrors": 0
+      },
+      "items": [
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:1",
+          "link": "|cnIQ1:|Hitem:6948::::::::13:1491::75:::::::|h[Hearthstone]|h|r",
+          "id": 6948,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:2",
+          "link": "|cnIQ1:|Hitem:6529::::::::13:1491:::::::::|h[Shiny Bauble]|h|r",
+          "id": 6529,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:3",
+          "link": "|cnIQ1:|Hitem:2862::::::::13:1491:::::::::|h[Rough Sharpening Stone]|h|r",
+          "id": 2862,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:4",
+          "link": "|cnIQ1:|Hitem:279981::::::::13:1491:::::::::|h[Basic Campfire Kit]|h|r",
+          "id": 279981,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:5",
+          "link": "|cnIQ1:|Hitem:279968::::::::13:1491:::::::::|h[First Aid Kit]|h|r",
+          "id": 279968,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:6",
+          "link": "|cnIQ1:|Hitem:1179::::::::13:1491:::::::::|h[Ice Cold Milk]|h|r",
+          "id": 1179,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:7",
+          "link": "|cnIQ1:|Hitem:1251::::::::13:1491:::::::::|h[Linen Bandage]|h|r",
+          "id": 1251,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:8",
+          "link": "|cnIQ1:|Hitem:4537::::::::13:1491:::::::::|h[Tel'Abim Banana]|h|r",
+          "id": 4537,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:9",
+          "link": "|cnIQ1:|Hitem:159::::::::13:1491:::::::::|h[Refreshing Spring Water]|h|r",
+          "id": 159,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:10",
+          "link": "|cnIQ1:|Hitem:5134::::::::13:1491:::::::::|h[Small Furry Paw]|h|r",
+          "id": 5134,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:2901::::::::13:1491::14:::::::|h[Mining Pick]|h|r",
+          "id": 2901,
+          "statKeys": [
+            "ITEM_MOD_DAMAGE_PER_SECOND_SHORT"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:11",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:5956::::::::13:1491::14:::::::|h[Blacksmith Hammer]|h|r",
+          "id": 5956,
+          "statKeys": [
+            "ITEM_MOD_DAMAGE_PER_SECOND_SHORT"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:12",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:6256::::::::13:1491::14:::::::|h[Fishing Pole]|h|r",
+          "id": 6256,
+          "statKeys": [
+            "ITEM_MOD_DAMAGE_PER_SECOND_SHORT"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:13",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:14",
+          "link": "|cnIQ1:|Hitem:4471::::::::13:1491:::::::::|h[Flint and Tinder]|h|r",
+          "id": 4471,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:15",
+          "link": "|cnIQ1:|Hitem:3371::::::::13:1491:::::::::|h[Empty Vial]|h|r",
+          "id": 3371,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:16",
+          "link": "|cnIQ1:|Hitem:6291::::::::13:1491:::::::::|h[Raw Brilliant Smallfish]|h|r",
+          "id": 6291,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:17",
+          "link": "|cnIQ1:|Hitem:2840::::::::13:1491:::::::::|h[Copper Bar]|h|r",
+          "id": 2840,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:18",
+          "link": "|cnIQ1:|Hitem:2589::::::::13:1491:::::::::|h[Linen Cloth]|h|r",
+          "id": 2589,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:19",
+          "link": "|cnIQ1:|Hitem:5165::::::::13:1491:::::::::|h[Sunscale Feather]|h|r",
+          "id": 5165,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:0:20",
+          "link": "|cnIQ1:|Hitem:5088::::::::13:1491:::::::::|h[Control Console Operating Manual]|h|r",
+          "id": 5088,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:1:1",
+          "link": "|cnIQ1:|Hitem:5062::::::::13:1491:::::::::|h[Raptor Head]|h|r",
+          "id": 5062,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:1:2",
+          "link": "|cnIQ1:|Hitem:279967::::::::13:1491:::::::::|h[Fish Bowl]|h|r",
+          "id": 279967,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:1:3",
+          "link": "|cnIQ1:|Hitem:10327::::::::13:1491::11:::::::|h[Horn of Echeyakee]|h|r",
+          "id": 10327,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:4972::::::::13:1491::11:::::::|h[Cliff Runner Boots]|h|r",
+          "id": 4972,
+          "statKeys": [
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:1:4",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:2853::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Bracers]|h|r",
+          "id": 2853,
+          "statKeys": [
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:1:5",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:1:6",
+          "link": "|cnIQ1:|Hitem:2835::::::::13:1491:::::::::|h[Rough Stone]|h|r",
+          "id": 2835,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:2:1",
+          "link": "|cnIQ1:|Hitem:277331::::::::13:1491:::::::::|h[Handful of Complicated Parts]|h|r",
+          "id": 277331,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:2:2",
+          "link": "|cnIQ1:|Hitem:6217::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Rod]|h|r",
+          "id": 6217,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:2:3",
+          "link": "|cnIQ1:|Hitem:6217::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Rod]|h|r",
+          "id": 6217,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:2:4",
+          "link": "|cnIQ1:|Hitem:6217::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Rod]|h|r",
+          "id": 6217,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:2:5",
+          "link": "|cnIQ1:|Hitem:6217::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Rod]|h|r",
+          "id": 6217,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:2:6",
+          "link": "|cnIQ1:|Hitem:6217::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Rod]|h|r",
+          "id": 6217,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:3:1",
+          "link": "|cnIQ1:|Hitem:6217::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Rod]|h|r",
+          "id": 6217,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "statKeys": {},
+          "equippable": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:2853::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Bracers]|h|r",
+          "id": 2853,
+          "statKeys": [
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:3:2",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:2853::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Bracers]|h|r",
+          "id": 2853,
+          "statKeys": [
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:3:3",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:2853::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Bracers]|h|r",
+          "id": 2853,
+          "statKeys": [
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "bag:3:4",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:6125::::::::13:1491::75:::::::|h[Brawler's Harness]|h|r",
+          "id": 6125,
+          "statKeys": {},
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "slot:4",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ2:|Hitem:15487::::::::13:1491:::1:12744::::::|h[War Torn Tunic of Shadow Protection]|h|r",
+          "id": 15487,
+          "statKeys": [
+            "ITEM_MOD_SHADOW_RESISTANCE_SHORT",
+            "ITEM_MOD_STAMINA_SHORT",
+            "RESISTANCE0_NAME",
+            "RESISTANCE5_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "slot:5",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:4913::::::::13:1491::11:::::::|h[Painted Chain Belt]|h|r",
+          "id": 4913,
+          "statKeys": [
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "slot:6",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ2:|Hitem:4909::::::::13:1491::11:::::::|h[Kodo Hunter's Leggings]|h|r",
+          "id": 4909,
+          "statKeys": [
+            "ITEM_MOD_AGILITY_SHORT",
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              {}
+            ]
+          },
+          "where": "slot:7",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ2:|Hitem:3302::::::::13:1491:::::::::|h[Brackwater Boots]|h|r",
+          "id": 3302,
+          "statKeys": [
+            "ITEM_MOD_STAMINA_SHORT",
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "slot:8",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:2853::::::::13:1491::::::::Player-4618-0070C596:|h[Copper Bracers]|h|r",
+          "id": 2853,
+          "statKeys": [
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "slot:9",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:4910::::::::13:1491::11:::::::|h[Painted Chain Gloves]|h|r",
+          "id": 4910,
+          "statKeys": [
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              "<nil>"
+            ]
+          },
+          "where": "slot:10",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ2:|Hitem:2310::::::::13:1491::::::::Player-4618-0075B4CB:|h[Embossed Leather Cloak]|h|r",
+          "id": 2310,
+          "statKeys": [
+            "ITEM_MOD_AGILITY_SHORT",
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              {}
+            ]
+          },
+          "where": "slot:15",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:3443::::::::13:1491::11:::::::|h[Ceremonial Tomahawk]|h|r",
+          "id": 3443,
+          "statKeys": [
+            "ITEM_MOD_DAMAGE_PER_SECOND_SHORT"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              {}
+            ]
+          },
+          "where": "slot:16",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        },
+        {
+          "equippable": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "link": "|cnIQ1:|Hitem:4967::::::::13:1491::11:::::::|h[Tribal Warrior's Shield]|h|r",
+          "id": 4967,
+          "statKeys": [
+            "RESISTANCE0_NAME"
+          ],
+          "specInfo": {
+            "ok": true,
+            "values": [
+              {}
+            ]
+          },
+          "where": "slot:17",
+          "contains": {
+            "1482": true,
+            "1484": true,
+            "1485": true,
+            "1486": true,
+            "1487": true,
+            "1488": true,
+            "1489": true,
+            "1490": true,
+            "1491": true
+          },
+          "askedSpecs": 9,
+          "classSpecific": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "dumps": {},
+  "probeVersion": "0.3.0",
+  "loadCheck": {
+    "probeVersion": "0.3.0",
+    "arrivedType": "table",
+    "at": 1790313586,
+    "loadCount": 2,
+    "previousLoadAt": 1790313519,
+    "arrivedEmpty": false,
+    "arrivedKeys": 9,
+    "arrivedNil": false,
+    "build": 70009
+  },
+  "io": {},
+  "ledgerCheck": {
+    "at": 1790313592,
+    "type": "table",
+    "records": 310,
+    "keys": 23,
+    "empty": false,
+    "counts": {
+      "items": 248,
+      "drops": 36,
+      "chars": 4,
+      "turnIns": 12,
+      "quests": 14,
+      "runs": 0
+    },
+    "addonLoaded": true
+  },
+  "sniff": {},
+  "loadHistory": [
+    {
+      "at": 1790313519,
+      "loadCount": 1,
+      "arrivedKeys": 6,
+      "build": 70009
+    },
+    {
+      "at": 1790313586,
+      "loadCount": 2,
+      "arrivedKeys": 9,
+      "build": 70009
+    }
+  ],
+  "loadCount": 2
+}

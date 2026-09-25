@@ -1,11 +1,14 @@
 /**
- * Which classes/specs want which rewards. Applied at query time only; the addon never stores it.
+ * Which classes and roles want which rewards. Applied at query time only; the addon never stores it.
  *
- * Starting point is Classic-era itemization (Forever's Interface is 11507). Edit this file as Forever's class
- * design is confirmed and bump RULES_VERSION so query results can say which rules they used.
- * Subtype strings are the enUS values GetItemInfo returns.
+ * Forever (Interface 16001, probe of build 70009) has no usable spec data: every class exposes one placeholder spec
+ * (role DAMAGER, primaryStat 4 for all), `C_Item.GetItemSpecInfo` is nil or empty for every item and
+ * `C_Item.DoesItemContainSpec` answers true for every class on every equippable item. So the fit is estimated from
+ * the item's stats, subtype and slot (`rolesFromStats`) and the class list from Classic proficiency (`canEquip`).
+ * Edit this file as Forever's class design is confirmed and bump RULES_VERSION so query results say which rules
+ * they used. Subtype strings are the enUS values GetItemInfo returns.
  */
-export const RULES_VERSION = '2026-09-23.1';
+export const RULES_VERSION = '2026-09-25.1';
 
 export type ClassToken =
   'WARRIOR' | 'PALADIN' | 'HUNTER' | 'ROGUE' | 'PRIEST' | 'SHAMAN' | 'MAGE' | 'WARLOCK' | 'DRUID';
@@ -13,19 +16,11 @@ export type ClassToken =
 export type Stat = 'STR' | 'AGI' | 'INT' | 'SPI' | 'STA';
 export type ArmorType = 'Cloth' | 'Leather' | 'Mail' | 'Plate';
 
-export interface SpecRule {
-  spec: string;
-  role: 'tank' | 'healer' | 'melee' | 'ranged' | 'caster';
-  /** Stats in priority order; the first is the primary stat. */
-  stats: Stat[];
-}
-
 export interface ClassRule {
-  /** Best armor type by minimum level, highest level first wins. */
+  /** Best armor type by minimum level, highest level first; the last entry is the tier worn from level 1. */
   armor: { fromLevel: number; type: ArmorType }[];
   shields: boolean;
   weapons: string[];
-  specs: SpecRule[];
 }
 
 const ALL_ARMOR_BELOW: Record<ArmorType, ArmorType[]> = {
@@ -58,11 +53,6 @@ export const CLASS_RULES: Record<ClassToken, ClassRule> = {
       'Guns',
       'Thrown',
     ],
-    specs: [
-      { spec: 'Arms', role: 'melee', stats: ['STR', 'AGI', 'STA'] },
-      { spec: 'Fury', role: 'melee', stats: ['STR', 'AGI', 'STA'] },
-      { spec: 'Protection', role: 'tank', stats: ['STA', 'STR', 'AGI'] },
-    ],
   },
   PALADIN: {
     armor: [
@@ -78,11 +68,6 @@ export const CLASS_RULES: Record<ClassToken, ClassRule> = {
       'One-Handed Swords',
       'Two-Handed Swords',
       'Polearms',
-    ],
-    specs: [
-      { spec: 'Holy', role: 'healer', stats: ['INT', 'SPI', 'STA'] },
-      { spec: 'Protection', role: 'tank', stats: ['STA', 'STR', 'INT'] },
-      { spec: 'Retribution', role: 'melee', stats: ['STR', 'AGI', 'INT'] },
     ],
   },
   HUNTER: {
@@ -105,11 +90,6 @@ export const CLASS_RULES: Record<ClassToken, ClassRule> = {
       'Guns',
       'Thrown',
     ],
-    specs: [
-      { spec: 'Beast Mastery', role: 'ranged', stats: ['AGI', 'INT', 'STA'] },
-      { spec: 'Marksmanship', role: 'ranged', stats: ['AGI', 'INT', 'STA'] },
-      { spec: 'Survival', role: 'ranged', stats: ['AGI', 'STA', 'INT'] },
-    ],
   },
   ROGUE: {
     armor: [{ fromLevel: 1, type: 'Leather' }],
@@ -124,21 +104,11 @@ export const CLASS_RULES: Record<ClassToken, ClassRule> = {
       'Guns',
       'Thrown',
     ],
-    specs: [
-      { spec: 'Assassination', role: 'melee', stats: ['AGI', 'STR', 'STA'] },
-      { spec: 'Combat', role: 'melee', stats: ['AGI', 'STR', 'STA'] },
-      { spec: 'Subtlety', role: 'melee', stats: ['AGI', 'STR', 'STA'] },
-    ],
   },
   PRIEST: {
     armor: [{ fromLevel: 1, type: 'Cloth' }],
     shields: false,
     weapons: ['One-Handed Maces', 'Staves', 'Daggers', 'Wands'],
-    specs: [
-      { spec: 'Discipline', role: 'healer', stats: ['INT', 'SPI', 'STA'] },
-      { spec: 'Holy', role: 'healer', stats: ['INT', 'SPI', 'STA'] },
-      { spec: 'Shadow', role: 'caster', stats: ['INT', 'SPI', 'STA'] },
-    ],
   },
   SHAMAN: {
     armor: [
@@ -155,31 +125,16 @@ export const CLASS_RULES: Record<ClassToken, ClassRule> = {
       'Daggers',
       'Fist Weapons',
     ],
-    specs: [
-      { spec: 'Elemental', role: 'caster', stats: ['INT', 'SPI', 'STA'] },
-      { spec: 'Enhancement', role: 'melee', stats: ['STR', 'AGI', 'INT'] },
-      { spec: 'Restoration', role: 'healer', stats: ['INT', 'SPI', 'STA'] },
-    ],
   },
   MAGE: {
     armor: [{ fromLevel: 1, type: 'Cloth' }],
     shields: false,
     weapons: ['One-Handed Swords', 'Staves', 'Daggers', 'Wands'],
-    specs: [
-      { spec: 'Arcane', role: 'caster', stats: ['INT', 'SPI', 'STA'] },
-      { spec: 'Fire', role: 'caster', stats: ['INT', 'SPI', 'STA'] },
-      { spec: 'Frost', role: 'caster', stats: ['INT', 'STA', 'SPI'] },
-    ],
   },
   WARLOCK: {
     armor: [{ fromLevel: 1, type: 'Cloth' }],
     shields: false,
     weapons: ['One-Handed Swords', 'Staves', 'Daggers', 'Wands'],
-    specs: [
-      { spec: 'Affliction', role: 'caster', stats: ['INT', 'STA', 'SPI'] },
-      { spec: 'Demonology', role: 'caster', stats: ['STA', 'INT', 'SPI'] },
-      { spec: 'Destruction', role: 'caster', stats: ['INT', 'STA', 'SPI'] },
-    ],
   },
   DRUID: {
     armor: [{ fromLevel: 1, type: 'Leather' }],
@@ -192,15 +147,10 @@ export const CLASS_RULES: Record<ClassToken, ClassRule> = {
       'Daggers',
       'Fist Weapons',
     ],
-    specs: [
-      { spec: 'Balance', role: 'caster', stats: ['INT', 'SPI', 'STA'] },
-      { spec: 'Feral', role: 'melee', stats: ['AGI', 'STR', 'STA'] },
-      { spec: 'Restoration', role: 'healer', stats: ['INT', 'SPI', 'STA'] },
-    ],
   },
 };
 
-/** GetItemStats keys → stat. */
+/** GetItemStats keys → primary stat. */
 export const STAT_KEYS: Record<string, Stat> = {
   ITEM_MOD_STRENGTH_SHORT: 'STR',
   ITEM_MOD_AGILITY_SHORT: 'AGI',
@@ -223,65 +173,232 @@ const ARMOR_SLOTS_ANY_CLASS = new Set([
   'INVTYPE_TRINKET',
 ]);
 
+/** Weapon subtypes every class can hold. */
+const WEAPONS_ANY_CLASS = new Set(['Fishing Pole', 'Miscellaneous']);
+
+/** Relic slots are one class each. */
+const RELIC_CLASS: Record<string, ClassToken> = {
+  Idols: 'DRUID',
+  Librams: 'PALADIN',
+  Totems: 'SHAMAN',
+};
+
+/** The best armor type a class can wear at a level; below every `fromLevel` it is the class's lowest tier. */
+function bestArmorAt(rule: ClassRule, level: number): ArmorType {
+  return (rule.armor.find((a) => level >= a.fromLevel) ?? rule.armor[rule.armor.length - 1]!).type;
+}
+
 function armorAllowed(rule: ClassRule, level: number): ArmorType[] {
-  const best = rule.armor.find((a) => level >= a.fromLevel)?.type ?? 'Cloth';
-  return ALL_ARMOR_BELOW[best];
+  return ALL_ARMOR_BELOW[bestArmorAt(rule, level)];
 }
 
 /** Whether a class can equip the item at a level (proficiency only, not required level). */
 export function canEquip(cls: ClassToken, item: ItemForRules, level = 1): boolean {
   const rule = CLASS_RULES[cls];
-  if (item.type === 'Weapon') return rule.weapons.includes(item.subtype ?? '');
+  const subtype = item.subtype ?? '';
+  if (item.type === 'Weapon')
+    return WEAPONS_ANY_CLASS.has(subtype) || rule.weapons.includes(subtype);
   if (item.type === 'Armor') {
     if (item.equipLoc && ARMOR_SLOTS_ANY_CLASS.has(item.equipLoc)) return true;
-    if (item.subtype === 'Shields') return rule.shields;
-    if (item.subtype === 'Miscellaneous') return true;
-    return (armorAllowed(rule, level) as string[]).includes(item.subtype ?? '');
+    if (subtype === 'Shields') return rule.shields;
+    if (subtype === 'Miscellaneous') return true;
+    if (RELIC_CLASS[subtype]) return RELIC_CLASS[subtype] === cls;
+    return (armorAllowed(rule, level) as string[]).includes(subtype);
   }
   return false;
 }
 
-export interface SpecFit {
+export type Role = 'tank' | 'healer' | 'caster' | 'melee' | 'ranged';
+const ROLES: Role[] = ['tank', 'healer', 'caster', 'melee', 'ranged'];
+
+export interface RoleFit {
+  role: Role;
+  /** Share of the item's role signal (0..1, two decimals); the roles sum to about 1. */
+  confidence: number;
+}
+
+export interface ClassFit {
   cls: ClassToken;
-  spec: string;
-  role: SpecRule['role'];
-  /** 0..1: how much of the item's stat budget is in stats this spec wants, weighted by priority. */
-  score: number;
-  /** True when the item is the class's best armor type (e.g. mail for a level-20 warrior). */
+  /** Proficiency at `atLevel`. */
+  canEquip: boolean;
+  /** When `canEquip` is false: the level the class gains the proficiency (Hunter/Shaman Mail at 40). */
+  fromLevel?: number;
+  /** True when the item is the class's best armor type at `atLevel` (Mail for a level-20 Warrior). */
   bestArmor: boolean;
 }
 
+export interface ItemFit {
+  rulesVersion: string;
+  /** The level the class list was evaluated at: the item's required level, or 1 when it has none. */
+  atLevel: number;
+  roles: RoleFit[];
+  /** Classes that can equip the item now or later, in class order. */
+  classes: ClassFit[];
+}
+
+type Weights = Partial<Record<Role, number>>;
+
+/** Primary stats: weight per point share of STR+AGI+INT+SPI. Stamina says nothing about who wants an item. */
+const PRIMARY: Partial<Record<Stat, Weights>> = {
+  STR: { melee: 1, tank: 0.6 },
+  AGI: { ranged: 1, melee: 0.8, tank: 0.3 },
+  INT: { caster: 1, healer: 1 },
+  SPI: { healer: 1, caster: 0.5 },
+};
+
+/** Secondary stats by presence (`ITEM_MOD_` and `_SHORT` stripped); one unit each. */
+const SECONDARY: Record<string, Weights> = {
+  SPELL_POWER: { caster: 1, healer: 0.7 },
+  SPELL_PENETRATION: { caster: 1 },
+  SPELL_HEALING_DONE: { healer: 1 },
+  MANA_REGENERATION: { healer: 1 },
+  ATTACK_POWER: { melee: 1, ranged: 0.7, tank: 0.3 },
+  PHYSICAL_DAMAGE_DONE: { melee: 1, ranged: 0.7, tank: 0.3 },
+  EXPERTISE_RATING: { melee: 1, ranged: 0.7, tank: 0.3 },
+  RANGED_ATTACK_POWER: { ranged: 1 },
+  // generic crit and hit fit every damage role: a nudge, never the deciding signal
+  CRIT_RATING: { melee: 0.5, ranged: 0.5, caster: 0.5 },
+  HIT_RATING: { melee: 0.5, ranged: 0.5, caster: 0.5 },
+  DEFENSE_SKILL_RATING: { tank: 1 },
+  DODGE_RATING: { tank: 1 },
+  PARRY_RATING: { tank: 1 },
+  BLOCK_RATING: { tank: 1 },
+  BLOCK_VALUE: { tank: 1 },
+};
+
+/** Secondary stats that don't say which role: they never keep the weapon subtype from deciding. */
+const AMBIGUOUS = new Set(['CRIT_RATING', 'HIT_RATING']);
+
+/** Weapon subtypes say who swings them; applied only when the stats say nothing (every weapon has DPS). */
+const WEAPON_TYPE: Record<string, Weights> = {
+  Bows: { ranged: 1 },
+  Crossbows: { ranged: 1 },
+  Guns: { ranged: 1 },
+  Thrown: { ranged: 1 },
+  Wands: { caster: 1 },
+  Staves: { caster: 0.6, melee: 0.4 },
+  Polearms: { melee: 1 },
+  'Two-Handed Axes': { melee: 1 },
+  'Two-Handed Maces': { melee: 1 },
+  'Two-Handed Swords': { melee: 1 },
+  'One-Handed Axes': { melee: 1, tank: 0.5 },
+  'One-Handed Maces': { melee: 1, tank: 0.5 },
+  'One-Handed Swords': { melee: 1, tank: 0.5 },
+  Daggers: { melee: 1, tank: 0.5 },
+  'Fist Weapons': { melee: 1, tank: 0.5 },
+};
+
+function add(total: Weights, w: Weights, scale = 1) {
+  for (const [role, v] of Object.entries(w) as [Role, number][])
+    total[role] = (total[role] ?? 0) + v * scale;
+}
+
 /**
- * Scores every class/spec that can equip the item. Items with no primary stats get score 0 but are still
- * listed as usable.
+ * Which roles an item serves, from its primary stats (by share), secondary stats (by presence) and subtype.
+ * Empty when nothing on the item says anything (plain armor, resistances, profession mods).
  */
-export function specsWanting(item: ItemForRules, level = 1): SpecFit[] {
-  const statTotals = new Map<Stat, number>();
-  for (const [k, v] of Object.entries(item.stats ?? {})) {
-    const stat = STAT_KEYS[k];
-    if (stat) statTotals.set(stat, (statTotals.get(stat) ?? 0) + v);
-  }
-  const budget = [...statTotals.values()].reduce((a, b) => a + b, 0);
-  const out: SpecFit[] = [];
-  for (const cls of Object.keys(CLASS_RULES) as ClassToken[]) {
-    if (!canEquip(cls, item, level)) continue;
-    const rule = CLASS_RULES[cls];
-    const best = rule.armor.find((a) => level >= a.fromLevel)?.type;
-    for (const s of rule.specs) {
-      let score = 0;
-      if (budget > 0) {
-        s.stats.forEach((stat, i) => {
-          score += ((statTotals.get(stat) ?? 0) / budget) * (1 - i * 0.25);
-        });
-      }
-      out.push({
-        cls,
-        spec: s.spec,
-        role: s.role,
-        score: Math.round(score * 1000) / 1000,
-        bestArmor: item.type === 'Armor' && item.subtype === best,
-      });
+export function rolesFromStats(item: ItemForRules): RoleFit[] {
+  const stats = item.stats ?? {};
+  const total: Weights = {};
+  const primary: Partial<Record<Stat, number>> = {};
+  let primarySum = 0;
+  for (const [key, value] of Object.entries(stats)) {
+    const stat = STAT_KEYS[key];
+    if (stat && PRIMARY[stat] && value > 0) {
+      primary[stat] = (primary[stat] ?? 0) + value;
+      primarySum += value;
     }
   }
-  return out.sort((a, b) => b.score - a.score || Number(b.bestArmor) - Number(a.bestArmor));
+  for (const [stat, value] of Object.entries(primary) as [Stat, number][])
+    add(total, PRIMARY[stat]!, value / primarySum);
+
+  const healing = stats.ITEM_MOD_SPELL_HEALING_DONE_SHORT ?? 0;
+  let secondarySignal = false;
+  for (const [key, value] of Object.entries(stats)) {
+    if (!(value > 0)) continue;
+    const name = key.replace(/^ITEM_MOD_/, '').replace(/_SHORT$/, '');
+    let w: Weights | undefined = SECONDARY[name];
+    const school = /^(SPELL|FIRE|FROST|NATURE|SHADOW|ARCANE|HOLY)_DAMAGE_DONE$/.exec(name)?.[1];
+    const rating = /^(CRIT|HIT)_(MELEE|RANGED|SPELL)_RATING$/.exec(name)?.[2];
+    if (school) {
+      // "+N damage and healing" items list both; when healing is the larger, damage is the side effect.
+      w = { caster: healing > value ? 0.5 : 1 };
+      if (school === 'HOLY' || school === 'NATURE') w.healer = 0.5;
+    } else if (rating) {
+      w =
+        rating === 'SPELL'
+          ? { caster: 1, healer: 0.5 }
+          : rating === 'RANGED'
+            ? { ranged: 1 }
+            : { melee: 1 };
+    } else if (name.startsWith('ATTACK_POWER_VS_')) w = SECONDARY.ATTACK_POWER;
+    if (w) {
+      add(total, w);
+      if (!AMBIGUOUS.has(name)) secondarySignal = true;
+    }
+  }
+
+  const subtype = item.subtype ?? '';
+  if (item.type === 'Weapon' && WEAPON_TYPE[subtype] && primarySum === 0 && !secondarySignal)
+    add(total, WEAPON_TYPE[subtype]);
+  if (item.type === 'Armor' && subtype === 'Shields') add(total, { tank: 1.5 });
+
+  const sum = Object.values(total).reduce((a, b) => a + b, 0);
+  if (sum <= 0) return [];
+  return ROLES.map((role) => ({
+    role,
+    confidence: Math.round(((total[role] ?? 0) / sum) * 100 + 1e-9) / 100,
+  }))
+    .filter((r) => r.confidence > 0)
+    .sort((a, b) => b.confidence - a.confidence || ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
+}
+
+/** Cloth/Leather/Mail/Plate in a class-restricted slot: cloaks, trinkets, shields and relics have no "best" tier. */
+const tieredArmor = (item: ItemForRules) =>
+  item.type === 'Armor' &&
+  !(item.equipLoc && ARMOR_SLOTS_ANY_CLASS.has(item.equipLoc)) &&
+  (Object.keys(ALL_ARMOR_BELOW) as string[]).includes(item.subtype ?? '');
+
+/** Highest level any Classic proficiency unlocks at. */
+const MAX_LEVEL = 60;
+
+/** Every class that can equip the item at `level` or later, with the level it becomes wearable. */
+export function classFits(item: ItemForRules, level: number): ClassFit[] {
+  const out: ClassFit[] = [];
+  for (const cls of Object.keys(CLASS_RULES) as ClassToken[]) {
+    const rule = CLASS_RULES[cls];
+    const now = canEquip(cls, item, level);
+    if (!now && !canEquip(cls, item, MAX_LEVEL)) continue;
+    const fit: ClassFit = {
+      cls,
+      canEquip: now,
+      bestArmor: tieredArmor(item) && item.subtype === bestArmorAt(rule, level),
+    };
+    if (!now) {
+      const unlock = rule.armor
+        .filter(
+          (a) =>
+            a.fromLevel > level &&
+            (ALL_ARMOR_BELOW[a.type] as string[]).includes(item.subtype ?? ''),
+        )
+        .map((a) => a.fromLevel);
+      if (unlock.length) fit.fromLevel = Math.min(...unlock);
+    }
+    out.push(fit);
+  }
+  return out;
+}
+
+/**
+ * Role fit plus the class list for one item snapshot. A required level of 0 or null means the item has no level
+ * gate, so the class list is evaluated at level 1 and `fromLevel` says when the others catch up.
+ */
+export function itemFit(item: ItemForRules & { reqLevel?: number | null | undefined }): ItemFit {
+  const atLevel = item.reqLevel && item.reqLevel > 0 ? item.reqLevel : 1;
+  return {
+    rulesVersion: RULES_VERSION,
+    atLevel,
+    roles: rolesFromStats(item),
+    classes: classFits(item, atLevel),
+  };
 }

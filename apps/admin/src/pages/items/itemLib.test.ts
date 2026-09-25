@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classNote,
   containerLabel,
   contentsByBuild,
   formatAvgQuantity,
   mergeDropSources,
+  roleLabel,
   statLabel,
   statMatrix,
   tooltipText,
@@ -183,5 +185,24 @@ describe('container loot', () => {
     expect(formatAvgQuantity(1250.5)).toBe('1,250.5');
     expect(formatAvgQuantity(null)).toBe('—');
     expect(formatAvgQuantity(Number.NaN)).toBe('—');
+  });
+});
+
+describe('who wants it', () => {
+  it('labels roles for the card', () => {
+    expect(roleLabel('tank')).toBe('Tank');
+    expect(roleLabel('healer')).toBe('Healer');
+    expect(roleLabel('caster')).toBe('Caster DPS');
+    expect(roleLabel('melee')).toBe('Melee DPS');
+    expect(roleLabel('ranged')).toBe('Ranged DPS');
+  });
+
+  it('notes whether a class can wear it now, later, and if it is their best armor', () => {
+    expect(classNote({ cls: 'WARRIOR', canEquip: true, bestArmor: true })).toBe('best armor');
+    expect(classNote({ cls: 'ROGUE', canEquip: true, bestArmor: false })).toBe('');
+    expect(classNote({ cls: 'HUNTER', canEquip: false, fromLevel: 40, bestArmor: false })).toBe(
+      'at 40',
+    );
+    expect(classNote({ cls: 'MAGE', canEquip: false, bestArmor: false })).toBe('later');
   });
 });

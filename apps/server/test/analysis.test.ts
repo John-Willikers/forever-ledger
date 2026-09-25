@@ -189,7 +189,12 @@ describe('analysis and export routes', () => {
     const item = res.json();
     expect(item.snapshots.map((x: { build: number }) => x.build)).toEqual([61600, 61582]);
     expect(item.dropSources[0]).toMatchObject({ npcId: 644, count: 1 });
-    expect(item.specs.fits[0]).toMatchObject({ cls: 'WARRIOR', score: expect.any(Number) });
+    // Rockslicer: a two-handed axe with +7 Strength, required level 16
+    expect(item.specs.rulesVersion).toEqual(expect.any(String));
+    expect(item.specs.atLevel).toBe(16);
+    expect(item.specs.roles[0]).toMatchObject({ role: 'melee' });
+    expect(item.specs.classes).toContainEqual({ cls: 'WARRIOR', canEquip: true, bestArmor: false });
+    expect(item.specs.classes.map((c: { cls: string }) => c.cls)).not.toContain('ROGUE');
     expect((await get('/v1/items/5556')).json().questRewards[0]).toMatchObject({
       questId: 1234,
       kind: 'choice',
