@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAdminQuery } from '../api';
 import { Card } from '../components/Card';
 import { Empty, QueryState } from '../components/State';
+import { Tabs } from '../components/Tabs';
 import { formatBytes, formatNumber, plural } from '../lib/format';
 import {
   DIAGNOSTIC_LEVELS,
@@ -29,8 +30,16 @@ export function HealthPage() {
           client API.
         </p>
       </header>
-      <Feed />
-      <Samples />
+      <Tabs
+        id="health"
+        tabs={[
+          { key: 'diagnostics', label: 'Diagnostics' },
+          { key: 'samples', label: 'API samples' },
+        ]}
+        label="Health sections"
+      >
+        {(key) => (key === 'samples' ? <Samples /> : <Feed />)}
+      </Tabs>
     </div>
   );
 }
