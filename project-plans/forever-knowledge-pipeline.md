@@ -13,12 +13,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   - ⛔ 0b 💾 Cruiser backup: Harlan creates a private GitHub repo for `stream-recorder`; the cruiser session pushes it
 - ⬜ 1 🛰️ Cruiser fetch worker (cruiser session, handoff prompt below) — needs task 2's lease/snapshot routes + a
   `can_fetch` token
-- ⬜ 2 🗄️ Server: migration, `fetch_targets`, `web_snapshots`, `sources`, `claims`, `web_comments`,
-  `field_observations`, lease + snapshot routes, `can_fetch` scope
-  - ⬜ 2a 🧩 Parsers (Wowhead embedded JSON, Mobalytics/guide tables) + `knowledge-cli reparse`
-  - ⬜ 2b 🌱 Seed import (brief section 3 claims, section 4 Steamwheedle observation, 14 URLs)
-  - ⬜ 2c 🖥️ Admin `/admin/knowledge`
-  - ⬜ 2d 🔍 Review + `pnpm check` + CI → PR → merge → deploy
+- 🟡 2 🗄️ Server: migration 0013, `fetch_targets`, `web_snapshots`, `sources`, `claims`, `web_comments`,
+  `field_observations`, lease + snapshot routes, `can_fetch` scope — 07:06 CDT (cc7281c)
+  - ✅ 2a 🧩 Parsers `wowhead@1` (embedded JSON, no eval) and `table@1` (zone/dungeon level tables) +
+    `knowledge-cli reparse`. Written against hand-made fixtures in `fixtures/synthetic/web/`; recheck on the first real
+    pages
+  - ✅ 2b 🌱 Seed `knowledge/seed/2026-10-06-brief.json`: 16 sources, 41 claims + the Steamwheedle observation, 14 URLs
+  - ✅ 2c 🖥️ Admin `/admin/knowledge` (claims, disputes, observations, sources, fetch queue + "queue page")
+  - 🟡 2d 🔍 `pnpm check` green (Lua 212, vitest 973); code review running → PR → merge → deploy
 - ⬜ 3 🎣 Fishing casts (schema 7 / addon 0.4.0) — 🔒 probe `/flprobe fish` in game first; ⛔ release waits on the
   identity plan's open questions
 - ⬜ 4 🧾 Character guides (DB rows, admin render)
