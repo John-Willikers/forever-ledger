@@ -52,6 +52,19 @@ describe('knowledge pipeline', () => {
   const q = async (text: string, params: unknown[] = []) =>
     (await s.database.pool.query(text, params)).rows;
 
+  it('keeps fetch tokens to the fetch routes', async () => {
+    const ingest = await s.app.inject({
+      method: 'POST',
+      url: '/v1/ingest',
+      headers: fetchAuth,
+      payload: {},
+    });
+    expect(ingest.statusCode).toBe(401);
+    await expect(
+      mintToken(s.database.db, 'both', { canFetch: true, canRead: true }),
+    ).rejects.toThrow(/cannot also read/);
+  });
+
   it('only lets fetch-scope tokens use the fetch routes', async () => {
     expect((await post('/v1/fetch/lease', { worker: 'x' }, { authorization: '' })).statusCode).toBe(
       401,
@@ -95,6 +108,11 @@ describe('knowledge pipeline', () => {
     const r = await post('/v1/fetch/snapshots', report(ZONES, html));
     expect(r.statusCode).toBe(200);
     expect(r.json()).toMatchObject({ result: 'stored', claims: 4 });
+    // Reported twice without a new lease: refused. A re-fetch (due again, leased again) of the same page is unchanged.
+    expect((await post('/v1/fetch/snapshots', report(ZONES, html))).statusCode).toBe(409);
+    await q(`update fetch_targets set next_due_at = now() where url = $1`, [ZONES]);
+    const [lease] = (await post('/v1/fetch/lease', { worker: 'cruiser', max: 1 })).json().leases;
+    expect(lease.url).toBe(ZONES);
     const again = await post('/v1/fetch/snapshots', report(ZONES, html));
     expect(again.json()).toMatchObject({ result: 'unchanged', snapshotId: r.json().snapshotId });
     expect(await s.count('web_snapshots')).toBe(1);
@@ -133,7 +151,7 @@ describe('knowledge pipeline', () => {
     expect(await s.count('web_snapshots')).toBe(1);
   });
 
-  it('refuses bad reports: unknown URL, wrong hash, not gzip', async () => {
+  it('refuses bad reports and still settles the URL', async () => {
     const html = '<html><title>x</title></html>';
     expect(
       (await post('/v1/fetch/snapshots', report('https://example.org/x', html))).statusCode,
@@ -142,15 +160,38 @@ describe('knowledge pipeline', () => {
     expect(
       (await post('/v1/fetch/snapshots', report(url, html, { sha256: 'b'.repeat(64) }))).statusCode,
     ).toBe(422);
+    // The refused report gave the lease back: the URL waits out a backoff instead of looping.
+    const [t] = await q(
+      `select state, last_outcome, next_due_at > now() + interval '50 minutes' as later
+         from fetch_targets where url = $1`,
+      [url],
+    );
+    expect(t).toEqual({ state: 'queued', last_outcome: 'refused', later: true });
+    // No lease any more, so another report for it is refused.
+    expect((await post('/v1/fetch/snapshots', report(url, html))).statusCode).toBe(409);
+    const gz =
+      'https://www.icy-veins.com/wow-forever/news/all-new-race-and-class-combos-and-racial-abilities-in-wow-forever-official';
     expect(
-      (await post('/v1/fetch/snapshots', report(url, html, { htmlGzBase64: 'bm90IGd6aXA=' })))
+      (await post('/v1/fetch/snapshots', report(gz, html, { htmlGzBase64: 'bm90IGd6aXA=' })))
         .statusCode,
     ).toBe(400);
     expect((await post('/v1/fetch/snapshots', { url })).statusCode).toBe(400);
   });
 
+  it('only takes reports from the token holding the lease', async () => {
+    const { token } = await mintToken(s.database.db, 'other-worker', { canFetch: true });
+    const other = { authorization: `Bearer ${token}` };
+    const url =
+      'https://www.method.gg/wow-forever/all-class-and-race-combinations-in-world-of-warcraft-forever';
+    const r = await post('/v1/fetch/snapshots', report(url, '<html></html>'), other);
+    expect(r.statusCode).toBe(409);
+    expect((await q(`select state from fetch_targets where url = $1`, [url]))[0]).toEqual({
+      state: 'leased',
+    });
+  });
+
   it('backs off on 429 and gives up on 404', async () => {
-    const url = 'https://www.zockify.com/forever/skyborne';
+    const url = 'https://news.blizzard.com/en-us/article/24304075';
     const failed = { outcome: 'http_error', htmlGzBase64: undefined, sha256: undefined };
     await post('/v1/fetch/snapshots', report(url, '', { ...failed, httpStatus: 429 }));
     const [t] = await q(
@@ -161,6 +202,21 @@ describe('knowledge pipeline', () => {
     const gone = 'https://www.zockify.com/forever/professions';
     await post('/v1/fetch/snapshots', report(gone, '', { ...failed, httpStatus: 404 }));
     expect((await q(`select state from fetch_targets where url = $1`, [gone]))[0]).toEqual({
+      state: 'failed',
+    });
+  });
+
+  it('stops handing out a URL whose lease keeps running out', async () => {
+    const url = 'https://example.org/crashes-the-worker';
+    await enqueueUrl(s.database.db, { url, addedBy: 'cli', priority: 99 });
+    await q(
+      `update fetch_targets set state = 'leased', attempts = 5, lease_until = now() - interval '1 minute'
+        where url = $1`,
+      [url],
+    );
+    const leases = (await post('/v1/fetch/lease', { worker: 'cruiser', max: 10 })).json().leases;
+    expect(leases.map((l: { url: string }) => l.url)).not.toContain(url);
+    expect((await q(`select state from fetch_targets where url = $1`, [url]))[0]).toEqual({
       state: 'failed',
     });
   });
@@ -221,9 +277,34 @@ describe('knowledge pipeline', () => {
       [src.id],
     );
     const tanaris = await findDisputes(s.database.db, { entityType: 'zone', entityKey: 'Tanaris' });
-    expect(tanaris).toHaveLength(2);
-    expect(tanaris.every((d) => d.tier === 5 && d.byTier === 4 && d.byLabel === 'VERIFIED')).toBe(
-      true,
+    // One row for the contradicted claim, however many sources contradict it.
+    expect(tanaris).toHaveLength(1);
+    expect(tanaris[0]).toMatchObject({ tier: 5, byTier: 4, byLabel: 'VERIFIED' });
+  });
+
+  it('classes a page by where it was finally served from', async () => {
+    const url = 'https://www.wowhead.com/forever/item=4655';
+    await enqueueUrl(s.database.db, { url, addedBy: 'cli', priority: 99 });
+    const [lease] = (await post('/v1/fetch/lease', { worker: 'cruiser', max: 1 })).json().leases;
+    expect(lease.url).toBe(url);
+    const r = await post(
+      '/v1/fetch/snapshots',
+      report(url, webFixture('wowhead-item.html'), {
+        finalUrl: 'https://www.wowhead.com/classic/item=4655',
+      }),
     );
+    const [src] = await q(`select tier, game_version, url from sources where snapshot_id = $1`, [
+      r.json().snapshotId,
+    ]);
+    expect(src).toEqual({
+      tier: 5,
+      game_version: 'classic',
+      url: 'https://www.wowhead.com/classic/item=4655',
+    });
+    const labels = await q(
+      `select distinct label from claims c join sources s on s.id = c.source_id where s.snapshot_id = $1`,
+      [r.json().snapshotId],
+    );
+    expect(labels).toEqual([{ label: 'CLASSIC' }]);
   });
 });

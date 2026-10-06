@@ -157,7 +157,7 @@ export const FetchReport = z
     httpStatus: z.number().int().min(100).max(599).optional(),
     /** ISO-8601 with an offset, e.g. `2026-10-06T07:12:03-05:00`. */
     fetchedAt: z.iso.datetime({ offset: true }),
-    /** sha256 hex of the uncompressed HTML. */
+    /** sha256 hex of the uncompressed page bytes, as fetched (before any text decoding). */
     sha256: z
       .string()
       .regex(/^[0-9a-f]{64}$/)

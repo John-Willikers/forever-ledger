@@ -122,7 +122,7 @@ export function registerAdminKnowledgeRoutes(app: FastifyInstance, db: Db, preHa
       sql`select s.id, s.key, s.kind, s.url, s.site, s.tier, s.game_version, s.build, s.title, s.page_updated_at,
                  s.fetched_at, s.note, s.snapshot_id, count(c.id)::int as claims
             from sources s left join claims c on c.source_id = s.id
-           group by s.id order by s.tier, s.site, s.id`,
+           group by s.id order by s.tier, s.site, s.id limit 1000`,
     );
     return {
       items: list.map((r) => ({
@@ -195,8 +195,12 @@ export function registerAdminKnowledgeRoutes(app: FastifyInstance, db: Db, preHa
     };
   });
 
-  app.get('/admin/api/knowledge/disputes', { preHandler }, async () => ({
-    items: await findDisputes(db),
+  app.get('/admin/api/knowledge/disputes', { preHandler }, async (req) => ({
+    items: await findDisputes(db, {
+      entityType: oneOf(req.query, 'type', ENTITY_TYPES) ?? undefined,
+      entityKey: textParam(req.query, 'key', 200) ?? undefined,
+      limit: intParam(req.query, 'limit', 500, 500),
+    }),
   }));
 
   app.get('/admin/api/knowledge/observations', { preHandler }, async () => {
@@ -204,7 +208,7 @@ export function registerAdminKnowledgeRoutes(app: FastifyInstance, db: Db, preHa
       db,
       sql`select id, key, character, faction, race, class, level, build, game_version, observed_at, duration_mins,
                  location, method, setup, result, notes
-            from field_observations order by observed_at desc, id desc`,
+            from field_observations order by observed_at desc, id desc limit 500`,
     );
     return {
       items: list.map((r) => ({

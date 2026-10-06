@@ -60,14 +60,16 @@ POST https://ledger.willikers.dev/v1/fetch/snapshots
    "outcome": "ok" | "challenge" | "http_error" | "error",
    "fetchedAt": "2026-10-06T07:12:03-05:00",          # ISO 8601 WITH an offset
    "finalUrl": "...", "httpStatus": 200,               # finalUrl required for ok
-   "sha256": "<hex sha256 of the UTF-8 HTML>",          # required for ok
+   "sha256": "<hex sha256 of the page bytes as fetched>", # required for ok; hash before decoding
    "htmlGzBase64": "<base64 of gzip(html)>",            # required for ok; at most 4 MB of base64
    "error": "<short text, optional>"}
 → {"result": "stored"|"unchanged"|"challenge"|"recorded", "snapshotId": 12, "claims": 4}
-  400 bad report · 401/403 token · 404 url not on the queue · 422 sha256 doesn't match
+  400 bad report · 401/403 token · 404 url not on the queue · 409 this token doesn't hold the lease
+  422 sha256 doesn't match (400/422 still give the lease back: the URL is retried later, then fails)
 ```
 
-The server re-checks every `ok` page for a challenge and refuses to store one. A 404 or 410 page fails the URL. A 403,
+Report each leased URL exactly once, with the same token that leased it. Never report a URL you didn't lease. A lease
+that runs out 5 times without a report fails the URL. The server re-checks every `ok` page for a challenge and refuses to store one. A 404 or 410 page fails the URL. A 403,
 429 or 5xx page, or `error`, puts it back in the queue with backoff.
 
 **Test**, then open a PR:

@@ -21,7 +21,7 @@ export function parseSnapshot(html: string, url: string): ParseResult {
   const updated = pageUpdatedAt(root);
   const { site } = classifySource(url);
   if (site === 'wowhead.com') {
-    return { ...parseWowhead(html, url, title), pageUpdatedAt: updated };
+    return { ...parseWowhead(root, url, title), pageUpdatedAt: updated };
   }
   return {
     parser: TABLE_PARSER,

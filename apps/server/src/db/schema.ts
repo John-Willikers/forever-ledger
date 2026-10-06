@@ -746,7 +746,7 @@ export const webSnapshots = pgTable(
     httpStatus: integer('http_status'),
     fetchedAt: tz('fetched_at').notNull(),
     receivedAt: tz('received_at').notNull().defaultNow(),
-    /** sha256 hex of the uncompressed HTML. */
+    /** sha256 hex of the uncompressed page bytes. */
     sha256: text('sha256').notNull(),
     /** Uncompressed size. */
     bytes: integer('bytes').notNull(),

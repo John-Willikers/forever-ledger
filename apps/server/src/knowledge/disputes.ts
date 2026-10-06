@@ -54,8 +54,10 @@ export async function findDisputes(
     SINGLE_VALUED.map((a) => sql`${a}`),
     sql`, `,
   );
+  // One row per contradicted claim (its most trusted contradiction); a FALSE claim is listed once, as FALSE.
   const res = await db.execute<Record<string, unknown>>(sql`
-    select c.entity_type, c.entity_key, c.attribute, c.id as claim_id, c.value, c.label, s.tier, s.url,
+    select * from (
+    select distinct on (c.id) c.entity_type, c.entity_key, c.attribute, c.id as claim_id, c.value, c.label, s.tier, s.url,
            b.id as by_claim_id, b.value as by_value, b.label as by_label, bs.tier as by_tier, bs.url as by_url
       from claims c
       join sources s on s.id = c.source_id
@@ -65,7 +67,8 @@ export async function findDisputes(
                    and (b.observed_build is null or c.observed_build is null
                         or b.observed_build = c.observed_build)
       join sources bs on bs.id = b.source_id and bs.tier < s.tier
-     where ${where} and c.attribute in (${singles})
+     where ${where} and c.attribute in (${singles}) and c.label <> 'FALSE'
+     order by c.id, bs.tier, b.id) contradicted
     union all
     select c.entity_type, c.entity_key, c.attribute, c.id, c.value, c.label, s.tier, s.url,
            null, null, null, null, null

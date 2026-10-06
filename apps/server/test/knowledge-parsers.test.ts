@@ -81,6 +81,40 @@ describe('wowhead parser', () => {
   });
 });
 
+describe('wowhead parser on awkward pages', () => {
+  const page = (script: string) =>
+    `<html><head><title>X - Item - World of Warcraft</title></head><body><script>${script}</script></body></html>`;
+
+  it('reads JSON-style keys and data declared before the call, nearest first', () => {
+    const r = parseSnapshot(
+      page(`var lv = [{"id":1,"name":"Old"}];
+            new Listview({"id": "dropped-by", "template": "npc", "data": lv});
+            var lv = [{"id":2,"name":"New"}];
+            new Listview({data: lv, template: 'npc', id: 'sold-by'});`),
+      ITEM_URL,
+    );
+    expect(
+      r.claims.filter((c) => c.attribute !== 'name').map((c) => [c.attribute, c.value]),
+    ).toEqual([
+      ['dropped_by', { id: 1, type: 'npc', name: 'Old' }],
+      ['sold_by', { id: 2, type: 'npc', name: 'New' }],
+    ]);
+  });
+
+  it('ignores markers inside strings and comments, and reports Listviews without an id', () => {
+    const r = parseSnapshot(
+      page(`var lv_comments0 = [{"id":7,"body":"see new Listview({id:'sold-by',data:[{\\"id\\":9}]})"}];
+            // new Listview({id: 'commented-out', data: [{"id": 3}]});
+            new Listview({template: 'comment', id: 'comments', data: lv_comments0});
+            new Listview({template: 'npc', data: [{"id": 4}]});`),
+      ITEM_URL,
+    );
+    expect(r.claims.filter((c) => c.attribute !== 'name')).toEqual([]);
+    expect(r.comments.map((c) => c.commentId)).toEqual([7]);
+    expect(r.problems).toEqual(['a listview has no id']);
+  });
+});
+
 describe('table parser', () => {
   const r = parseSnapshot(
     webFixture('guide-zones.html'),
@@ -142,6 +176,10 @@ describe('challenge pages and text', () => {
   it('spots interstitials but not normal pages that load Cloudflare scripts', () => {
     expect(looksLikeChallenge(webFixture('cloudflare-challenge.html'))).toBe(true);
     expect(looksLikeChallenge(webFixture('wowhead-item.html'))).toBe(false);
+    expect(
+      looksLikeChallenge('<html><title>Just a Moment - Quest - World of Warcraft</title></html>'),
+    ).toBe(false);
+    expect(looksLikeChallenge('<html><title>\n  Just a moment...\n</title></html>')).toBe(true);
     expect(
       looksLikeChallenge(
         '<html><head><title>Tanaris</title><script src="/cdn-cgi/challenge-platform/h/b/scripts/x.js"></script></head></html>',

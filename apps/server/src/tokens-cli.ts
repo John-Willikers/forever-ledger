@@ -16,9 +16,7 @@ try {
   await runMigrations(database.db);
   if (command === 'mint' && arg) {
     const { id, token } = await mintToken(database.db, arg, { canRead, canFetch });
-    const scope = [canRead ? 'upload + read all data' : 'upload', canFetch ? 'fetch' : '']
-      .filter(Boolean)
-      .join(' + ');
+    const scope = canFetch ? 'fetch only' : canRead ? 'upload + read all data' : 'upload only';
     console.log(
       `token #${id} for "${arg}" (${scope}; shown once, store it in the uploader config):\n${token}`,
     );
@@ -26,7 +24,7 @@ try {
     for (const t of await listTokens(database.db)) {
       const state = t.revokedAt ? `revoked ${chicagoIso(t.revokedAt)}` : 'active';
       const used = t.lastUsedAt ? chicagoIso(t.lastUsedAt) : 'never';
-      const scope = (t.canRead ? 'upload+read' : 'upload') + (t.canFetch ? '+fetch' : '');
+      const scope = t.canFetch ? 'fetch' : t.canRead ? 'upload+read' : 'upload';
       console.log(
         `#${t.id}\t${t.label}\t${scope}\t${state}\tcreated ${chicagoIso(t.createdAt)}\tlast used ${used}`,
       );

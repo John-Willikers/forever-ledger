@@ -17,6 +17,8 @@ export async function mintToken(
   label: string,
   opts: { userId?: number | null; canRead?: boolean; canFetch?: boolean } = {},
 ) {
+  // A fetch token lives on the fetch worker: it may lease and post pages, and nothing else.
+  if (opts.canFetch && opts.canRead) throw new Error('a fetch token cannot also read');
   const token = PREFIX + randomBytes(32).toString('base64url');
   const [row] = await db
     .insert(apiTokens)
@@ -55,12 +57,12 @@ export async function listTokens(db: Db) {
     .orderBy(apiTokens.id);
 }
 
-/** Sets whether a token may read; false when there is no such token. Revoked tokens stay revoked. */
+/** Sets whether a token may read; false when there is no such token (or it is a fetch token). Revoked tokens stay revoked. */
 export async function setTokenCanRead(db: Db, id: number, canRead: boolean) {
   const rows = await db
     .update(apiTokens)
     .set({ canRead })
-    .where(eq(apiTokens.id, id))
+    .where(and(eq(apiTokens.id, id), eq(apiTokens.canFetch, false)))
     .returning({ id: apiTokens.id });
   return rows.length > 0;
 }
@@ -80,7 +82,11 @@ export async function verifyBearerToken(
   return row ?? null;
 }
 
-/** Returns the token id for a valid, unrevoked bearer token (any scope: the upload routes). */
+/**
+ * Returns the token id for a valid, unrevoked upload or reader token (the upload routes). Fetch tokens are refused:
+ * they only lease URLs and post pages.
+ */
 export async function verifyBearer(db: Db, header: string | undefined): Promise<number | null> {
-  return (await verifyBearerToken(db, header))?.id ?? null;
+  const token = await verifyBearerToken(db, header);
+  return token && !token.canFetch ? token.id : null;
 }

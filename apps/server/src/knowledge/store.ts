@@ -99,25 +99,45 @@ async function insertComments(
   comments: CommentDraft[],
 ) {
   if (comments.length === 0) return;
+  // A later fetch of the same comment carries its current body and rating.
   await conn
     .insert(webComments)
     .values(comments.map((c) => ({ ...c, site, snapshotId })))
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: [webComments.site, webComments.commentId],
+      set: {
+        body: sql`excluded.body`,
+        rating: sql`excluded.rating`,
+        snapshotId: sql`excluded.snapshot_id`,
+      },
+      setWhere: sql`excluded.snapshot_id > ${webComments.snapshotId}`,
+    });
 }
 
-/** The source row of a stored snapshot, created on first use. */
+/** A stored page: the URL asked for and the one the browser ended on after redirects. */
+export interface SnapshotRef {
+  id: number;
+  url: string;
+  finalUrl: string;
+  fetchedAt: Date;
+}
+
+/**
+ * The source row of a stored snapshot, created on first use. Tier and game version come from the URL the page was
+ * finally served from, so a Forever link that redirects to a Classic page is classed as Classic.
+ */
 async function snapshotSource(
   conn: Conn,
-  snap: { id: number; url: string; fetchedAt: Date },
+  snap: SnapshotRef,
   parsed: ParseResult,
 ): Promise<SourceInfo> {
-  const cls = classifySource(snap.url);
+  const cls = classifySource(snap.finalUrl);
   const [row] = await conn
     .insert(sources)
     .values({
       key: `snapshot:${snap.id}`,
       kind: 'web',
-      url: snap.url,
+      url: snap.finalUrl,
       site: cls.site,
       tier: cls.tier,
       gameVersion: cls.gameVersion,
@@ -141,20 +161,18 @@ async function snapshotSource(
 }
 
 /** Parses a stored page into its source, claims and comments. Safe to repeat. */
-export async function applySnapshot(
-  conn: Conn,
-  snap: { id: number; url: string; fetchedAt: Date },
-  html: string,
-) {
-  const parsed = parseSnapshot(html, snap.url);
+export async function applySnapshot(conn: Conn, snap: SnapshotRef, html: string) {
+  const parsed = parseSnapshot(html, snap.finalUrl);
   const source = await snapshotSource(conn, snap, parsed);
   const added = await insertClaims(conn, source, parsed.claims, parsed.parser);
-  await insertComments(conn, classifySource(snap.url).site, snap.id, parsed.comments);
+  await insertComments(conn, classifySource(snap.finalUrl).site, snap.id, parsed.comments);
   return { sourceId: source.id, claims: added, problems: parsed.problems };
 }
 
-export const inflate = (gz: Buffer) =>
-  gunzipSync(gz, { maxOutputLength: MAX_HTML_BYTES }).toString('utf8');
+/** The page's raw bytes (at most MAX_HTML_BYTES; larger throws). */
+export const inflateBytes = (gz: Buffer) => gunzipSync(gz, { maxOutputLength: MAX_HTML_BYTES });
+
+export const inflate = (gz: Buffer) => inflateBytes(gz).toString('utf8');
 
 export interface EnqueueOptions {
   url: string;
@@ -212,6 +230,12 @@ export async function leaseTargets(
     priority: number;
     next_due_at: Date;
   }>(sql`
+    with gave_up as (
+      -- A lease that keeps running out without a report (the worker crashes on the page) stops being handed out.
+      update fetch_targets
+         set state = 'failed', lease_token_id = null, lease_worker = null, lease_until = null,
+             last_error = 'lease ran out ' || attempts || ' times without a report', updated_at = now()
+       where state = 'leased' and lease_until < now() and attempts >= ${MAX_ATTEMPTS})
     update fetch_targets t
        set state = 'leased', lease_token_id = ${tokenId}, lease_worker = ${worker},
            lease_until = now() + make_interval(mins => ${LEASE_MINUTES}),
@@ -219,7 +243,7 @@ export async function leaseTargets(
      where t.url in (
        select url from fetch_targets
         where (state in ('queued', 'done') and next_due_at <= now())
-           or (state = 'leased' and lease_until < now())
+           or (state = 'leased' and lease_until < now() and attempts < ${MAX_ATTEMPTS})
         order by priority desc, next_due_at
         limit ${max}
         for update skip locked)
@@ -241,7 +265,7 @@ export async function leaseTargets(
 
 export class FetchReportError extends Error {
   constructor(
-    readonly status: 400 | 404 | 422,
+    readonly status: 400 | 404 | 409 | 422,
     message: string,
   ) {
     super(message);
@@ -252,40 +276,60 @@ export class FetchReportError extends Error {
 const backoff = (attempts: number) =>
   sql`now() + make_interval(hours => ${Math.min(2 ** Math.max(attempts - 1, 0), 168)})`;
 
-/** Records one fetch: stores an ok page (once per content hash) and moves the URL on in the queue. */
+const CLEAR_LEASE = { leaseTokenId: null, leaseWorker: null, leaseUntil: null } as const;
+
+/**
+ * Records one fetch: stores an ok page (once per content hash) and moves the URL on in the queue. Only the token that
+ * holds the URL's lease may report it (409 otherwise). A report the server refuses (400, 422) still settles the URL, so
+ * a page that can never be stored stops coming back after MAX_ATTEMPTS.
+ */
 export async function recordFetchReport(db: Db, tokenId: number, report: FetchReport) {
   const url = normalizeUrl(report.url);
   const [target] = await db.select().from(fetchTargets).where(eq(fetchTargets.url, url));
   if (!target) throw new FetchReportError(404, 'url is not on the fetch queue');
+  if (target.state !== 'leased' || target.leaseTokenId !== tokenId) {
+    throw new FetchReportError(409, 'this token does not hold the lease on that url');
+  }
 
-  const settle = (set: PgUpdateSetSource<typeof fetchTargets>) =>
-    db
+  const held = and(
+    eq(fetchTargets.url, url),
+    eq(fetchTargets.state, 'leased'),
+    eq(fetchTargets.leaseTokenId, tokenId),
+  );
+  const settle = (set: PgUpdateSetSource<typeof fetchTargets>, conn: Conn = db) =>
+    conn
       .update(fetchTargets)
       .set({
-        leaseTokenId: null,
-        leaseWorker: null,
-        leaseUntil: null,
+        ...CLEAR_LEASE,
         lastStatus: report.httpStatus ?? null,
         lastOutcome: report.outcome,
         lastError: report.error ?? null,
         updatedAt: new Date(),
         ...set,
       })
-      .where(eq(fetchTargets.url, url));
+      .where(held);
+  const retryOrFail = (): PgUpdateSetSource<typeof fetchTargets> =>
+    target.attempts < MAX_ATTEMPTS
+      ? { state: 'queued', nextDueAt: backoff(target.attempts) }
+      : { state: 'failed' };
+  const refuse = async (status: 400 | 422, message: string): Promise<never> => {
+    await settle({ ...retryOrFail(), lastOutcome: 'refused', lastError: message });
+    throw new FetchReportError(status, message);
+  };
 
-  let html: string | null = null;
+  let bytes: Buffer | null = null;
   let gz: Buffer | null = null;
   if (report.outcome === 'ok') {
     gz = Buffer.from(report.htmlGzBase64!, 'base64');
     try {
-      html = inflate(gz);
+      bytes = inflateBytes(gz);
     } catch {
-      throw new FetchReportError(400, 'htmlGzBase64 is not a gzip of at most 16 MB');
+      return refuse(400, 'htmlGzBase64 is not a gzip of at most 16 MB');
     }
-    if (sha256Hex(html) !== report.sha256) {
-      throw new FetchReportError(422, 'sha256 does not match the page');
-    }
+    // The hash is over the page's bytes as sent, so a page that is not UTF-8 still matches.
+    if (sha256Hex(bytes) !== report.sha256) return refuse(422, 'sha256 does not match the page');
   }
+  const html = bytes?.toString('utf8') ?? null;
 
   // The server's backstop: a challenge page is never stored as content.
   if (report.outcome === 'challenge' || (html !== null && looksLikeChallenge(html))) {
@@ -296,33 +340,27 @@ export async function recordFetchReport(db: Db, tokenId: number, report: FetchRe
   if (report.outcome === 'http_error') {
     const s = report.httpStatus ?? 0;
     const transient = s === 403 || s === 429 || s >= 500;
-    await settle(
-      transient && target.attempts < MAX_ATTEMPTS
-        ? { state: 'queued', nextDueAt: backoff(target.attempts) }
-        : { state: 'failed' },
-    );
+    await settle(transient ? retryOrFail() : { state: 'failed' });
     return { result: 'recorded' as const };
   }
   if (report.outcome === 'error') {
-    await settle(
-      target.attempts < MAX_ATTEMPTS
-        ? { state: 'queued', nextDueAt: backoff(target.attempts) }
-        : { state: 'failed' },
-    );
+    await settle(retryOrFail());
     return { result: 'recorded' as const };
   }
 
+  // Store the raw page and settle the URL first: a parser bug must never lose the page.
   const fetchedAt = new Date(report.fetchedAt);
-  return db.transaction(async (tx) => {
+  const finalUrl = normalizeUrl(report.finalUrl!);
+  const stored = await db.transaction(async (tx) => {
     const inserted = await tx
       .insert(webSnapshots)
       .values({
         url,
-        finalUrl: report.finalUrl!,
+        finalUrl,
         httpStatus: report.httpStatus ?? null,
         fetchedAt,
         sha256: report.sha256!,
-        bytes: Buffer.byteLength(html!),
+        bytes: bytes!.length,
         htmlGz: gz!,
         worker: report.worker,
         fetcher: report.fetcher,
@@ -330,37 +368,46 @@ export async function recordFetchReport(db: Db, tokenId: number, report: FetchRe
       })
       .onConflictDoNothing()
       .returning({ id: webSnapshots.id });
-    const done: PgUpdateSetSource<typeof fetchTargets> = {
-      state: 'done',
-      attempts: 0,
-      lastFetchedAt: fetchedAt,
-      nextDueAt: sql`now() + make_interval(days => ${REFETCH_DAYS})`,
-      leaseTokenId: null,
-      leaseWorker: null,
-      leaseUntil: null,
-      lastStatus: report.httpStatus ?? null,
-      lastOutcome: 'ok',
-      lastError: null,
-      updatedAt: new Date(),
-    };
-    await tx.update(fetchTargets).set(done).where(eq(fetchTargets.url, url));
-    if (inserted.length === 0) {
-      const [old] = await tx
-        .select({ id: webSnapshots.id })
-        .from(webSnapshots)
-        .where(and(eq(webSnapshots.url, url), eq(webSnapshots.sha256, report.sha256!)));
-      return { result: 'unchanged' as const, snapshotId: old?.id };
-    }
-    const id = inserted[0]!.id;
-    const applied = await applySnapshot(tx, { id, url, fetchedAt }, html!);
-    return { result: 'stored' as const, snapshotId: id, claims: applied.claims };
+    await settle(
+      {
+        state: 'done',
+        attempts: 0,
+        lastFetchedAt: fetchedAt,
+        nextDueAt: sql`now() + make_interval(days => ${REFETCH_DAYS})`,
+        lastOutcome: 'ok',
+      },
+      tx,
+    );
+    if (inserted.length > 0) return { id: inserted[0]!.id, isNew: true };
+    const [old] = await tx
+      .select({ id: webSnapshots.id })
+      .from(webSnapshots)
+      .where(and(eq(webSnapshots.url, url), eq(webSnapshots.sha256, report.sha256!)));
+    return { id: old!.id, isNew: false };
   });
+  if (!stored.isNew) return { result: 'unchanged' as const, snapshotId: stored.id };
+
+  try {
+    const applied = await db.transaction((tx) =>
+      applySnapshot(tx, { id: stored.id, url, finalUrl, fetchedAt }, html!),
+    );
+    return { result: 'stored' as const, snapshotId: stored.id, claims: applied.claims };
+  } catch (err) {
+    const message = `parse failed: ${(err as Error).message}`.slice(0, 500);
+    await db.update(fetchTargets).set({ lastError: message }).where(eq(fetchTargets.url, url));
+    return { result: 'stored' as const, snapshotId: stored.id, claims: 0 };
+  }
 }
 
 /** Re-runs the parsers over every stored page (optionally one site). Claims are append-only, so this only adds. */
 export async function reparseAll(db: Db, site?: string) {
   const snaps = await db
-    .select({ id: webSnapshots.id, url: webSnapshots.url, fetchedAt: webSnapshots.fetchedAt })
+    .select({
+      id: webSnapshots.id,
+      url: webSnapshots.url,
+      finalUrl: webSnapshots.finalUrl,
+      fetchedAt: webSnapshots.fetchedAt,
+    })
     .from(webSnapshots)
     .orderBy(webSnapshots.id);
   let pages = 0;
@@ -372,10 +419,14 @@ export async function reparseAll(db: Db, site?: string) {
       .select({ htmlGz: webSnapshots.htmlGz })
       .from(webSnapshots)
       .where(eq(webSnapshots.id, s.id));
-    const r = await db.transaction((tx) => applySnapshot(tx, s, inflate(row!.htmlGz)));
-    pages++;
-    added += r.claims;
-    problems.push(...r.problems.map((p) => `#${s.id} ${s.url}: ${p}`));
+    try {
+      const r = await db.transaction((tx) => applySnapshot(tx, s, inflate(row!.htmlGz)));
+      pages++;
+      added += r.claims;
+      problems.push(...r.problems.map((p) => `#${s.id} ${s.url}: ${p}`));
+    } catch (err) {
+      problems.push(`#${s.id} ${s.url}: parse failed: ${(err as Error).message}`);
+    }
   }
   return { pages, added, problems };
 }

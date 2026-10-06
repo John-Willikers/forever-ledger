@@ -1,5 +1,6 @@
 import type { EntityType } from '@forever-ledger/contracts';
-import { bracketedAfter, tryJson } from './scan.js';
+import type { HTMLElement } from 'node-html-parser';
+import { bracketedAfter, codeMarkers, topLevel, tryJson } from './scan.js';
 import type { ClaimDraft, CommentDraft, ParseResult } from './types.js';
 
 /**
@@ -64,28 +65,38 @@ export function wowheadEntity(url: string): { type: EntityType; id: number } | n
 const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : undefined);
 const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : undefined);
 
-/** The position just past each `marker` in `src`. */
-function* calls(src: string, marker: string) {
-  let at = src.indexOf(marker);
-  while (at !== -1) {
-    yield at + marker.length;
-    at = src.indexOf(marker, at + marker.length);
-  }
-}
+/** `key:` or `"key":` at the top level of an object literal's text (see `topLevel`). */
+const keyRe = (key: string) => new RegExp(`(?<![\\w$])["']?${key}["']?\\s*:\\s*`);
 
-/** The JSON array a Listview's `data:` refers to, inline or through `var lv_x = [...]`. */
-function listData(script: string, obj: string): unknown[] | undefined {
-  const m = /\bdata\s*:\s*([[A-Za-z_$])/.exec(obj);
+const stringKey = (head: string, key: string) =>
+  new RegExp(`${keyRe(key).source}['"]([\\w-]+)['"]`).exec(head)?.[1];
+
+/**
+ * The JSON array a Listview's `data:` refers to: inline, or a variable (`data: lv_comments0`) declared before the
+ * Listview at `callAt`; the nearest such declaration wins when a page reuses a name.
+ */
+function listData(
+  script: string,
+  obj: string,
+  head: string,
+  callAt: number,
+): unknown[] | undefined {
+  const m = keyRe('data').exec(head);
   if (!m) return undefined;
-  if (m[1] === '[') {
-    const text = bracketedAfter(obj, m.index);
+  const at = m.index + m[0].length;
+  if (obj[at] === '[') {
+    const text = bracketedAfter(obj, at);
     const v = text ? tryJson(text) : undefined;
     return Array.isArray(v) ? v : undefined;
   }
-  const ident = /\bdata\s*:\s*([A-Za-z_$][\w$]*)/.exec(obj)?.[1];
+  const ident = /^[A-Za-z_$][\w$]*/.exec(obj.slice(at))?.[0];
   if (!ident) return undefined;
-  const decl = new RegExp(`\\b${ident.replace(/\$/g, '\\$')}\\s*=\\s*\\[`).exec(script);
-  if (!decl) return undefined;
+  const escaped = ident.replace(/\$/g, '\\$');
+  const decls = [
+    ...script.slice(0, callAt).matchAll(new RegExp(`(?<![\\w$.])${escaped}\\s*=\\s*\\[`, 'g')),
+  ];
+  const decl = decls.at(-1);
+  if (decl?.index === undefined) return undefined;
   const text = bracketedAfter(script, decl.index);
   const v = text ? tryJson(text) : undefined;
   return Array.isArray(v) ? v : undefined;
@@ -127,16 +138,19 @@ function rowValue(row: Record<string, unknown>, template: string | undefined) {
   return v;
 }
 
-export function parseWowhead(html: string, url: string, title: string | null): ParseResult {
+export function parseWowhead(root: HTMLElement, url: string, title: string | null): ParseResult {
   const entity = wowheadEntity(url);
   const claims: ClaimDraft[] = [];
   const comments: CommentDraft[] = [];
   const problems: string[] = [];
-  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]!);
-  const script = scripts.join('\n;\n');
+  const script = root
+    .querySelectorAll('script')
+    .filter((el) => !el.getAttribute('src'))
+    .map((el) => el.rawText)
+    .join('\n;\n');
 
   // Names from the Gatherer: the page's own entity, plus everything the page links to.
-  for (const at of calls(script, 'WH.Gatherer.addData(')) {
+  for (const at of codeMarkers(script, 'WH.Gatherer.addData(')) {
     const args = /^\s*(\d+)\s*,\s*\d+\s*,\s*/.exec(script.slice(at));
     const type = args ? GATHERER_TYPES[Number(args[1])] : undefined;
     const text = args ? bracketedAfter(script, at + args[0].length) : null;
@@ -151,14 +165,20 @@ export function parseWowhead(html: string, url: string, title: string | null): P
   }
 
   if (entity) {
-    for (const at of calls(script, 'new Listview(')) {
+    for (const at of codeMarkers(script, 'new Listview(')) {
       const obj = bracketedAfter(script, at);
-      if (!obj) continue;
-      const head = obj.replace(/\bdata\s*:\s*\[[\s\S]*$/, '');
-      const id = /\bid\s*:\s*['"]([\w-]+)['"]/.exec(head)?.[1];
-      const template = /\btemplate\s*:\s*['"]([\w-]+)['"]/.exec(head)?.[1];
-      if (!id) continue;
-      const rows = listData(script, obj);
+      if (!obj) {
+        problems.push('a listview is not a balanced object');
+        continue;
+      }
+      const head = topLevel(obj);
+      const id = stringKey(head, 'id');
+      const template = stringKey(head, 'template');
+      if (!id) {
+        problems.push('a listview has no id');
+        continue;
+      }
+      const rows = listData(script, obj, head, at);
       if (!rows) {
         problems.push(`listview ${id}: data is not JSON`);
         continue;

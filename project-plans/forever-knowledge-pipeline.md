@@ -20,7 +20,15 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
     pages
   - ✅ 2b 🌱 Seed `knowledge/seed/2026-10-06-brief.json`: 16 sources, 41 claims + the Steamwheedle observation, 14 URLs
   - ✅ 2c 🖥️ Admin `/admin/knowledge` (claims, disputes, observations, sources, fetch queue + "queue page")
-  - 🟡 2d 🔍 `pnpm check` green (Lua 212, vitest 973); code review running → PR → merge → deploy
+  - ✅ 2d 🔍 Code review: 0 Critical, 6 Important fixed (refused or crashing reports no longer loop; only the
+    lease holder may report (409); fetch tokens are fetch-only; tier and version come from the final URL; the Wowhead
+    parser handles JSON-style keys and the nearest `data` variable, and ignores markers inside strings and comments;
+    challenge titles must match whole). Minors fixed: disputes are one row per claim, comments update, list limits,
+    a manual claim must quote a fetched page, reparse survives a bad page.
+  - 🟡 2e 🚀 PR → CI → merge → deploy
+  - 📝 Changes from the plan: on-demand enqueue is `knowledge-cli enqueue-seen <template>` (no hook after ingest
+    until the Forever URL scheme is confirmed); snapshots are JSON with base64 gzip, not a raw gzip body; seed claims
+    stay on their seed sources, and re-checking them against fetched pages is a manual `knowledge-cli claim`.
 - ⬜ 3 🎣 Fishing casts (schema 7 / addon 0.4.0) — 🔒 probe `/flprobe fish` in game first; ⛔ release waits on the
   identity plan's open questions
 - ⬜ 4 🧾 Character guides (DB rows, admin render)

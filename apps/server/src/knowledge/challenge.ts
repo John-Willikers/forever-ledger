@@ -3,18 +3,30 @@
  * The worker checks too; this is the server's backstop so a challenge page is never stored as a snapshot. Normal
  * Cloudflare-fronted pages load `/cdn-cgi/challenge-platform/` scripts, so that alone is not a challenge.
  */
+// Whole titles, so a quest or spell called "Just a Moment" ("Just a Moment - Quest - World of Warcraft") is not one.
 const TITLES = [
-  /^just a moment/i,
-  /^attention required/i,
-  /^access denied/i,
-  /request could not be satisfied/i,
-  /^verifying you are human/i,
-  /^security check/i,
-  /^ddos-guard/i,
+  /^just a moment\.{0,3}$/i,
+  /^attention required!? \| cloudflare$/i,
+  /^access denied$/i,
+  /^error: the request could not be satisfied$/i,
+  /^verifying you are human\.{0,3}$/i,
+  /^ddos-guard$/i,
 ];
 
-export function looksLikeChallenge(html: string): boolean {
-  const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.trim() ?? '';
+/** Challenge pages are small: their markers sit in the first part of the document. */
+const HEAD_BYTES = 64 * 1024;
+
+export function looksLikeChallenge(page: string): boolean {
+  const html = page.slice(0, HEAD_BYTES);
+  const open = html.search(/<title[^>]*>/i);
+  const close = open === -1 ? -1 : html.indexOf('</title>', open);
+  const title =
+    open === -1 || close === -1
+      ? ''
+      : html
+          .slice(html.indexOf('>', open) + 1, close)
+          .replace(/\s+/g, ' ')
+          .trim();
   if (TITLES.some((t) => t.test(title))) return true;
   if (/window\._cf_chl_opt\b/.test(html)) return true;
   if (/id=["']challenge-(form|running|stage)["']/.test(html)) return true;
