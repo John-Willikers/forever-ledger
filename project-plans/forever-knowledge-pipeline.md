@@ -11,9 +11,9 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - 🟡 0 📝 Plan approved and written, branch `feat/knowledge-pipeline` from master (354ee78), identity plan tasks 7–8
   marked shared — 06:47 CDT
   - ⛔ 0b 💾 Cruiser backup: Harlan creates a private GitHub repo for `stream-recorder`; the cruiser session pushes it
-- ⬜ 1 🛰️ Cruiser fetch worker (cruiser session, handoff prompt below) — needs task 2's lease/snapshot routes + a
-  `can_fetch` token
-- 🟡 2 🗄️ Server: migration 0013, `fetch_targets`, `web_snapshots`, `sources`, `claims`, `web_comments`,
+- ⬜ 1 🛰️ Cruiser fetch worker: paste `docs/cruiser-fetcher-handoff.md` on cruiser. The server routes are live; Harlan
+  mints the token on the VPS (`token:mint "cruiser fetcher" --fetch`)
+- ✅ 2 🗄️ Server: migration 0013, `fetch_targets`, `web_snapshots`, `sources`, `claims`, `web_comments`,
   `field_observations`, lease + snapshot routes, `can_fetch` scope — 07:06 CDT (cc7281c)
   - ✅ 2a 🧩 Parsers `wowhead@1` (embedded JSON, no eval) and `table@1` (zone/dungeon level tables) +
     `knowledge-cli reparse`. Written against hand-made fixtures in `fixtures/synthetic/web/`; recheck on the first real
@@ -25,7 +25,9 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
     parser handles JSON-style keys and the nearest `data` variable, and ignores markers inside strings and comments;
     challenge titles must match whole). Minors fixed: disputes are one row per claim, comments update, list limits,
     a manual claim must quote a fetched page, reparse survives a bad page.
-  - 🟡 2e 🚀 PR → CI → merge → deploy
+  - ✅ 2e 🚀 PR #37 CI green → merged (62c9651) → deployed 07:20 CDT: backup `forever_ledger-2026-10-06-0719-pre0013.sql.gz`,
+    migration 0013 applied, seed loaded (17 sources, 42 claims, 1 observation, 14 URLs queued), `/v1/fetch/lease` answers
+    401 without a token
   - 📝 Changes from the plan: on-demand enqueue is `knowledge-cli enqueue-seen <template>` (no hook after ingest
     until the Forever URL scheme is confirmed); snapshots are JSON with base64 gzip, not a raw gzip body; seed claims
     stay on their seed sources, and re-checking them against fetched pages is a manual `knowledge-cli claim`.
