@@ -92,6 +92,13 @@
       "when": 1790233058639,
       "tag": "0012_container_loot",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791287404164,
+      "tag": "0013_knowledge",
+      "breakpoints": true
     }
   ]
 }

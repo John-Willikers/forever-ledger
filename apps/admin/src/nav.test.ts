@@ -13,6 +13,7 @@ describe('NAV', () => {
       'Vendors & trainers',
       'Builds',
       'Maps',
+      'Knowledge',
       'Health',
       'Access',
     ]);

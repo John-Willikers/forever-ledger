@@ -62,3 +62,10 @@ export function schema4Batch(session: string, account: string) {
     },
   };
 }
+
+/** A hand-written web page from `fixtures/synthetic/web/`. */
+export const webFixture = (name: string) =>
+  readFileSync(
+    fileURLToPath(new URL(`../../../fixtures/synthetic/web/${name}`, import.meta.url)),
+    'utf8',
+  );

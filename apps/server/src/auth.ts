@@ -9,13 +9,13 @@ export const hashToken = (token: string) => createHash('sha256').update(token).d
 
 /**
  * Creates a token, optionally owned by a panel user; the plaintext is returned once and only its hash is stored.
- * Upload scope by default (ingest, error reports, addon manifest); `canRead` adds every /v1 read route.
- * Never log the returned `token`.
+ * Upload scope by default (ingest, error reports, addon manifest); `canRead` adds every /v1 read route, `canFetch` the
+ * knowledge fetch routes (lease URLs, post page snapshots). Never log the returned `token`.
  */
 export async function mintToken(
   db: Db,
   label: string,
-  opts: { userId?: number | null; canRead?: boolean } = {},
+  opts: { userId?: number | null; canRead?: boolean; canFetch?: boolean } = {},
 ) {
   const token = PREFIX + randomBytes(32).toString('base64url');
   const [row] = await db
@@ -25,6 +25,7 @@ export async function mintToken(
       tokenHash: hashToken(token),
       userId: opts.userId ?? null,
       canRead: opts.canRead ?? false,
+      canFetch: opts.canFetch ?? false,
     })
     .returning({ id: apiTokens.id });
   return { id: row!.id, token };
@@ -48,6 +49,7 @@ export async function listTokens(db: Db) {
       revokedAt: apiTokens.revokedAt,
       lastUsedAt: apiTokens.lastUsedAt,
       canRead: apiTokens.canRead,
+      canFetch: apiTokens.canFetch,
     })
     .from(apiTokens)
     .orderBy(apiTokens.id);
@@ -63,18 +65,18 @@ export async function setTokenCanRead(db: Db, id: number, canRead: boolean) {
   return rows.length > 0;
 }
 
-/** The id and read scope of a valid, unrevoked bearer token (and marks it used), else null. */
+/** The id and scopes of a valid, unrevoked bearer token (and marks it used), else null. */
 export async function verifyBearerToken(
   db: Db,
   header: string | undefined,
-): Promise<{ id: number; canRead: boolean } | null> {
+): Promise<{ id: number; canRead: boolean; canFetch: boolean } | null> {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? '');
   if (!m?.[1]?.startsWith(PREFIX)) return null;
   const [row] = await db
     .update(apiTokens)
     .set({ lastUsedAt: new Date() })
     .where(and(eq(apiTokens.tokenHash, hashToken(m[1])), isNull(apiTokens.revokedAt)))
-    .returning({ id: apiTokens.id, canRead: apiTokens.canRead });
+    .returning({ id: apiTokens.id, canRead: apiTokens.canRead, canFetch: apiTokens.canFetch });
   return row ?? null;
 }
 

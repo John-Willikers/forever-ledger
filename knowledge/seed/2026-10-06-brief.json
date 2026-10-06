@@ -1,0 +1,603 @@
+{
+  "sources": [
+    {
+      "key": "seed:mobalytics-zone-map",
+      "url": "https://mobalytics.gg/wow-forever/guides/zone-map-level-ranges",
+      "title": "Mobalytics zone map level ranges"
+    },
+    {
+      "key": "seed:mobalytics-dungeon-map",
+      "url": "https://mobalytics.gg/wow-forever/guides/dungeon-raid-map",
+      "title": "Mobalytics dungeon and raid map"
+    },
+    {
+      "key": "seed:mobalytics-race-class",
+      "url": "https://mobalytics.gg/wow-forever/guides/wow-forever-race-class-combinations",
+      "title": "Mobalytics race and class combinations"
+    },
+    {
+      "key": "seed:mobalytics-skyborne",
+      "url": "https://mobalytics.gg/gamebase/guides/wow-forever-skyborne",
+      "title": "Mobalytics Skyborne guide",
+      "gameVersion": "forever"
+    },
+    {
+      "key": "seed:games-gg-wetlands",
+      "site": "games.gg",
+      "tier": 4,
+      "gameVersion": "forever",
+      "note": "games.gg article on Horde travel in the Wetlands; exact URL not recorded in the brief"
+    },
+    {
+      "key": "seed:wow-professions-fishing",
+      "url": "https://www.wow-professions.com/forever/fishing-leveling-guide",
+      "title": "wow-professions Forever fishing leveling guide"
+    },
+    {
+      "key": "seed:wow-professions-fishing-cooking",
+      "url": "https://www.wow-professions.com/forever/fishing-and-cooking-leveling-guide",
+      "title": "wow-professions Forever fishing and cooking guide"
+    },
+    {
+      "key": "seed:wow4evernews-fishing",
+      "url": "https://wow4evernews.com/en/articles/wow-forever-fishing-leveling-guide",
+      "title": "wow4evernews fishing leveling guide"
+    },
+    {
+      "key": "seed:expcarry-u4gm",
+      "site": "expcarry.com",
+      "tier": 7,
+      "gameVersion": "forever",
+      "note": "expcarry and u4gm boost-seller articles on Forever campsite objects; exact URLs not recorded in the brief"
+    },
+    {
+      "key": "seed:blizzard-news-24304075",
+      "url": "https://news.blizzard.com/en-us/article/24304075",
+      "title": "Blizzard news article 24304075",
+      "gameVersion": "forever"
+    },
+    {
+      "key": "seed:warcraft-wiki-wowhead-classic",
+      "site": "warcraft.wiki.gg",
+      "tier": 5,
+      "gameVersion": "classic",
+      "note": "Warcraft Wiki and Wowhead Classic item pages for Black Pearl / Big-mouth Clam"
+    },
+    {
+      "key": "seed:blizzard-watch-clams",
+      "site": "blizzardwatch.com",
+      "tier": 5,
+      "gameVersion": "classic",
+      "note": "Blizzard Watch Classic article on fishing Big-mouth Clams"
+    },
+    {
+      "key": "seed:wowhead-classic-comments",
+      "site": "wowhead.com",
+      "tier": 6,
+      "gameVersion": "classic",
+      "note": "Wowhead Classic item comments (player reports)"
+    },
+    {
+      "key": "seed:blizzard-forum-59737",
+      "url": "https://us.forums.blizzard.com/en/blizzard/t/fishing-is-it-worth-it-in-wow-forever/59737",
+      "title": "Blizzard forums: Fishing, is it worth it in WoW Forever?",
+      "gameVersion": "forever"
+    },
+    {
+      "key": "seed:google-ai-overview",
+      "site": "google.com",
+      "tier": 7,
+      "gameVersion": "forever",
+      "title": "Google AI Overview answer on farming Black Pearls in the Forever beta",
+      "note": "Fact-checked 2026-10-06: about half right. Statements contradicted by a source are labeled FALSE; unsourced ones UNVERIFIED."
+    },
+    {
+      "key": "seed:claude-classic-knowledge",
+      "site": "claude-session",
+      "tier": 5,
+      "gameVersion": "classic",
+      "note": "Claude's Classic-era knowledge from the 2026-10-06 fact-check session, not re-sourced"
+    }
+  ],
+  "claims": [
+    {
+      "source": "seed:mobalytics-zone-map",
+      "entityType": "zone",
+      "entityName": "Tanaris",
+      "attribute": "level_range",
+      "value": {
+        "min": 40,
+        "max": 50
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-zone-map",
+      "entityType": "zone",
+      "entityName": "Feralas",
+      "attribute": "level_range",
+      "value": {
+        "min": 40,
+        "max": 50
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-zone-map",
+      "entityType": "zone",
+      "entityName": "The Hinterlands",
+      "attribute": "level_range",
+      "value": {
+        "min": 40,
+        "max": 50
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-zone-map",
+      "entityType": "zone",
+      "entityName": "Searing Gorge",
+      "attribute": "level_range",
+      "value": {
+        "min": 43,
+        "max": 55
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-zone-map",
+      "entityType": "zone",
+      "entityName": "Blasted Lands",
+      "attribute": "level_range",
+      "value": {
+        "min": 43,
+        "max": 55
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-zone-map",
+      "entityType": "zone",
+      "entityName": "Azshara",
+      "attribute": "level_range",
+      "value": {
+        "min": 43,
+        "max": 55
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-dungeon-map",
+      "entityType": "dungeon",
+      "entityName": "Excavation Site",
+      "attribute": "level_range",
+      "value": {
+        "min": 24,
+        "max": 29
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-dungeon-map",
+      "entityType": "dungeon",
+      "entityName": "Excavation Site",
+      "attribute": "zone",
+      "value": "Wetlands",
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:games-gg-wetlands",
+      "entityType": "zone",
+      "entityName": "Wetlands",
+      "attribute": "horde_town",
+      "value": false,
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:games-gg-wetlands",
+      "entityType": "zone",
+      "entityName": "Wetlands",
+      "attribute": "nearest_horde_flight_master",
+      "value": "Hammerfall",
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:wow-professions-fishing",
+      "entityType": "profession",
+      "entityName": "Fishing",
+      "attribute": "expert_requirements",
+      "value": {
+        "level": 20,
+        "skill": 125,
+        "newCap": 225
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:wow-professions-fishing",
+      "entityType": "profession",
+      "entityName": "Fishing",
+      "attribute": "artisan_requirements",
+      "value": {
+        "level": 35,
+        "skill": 225,
+        "trainer": "Nat Pagle",
+        "zone": "Dustwallow Marsh"
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:expcarry-u4gm",
+      "entityType": "profession",
+      "entityName": "Fishing",
+      "attribute": "campsite_objects",
+      "value": {
+        "earlier": ["Fish Bowl", "Fishing Rack"],
+        "maxSkill": "Fishing Hut"
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:wow4evernews-fishing",
+      "entityType": "profession",
+      "entityName": "Fishing",
+      "attribute": "campsite_catch_table",
+      "value": "unknown: no Forever yield or drop rate established for the Fishing Rack or Hut",
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:google-ai-overview",
+      "entityType": "profession",
+      "entityName": "Fishing",
+      "attribute": "advice_at_225",
+      "value": "craft a Fishing Hut",
+      "label": "FALSE"
+    },
+    {
+      "source": "seed:google-ai-overview",
+      "entityType": "profession",
+      "entityName": "Fishing",
+      "attribute": "artisan_requirements",
+      "value": {
+        "level": "35-45 depending on build"
+      },
+      "label": "FALSE"
+    },
+    {
+      "source": "seed:warcraft-wiki-wowhead-classic",
+      "entityType": "item",
+      "entityName": "Black Pearl",
+      "attribute": "comes_from",
+      "value": "Big-mouth Clam",
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:blizzard-watch-clams",
+      "entityType": "item",
+      "entityName": "Big-mouth Clam",
+      "attribute": "fished_in_zones",
+      "value": ["Azshara", "Feralas", "The Hinterlands", "Tanaris"],
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:blizzard-watch-clams",
+      "entityType": "item",
+      "entityName": "Big-mouth Clam",
+      "attribute": "req_skill",
+      "value": {
+        "min": 205,
+        "noGetaways": 300
+      },
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:wowhead-classic-comments",
+      "entityType": "item",
+      "entityName": "Black Pearl",
+      "attribute": "farm_rate_report",
+      "value": {
+        "count": 2,
+        "minutes": 30,
+        "where": "Steamwheedle Port dock",
+        "skill": 225,
+        "lure": "Bright Baubles"
+      },
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:wowhead-classic-comments",
+      "entityType": "npc",
+      "entityName": "Tanaris turtles near Steamwheedle",
+      "attribute": "level_range",
+      "value": {
+        "min": 41,
+        "max": 43
+      },
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:wowhead-classic-comments",
+      "entityType": "item",
+      "entityName": "Big-mouth Clam",
+      "attribute": "turtle_drop_rate",
+      "value": "about 1 clam per 2 kills",
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:wow-professions-fishing-cooking",
+      "entityType": "item",
+      "entityName": "Big-mouth Clam",
+      "attribute": "dropped_by",
+      "value": ["Steeljaw Snapper", "Surf Glider"],
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:wow-professions-fishing-cooking",
+      "entityType": "item",
+      "entityName": "Zesty Clam Meat",
+      "attribute": "comes_from",
+      "value": "Big-mouth Clam",
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:blizzard-forum-59737",
+      "entityType": "item",
+      "entityName": "Big-mouth Clam",
+      "attribute": "fishing_rate_change",
+      "value": {
+        "before": "12-15 per 30 min",
+        "after": "2 per 30 min",
+        "aggroRadius": "larger"
+      },
+      "label": "ANECDOTE"
+    },
+    {
+      "source": "seed:google-ai-overview",
+      "entityType": "item",
+      "entityName": "Big-mouth Clam",
+      "attribute": "wreckage_pools",
+      "value": "higher clam rate in wreckage pools",
+      "label": "UNVERIFIED"
+    },
+    {
+      "source": "seed:google-ai-overview",
+      "entityType": "npc",
+      "entityName": "Steamwheedle Port guards",
+      "attribute": "level",
+      "value": 65,
+      "label": "UNVERIFIED"
+    },
+    {
+      "source": "seed:google-ai-overview",
+      "entityType": "race",
+      "entityName": "Skyborne",
+      "attribute": "racial_slow_fall",
+      "value": "Skyborne have a slow-fall racial",
+      "label": "UNVERIFIED"
+    },
+    {
+      "source": "seed:google-ai-overview",
+      "entityType": "zone",
+      "entityName": "Overlook Cliffs",
+      "attribute": "description",
+      "value": "a low-level border area",
+      "label": "FALSE"
+    },
+    {
+      "source": "seed:google-ai-overview",
+      "entityType": "zone",
+      "entityName": "Alterac Mountains",
+      "attribute": "coastal_fishing",
+      "value": "Alterac has sea coast to fish",
+      "label": "FALSE"
+    },
+    {
+      "source": "seed:google-ai-overview",
+      "entityType": "zone",
+      "entityName": "Shimmering Flats",
+      "attribute": "coastal_fishing",
+      "value": "Shimmering Flats is coastal water",
+      "label": "FALSE"
+    },
+    {
+      "source": "seed:claude-classic-knowledge",
+      "entityType": "zone",
+      "entityName": "Overlook Cliffs",
+      "attribute": "parent_zone",
+      "value": "The Hinterlands",
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:claude-classic-knowledge",
+      "entityType": "zone",
+      "entityName": "Shimmering Flats",
+      "attribute": "parent_zone",
+      "value": "Thousand Needles (inland)",
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:mobalytics-race-class",
+      "entityType": "race",
+      "entityName": "Skyborne",
+      "attribute": "horde_classes",
+      "value": ["Warrior", "Hunter", "Rogue", "Druid", "Shaman"],
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-race-class",
+      "entityType": "race",
+      "entityName": "Skyborne",
+      "attribute": "alliance_classes",
+      "value": ["Warrior", "Hunter", "Rogue", "Druid", "Mage"],
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-skyborne",
+      "entityType": "race",
+      "entityName": "Skyborne",
+      "attribute": "horde_racial",
+      "value": {
+        "name": "Skysight",
+        "effect": "+10% run speed"
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-skyborne",
+      "entityType": "race",
+      "entityName": "Skyborne",
+      "attribute": "druid_forms",
+      "value": "Skyborne Druids have unique forms",
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:mobalytics-skyborne",
+      "entityType": "race",
+      "entityName": "Skyborne",
+      "attribute": "starting_zone",
+      "value": {
+        "name": "Zephras Isle",
+        "levels": "1-12"
+      },
+      "label": "VERIFIED"
+    },
+    {
+      "source": "seed:claude-classic-knowledge",
+      "entityType": "zone",
+      "entityName": "The Hinterlands",
+      "attribute": "horde_route",
+      "value": "Orgrimmar zeppelin to Tirisfal Glades, Tarren Mill, east past Durnholde Keep, then the pass to the northeast",
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:claude-classic-knowledge",
+      "entityType": "zone",
+      "entityName": "Revantusk Village",
+      "attribute": "flight_master",
+      "value": {
+        "name": "Gorkas",
+        "x": 77,
+        "y": 80,
+        "note": "on the pier; cliff path about 76, 61"
+      },
+      "label": "CLASSIC"
+    },
+    {
+      "source": "seed:claude-classic-knowledge",
+      "entityType": "zone",
+      "entityName": "Aerie Peak",
+      "attribute": "faction",
+      "value": "Alliance",
+      "label": "CLASSIC"
+    }
+  ],
+  "observations": [
+    {
+      "key": "2026-10-06-steamwheedle-clams",
+      "faction": "Horde",
+      "race": "Skyborne",
+      "class": "Druid",
+      "level": 30,
+      "gameVersion": "forever",
+      "observedAt": "2026-10-06T00:00:00-05:00",
+      "durationMins": 40,
+      "location": {
+        "zone": "Tanaris",
+        "subzone": "Steamwheedle Port"
+      },
+      "method": "fishing",
+      "setup": {
+        "skill": 225,
+        "lure": true,
+        "water": "open",
+        "spot": "the dock and the beach beside it"
+      },
+      "result": {
+        "bigMouthClams": 0,
+        "catch": "fish only",
+        "other": [
+          {
+            "item": "Heavy Crate",
+            "qty": 1,
+            "contained": "Blasting Powder"
+          }
+        ]
+      },
+      "notes": "Harlan, Forever beta (brief says level cap 30; build not recorded; time of day not recorded, the date is). About 40 minutes of continuous open-water fishing. Inconsistent with Classic rates and worse than the forum anecdote: clams are either heavily nerfed or removed from this table. Open test: 15 minutes at the Revantusk Village shore.",
+      "claims": [
+        {
+          "entityType": "item",
+          "entityName": "Big-mouth Clam",
+          "attribute": "fishing_yield",
+          "value": {
+            "zone": "Tanaris",
+            "subzone": "Steamwheedle Port",
+            "minutes": 40,
+            "caught": 0,
+            "skill": 225,
+            "lure": true,
+            "water": "open"
+          }
+        }
+      ]
+    }
+  ],
+  "targets": [
+    {
+      "url": "https://mobalytics.gg/wow-forever/guides/zone-map-level-ranges",
+      "priority": 20
+    },
+    {
+      "url": "https://mobalytics.gg/wow-forever/guides/dungeon-raid-map",
+      "priority": 5
+    },
+    {
+      "url": "https://mobalytics.gg/wow-forever/guides/wow-forever-race-class-combinations",
+      "priority": 5
+    },
+    {
+      "url": "https://mobalytics.gg/gamebase/guides/wow-forever-skyborne",
+      "priority": 5
+    },
+    {
+      "url": "https://www.wow-professions.com/forever/fishing-leveling-guide",
+      "priority": 5
+    },
+    {
+      "url": "https://www.wow-professions.com/forever/fishing-and-cooking-leveling-guide",
+      "priority": 5
+    },
+    {
+      "url": "https://wow4evernews.com/en/articles/wow-forever-fishing-leveling-guide",
+      "priority": 5
+    },
+    {
+      "url": "https://www.zockify.com/forever/professions/",
+      "priority": 5
+    },
+    {
+      "url": "https://www.zockify.com/forever/races/",
+      "priority": 5
+    },
+    {
+      "url": "https://www.zockify.com/forever/skyborne/",
+      "priority": 5
+    },
+    {
+      "url": "https://news.blizzard.com/en-us/article/24304075",
+      "priority": 5
+    },
+    {
+      "url": "https://www.icy-veins.com/wow-forever/news/all-new-race-and-class-combos-and-racial-abilities-in-wow-forever-official/",
+      "priority": 5
+    },
+    {
+      "url": "https://www.method.gg/wow-forever/all-class-and-race-combinations-in-world-of-warcraft-forever",
+      "priority": 5
+    },
+    {
+      "url": "https://us.forums.blizzard.com/en/blizzard/t/fishing-is-it-worth-it-in-wow-forever/59737",
+      "priority": 5
+    }
+  ]
+}
