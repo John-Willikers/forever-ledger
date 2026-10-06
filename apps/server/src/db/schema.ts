@@ -13,6 +13,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 /** Raw bytes (node-postgres reads and writes a Buffer). */
@@ -68,6 +69,8 @@ export const apiTokens = pgTable('api_tokens', {
    * an upload token only ingests, reports errors and fetches the addon manifest.
    */
   canRead: boolean('can_read').notNull().default(false),
+  /** Fetch scope: may lease URLs and post page snapshots (the browser worker on cruiser). Nothing else. */
+  canFetch: boolean('can_fetch').notNull().default(false),
 });
 
 export const rawUploads = pgTable(
@@ -688,3 +691,190 @@ export const zoneMaps = pgTable(
     ),
   ],
 );
+
+// ----- knowledge pipeline: web pages (fetched on cruiser), sources, claims, first-party observations
+
+/**
+ * The fetch queue. `url` is normalized (contracts `normalizeUrl`). A worker leases due rows; a lease that runs out
+ * (`lease_until`) makes the row due again. `needs_human`: a challenge page never cleared, a person must look.
+ */
+export const fetchTargets = pgTable(
+  'fetch_targets',
+  {
+    url: text('url').primaryKey(),
+    site: text('site').notNull(),
+    entityType: text('entity_type'),
+    entityId: integer('entity_id'),
+    /** Higher goes first. */
+    priority: integer('priority').notNull().default(0),
+    state: text('state', { enum: ['queued', 'leased', 'done', 'needs_human', 'failed'] })
+      .notNull()
+      .default('queued'),
+    leaseTokenId: integer('lease_token_id').references(() => apiTokens.id, {
+      onDelete: 'set null',
+    }),
+    leaseWorker: text('lease_worker'),
+    leaseUntil: tz('lease_until'),
+    attempts: integer('attempts').notNull().default(0),
+    lastStatus: integer('last_status'),
+    lastOutcome: text('last_outcome'),
+    lastError: text('last_error'),
+    nextDueAt: tz('next_due_at').notNull().defaultNow(),
+    lastFetchedAt: tz('last_fetched_at'),
+    /** `seed`, `cli`, `admin` or `ingest`. */
+    addedBy: text('added_by').notNull(),
+    addedAt: tz('added_at').notNull().defaultNow(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check(
+      'fetch_targets_state_check',
+      sql`${t.state} in ('queued', 'leased', 'done', 'needs_human', 'failed')`,
+    ),
+    index('fetch_targets_due_idx').on(t.state, t.nextDueAt),
+    index('fetch_targets_entity_idx').on(t.entityType, t.entityId),
+  ],
+);
+
+/** Raw pages exactly as the browser saw them, gzipped. Never modified: parsers re-run from these. */
+export const webSnapshots = pgTable(
+  'web_snapshots',
+  {
+    id: serial('id').primaryKey(),
+    url: text('url').notNull(),
+    finalUrl: text('final_url').notNull(),
+    httpStatus: integer('http_status'),
+    fetchedAt: tz('fetched_at').notNull(),
+    receivedAt: tz('received_at').notNull().defaultNow(),
+    /** sha256 hex of the uncompressed page bytes. */
+    sha256: text('sha256').notNull(),
+    /** Uncompressed size. */
+    bytes: integer('bytes').notNull(),
+    htmlGz: bytea('html_gz').notNull(),
+    worker: text('worker').notNull(),
+    fetcher: text('fetcher').notNull(),
+    tokenId: integer('token_id').references(() => apiTokens.id, { onDelete: 'set null' }),
+  },
+  (t) => [
+    uniqueIndex('web_snapshots_url_sha_idx').on(t.url, t.sha256),
+    index('web_snapshots_fetched_idx').on(t.fetchedAt),
+  ],
+);
+
+/**
+ * Where claims come from: one row per snapshot (`snapshot:<id>`), per hand-entered web source (`seed:<url>`), or per
+ * first-party observation (`observation:<id>`). `tier` 1-7, most trusted first (contracts SOURCE_TIERS).
+ */
+export const sources = pgTable(
+  'sources',
+  {
+    id: serial('id').primaryKey(),
+    key: text('key').notNull().unique(),
+    kind: text('kind', { enum: ['web', 'seed', 'first_party'] }).notNull(),
+    url: text('url'),
+    site: text('site').notNull(),
+    tier: integer('tier').notNull(),
+    gameVersion: text('game_version', { enum: ['forever', 'classic', 'unknown'] }).notNull(),
+    /** Client build the source says it describes, when it says so. */
+    build: integer('build'),
+    title: text('title'),
+    pageUpdatedAt: tz('page_updated_at'),
+    snapshotId: integer('snapshot_id').references(() => webSnapshots.id),
+    fetchedAt: tz('fetched_at'),
+    note: text('note'),
+    createdAt: tz('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    check('sources_tier_check', sql`${t.tier} between 1 and 7`),
+    check('sources_kind_check', sql`${t.kind} in ('web', 'seed', 'first_party')`),
+    check('sources_game_version_check', sql`${t.gameVersion} in ('forever', 'classic', 'unknown')`),
+    index('sources_url_idx').on(t.url),
+  ],
+);
+
+/**
+ * One fact one source states about one entity. Append-only: a new build or a changed page adds rows, so changes stay
+ * visible. `entity_key` is the game id as text, or a lowercased name when there is no id (zones by name).
+ * `value_hash` is the sha256 of the value's stable JSON.
+ */
+export const claims = pgTable(
+  'claims',
+  {
+    id: serial('id').primaryKey(),
+    sourceId: integer('source_id')
+      .notNull()
+      .references(() => sources.id),
+    entityType: text('entity_type').notNull(),
+    entityKey: text('entity_key').notNull(),
+    entityId: integer('entity_id'),
+    entityName: text('entity_name'),
+    attribute: text('attribute').notNull(),
+    value: jsonb('value').notNull(),
+    valueHash: text('value_hash').notNull(),
+    label: text('label', {
+      enum: ['VERIFIED', 'CLASSIC', 'ANECDOTE', 'UNVERIFIED', 'FALSE'],
+    }).notNull(),
+    observedBuild: integer('observed_build'),
+    /** The passage of the source the claim rests on. */
+    quote: text('quote'),
+    /** e.g. `wowhead@1`, `table@1`, `seed`, `manual`. */
+    parser: text('parser').notNull(),
+    note: text('note'),
+    createdAt: tz('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'claims_label_check',
+      sql`${t.label} in ('VERIFIED', 'CLASSIC', 'ANECDOTE', 'UNVERIFIED', 'FALSE')`,
+    ),
+    uniqueIndex('claims_natural_idx').on(
+      t.sourceId,
+      t.entityType,
+      t.entityKey,
+      t.attribute,
+      t.valueHash,
+    ),
+    index('claims_entity_idx').on(t.entityType, t.entityKey, t.attribute),
+  ],
+);
+
+/** Page comments (Wowhead): low trust, kept apart from claims. */
+export const webComments = pgTable(
+  'web_comments',
+  {
+    site: text('site').notNull(),
+    commentId: integer('comment_id').notNull(),
+    snapshotId: integer('snapshot_id')
+      .notNull()
+      .references(() => webSnapshots.id),
+    entityType: text('entity_type'),
+    entityId: integer('entity_id'),
+    postedAt: tz('posted_at'),
+    rating: integer('rating'),
+    body: text('body').notNull(),
+  },
+  (t) => [primaryKey({ name: 'web_comments_pk', columns: [t.site, t.commentId] })],
+);
+
+/** First-party field sessions (e.g. 40 minutes fishing at Steamwheedle Port), each with a tier 1 source. */
+export const fieldObservations = pgTable('field_observations', {
+  id: serial('id').primaryKey(),
+  /** Natural key so imports are idempotent, e.g. `2026-10-06-steamwheedle-clams`. */
+  key: text('key').notNull().unique(),
+  character: text('character'),
+  faction: text('faction'),
+  race: text('race'),
+  class: text('class'),
+  level: integer('level'),
+  build: integer('build'),
+  gameVersion: text('game_version').notNull().default('forever'),
+  observedAt: tz('observed_at').notNull(),
+  durationMins: integer('duration_mins'),
+  /** `{zone, subzone, mapID?, x?, y?}`. */
+  location: jsonb('location'),
+  method: text('method').notNull(),
+  setup: jsonb('setup'),
+  result: jsonb('result').notNull(),
+  notes: text('notes'),
+  createdAt: tz('created_at').notNull().defaultNow(),
+});

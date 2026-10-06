@@ -1,0 +1,77 @@
+/* Knowledge page only (lazy chunk): claim label pills, values, disputes and observations. */
+.pill.claim-verified {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.pill.claim-classic {
+  color: var(--muted);
+}
+
+.pill.claim-anecdote,
+.pill.claim-unverified {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border-color: var(--warn-border);
+}
+
+.pill.claim-false {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-color: transparent;
+  text-decoration: line-through;
+}
+
+.claim-value {
+  overflow-wrap: anywhere;
+}
+
+.disputes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.disputes li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.observations {
+  display: grid;
+  gap: 1rem;
+}
+
+.observation h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.observation dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.observation dt {
+  color: var(--muted);
+}
+
+.observation dd {
+  margin: 0;
+}
+
+.queue-add {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.queue-add label {
+  flex: 1;
+}
+
+.queue-add input {
+  width: 100%;
+}

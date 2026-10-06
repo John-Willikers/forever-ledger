@@ -18,6 +18,7 @@ import { registerAdminApiRoutes } from './routes/adminApi.js';
 import { registerAdminAuth } from './routes/adminAuth.js';
 import { registerAdminBuildsRoutes } from './routes/adminBuilds.js';
 import { registerAdminQuestRoutes } from './routes/adminQuests.js';
+import { registerAdminKnowledgeRoutes } from './routes/adminKnowledge.js';
 import { registerAdminLootRoutes } from './routes/adminLoot.js';
 import { registerAdminMapsRoutes } from './routes/adminMaps.js';
 import { registerAdminRunRoutes } from './routes/adminRuns.js';
@@ -27,6 +28,7 @@ import { registerAdminStatic } from './routes/adminStatic.js';
 import { registerAnalysisRoutes } from './routes/analysis.js';
 import { recordIngestError, registerDiagnosticsRoutes } from './routes/diagnostics.js';
 import { registerExportRoutes } from './routes/export.js';
+import { registerFetchRoutes } from './routes/fetch.js';
 import { chicagoIso } from './time.js';
 
 export interface AppOptions {
@@ -42,6 +44,8 @@ export interface AppOptions {
   diagnosticsBodyLimit?: number;
   /** Admin panel: Battle.net login, sessions, static SPA. */
   admin?: AdminOptions;
+  /** Knowledge fetch routes: requests per minute per token (default 60). */
+  fetchPerMinute?: number;
 }
 
 export interface AdminOptions extends Partial<AdminAuthOptions> {
@@ -164,6 +168,7 @@ export async function buildApp(opts: AppOptions) {
   registerAnalysisRoutes(app, db, guards.requireReader);
   registerExportRoutes(app, db, guards.requireReader);
   registerAddonRoutes(app, db);
+  registerFetchRoutes(app, db, { perMinute: opts.fetchPerMinute });
   registerDiagnosticsRoutes(app, db, {
     perMinute: opts.diagnosticsPerMinute,
     bodyLimit: opts.diagnosticsBodyLimit,
@@ -175,6 +180,7 @@ export async function buildApp(opts: AppOptions) {
   registerAdminRunRoutes(app, db, guards.requireAdmin);
   registerAdminProfessionsRoutes(app, db, guards.requireAdmin);
   registerAdminBuildsRoutes(app, db, guards.requireAdmin);
+  registerAdminKnowledgeRoutes(app, db, guards.requireAdmin);
   await registerAdminMapsRoutes(app, db, guards.requireAdmin, guards.session);
   await registerAdminStatic(app, opts.admin?.distDir);
 

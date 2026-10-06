@@ -34,6 +34,12 @@ export const NAV: readonly NavItem[] = [
   },
   { path: 'builds', label: 'Builds', phase: 6, summary: 'What changed between client builds.' },
   { path: 'maps', label: 'Maps', phase: 6, summary: 'Zone map art under the points.' },
+  {
+    path: 'knowledge',
+    label: 'Knowledge',
+    phase: 7,
+    summary: 'Web sources, labeled claims, disputes, field notes.',
+  },
   { path: 'health', label: 'Health', phase: 2, summary: 'Diagnostics, ingest errors, samples.' },
   { path: 'access', label: 'Access', phase: 2, summary: 'Users and upload tokens.' },
 ];

@@ -165,6 +165,8 @@ Tokens (one per contributor; only the hash is stored). A token has one of two sc
   tray app and the uploader CLI call. It can't read anything back: the read routes answer `403 token cannot read`.
 - **upload + read** (`can_read`): also every `/v1` read route (analysis, items, professions, export, diagnostics
   list) — that's everyone's data and error reports, so mint it only for your own scripts, never for a friend's PC.
+- **fetch** (`can_fetch`, `--fetch`): the knowledge fetch worker on cruiser — `POST /v1/fetch/lease` and
+  `POST /v1/fetch/snapshots`. Other tokens get `403 token cannot fetch`.
 
 Reads need an admin panel session or a reader token. Mint a reader with `--read`, or tick "can read" on the Access
 page (which can also grant or take it back later):
@@ -173,6 +175,7 @@ page (which can also grant or take it back later):
 set -a; . deploy/.env; set +a
 pnpm --filter @forever-ledger/server token:mint "Friend's PC"            # upload only
 pnpm --filter @forever-ledger/server token:mint "my analysis script" --read
+pnpm --filter @forever-ledger/server token:mint "cruiser fetcher" --fetch
 pnpm --filter @forever-ledger/server token:list                          # shows upload / upload+read
 pnpm --filter @forever-ledger/server token:revoke 3
 ```
@@ -196,12 +199,35 @@ session, an upload-only token gets 403):
 | `POST /v1/diagnostics`                           | Tray app error report (30/min per token, 256 KB)                                             |
 | `GET /v1/diagnostics?since=&limit=`              | Error reports and refused uploads, newest first (`since`: epoch secs or ISO)                 |
 | `GET /v1/diagnostics?type=&level=&source=`       | Filters: `type=diagnostic\|ingest-error`; refused uploads are level `error`, source `ingest` |
+| `POST /v1/fetch/lease`                           | Fetch token: lease up to `max` due URLs for 15 min (`{ worker, max }`)                       |
+| `POST /v1/fetch/snapshots`                       | Fetch token: one fetch's outcome; an `ok` page is gzip+base64 HTML with its sha256           |
 
 Forever lists every profession twice: a base skill line and a "Classic" child line (`parentId` = the base) with the
 same name and rank. The profession routes fold child lines into their base: `?skillLine=` takes either id and means
 the whole profession, recipes carry `profession: { skillLineId, name }` of the base next to their own `skillLineId`,
 gathering and trainer skill lines are the base (with `skillLineName`), and a rise recorded on both lines is one
 skill-up.
+
+### 📚 Knowledge pipeline
+
+Web pages (Wowhead, Mobalytics, guide sites) are fetched by a real browser on cruiser, never on this VPS. The server
+keeps each page raw and gzipped (`web_snapshots`, never modified), turns it into `sources` (tier 1 first-party … 7
+low trust, plus the game version and build) and append-only `claims` labeled VERIFIED / CLASSIC / ANECDOTE /
+UNVERIFIED / FALSE. A challenge page (Cloudflare "Just a moment…") is never stored; its URL waits as `needs_human`.
+Wowhead pages are read from their embedded JSON (`WH.Gatherer.addData`, `new Listview`) with JSON.parse, never
+evaluated. Plan: [`project-plans/forever-knowledge-pipeline.md`](project-plans/forever-knowledge-pipeline.md).
+
+```bash
+set -a; . deploy/.env; set +a
+K="pnpm --filter @forever-ledger/server knowledge"
+$K seed "$PWD/knowledge/seed/2026-10-06-brief.json"   # runs in apps/server: absolute path; hand-checked claims, the Steamwheedle observation, 14 URLs
+$K status                                      # queue by state, counts, URLs that need a human
+$K add https://www.wowhead.com/forever/item=7973 --priority 30
+$K enqueue-seen 'https://www.wowhead.com/forever/{type}={id}' --limit 50   # ids the addon saw; confirm the URL scheme first
+$K claim snapshot:12 zone:Feralas level_range '{"min":40,"max":50}' "Feralas … 40-50"   # quote must be on the page
+$K reparse --site wowhead.com                  # after a parser change; claims only ever get added
+$K disputes zone:Tanaris
+```
 
 ## 🔐 Admin panel (ledger.willikers.dev/admin/)
 

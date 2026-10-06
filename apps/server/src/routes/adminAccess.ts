@@ -54,12 +54,13 @@ export function registerAdminAccessRoutes(
       owner_id: number | null;
       owner_battletag: string | null;
       can_read: boolean;
+      can_fetch: boolean;
       uploads: number;
       last_upload_at: Date | null;
     }>(
       db,
       sql`
-      select t.id, t.label, t.created_at, t.revoked_at, t.last_used_at, t.can_read,
+      select t.id, t.label, t.created_at, t.revoked_at, t.last_used_at, t.can_read, t.can_fetch,
              usr.id as owner_id, usr.battletag as owner_battletag,
              coalesce(u.n, 0)::int as uploads, u.last_at as last_upload_at
       from api_tokens t
@@ -77,6 +78,7 @@ export function registerAdminAccessRoutes(
         lastUsedAt: iso(r.last_used_at),
         owner: r.owner_id === null ? null : { id: r.owner_id, battletag: r.owner_battletag },
         canRead: r.can_read,
+        canFetch: r.can_fetch,
         uploads: r.uploads,
         lastUploadAt: iso(r.last_upload_at),
       })),
