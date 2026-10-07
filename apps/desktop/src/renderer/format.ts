@@ -1,3 +1,5 @@
+import type { ActivityEntry } from '../main/helper/core.js';
+import type { HelperView } from '../main/helper/service.js';
 import type { Snapshot } from '../main/state.js';
 
 const chicago = new Intl.DateTimeFormat('en-US', {
@@ -100,4 +102,47 @@ export function accountLine(a: Snapshot['accounts'][number]): string {
 export function ipcErrorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   return msg.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, '');
+}
+
+/** The helper card's headline. */
+export function helperLine(v: Pick<HelperView, 'enabled' | 'state'>): string {
+  if (!v.enabled) return 'Off. Nothing is loaded until you turn it on.';
+  switch (v.state) {
+    case 'enrolling':
+      return 'On: asking the ledger for a helper key…';
+    case 'pending':
+      return 'On: waiting for Harlan to approve this PC.';
+    case 'paused':
+      return 'On, but paused by the ledger.';
+    case 'waiting':
+      return 'On: waiting.';
+    case 'resting':
+      return 'On: resting.';
+    case 'fetching':
+      return 'On: loading a page…';
+    case 'stopped':
+      return 'Stopped: Wowhead kept refusing pages.';
+    case 'revoked':
+      return 'Stopped: the ledger turned this helper off.';
+    default:
+      return 'On.';
+  }
+}
+
+const RESULT: Record<ActivityEntry['result'], string> = {
+  saved: 'saved',
+  unchanged: 'no change',
+  challenge: 'blocked by a check',
+  error: 'failed',
+};
+
+/** One Activity line: when, which page, how it went. */
+export function helperActivityLine(e: ActivityEntry): string {
+  let page = e.url;
+  try {
+    page = new URL(e.url).pathname.replace(/^\/forever\//, '');
+  } catch {
+    // keep the raw URL
+  }
+  return `${chicagoTime(e.at)} · ${page} · ${RESULT[e.result]}`;
 }

@@ -213,6 +213,14 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
     return this.deps.logger;
   }
 
+  /** Where the fetch helper enrolls: the server and this tray's upload token, once setup is done. */
+  serverTarget(): { serverUrl: string; token: string; uploaderId: string } | undefined {
+    const c = this.config;
+    return c?.token && c.serverUrl
+      ? { serverUrl: c.serverUrl, token: c.token, uploaderId: c.uploaderId }
+      : undefined;
+  }
+
   /** Loads the config; if setup is done, starts watching and runs the first addon sync. */
   async start(): Promise<void> {
     await this.serial(async () => {

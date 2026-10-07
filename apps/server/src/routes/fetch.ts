@@ -1,6 +1,6 @@
 import { FetchEnrollRequest, FetchLeaseRequest, FetchReport } from '@forever-ledger/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { mintToken, verifyBearerToken } from '../auth.js';
+import { mintToken, revokeToken, verifyBearerToken } from '../auth.js';
 import type { VerifiedToken } from '../auth.js';
 import type { Db } from '../db/client.js';
 import { FetchReportError, leaseTargets, recordFetchReport } from '../knowledge/store.js';
@@ -42,6 +42,7 @@ export const fenceOf = (token: VerifiedToken): LeaseFence => ({
  * The knowledge fetch routes. Fetch tokens: cruiser's (`tokens-cli mint --fetch`) and friends' tray helpers, which ask
  * for their own with POST /v1/fetch/enroll (upload token) and can't lease until an admin approves them.
  *   POST /v1/fetch/enroll    upload token → a new helper token, pending approval (replaces this tray's old one)
+ *   POST /v1/fetch/unenroll  helper token → revoked (the tray turned the helper off)
  *   GET  /v1/fetch/status    fetch token → approval status and budget left
  *   POST /v1/fetch/lease     due URLs, within the token's budget and sites
  *   POST /v1/fetch/snapshots what one fetch produced
@@ -99,12 +100,15 @@ export function registerFetchRoutes(app: FastifyInstance, db: Db, opts: FetchRou
           .send({ error: 'invalid enroll request', issues: issues(parsed.error) });
       }
       // One helper per tray: a new enrollment (lost token, reinstall) replaces the old one and waits for approval again.
-      const replaced = await db.execute(
-        sql`update api_tokens set revoked_at = now()
-             where helper_of = ${upload.id} and revoked_at is null returning id`,
-      );
-      const { id, token } = await mintToken(db, `helper: ${upload.label}`.slice(0, 100), {
-        helper: { of: upload.id, dailyBudget: HELPER_DAILY_BUDGET, sites: HELPER_SITES },
+      const { id, token, replaced } = await db.transaction(async (tx) => {
+        const old = await tx.execute(
+          sql`update api_tokens set revoked_at = now()
+               where helper_of = ${upload.id} and revoked_at is null returning id`,
+        );
+        const minted = await mintToken(tx, `helper: ${upload.label}`.slice(0, 100), {
+          helper: { of: upload.id, dailyBudget: HELPER_DAILY_BUDGET, sites: HELPER_SITES },
+        });
+        return { ...minted, replaced: old };
       });
       req.log.info(
         { helperTokenId: id, uploadTokenId: upload.id, replaced: replaced.rowCount ?? 0 },
@@ -113,6 +117,16 @@ export function registerFetchRoutes(app: FastifyInstance, db: Db, opts: FetchRou
       return reply.status(201).send({ token, status: 'pending' });
     },
   );
+
+  // A helper hands its own key back when its user turns it off. Only helper tokens: cruiser's isn't revoked this way.
+  app.post('/v1/fetch/unenroll', { config }, async (req, reply) => {
+    const token = await anyFetchToken(req, reply);
+    if (token === null) return reply;
+    if (token.helperStatus === null) return reply.status(403).send({ error: 'not a helper token' });
+    await revokeToken(db, token.id);
+    req.log.info({ helperTokenId: token.id }, 'helper unenrolled');
+    return { status: 'revoked' };
+  });
 
   app.get('/v1/fetch/status', { config }, async (req, reply) => {
     const token = await anyFetchToken(req, reply);

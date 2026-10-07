@@ -7,3 +7,4 @@ export * from './addon.js';
 export { AddonZipError, verifyAddonZip } from './addonZip.js';
 export * from './diagnostics.js';
 export * from './knowledge.js';
+export { looksLikeChallenge } from './challenge.js';

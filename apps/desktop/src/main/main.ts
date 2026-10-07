@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as uploader from '@forever-ledger/uploader/lib';
@@ -12,11 +12,16 @@ import {
   nativeImage,
   Notification,
   powerMonitor,
+  safeStorage,
   shell,
   Tray,
 } from 'electron';
 import electronUpdater from 'electron-updater';
 import { DEFAULT_PREFS, LedgerController } from './controller.js';
+import { createHelperBrowser, wipeHelperSession } from './helper/browser.js';
+import { blockedBy } from './helper/gate.js';
+import { HelperService } from './helper/service.js';
+import { helperStore } from './helper/store.js';
 import type { Prefs } from './controller.js';
 import { IPC, sanitizeSettings } from './ipc.js';
 import type { WowFlavor, WowFolderPick } from './ipc.js';
@@ -59,6 +64,8 @@ function startupFailed(err: unknown) {
 }
 
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+// Tests start from an empty data folder (consent screen, helper session); never set in a real install.
+if (process.env.FL_USER_DATA) app.setPath('userData', process.env.FL_USER_DATA);
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -329,9 +336,31 @@ async function run() {
       ]),
     );
   };
+  // ---- fetch helper (off until the user turns it on; see project-plans/forever-ledger-tray-fetch-helper.md) ----
+  const helper = new HelperService({
+    store: helperStore(join(app.getPath('userData'), 'fetch-helper.json'), {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (text) => safeStorage.encryptString(text).toString('base64'),
+      decrypt: (data) => safeStorage.decryptString(Buffer.from(data, 'base64')),
+    }),
+    target: () => controller.serverTarget(),
+    browser: createHelperBrowser,
+    wipe: wipeHelperSession,
+    removeSessionFolder: () =>
+      rmSync(join(app.getPath('userData'), 'Partitions', 'fetch-helper'), {
+        recursive: true,
+        force: true,
+      }),
+    blockedBy,
+    logger,
+  });
+  helper.on('change', (v) => send(IPC.helperChanged, v));
+
   controller.on('change', (s) => {
     updateTray(s);
     send(IPC.changed, s);
+    // Setup finishing is what makes the consent screen due.
+    send(IPC.helperChanged, helper.view());
   });
   updateTray(controller.snapshot());
 
@@ -379,6 +408,10 @@ async function run() {
     updater.quitAndInstall();
   });
   ipcMain.handle(IPC.openLogs, () => shell.openPath(logsDir).then(() => undefined));
+  ipcMain.handle(IPC.helperState, () => helper.view());
+  ipcMain.handle(IPC.helperSetEnabled, (_e, enabled: unknown) =>
+    helper.setEnabled(enabled === true),
+  );
 
   // ---- quit ----
   let stopped = false;
@@ -386,6 +419,7 @@ async function run() {
     quitting = true;
     if (stopped) return;
     e.preventDefault();
+    helper.stop();
     // A pass stuck on an unanswering server can take a minute to give up: don't wait for it.
     const stop = controller
       .stop()
@@ -421,6 +455,8 @@ async function run() {
   // Show the window before the first upload pass and addon sync finish: they can take seconds (on Windows a refused
   // connection alone takes ~2 s) and the window fills in as their results arrive.
   const starting = controller.start();
+  // The smoke test never touches the network; the helper does nothing until it is turned on anyway.
+  if (!smoke) helper.start();
   if (!startHidden) {
     await ready;
     showWindow();

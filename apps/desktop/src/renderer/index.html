@@ -78,6 +78,22 @@
         </div>
       </section>
 
+      <section class="card" data-card="helper">
+        <h2>Help fetch Wowhead pages</h2>
+        <p id="helper-line" class="line"></p>
+        <p id="helper-detail" class="muted"></p>
+        <p class="muted">
+          Loads wowhead.com pages for the ledger in a hidden, sealed-off window inside this app,
+          only while you're away and WoW is closed. It never touches your own browser.
+          <button id="helper-explain" type="button" class="link">What it does</button>
+        </p>
+        <p id="helper-error" class="error" hidden></p>
+        <div class="actions">
+          <button id="helper-toggle" type="button"></button>
+        </div>
+        <ol id="helper-activity" class="log short" aria-label="Pages the helper loaded"></ol>
+      </section>
+
       <section class="card" data-card="settings">
         <h2>Settings</h2>
         <div class="field">
@@ -130,6 +146,53 @@
       <h2>Activity</h2>
       <ol id="log" class="log"></ol>
     </section>
+    <dialog id="consent" aria-labelledby="consent-title">
+      <h2 id="consent-title">Help fill the Forever Ledger knowledge base?</h2>
+      <p>
+        When this is on, Forever Ledger loads pages from <strong>wowhead.com</strong> in the
+        background: item, quest and NPC pages the ledger server asks for. It sends each page back to
+        the ledger so your group's Discord helper can answer questions from real data.
+      </p>
+      <h3>What it does</h3>
+      <ul>
+        <li>
+          Opens wowhead.com pages in a hidden window built into this app: at most 200 pages a day,
+          about one every few minutes.
+        </li>
+        <li>
+          Only while you're away from the PC (5 minutes idle), the PC is plugged in and World of
+          Warcraft isn't running. To know that, it checks only whether a program named like WoW is
+          running.
+        </li>
+        <li>
+          Each page loads like it would in any browser, ads and trackers included, so expect a few
+          megabytes of download per page (a few hundred MB on a full day).
+        </li>
+      </ul>
+      <h3>What it never does</h3>
+      <ul>
+        <li>
+          It never opens or reads your Chrome, Edge or any other browser, or their passwords,
+          cookies or history. Its window has its own empty storage, sealed off from everything else.
+        </li>
+        <li>It never reads your files or anything else on your PC.</li>
+        <li>It never logs in anywhere, and never clicks anything, ads included.</li>
+        <li>
+          It only ever opens wowhead.com item, quest, NPC, object, spell and zone pages. The ads and
+          trackers on those pages load from their own sites, as they would for you.
+        </li>
+        <li>It shows nothing on screen, makes no sound and never downloads files to your PC.</li>
+      </ul>
+      <p class="muted">
+        You can see every page it loaded in this window, and turn it off any time. Turning it off
+        deletes everything it stored and hands its key back to the ledger. Harlan approves each PC
+        before it fetches anything.
+      </p>
+      <div class="actions">
+        <button id="consent-no" type="button">Not now</button>
+        <button id="consent-yes" type="button" class="primary">Turn on</button>
+      </div>
+    </dialog>
     <script src="renderer.js"></script>
   </body>
 </html>
