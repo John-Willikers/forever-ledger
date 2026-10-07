@@ -64,23 +64,51 @@ export function splitForDiscord(text: string, max = DISCORD_MAX, maxParts = MAX_
   return parts.length > 0 ? parts : ['(no answer)'];
 }
 
-/** Per-user limits: questions per hour, and fewer of them on Opus. */
-export function rateLimiter(perHour: number, opusPerHour: number, now: () => number = Date.now) {
+export interface Limits {
+  /** Questions per user per hour, and how many of those may use Opus. */
+  perHour: number;
+  opusPerHour: number;
+  /** Questions per hour for everyone together (the API bill's ceiling), and Opus answers among them. */
+  allPerHour: number;
+  allOpusPerHour: number;
+}
+
+const HOUR = 3_600_000;
+
+/** Per-user and bot-wide hourly limits. */
+export function rateLimiter(limits: Limits, now: () => number = Date.now) {
   const asked = new Map<string, { at: number; opus: boolean }[]>();
+  let all: { at: number; opus: boolean }[] = [];
   return {
     /** Null when the question may go ahead (and counts it), else why not. */
     take(userId: string, opus: boolean): string | null {
       const t = now();
-      const recent = (asked.get(userId) ?? []).filter((q) => t - q.at < 3_600_000);
-      if (recent.length >= perHour) {
-        return `you've asked ${perHour} questions this hour; try again a bit later`;
+      all = all.filter((q) => t - q.at < HOUR);
+      const recent = (asked.get(userId) ?? []).filter((q) => t - q.at < HOUR);
+      if (recent.length === 0) asked.delete(userId);
+      if (all.length >= limits.allPerHour) {
+        return "I've answered all the questions I can this hour; try again later";
       }
-      if (opus && recent.filter((q) => q.opus).length >= opusPerHour) {
-        return `that's ${opusPerHour} Opus answers this hour; ask without --opus, or wait a bit`;
+      if (opus && all.filter((q) => q.opus).length >= limits.allOpusPerHour) {
+        return 'Opus is out of answers for this hour; ask without --opus, or wait a bit';
       }
-      recent.push({ at: t, opus });
+      if (recent.length >= limits.perHour) {
+        return `you've asked ${limits.perHour} questions this hour; try again a bit later`;
+      }
+      if (opus && recent.filter((q) => q.opus).length >= limits.opusPerHour) {
+        return `that's ${limits.opusPerHour} Opus answers this hour; ask without --opus, or wait a bit`;
+      }
+      const q = { at: t, opus };
+      recent.push(q);
+      all.push(q);
       asked.set(userId, recent);
       return null;
     },
   };
+}
+
+/** A limit from the environment: a whole number of at least 1, else the default (a typo never removes a limit). */
+export function limitFrom(raw: string | undefined, fallback: number): number {
+  const n = Number(raw);
+  return raw !== undefined && raw.trim() !== '' && Number.isInteger(n) && n >= 1 ? n : fallback;
 }

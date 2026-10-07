@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { pino } from 'pino';
 import { ledgerAsker } from './ask.js';
 import { startBot } from './bot.js';
+import { limitFrom } from './question.js';
 
 process.env.TZ ??= 'America/Chicago';
 
@@ -25,7 +26,11 @@ const log = pino({
     `,"time":"${new Date().toLocaleString('sv-SE', { timeZone: 'America/Chicago' }).replace(' ', 'T')}"`,
 });
 
-const anthropic = new Anthropic({ apiKey: need('ANTHROPIC_API_KEY') });
+const guildIds = ids('DISCORD_GUILD_IDS');
+if (guildIds.size === 0)
+  throw new Error('DISCORD_GUILD_IDS is required (the server ids the bot answers in)');
+// One retry at most: a timed-out Opus answer is not worth paying for three times.
+const anthropic = new Anthropic({ apiKey: need('ANTHROPIC_API_KEY'), maxRetries: 1 });
 const ask = ledgerAsker(
   {
     mcpUrl: process.env.LEDGER_MCP_URL ?? 'https://ledger.willikers.dev/mcp',
@@ -39,9 +44,13 @@ const client = startBot(
   {
     token: need('DISCORD_BOT_TOKEN'),
     adminRoleIds: ids('DISCORD_ADMIN_ROLE_IDS'),
-    guildIds: ids('DISCORD_GUILD_IDS'),
-    perHour: Number(process.env.DISCORD_QUESTIONS_PER_HOUR ?? 20),
-    opusPerHour: Number(process.env.DISCORD_OPUS_PER_HOUR ?? 5),
+    guildIds,
+    limits: {
+      perHour: limitFrom(process.env.DISCORD_QUESTIONS_PER_HOUR, 20),
+      opusPerHour: limitFrom(process.env.DISCORD_OPUS_PER_HOUR, 5),
+      allPerHour: limitFrom(process.env.DISCORD_ALL_QUESTIONS_PER_HOUR, 60),
+      allOpusPerHour: limitFrom(process.env.DISCORD_ALL_OPUS_PER_HOUR, 10),
+    },
   },
   ask,
   log,

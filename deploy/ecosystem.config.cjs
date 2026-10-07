@@ -65,8 +65,13 @@ module.exports = {
     },
     {
       // Discord bot (project-plans/forever-ledger-discord-bot.md): @mention it, it answers from the ledger through
-      // /mcp. Starts only once DISCORD_BOT_TOKEN and ANTHROPIC_API_KEY are in deploy/.env.
+      // /mcp. Needs DISCORD_BOT_TOKEN, ANTHROPIC_API_KEY, DISCORD_GUILD_IDS and LEDGER_DISCORD_READ_TOKEN in deploy/.env:
+      // start it with `pm2 start deploy/ecosystem.config.cjs --only forever-ledger-discord` once they are there (a
+      // missing one stops it after a few tries instead of restarting forever).
       name: 'forever-ledger-discord',
+      max_restarts: 5,
+      min_uptime: '30s',
+      restart_delay: 10000,
       cwd: path.join(__dirname, '..', 'apps', 'discord'),
       script: 'dist/main.js',
       node_args: '--enable-source-maps',

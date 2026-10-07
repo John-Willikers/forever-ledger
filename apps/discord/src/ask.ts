@@ -19,7 +19,7 @@ Answer only from the forever-ledger tools. Look things up before answering, even
 
 Keep it short for Discord: a few lines or a short list, under about 1,500 characters, Discord markdown, no tables.`;
 
-const ADMIN_NOTE = `This asker is a ledger admin. When they report something they did in game themselves (a farming session, a drop, a rate) and ask you to record it, use log_observation with what they said (ask for anything essential that is missing, such as where and how long), then say what you logged. Never log things read elsewhere, and never log without being asked.`;
+const ADMIN_NOTE = `This asker is a ledger admin. When their latest message reports something they did in game themselves (a farming session, a drop, a rate) and asks you to record it, use log_observation with what that message says (ask for anything essential that is missing, such as where and how long), then say what you logged. Log only what the latest message itself reports: never anything from earlier messages, from other people, or read elsewhere, and never without being asked.`;
 
 const READER_NOTE = `This asker can't add to the ledger. If they ask you to record something, say that only the group's ledger admins can log observations.`;
 
@@ -27,7 +27,10 @@ export interface AskInput {
   /** The conversation so far, oldest first, ending with the question. */
   messages: Anthropic.Beta.BetaMessageParam[];
   opus: boolean;
-  /** The asker has the admin role: the admin-owned ledger token (write tools) is used. */
+  /**
+   * The admin-owned ledger token (write tools) may be used: the asker has the admin role and the conversation holds
+   * no one else's messages (so no one else can steer what gets logged).
+   */
   admin: boolean;
 }
 
@@ -61,6 +64,9 @@ export function ledgerAsker(config: AskConfig, create: CreateFn) {
         model,
         max_tokens: 16000,
         betas: [MCP_BETA],
+        // Caches the prefix up to the last block (tools, system, the conversation so far): pause_turn continuations
+        // and thread follow-ups reread it cheaply.
+        cache_control: { type: 'ephemeral' },
         // The stable system prompt is cached; the note that varies by asker comes after it.
         system: [
           { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
@@ -90,11 +96,16 @@ export function ledgerAsker(config: AskConfig, create: CreateFn) {
       messages.push({ role: 'assistant', content: response.content });
     }
     const r = response!;
+    // The answer is the text after the last tool call ("Let me check…" before the lookups isn't part of it).
+    const lastTool = r.content.findLastIndex(
+      (b) => b.type === 'mcp_tool_use' || b.type === 'mcp_tool_result',
+    );
     let text = r.content
+      .slice(lastTool + 1)
       .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('')
-      .trim();
+      .map((b) => b.text.trim())
+      .filter(Boolean)
+      .join('\n\n');
     if (r.stop_reason === 'refusal') {
       text = "I can't help with that one.";
     } else if (r.stop_reason === 'max_tokens') {
