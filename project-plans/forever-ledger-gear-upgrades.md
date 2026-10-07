@@ -60,6 +60,15 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   trays get 0.4.0, schema 8 get 0.5.0). Waiting on: Sam's gear uploading after his next login, then "@Forever Ledger
   Sam Willikers' gear upgrades" in Discord
 
+## 🔧 After the first Discord answer (Harlan, 2026-10-07 05:05 CDT)
+
+- 🟡 7 🏷️ NPC names: answers said "NPC #4275" because the addon records only a looted NPC's id. A resolver now
+  names NPCs from every source the ledger has (NPC page names, other pages' "dropped by" / vendor lists, our vendors,
+  trainers and quest givers); the 449 looted NPCs' Wowhead pages moved to priority 35 (ahead of quests) so names fill
+  in within about a day of fetching. Only 3 of 450 were nameable before.
+- 🟡 8 📝 Discord layout: no tables (Discord shows raw pipes); a bold one-line answer, `###` groups, two lines per
+  entry (`**Slot** — Item`, then a `-#` source line), caveats as `-#` lines at the end.
+
 ## ⚠️ Risks
 
 - **Estimates, not truth:** stat weights per role are a Classic-era rule of thumb; answers label them as estimates.

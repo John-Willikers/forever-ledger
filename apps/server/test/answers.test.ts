@@ -134,6 +134,34 @@ describe('MCP answers (real Postgres)', () => {
     expect(a.gaps).toContain('its Wowhead page is not fetched yet (queued)');
   });
 
+  it('names a looted NPC from any page that lists it, and says when it has no name', async () => {
+    const before = await whereToGet(s.database.db, 7973);
+    expect(before.firstParty).toMatchObject({ drops: [{ npcId: 2505, npcName: null }] });
+    await importSeed(s.database.db, {
+      sources: [{ key: 'seed:wh-mackerel', url: 'https://www.wowhead.com/classic/item=6303' }],
+      claims: [
+        {
+          source: 'seed:wh-mackerel',
+          entityType: 'item',
+          entityId: 6303,
+          attribute: 'dropped_by',
+          value: { id: 2505, type: 'npc', name: 'Saltwater Snapjaw', count: 4 },
+          label: 'CLASSIC',
+        },
+      ],
+    });
+    const after = await whereToGet(s.database.db, 7973);
+    expect(after.firstParty).toMatchObject({
+      drops: [{ npcId: 2505, npcName: 'Saltwater Snapjaw', dropped: 2, kills: 4 }],
+    });
+    expect((await lookupNpc(s.database.db, 2505)).entity).toEqual({
+      type: 'npc',
+      id: 2505,
+      name: 'Saltwater Snapjaw',
+    });
+    expect((await searchEntities(s.database.db, 'snapjaw', 'npc'))[0]).toMatchObject({ id: 2505 });
+  });
+
   it('a seed claim by name and an item by id are the same item', async () => {
     const a = await lookupItem(s.database.db, 7971);
     expect(a.entity).toMatchObject({ id: 7971, name: 'Black Pearl' });

@@ -228,6 +228,13 @@ export async function searchEntities(
       parts.push(sql`select distinct 'npc', ${sql.raw(col)}, name, ${table} from ${sql.raw(table)}
                       where ${id === null ? sql`name ilike ${like} escape '\\'` : sql`${sql.raw(col)} = ${id}`}`);
     }
+    parts.push(sql`select distinct 'npc', (value->>'id')::int, value->>'name', 'source lists' from claims
+                    where jsonb_typeof(value) = 'object' and value->>'type' = 'npc'
+                      and value->>'id' ~ '^[0-9]{1,9}$' and label <> 'FALSE' and ${
+                        id === null
+                          ? sql`value->>'name' ilike ${like} escape '\'`
+                          : sql`value->>'id' = ${String(id)}`
+                      }`);
     parts.push(sql`select distinct 'npc', npc_id, npc_name, 'quest givers' from quest_observations
                     where npc_name is not null and ${
                       id === null ? sql`npc_name ilike ${like} escape '\\'` : sql`npc_id = ${id}`
@@ -306,8 +313,12 @@ export async function resolveEntity(
 ): Promise<EntityRef | null> {
   const [hit] = await searchEntities(db, String(ref), type);
   // An id nothing names yet (an NPC only seen in kills, say) is still worth looking up by id.
-  if (!hit)
-    return /^\d{1,9}$/.test(String(ref).trim()) ? { type, id: Number(ref), name: null } : null;
+  if (!hit) {
+    if (!/^\d{1,9}$/.test(String(ref).trim())) return null;
+    const id = Number(ref);
+    const name = type === 'npc' ? ((await npcNames(db, [id])).get(id) ?? null) : null;
+    return { type, id, name };
+  }
   // A hit from claims may lack an id (a seed claim by name) or a name (an id-only claim): fill in what we can.
   const { name } = hit;
   let { id } = hit;
@@ -331,6 +342,43 @@ const notFound = (query: string, what: string): Answer<null> => ({
 });
 
 // ─── Items ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+const idList = (ids: number[]) =>
+  sql.join(
+    ids.map((i) => sql`${i}`),
+    sql`, `,
+  );
+
+/**
+ * NPC names by id, from everywhere the ledger has one: an NPC page's `name` claim first, then NPCs named in other
+ * pages' lists (an item's "dropped by", a vendor list), then our own vendors, trainers and quest givers. The addon
+ * records only the id of a looted NPC, so this is how "NPC #4275" becomes "Archmage Arugal".
+ */
+export async function npcNames(db: Db, ids: number[]): Promise<Map<number, string>> {
+  const want = [...new Set(ids.filter((i) => Number.isInteger(i) && i > 0))];
+  if (want.length === 0) return new Map();
+  const list = idList(want);
+  const res = await rows<{ id: number; name: string }>(
+    db,
+    sql`select distinct on (id) id, name from (
+          select entity_id as id, coalesce(entity_name, value #>> '{}') as name, 0 as pri from claims
+           where entity_type = 'npc' and attribute = 'name' and entity_id in (${list}) and label <> 'FALSE'
+          union all
+          select (value->>'id')::int, value->>'name', 1 from claims
+           where jsonb_typeof(value) = 'object' and value->>'type' = 'npc' and value->>'id' ~ '^[0-9]{1,9}$'
+             and (value->>'id')::int in (${list}) and label <> 'FALSE'
+          union all
+          select npc_id, name, 2 from vendors where npc_id in (${list})
+          union all
+          select npc_id, name, 2 from trainers where npc_id in (${list})
+          union all
+          select npc_id, npc_name, 3 from quest_observations where npc_id in (${list})
+        ) named
+        where name is not null and name <> ''
+        order by id, pri`,
+  );
+  return new Map(res.map((r) => [r.id, r.name]));
+}
 
 /** Attributes that say where an item comes from (what where_to_get ranks). */
 export const SOURCE_ATTRIBUTES = [
@@ -370,10 +418,7 @@ export async function itemFirstParty(db: Db, itemId: number) {
                     group by build, npc_id),
              k as (select build, npc_id, sum(count)::int as kills from corpses
                     where (build, npc_id) in (select build, npc_id from d) group by build, npc_id)
-        select d.build, d.npc_id, d.dropped, coalesce(k.kills, 0) as kills,
-               (select coalesce(c.entity_name, c.value #>> '{}') from claims c
-                 where c.entity_type = 'npc' and c.entity_key = d.npc_id::text and c.attribute = 'name' limit 1)
-                 as npc_name
+        select d.build, d.npc_id, d.dropped, coalesce(k.kills, 0) as kills, null as npc_name
           from d left join k using (build, npc_id)
          order by d.build desc, d.dropped desc limit 50`,
   );
@@ -434,12 +479,14 @@ export async function itemFirstParty(db: Db, itemId: number) {
          where (e->>'itemId')::int = ${itemId} order by v.build desc limit 50`,
   );
   const fishing = await whereCaught(db, NO_FISHING_FILTER, [itemId]);
+  const names = await npcNames(db, drops.map((d) => d.npc_id).concat(vendors.map((v) => v.npc_id)));
   const rate = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 10000) / 10000 : null);
   return {
     drops: drops.map((d) => ({
       build: d.build,
       npcId: d.npc_id,
-      npcName: d.npc_name,
+      // null: the ledger has no name for it yet (its Wowhead page isn't fetched).
+      npcName: names.get(d.npc_id) ?? null,
       dropped: d.dropped,
       kills: d.kills,
       perKill: rate(d.dropped, d.kills),
@@ -469,7 +516,7 @@ export async function itemFirstParty(db: Db, itemId: number) {
     })),
     vendors: vendors.map((v) => ({
       npcId: v.npc_id,
-      name: v.name,
+      name: v.name ?? names.get(v.npc_id) ?? null,
       build: v.build,
       priceCopper: v.price,
       loc: v.loc,
