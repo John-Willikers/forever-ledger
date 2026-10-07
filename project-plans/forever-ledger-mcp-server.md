@@ -73,9 +73,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   errors are logged, never sent (ints capped at int4); observation keys can't collide; failed token checks limited per
   address; `pipeline` for responses; bad URLs are a claim error. Live recheck: 7973 and "Big-mouth Clam" both answer
   the Steamwheedle observation first — 03:28 CDT
-- ⬜ 3 🚀 Deploy: PM2 `forever-ledger-mcp` :3411 in `deploy/ecosystem.config.cjs`, nginx `location /mcp`, read token
-  minted for Harlan, `claude mcp add --scope user` here
-- ⬜ 4 🔍 Review → PR → merge; try it: "where do I get Black Pearls?" answers the 0-clam Steamwheedle observation first
+- ✅ 3 🚀 (03:34 CDT) Deploy: PM2 `forever-ledger-mcp` :3411 in `deploy/ecosystem.config.cjs`, nginx `location /mcp`, read token
+  minted for Harlan (token 10, admin-owned: write tools on), `claude mcp add --scope user` here → ✔ Connected;
+  live call over HTTPS: where_to_get(Big-mouth Clam) → both 0-clam observations first, check_claim(Fishing Hut at
+  225) → refuted
+- ✅ 4 🔍 Review → PR #56 → merged → deployed; try it: "where do I get Black Pearls?" answers the 0-clam Steamwheedle observation first
 - ⬜ 5 🤖 Discord helper hookup (its own token; read-only)
 
 ## ⚠️ Risks
