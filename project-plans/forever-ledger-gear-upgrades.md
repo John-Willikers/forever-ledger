@@ -51,12 +51,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   no gear yet) gets the best known item per slot with sources in ~150 ms
 - ✅ 4 🔌 MCP tools `lookup_character`, `gear_upgrades`; bot prompt knows players ask by full name; `pnpm check`
   1082 tests — 04:41 CDT
-- 🟡 5 🔍 Review (0 Critical) → fixed: no off-hand suggestions over a worn two-hander (a one-hander replaces it in
+- ✅ 5 🔍 Review (0 Critical) → fixed: no off-hand suggestions over a worn two-hander (a one-hander replaces it in
   the main hand); Classic dual wield (rogues, warriors and hunters from 20, never shamans); a surname arriving late
   re-reads gear under the new key; shirts and tabards don't trigger retries and a new change ends an old retry chain;
-  one bad slot is dropped, not the whole record; an exact first name wins → PR #61
-- ⬜ 6 🚀 Tray v0.2.1, then addon 0.5.0 published; Sam's gear uploads after the next login; "@Forever Ledger Sam
-  Willikers' gear upgrades" answered in Discord
+  one bad slot is dropped, not the whole record; an exact first name wins → PR #61 merged; backup
+  `forever_ledger-2026-10-07-0450-pre0019.sql.gz` (47 COPY); migration 0019 applied; API, MCP and bot restarted
+- 🟡 6 🚀 (04:57 CDT) Tray v0.2.1 is GitHub latest; addon 0.5.0 published (schema 8); manifest gate checked (schema 7
+  trays get 0.4.0, schema 8 get 0.5.0). Waiting on: Sam's gear uploading after his next login, then "@Forever Ledger
+  Sam Willikers' gear upgrades" in Discord
 
 ## ⚠️ Risks
 
