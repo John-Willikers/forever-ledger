@@ -28,4 +28,5 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
     ignored
   - ✅ 4c `knowledge-cli coverage [--apply]`: item pages whose every drop source we have seen is covered by fetched
     NPC pages drop to priority 5 (uncovered items go first); nothing is skipped without Harlan
-- 🟡 5 🔍 Review → PR → merge → deploy; reparse Wowhead pages with `--replace`
+- ✅ 5 🔍 Review → PR #50 → merged → deployed; Wowhead pages reparsed with `--replace` (all 519 Wowhead claims are
+  `wowhead@3`, checked 2026-10-07 03:10 CDT)
