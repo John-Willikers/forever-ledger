@@ -15,6 +15,7 @@ import {
   ManualClaimError,
   searchEntities,
   whereToGet,
+  withWowheadLinks,
 } from '@forever-ledger/server';
 import type { Db } from '@forever-ledger/server';
 import { CLAIM_LABELS, ENTITY_TYPES } from '@forever-ledger/contracts';
@@ -32,6 +33,7 @@ Every answer has:
 - firstParty: what our own players' addon uploads observed (tier 1, the strongest evidence; counts and rates are real).
 - facts: claims from sources, best first. Each has a label (VERIFIED = Forever data, CLASSIC = Classic-era data that Forever may change, ANECDOTE = a player's report, UNVERIFIED = unconfirmed), a tier (1 best … 7 worst), the source URL and the build.
 - gaps: what the ledger does not know.
+Items, NPCs, quests and objects carry their Wowhead Forever page as itemUrl / npcUrl / questUrl / containerUrl / objectUrl, or url on an { type, id } entity: link names with those, never with a URL you make up.
 Players' own characters (by full name, e.g. "Sam Willikers") are in lookup_character and gear_upgrades; gear upgrade scores are estimates (Forever has no spec data), and a role the asker didn't name is a guess: say so.
 Answer from these only. Say which label each statement rests on, prefer first-party data and lower tiers, and say plainly when the ledger has a gap instead of filling it from memory. FALSE claims are never facts: check_claim lists them as refuted.`;
 
@@ -42,8 +44,12 @@ const build = z.number().int().positive().max(INT4_MAX);
 const gameId = z.number().int().nonnegative().max(INT4_MAX);
 const ref = z.string().trim().min(1).max(200);
 
-/** One text block holding the answer as JSON (what every client reads), plus the same as structured content. */
-function reply(answer: unknown): CallToolResult {
+/**
+ * One text block holding the answer as JSON (what every client reads), plus the same as structured content. Every
+ * item, NPC, quest and object in it carries its Wowhead Forever link (`itemUrl`, `npcUrl`, `questUrl`, … or `url`).
+ */
+function reply(raw: unknown): CallToolResult {
+  const answer = withWowheadLinks(raw);
   return {
     content: [{ type: 'text', text: JSON.stringify(answer) }],
     structuredContent: answer as Record<string, unknown>,

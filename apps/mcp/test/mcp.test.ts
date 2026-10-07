@@ -102,7 +102,11 @@ describe('forever-ledger MCP endpoint (real Postgres)', () => {
     const client = await connect(tokens.reader);
     const res = await client.callTool({ name: 'where_to_get', arguments: { item: 'big-mouth' } });
     const answer = JSON.parse((res.content as { text: string }[])[0]!.text);
-    expect(answer.entity).toMatchObject({ id: 7973, name: 'Big-mouth Clam' });
+    expect(answer.entity).toMatchObject({
+      id: 7973,
+      name: 'Big-mouth Clam',
+      url: 'https://www.wowhead.com/forever/item=7973',
+    });
     expect(answer.facts).toMatchObject([
       { attribute: 'fished_in', label: 'CLASSIC', tier: 5, source: { site: 'wowhead.com' } },
     ]);
