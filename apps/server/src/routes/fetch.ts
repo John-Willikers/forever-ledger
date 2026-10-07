@@ -3,10 +3,13 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { verifyBearerToken } from '../auth.js';
 import type { Db } from '../db/client.js';
 import { FetchReportError, leaseTargets, recordFetchReport } from '../knowledge/store.js';
+import type { FetchBudget } from '../knowledge/store.js';
 
 export interface FetchRouteOptions {
   /** Requests per minute per token on each fetch route (default 60). */
   perMinute?: number;
+  /** URLs leased per Chicago day and per hour (default 400 / 25). */
+  budget?: FetchBudget;
 }
 
 const issues = (e: { issues: { path: PropertyKey[]; message: string }[] }) =>
@@ -47,10 +50,16 @@ export function registerFetchRoutes(app: FastifyInstance, db: Db, opts: FetchRou
         .status(400)
         .send({ error: 'invalid lease request', issues: issues(parsed.error) });
     }
-    const leases = await leaseTargets(db, tokenId, parsed.data.worker, parsed.data.max);
+    const { leases, budget } = await leaseTargets(
+      db,
+      tokenId,
+      parsed.data.worker,
+      parsed.data.max,
+      opts.budget,
+    );
     if (leases.length > 0)
-      req.log.info({ worker: parsed.data.worker, n: leases.length }, 'fetch lease');
-    return { leases };
+      req.log.info({ worker: parsed.data.worker, n: leases.length, budget }, 'fetch lease');
+    return { leases, budget };
   });
 
   app.post('/v1/fetch/snapshots', { config }, async (req, reply) => {

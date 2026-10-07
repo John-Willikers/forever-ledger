@@ -10,14 +10,55 @@ import type { ClaimDraft, CommentDraft, ParseResult } from './types.js';
  * is evaluated. Written before the first real Forever page was fetched: check it against `fixtures/real/web/` and bump
  * the version when the output changes.
  */
-export const WOWHEAD_PARSER = 'wowhead@2';
+export const WOWHEAD_PARSER = 'wowhead@3';
 
 /**
  * Loot and fishing lists (who drops it, where it is fished, what a container holds) are not client data: Wowhead
  * collects them from players. On its /forever/ pages they are Classic-era numbers (comments from 2005, a million
  * catches in Azshara: checked on item 7973, 2026-10-06), so those claims are CLASSIC. Names are datamined from the
- * client and keep the source's label. v2: this label, `count: -1` (unknown) dropped, ISO comment dates.
+ * client and keep the source's label. v2: this label, `count: -1` (unknown) dropped, ISO comment dates. v3: quest and
+ * NPC facts from `$.extend(g_quests[id], {...})` / `g_npcs`, an NPC's drops also claimed on each item (`dropped_by`,
+ * so NPC pages stand in for item pages), media tabs (screenshots, videos) skipped.
  */
+/** Listviews that are page media, not facts. */
+const MEDIA_LISTS = new Set(['screenshots', 'videos', 'videos-english', 'see-also']);
+
+/** Facts from `$.extend(g_quests[id], {...})`: Wowhead's own quest record. */
+function questFacts(f: Record<string, unknown>) {
+  const out: [string, unknown][] = [];
+  const n = (k: string) => int(f[k]);
+  if (n('level') !== undefined) out.push(['level', n('level')]);
+  if (n('reqlevel') !== undefined) out.push(['req_level', n('reqlevel')]);
+  if (n('xp') !== undefined) out.push(['xp_reward', n('xp')]);
+  if (n('money') !== undefined) out.push(['money_reward', n('money')]);
+  if (n('side') !== undefined)
+    out.push([
+      'side',
+      ({ 1: 'Alliance', 2: 'Horde', 3: 'both' } as Record<number, string>)[n('side')!] ?? n('side'),
+    ]);
+  if (Array.isArray(f.reprewards) && f.reprewards.length > 0) {
+    out.push([
+      'rep_rewards',
+      (f.reprewards as unknown[])
+        .filter(Array.isArray)
+        .map((r) => ({ faction: (r as number[])[0], amount: (r as number[])[1] })),
+    ]);
+  }
+  return out;
+}
+
+/** Facts from `$.extend(g_npcs[id], {...})`. */
+function npcFacts(f: Record<string, unknown>) {
+  const out: [string, unknown][] = [];
+  const min = int(f.minlevel);
+  const max = int(f.maxlevel);
+  if (min !== undefined && max !== undefined) out.push(['level_range', { min, max }]);
+  if (Array.isArray(f.location) && f.location.length > 0) {
+    out.push(['zones', (f.location as unknown[]).filter((z) => int(z) !== undefined)]);
+  }
+  if (int(f.classification) !== undefined) out.push(['classification', int(f.classification)]);
+  return out;
+}
 const OBSERVED_LISTS =
   /^(dropped_by|fished_in|contained_in_|lv_contains|gathered_|mined_|herbed_|skinned_|pickpocketed_|drops$)/;
 
@@ -192,6 +233,30 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
   }
 
   if (entity) {
+    const table = entity.type === 'quest' ? 'g_quests' : entity.type === 'npc' ? 'g_npcs' : null;
+    if (table) {
+      for (const at of codeMarkers(script, `$.extend(${table}[${entity.id}],`)) {
+        const text = bracketedAfter(script, at);
+        const facts = text ? tryJson(text) : undefined;
+        if (!facts || typeof facts !== 'object') {
+          problems.push(`${table}[${entity.id}] is not JSON`);
+          continue;
+        }
+        const list =
+          entity.type === 'quest'
+            ? questFacts(facts as Record<string, unknown>)
+            : npcFacts(facts as Record<string, unknown>);
+        for (const [attribute, value] of list) {
+          claims.push({ entityType: entity.type, entityId: entity.id, attribute, value });
+        }
+      }
+    }
+    const npcName =
+      entity.type === 'npc'
+        ? ((claims.find(
+            (c) => c.attribute === 'name' && c.entityType === 'npc' && c.entityId === entity.id,
+          )?.value as string | undefined) ?? title?.split(' - ')[0]?.trim())
+        : undefined;
     for (const at of codeMarkers(script, 'new Listview(')) {
       const obj = bracketedAfter(script, at);
       if (!obj) {
@@ -205,6 +270,7 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
         problems.push('a listview has no id');
         continue;
       }
+      if (MEDIA_LISTS.has(id)) continue;
       const rows = listData(script, obj, head, at);
       if (!rows) {
         problems.push(`listview ${id}: data is not JSON`);
@@ -233,13 +299,34 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
         problems.push(`listview ${id}: kept ${MAX_ROWS_PER_LIST} of ${rows.length}`);
       for (const r of rows.slice(0, MAX_ROWS_PER_LIST)) {
         if (!r || typeof r !== 'object') continue;
+        const value = rowValue(r as Record<string, unknown>, template);
         claims.push({
           entityType: entity.type,
           entityId: entity.id,
           attribute,
-          value: rowValue(r as Record<string, unknown>, template),
+          value,
           ...(OBSERVED_LISTS.test(attribute) ? { label: 'CLASSIC' as const } : {}),
         });
+        // An NPC's drops are each item's sources too: the item gets the same row, seen from its side.
+        const itemId = int((r as Record<string, unknown>).id);
+        if (entity.type === 'npc' && attribute === 'drops' && itemId !== undefined) {
+          const {
+            id: _item,
+            type: _t,
+            name: _n,
+            quality: _q,
+            level: _l,
+            reqLevel: _r,
+            ...counts
+          } = value as Record<string, unknown>;
+          claims.push({
+            entityType: 'item',
+            entityId: itemId,
+            attribute: 'dropped_by',
+            value: { id: entity.id, type: 'npc', ...(npcName ? { name: npcName } : {}), ...counts },
+            label: 'CLASSIC',
+          });
+        }
       }
     }
     if (!claims.some((c) => c.attribute === 'name' && c.entityId === entity.id) && title) {

@@ -82,3 +82,29 @@ that runs out 5 times without a report fails the URL. The server re-checks every
    cruiser.
 
 Don't touch the recording pool, its slots, the supervisor queue or `pubapi.py`.
+
+---
+
+## 🔁 Update 2026-10-07: 400 pages a day, spread evenly, honor the server's budget
+
+Paste this into Claude Code on cruiser (`/home/john/stream-recorder`, branch → PR as before):
+
+> Step 0: run `hostname` and confirm it says `cruiser`; stop if it doesn't.
+>
+> Change the page fetcher's pacing. Don't touch the recording pool, its slots or the supervisor.
+>
+> 1. **Daily cap: 400** (was 200). Keep the quiet hours, 02:00–08:00 America/Chicago.
+> 2. **Spread it evenly instead of bursting.** Wait **120–200 s** between pages, random each time (about 160 s on
+>    average, so ~400 pages over the 18 allowed hours). Keep the existing backoff on 403, 429 and challenge pages, and
+>    keep stopping with an ntfy alert after 3 in a row.
+> 3. **Honor the server's budget.** `POST /v1/fetch/lease` now answers
+>    `{"leases": [...], "budget": {"day": {"used", "limit"}, "hour": {"used", "limit"}}}`, and the server leases at
+>    most 25 an hour and 400 a Chicago day per token.
+>    - When `leases` is empty and `hour.used >= hour.limit`, sleep until the next hour starts.
+>    - When `day.used >= day.limit`, sleep until 00:00 America/Chicago.
+>    - When `leases` is empty with budget left, the queue is empty: sleep 10 minutes.
+>    - Log the budget numbers once an hour.
+> 4. Lease **1 URL at a time** (`max: 1`), not 3. With the even spacing, a 15-minute lease never runs out mid-batch.
+> 5. Leave ads alone: don't add an ad blocker to the fetch profile. Pages load the way a person would see them.
+>
+> Test against the live server with one lease and one fetch, then open a PR and tell me the measured average gap.

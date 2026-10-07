@@ -7,8 +7,14 @@ import { mintToken } from '../src/index.js';
 import { findDisputes } from '../src/knowledge/disputes.js';
 import { addManualClaim, ManualClaimError, relabelClaim } from '../src/knowledge/manual.js';
 import { importSeed } from '../src/knowledge/seed.js';
-import { enqueueSeen } from '../src/knowledge/enqueue.js';
-import { enqueueUrl, reparseAll, skipUrls } from '../src/knowledge/store.js';
+import { enqueueSeen, itemCoverage } from '../src/knowledge/enqueue.js';
+import {
+  enqueueUrl,
+  leaseTargets,
+  refetchDays,
+  reparseAll,
+  skipUrls,
+} from '../src/knowledge/store.js';
 import { startServer, webFixture } from './helpers.js';
 
 const ZONES = 'https://mobalytics.gg/wow-forever/guides/zone-map-level-ranges';
@@ -42,7 +48,8 @@ describe('knowledge pipeline', () => {
   let fetchAuth: { authorization: string };
 
   beforeAll(async () => {
-    s = await startServer();
+    // A roomy budget: these tests lease far more than a real hour's 25.
+    s = await startServer({ fetchBudget: { daily: 10_000, hourly: 10_000 } });
     const { token } = await mintToken(s.database.db, 'cruiser', { canFetch: true });
     fetchAuth = { authorization: `Bearer ${token}` };
   });
@@ -244,7 +251,7 @@ describe('knowledge pipeline', () => {
     expect(await reparseAll(s.database.db)).toMatchObject({ pages: 2, added: 0 });
     expect(await s.count('claims')).toBe(before);
     // A parser fix: claims an older parser version read off the page are swapped, hand-entered ones stay.
-    await q(`update claims set parser = 'wowhead@0' where parser = 'wowhead@2'`);
+    await q(`update claims set parser = 'wowhead@0' where parser = 'wowhead@3'`);
     expect(await reparseAll(s.database.db, 'wowhead.com', { replace: true })).toMatchObject({
       pages: 1,
       added: 7,
@@ -375,5 +382,68 @@ describe('knowledge pipeline', () => {
     const leases = (await post('/v1/fetch/lease', { worker: 'cruiser', max: 10 })).json().leases;
     expect(leases.map((l: { url: string }) => l.url)).not.toContain(url);
     expect(await enqueueUrl(s.database.db, { url, addedBy: 'cli', refresh: true })).toBe(true);
+  });
+
+  it('keeps each worker within its own hourly and daily budget', async () => {
+    const { db } = s.database;
+    for (let i = 0; i < 6; i++) {
+      await enqueueUrl(db, {
+        url: `https://example.org/budget/${i}`,
+        addedBy: 'cli',
+        priority: 90,
+      });
+    }
+    const { id: a } = await mintToken(db, 'worker-a', { canFetch: true });
+    const { id: b } = await mintToken(db, 'worker-b', { canFetch: true });
+    const tight = { daily: 3, hourly: 2 };
+    const first = await leaseTargets(db, a, 'a', 10, tight);
+    expect(first.leases).toHaveLength(2);
+    expect(first.budget).toEqual({ day: { used: 2, limit: 3 }, hour: { used: 2, limit: 2 } });
+    const spent = await leaseTargets(db, a, 'a', 10, tight);
+    expect(spent.leases).toHaveLength(0);
+    expect(spent.budget.hour).toEqual({ used: 2, limit: 2 });
+    // Another worker has its own budget.
+    expect((await leaseTargets(db, b, 'b', 10, tight)).leases).toHaveLength(2);
+    // The daily cap holds even when the hour has room.
+    expect((await leaseTargets(db, a, 'a', 10, { daily: 3, hourly: 50 })).leases).toHaveLength(1);
+    expect((await leaseTargets(db, a, 'a', 10, { daily: 3, hourly: 50 })).leases).toHaveLength(0);
+    const res = await post('/v1/fetch/lease', { worker: 'cruiser', max: 1 });
+    expect(res.json().budget.day.limit).toBe(10_000);
+  });
+
+  it('re-fetches Classic-era ids after 90 days and Forever ids and guides after 30', () => {
+    expect(refetchDays('item', 7973)).toBe(90);
+    expect(refetchDays('item', 250001)).toBe(30);
+    expect(refetchDays('quest', 8224)).toBe(90);
+    expect(refetchDays('quest', 91733)).toBe(30);
+    expect(refetchDays('npc', 5431)).toBe(90);
+    expect(refetchDays(null, null)).toBe(30);
+  });
+
+  it('coverage moves item pages behind when fetched NPC pages already list all their sources', async () => {
+    const { db } = s.database;
+    // Item 4655 dropped from npc 5431 for the addon (an earlier test). An NPC page claims it:
+    const [src] = await q(`select id from sources where kind = 'web' limit 1`);
+    await q(
+      `insert into claims (source_id, entity_type, entity_key, entity_id, attribute, value, value_hash, label, parser)
+       values ($1, 'item', '4655', 4655, 'dropped_by', '{"id":5431,"type":"npc"}', 'cov', 'CLASSIC', 'wowhead@3')`,
+      [src.id],
+    );
+    // (queued by hand earlier, so it gets its entity here)
+    await q(
+      `update fetch_targets set state = 'queued', priority = 20, entity_type = 'item', entity_id = 4655
+        where url = 'https://www.wowhead.com/forever/item=4655'`,
+    );
+    const dry = await itemCoverage(db);
+    expect(dry).toMatchObject({ fullyCovered: 1, moved: 0 });
+    const done = await itemCoverage(db, { apply: true });
+    expect(done.moved).toBe(1);
+    expect(
+      (
+        await q(
+          `select priority from fetch_targets where url = 'https://www.wowhead.com/forever/item=4655'`,
+        )
+      )[0],
+    ).toEqual({ priority: 5 });
   });
 });

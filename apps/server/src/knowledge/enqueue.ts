@@ -43,3 +43,48 @@ export async function enqueueSeen(db: Db, template: string, opts: { limit?: numb
   }
   return { seen, queued };
 }
+
+/** Priority for item pages whose known sources are all covered by fetched NPC pages: after everything uncovered. */
+export const COVERED_PRIORITY = 5;
+
+/**
+ * Item pages NPC pages already stand in for: every NPC the addon saw drop the item has a fetched page whose Drops list
+ * names it (a `dropped_by` claim from that NPC). The item page would still add sources we never saw, so nothing is
+ * skipped: with `apply`, covered pages only move behind uncovered ones (COVERED_PRIORITY). Items the addon never saw
+ * drop (gathered, from containers, quest rewards) are never counted as covered.
+ */
+export async function itemCoverage(db: Db, opts: { apply?: boolean } = {}) {
+  const res = await db.execute<{ item_id: number; sources: number; covered: number }>(sql`
+    with queued as (
+      select entity_id as item_id from fetch_targets
+       where state = 'queued' and entity_type = 'item' and entity_id is not null),
+    sources as (
+      select distinct d.item_id, d.npc_id from drops d join queued q on q.item_id = d.item_id where d.npc_id > 0),
+    covered as (
+      select s.item_id, s.npc_id from sources s
+       where exists (select 1 from claims c
+                      where c.entity_type = 'item' and c.entity_key = s.item_id::text
+                        and c.attribute = 'dropped_by' and c.value->>'type' = 'npc'
+                        and (c.value->>'id')::int = s.npc_id))
+    select s.item_id, count(*)::int as sources, count(c.npc_id)::int as covered
+      from sources s left join covered c on c.item_id = s.item_id and c.npc_id = s.npc_id
+     group by s.item_id`);
+  const full = res.rows.filter((r) => r.covered === r.sources).map((r) => r.item_id);
+  let moved = 0;
+  if (opts.apply && full.length > 0) {
+    const updated = await db.execute(sql`
+      update fetch_targets set priority = ${COVERED_PRIORITY}, updated_at = now()
+       where state = 'queued' and entity_type = 'item' and priority > ${COVERED_PRIORITY}
+         and entity_id in (${sql.join(
+           full.map((i) => sql`${i}`),
+           sql`, `,
+         )})`);
+    moved = updated.rowCount ?? 0;
+  }
+  return {
+    withDropSources: res.rows.length,
+    fullyCovered: full.length,
+    partlyCovered: res.rows.filter((r) => r.covered > 0 && r.covered < r.sources).length,
+    moved,
+  };
+}

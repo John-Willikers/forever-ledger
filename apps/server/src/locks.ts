@@ -8,3 +8,6 @@ export const BOOTSTRAP_LOCK = 0x464c_4144; // "FLAD"
  * `regroupRuns` takes it again (re-entrant within a transaction) before reading and rewriting group ids.
  */
 export const RUN_GROUPS_LOCK = 0x464c_5247; // "FLRG"
+
+/** Serialises fetch leases, so two workers asking at once can't both spend the last of the hour's budget. */
+export const FETCH_BUDGET_LOCK = 0x464c_4642; // "FLFB"

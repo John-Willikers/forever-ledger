@@ -14,6 +14,7 @@ const app = await buildApp({
   logger: loggerOptions,
   bodyLimit: env.bodyLimit,
   ingestPerMinute: env.ingestPerMinute,
+  fetchBudget: env.fetchBudget,
   admin: env.admin,
 });
 app.log.info(

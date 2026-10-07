@@ -47,6 +47,8 @@ export interface AppOptions {
   admin?: AdminOptions;
   /** Knowledge fetch routes: requests per minute per token (default 60). */
   fetchPerMinute?: number;
+  /** Knowledge fetch routes: URLs leased per Chicago day and per hour (default 400 / 25). */
+  fetchBudget?: { daily: number; hourly: number };
 }
 
 export interface AdminOptions extends Partial<AdminAuthOptions> {
@@ -170,7 +172,7 @@ export async function buildApp(opts: AppOptions) {
   registerExportRoutes(app, db, guards.requireReader);
   registerFishingRoutes(app, db, { reader: guards.requireReader, admin: guards.requireAdmin });
   registerAddonRoutes(app, db);
-  registerFetchRoutes(app, db, { perMinute: opts.fetchPerMinute });
+  registerFetchRoutes(app, db, { perMinute: opts.fetchPerMinute, budget: opts.fetchBudget });
   registerDiagnosticsRoutes(app, db, {
     perMinute: opts.diagnosticsPerMinute,
     bodyLimit: opts.diagnosticsBodyLimit,
