@@ -254,6 +254,27 @@ export const fishingCasts = pgTable(
   ],
 );
 
+/**
+ * Schema 8: what a character wore when last read on a build (login, or after an equipment change). One row per
+ * character and build; a later read replaces it, an older SavedVariables session uploaded late changes nothing.
+ */
+export const characterGear = pgTable(
+  'character_gear',
+  {
+    char: text('char').notNull(),
+    build: integer('build').notNull(),
+    seenAt: tz('seen_at').notNull(),
+    /** `[{ slot, itemId, link?, stats? }]`, slot 1 (head) … 19 (tabard). */
+    slots: jsonb('slots')
+      .$type<{ slot: number; itemId: number; link?: string; stats?: Record<string, number> }[]>()
+      .notNull(),
+    uploaderId: text('uploader_id').notNull(),
+    account: text('account').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.char, t.build] })],
+);
+
 export const items = pgTable('items', {
   itemId: integer('item_id').primaryKey(),
   name: text('name').notNull(),

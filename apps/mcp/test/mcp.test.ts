@@ -85,6 +85,8 @@ describe('forever-ledger MCP endpoint (real Postgres)', () => {
     expect(names).toEqual([
       'check_claim',
       'fishing_yield',
+      'gear_upgrades',
+      'lookup_character',
       'lookup_item',
       'lookup_npc',
       'lookup_quest',

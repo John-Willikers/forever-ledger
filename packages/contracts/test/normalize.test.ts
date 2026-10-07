@@ -28,6 +28,7 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
     ['session-v5.lua', 5],
     ['session-v6.lua', 6],
     ['session-v7.lua', 7],
+    ['session-v8.lua', 8],
   ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
@@ -106,8 +107,8 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 8, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 8 is not supported \(expected 1 or 2 or 3 or 4 or 5 or 6 or 7\)/,
+    expect(() => normalize({ meta: { schemaVersion: 9, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 9 is not supported \(expected 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8\)/,
     );
   });
 
@@ -200,7 +201,7 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(t2).toEqual(v1.records.turnIns[0]);
   });
 
-  it('accepts schema 1 and 2 upload batches, not 8', () => {
+  it('accepts schema 1 and 2 upload batches, not 9', () => {
     const batch = { uploaderId: 'pc-1', account: 'A', meta: v2.meta, records: v2.records };
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 2 }).success).toBe(true);
     expect(
@@ -209,7 +210,8 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     ).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 5 }).success).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 6 }).success).toBe(true);
-    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 8 }).success).toBe(false);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 8 }).success).toBe(true);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 9 }).success).toBe(false);
   });
 });
 
@@ -915,12 +917,10 @@ describe('normalize — schema 7 fishing casts and full names (session-v7.lua)',
   const { meta, records, problems } = normalize(load('session-v7.lua'));
   const B = 61582;
 
-  it('validates with no problems as schema 7; schema 7 is the current major', () => {
+  it('validates with no problems as schema 7, still a supported major', () => {
     expect(problems).toEqual([]);
     expect(meta).toMatchObject({ schemaVersion: 7, addonVersion: '0.4.0' });
-    expect(SCHEMA_VERSION).toBe(7);
     expect(isSupportedSchemaVersion(7)).toBe(true);
-    expect(isSupportedSchemaVersion(8)).toBe(false);
     for (const kind of RECORD_KINDS) {
       const keys = (records[kind] as never[]).map((r) => recordKey(kind, r));
       expect(new Set(keys).size).toBe(keys.length);
@@ -979,5 +979,42 @@ describe('normalize — schema 7 fishing casts and full names (session-v7.lua)',
     expect(r.records.fishingCasts[0]!.secs).toBeUndefined();
     const me = r.records.characters.find((c) => c.key === 'Thibodeaux Willikers-Bayou');
     expect(me?.guid).toBeUndefined();
+  });
+});
+
+describe('normalize — schema 8 gear (session-v8.lua)', () => {
+  const { meta, records, problems } = normalize(load('session-v8.lua'));
+
+  it('validates as schema 8, the current major', () => {
+    expect(problems).toEqual([]);
+    expect(meta).toMatchObject({ schemaVersion: 8, addonVersion: '0.5.0' });
+    expect(SCHEMA_VERSION).toBe(8);
+    expect(isSupportedSchemaVersion(8)).toBe(true);
+    expect(isSupportedSchemaVersion(9)).toBe(false);
+    expect(
+      UploadBatch.safeParse({ schemaVersion: 8, uploaderId: 'pc-1', account: 'A', meta, records })
+        .success,
+    ).toBe(true);
+  });
+
+  it('gear: one record per character and build, slots with item, link and stats', () => {
+    const g = records.gear.find((r) => r.char === 'Thibodeaux Willikers-Bayou');
+    expect(g).toBeDefined();
+    expect(recordKey('gear', g!)).toBe(`gear:Thibodeaux Willikers-Bayou:${g!.build}`);
+    const axe = g!.slots.find((s) => s.slot === 16);
+    expect(axe).toMatchObject({ itemId: 872, stats: { ITEM_MOD_STRENGTH_SHORT: 7 } });
+    expect(axe!.link).toContain('item:872');
+    expect(g!.slots.find((s) => s.slot === 8)).toBeUndefined();
+  });
+
+  it('a bad slot is dropped and reported; the rest of the gear is kept', () => {
+    const db = load('session-v8.lua') as {
+      gear: Record<string, { slots: Record<string, unknown> }>;
+    };
+    db.gear['Thibodeaux Willikers-Bayou']!.slots['42'] = { itemID: 1 };
+    const r = normalize(db);
+    expect(r.problems.map((p) => p.path)).toEqual(['gear.Thibodeaux Willikers-Bayou.slots.42']);
+    const g = r.records.gear.find((x) => x.char === 'Thibodeaux Willikers-Bayou');
+    expect(g!.slots.map((x) => x.itemId)).toEqual(expect.arrayContaining([2568, 872]));
   });
 });

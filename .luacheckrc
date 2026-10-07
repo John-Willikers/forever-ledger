@@ -35,7 +35,7 @@ read_globals = {
   "SelectQuestLogEntry", "GetNumQuestLogChoices", "GetQuestLogItemLink", "GetQuestLogRewardMoney",
   "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard", "GetQuestReward",
   -- items / loot
-  "GetItemInfo", "GetItemStats", "GetNumLootItems", "GetLootSlotLink", "GetLootSourceInfo", "GetLootSlotType",
+  "GetItemInfo", "GetItemStats", "GetInventoryItemLink", "GetNumLootItems", "GetLootSlotLink", "GetLootSourceInfo", "GetLootSlotType",
   "GetLootSlotInfo", "GetMoney", "LOOT_SLOT_MONEY", "random",
   -- professions
   "GetProfessions", "GetProfessionInfo", "UnitCastingInfo", "IsFishingLoot", "GetSpellInfo", "GameTooltip",
