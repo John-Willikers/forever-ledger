@@ -18,7 +18,16 @@ import type {
 import { and, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import type { Db } from '../db/client.js';
-import { claims, fetchTargets, sources, webComments, webSnapshots } from '../db/schema.js';
+import {
+  claims,
+  fetchBudget,
+  fetchTargets,
+  sources,
+  webComments,
+  webSnapshots,
+} from '../db/schema.js';
+import { FETCH_BUDGET_LOCK } from '../locks.js';
+import { FOREVER_ID_THRESHOLDS } from '../routes/shared.js';
 import { chicagoIso } from '../time.js';
 import { looksLikeChallenge } from './challenge.js';
 import { parseSnapshot } from './parsers/index.js';
@@ -29,8 +38,17 @@ type Conn = Db | Tx;
 
 /** How long a worker holds a URL before another worker may take it. */
 export const LEASE_MINUTES = 15;
-/** A fetched page comes due again after this many days. */
+/** A fetched page comes due again after this many days: Forever content and guides change while the beta runs. */
 export const REFETCH_DAYS = 30;
+/** Pages of Classic-era ids: their Wowhead data is Classic's and barely moves, so they wait longer. */
+export const REFETCH_DAYS_CLASSIC = 90;
+
+/** Days until a fetched page is due again: Classic-era item, quest and NPC ids wait REFETCH_DAYS_CLASSIC. */
+export function refetchDays(entityType: string | null, entityId: number | null): number {
+  if (entityId === null || entityType === null) return REFETCH_DAYS;
+  const own = FOREVER_ID_THRESHOLDS[entityType as keyof typeof FOREVER_ID_THRESHOLDS];
+  return own !== undefined && entityId < own ? REFETCH_DAYS_CLASSIC : REFETCH_DAYS;
+}
 /** Transient failures (403, 429, 5xx, worker errors) give up after this many attempts. */
 export const MAX_ATTEMPTS = 5;
 
@@ -256,9 +274,67 @@ export async function skipUrls(conn: Conn, urls: string[], reason: string): Prom
   return res.length;
 }
 
-/** Leases up to `max` due URLs to a worker: queued or refetch-due rows, and leases that ran out. */
+export interface FetchBudget {
+  /** URLs a day (America/Chicago day). */
+  daily: number;
+  /** URLs an hour, so a day's budget is spread out instead of spent in one burst. */
+  hourly: number;
+}
+
+export const DEFAULT_FETCH_BUDGET: FetchBudget = { daily: 400, hourly: 25 };
+
+export interface BudgetState {
+  day: { used: number; limit: number };
+  hour: { used: number; limit: number };
+}
+
+/**
+ * Leases up to `max` due URLs to a worker (queued or refetch-due rows, and leases that ran out), within the server's
+ * budget for that worker's token: never more than `budget.hourly` this hour or `budget.daily` this Chicago day. Returns the leases and what is
+ * left, so the worker can wait when the answer is empty.
+ */
 export async function leaseTargets(
   db: Db,
+  tokenId: number,
+  worker: string,
+  max: number,
+  budget: FetchBudget = DEFAULT_FETCH_BUDGET,
+): Promise<{ leases: FetchLease[]; budget: BudgetState }> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${FETCH_BUDGET_LOCK})`);
+    const used = await tx.execute<{ day: number; hour: number }>(sql`
+      select coalesce(sum(leased) filter (
+               where hour >= date_trunc('day', now() at time zone 'America/Chicago') at time zone 'America/Chicago'), 0)::int as day,
+             coalesce(sum(leased) filter (where hour = date_trunc('hour', now())), 0)::int as hour
+        from fetch_budget where token_id = ${tokenId} and hour >= now() - interval '2 days'`);
+    const day = used.rows[0]?.day ?? 0;
+    const hour = used.rows[0]?.hour ?? 0;
+    const allowed = Math.max(0, Math.min(max, budget.daily - day, budget.hourly - hour));
+    const state = (n: number): BudgetState => ({
+      day: { used: day + n, limit: budget.daily },
+      hour: { used: hour + n, limit: budget.hourly },
+    });
+    if (allowed === 0) return { leases: [], budget: state(0) };
+    const leases = await leaseDue(tx, tokenId, worker, allowed);
+    if (leases.length > 0) {
+      await tx
+        .insert(fetchBudget)
+        .values({
+          tokenId,
+          hour: sql`date_trunc('hour', now())` as unknown as Date,
+          leased: leases.length,
+        })
+        .onConflictDoUpdate({
+          target: [fetchBudget.tokenId, fetchBudget.hour],
+          set: { leased: sql`${fetchBudget.leased} + excluded.leased` },
+        });
+    }
+    return { leases, budget: state(leases.length) };
+  });
+}
+
+async function leaseDue(
+  db: Conn,
   tokenId: number,
   worker: string,
   max: number,
@@ -415,7 +491,7 @@ export async function recordFetchReport(db: Db, tokenId: number, report: FetchRe
         state: 'done',
         attempts: 0,
         lastFetchedAt: fetchedAt,
-        nextDueAt: sql`now() + make_interval(days => ${REFETCH_DAYS})`,
+        nextDueAt: sql`now() + make_interval(days => ${refetchDays(target.entityType, target.entityId)})`,
         lastOutcome: 'ok',
       },
       tx,

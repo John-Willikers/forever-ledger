@@ -803,6 +803,22 @@ export const fetchTargets = pgTable(
   ],
 );
 
+/**
+ * URLs leased per fetch token per hour (the hour's start), for the server's fetch budget: each worker (cruiser, a
+ * friend's tray) gets its own FETCH_DAILY_BUDGET / FETCH_HOURLY_BUDGET.
+ */
+export const fetchBudget = pgTable(
+  'fetch_budget',
+  {
+    tokenId: integer('token_id')
+      .notNull()
+      .references(() => apiTokens.id, { onDelete: 'cascade' }),
+    hour: tz('hour').notNull(),
+    leased: integer('leased').notNull(),
+  },
+  (t) => [primaryKey({ name: 'fetch_budget_pk', columns: [t.tokenId, t.hour] })],
+);
+
 /** Raw pages exactly as the browser saw them, gzipped. Never modified: parsers re-run from these. */
 export const webSnapshots = pgTable(
   'web_snapshots',

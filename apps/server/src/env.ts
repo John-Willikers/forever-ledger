@@ -10,6 +10,11 @@ export function readEnv(env = process.env) {
     port: Number(env.PORT ?? 3410),
     bodyLimit: env.BODY_LIMIT ? Number(env.BODY_LIMIT) : undefined,
     ingestPerMinute: env.INGEST_PER_MINUTE ? Number(env.INGEST_PER_MINUTE) : undefined,
+    /** Wowhead pages the fetch worker may lease per Chicago day and per hour (FETCH_DAILY_BUDGET, FETCH_HOURLY_BUDGET). */
+    fetchBudget: {
+      daily: env.FETCH_DAILY_BUDGET ? Number(env.FETCH_DAILY_BUDGET) : 400,
+      hourly: env.FETCH_HOURLY_BUDGET ? Number(env.FETCH_HOURLY_BUDGET) : 25,
+    },
     /** GitHub repo whose `addon-v*` releases `addon-cli publish` reads. */
     githubRepo: env.GITHUB_REPO ?? ADDON_REPO,
     /** Optional; only raises GitHub API rate limits. Never log it. */

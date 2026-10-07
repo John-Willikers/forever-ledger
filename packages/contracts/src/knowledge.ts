@@ -134,7 +134,16 @@ export const FetchLease = z.object({
 });
 export type FetchLease = z.infer<typeof FetchLease>;
 
-export const FetchLeaseResponse = z.object({ leases: z.array(FetchLease) });
+/** What the server's fetch budget has left: an empty `leases` with a spent budget means wait for the next hour. */
+export const FetchBudgetState = z.object({
+  day: z.object({ used: z.number().int(), limit: z.number().int() }),
+  hour: z.object({ used: z.number().int(), limit: z.number().int() }),
+});
+
+export const FetchLeaseResponse = z.object({
+  leases: z.array(FetchLease),
+  budget: FetchBudgetState.optional(),
+});
 
 export const FETCH_OUTCOMES = ['ok', 'challenge', 'http_error', 'error'] as const;
 export type FetchOutcome = (typeof FETCH_OUTCOMES)[number];

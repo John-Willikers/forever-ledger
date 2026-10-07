@@ -79,7 +79,7 @@ describe('wowhead parser', () => {
       },
     ]);
     expect(r.problems).toEqual(['listview broken: data is not JSON']);
-    expect(r.parser).toBe('wowhead@2');
+    expect(r.parser).toBe('wowhead@3');
     expect(r.title).toBe('Big-mouth Clam - Item - World of Warcraft Forever');
     expect(r.pageUpdatedAt).toEqual(new Date('2026-10-01T12:00:00Z'));
   });
@@ -115,6 +115,61 @@ describe('wowhead parser on real-page shapes', () => {
       [16, 'forever'],
       [4, 'classic'],
     ]);
+  });
+});
+
+describe('wowhead parser: quest and NPC pages (v3)', () => {
+  const page = (title: string, script: string) =>
+    `<html><head><title>${title}</title></head><body><script>${script}</script></body></html>`;
+
+  it('reads quest facts from g_quests and skips media tabs', () => {
+    const r = parseSnapshot(
+      page(
+        'Downstream - Quest - Forever',
+        `WH.Gatherer.addData(5, 16, {"91733":{"name_enus":"Downstream"}});
+         $.extend(g_quests[91733], {"level":10,"money":250,"reprewards":[[72,75]],"reqlevel":7,"side":1,"xp":630});
+         new Listview({data: lv_screenshots, id: 'screenshots', template: 'screenshot'});
+         var lv_screenshots = [{"id":1}];`,
+      ),
+      'https://www.wowhead.com/forever/quest=91733/downstream',
+    );
+    expect(
+      r.claims.filter((c) => c.attribute !== 'name').map((c) => [c.attribute, c.value]),
+    ).toEqual([
+      ['level', 10],
+      ['req_level', 7],
+      ['xp_reward', 630],
+      ['money_reward', 250],
+      ['side', 'Alliance'],
+      ['rep_rewards', [{ faction: 72, amount: 75 }]],
+    ]);
+    expect(r.problems).toEqual([]);
+  });
+
+  it("claims an NPC's drops on each item too, labeled CLASSIC", () => {
+    const r = parseSnapshot(
+      page(
+        'Surf Glider - NPC - Forever',
+        `WH.Gatherer.addData(1, 16, {"5431":{"name_enus":"Surf Glider"}});
+         $.extend(g_npcs[5431], {"minlevel":48,"maxlevel":50,"location":[440],"classification":0});
+         new Listview({template: 'item', id: 'drops', data: [{"id":7973,"name":"6Big-mouth Clam","count":13464,"outof":38361,"quality":1}]});`,
+      ),
+      'https://www.wowhead.com/forever/npc=5431/surf-glider',
+    );
+    const npc = r.claims.filter((c) => c.entityType === 'npc' && c.attribute !== 'name');
+    expect(npc.map((c) => c.attribute)).toEqual([
+      'level_range',
+      'zones',
+      'classification',
+      'drops',
+    ]);
+    expect(r.claims.find((c) => c.entityType === 'item')).toEqual({
+      entityType: 'item',
+      entityId: 7973,
+      attribute: 'dropped_by',
+      value: { id: 5431, type: 'npc', name: 'Surf Glider', count: 13464, outOf: 38361 },
+      label: 'CLASSIC',
+    });
   });
 });
 

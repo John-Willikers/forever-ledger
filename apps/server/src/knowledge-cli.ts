@@ -7,6 +7,7 @@
 //                            | claim <source id|key> <type>:<id|name> <attribute> <json value> <quote> [--label L]
 //                            | relabel <claim id> <LABEL> <why>
 //                            | skip <file with one URL per line> <why>
+//                            | coverage [--apply]
 //                            | disputes [<type>:<key>]
 import { readFileSync } from 'node:fs';
 import { ENTITY_TYPES } from '@forever-ledger/contracts';
@@ -15,7 +16,7 @@ import { sql } from 'drizzle-orm';
 import { openDatabase, runMigrations } from './db/client.js';
 import { readEnv } from './env.js';
 import { findDisputes } from './knowledge/disputes.js';
-import { enqueueSeen } from './knowledge/enqueue.js';
+import { enqueueSeen, itemCoverage } from './knowledge/enqueue.js';
 import { addManualClaim, relabelClaim } from './knowledge/manual.js';
 import { importSeed } from './knowledge/seed.js';
 import { enqueueUrl, reparseAll, skipUrls } from './knowledge/store.js';
@@ -24,7 +25,7 @@ import { chicagoIso } from './time.js';
 const USAGE = `usage: knowledge-cli status | add <url> [--priority N] [--refresh] | seed <file.json>
   | enqueue-seen <template> [--limit N] | reparse [--site S] [--replace]
   | claim <source> <type>:<id|name> <attribute> <json> <quote> [--label L] | relabel <id> <LABEL> <why>
-  | skip <file of URLs> <why>
+  | skip <file of URLs> <why> | coverage [--apply]
   | disputes [<type>:<key>]`;
 
 const argv = process.argv.slice(2);
@@ -62,6 +63,7 @@ try {
   const label = flag('label') as ClaimLabel | undefined;
   const refresh = has('refresh');
   const replace = has('replace');
+  const apply = has('apply');
   const [command, ...args] = argv;
 
   if (command === 'status') {
@@ -134,6 +136,16 @@ try {
       .filter((l) => l && !l.startsWith('#'));
     const n = await skipUrls(db, urls, why.join(' '));
     console.log(`skipped ${n} of ${urls.length} URLs`);
+  } else if (command === 'coverage') {
+    const r = await itemCoverage(db, { apply });
+    console.log(
+      `queued item pages with drop sources the addon saw: ${r.withDropSources}; every source covered by fetched NPC pages: ${r.fullyCovered}; partly: ${r.partlyCovered}`,
+    );
+    console.log(
+      apply
+        ? `moved ${r.moved} behind uncovered pages`
+        : 'dry run: add --apply to move covered pages back',
+    );
   } else if (command === 'disputes') {
     const e = args[0] ? entity(args[0]) : undefined;
     const rows = await findDisputes(db, {
