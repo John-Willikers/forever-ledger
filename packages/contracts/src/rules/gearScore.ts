@@ -166,10 +166,13 @@ export const SLOT_NAMES: Record<number, string> = {
   19: 'Tabard',
 };
 
-/** Classes that can wield a one-hander in the off hand (Classic: dual wield). */
-export const DUAL_WIELD: ReadonlySet<ClassToken> = new Set([
-  'WARRIOR',
-  'ROGUE',
-  'HUNTER',
-  'SHAMAN',
-]);
+/** Classic dual wield: the level each class learns it (rogues from the start; shamans only from TBC, so never). */
+export const DUAL_WIELD_FROM: Partial<Record<ClassToken, number>> = {
+  ROGUE: 1,
+  WARRIOR: 20,
+  HUNTER: 20,
+};
+
+/** Whether a class can hold a weapon in the off hand at a level. */
+export const canDualWield = (cls: ClassToken, level: number) =>
+  level >= (DUAL_WIELD_FROM[cls] ?? Number.POSITIVE_INFINITY);

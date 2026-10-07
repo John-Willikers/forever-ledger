@@ -50,8 +50,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   `lookupCharacter` / `gearUpgrades` (5 tests on real Postgres); read-only on production: Sam Willikers (Druid 30,
   no gear yet) gets the best known item per slot with sources in ~150 ms
 - ✅ 4 🔌 MCP tools `lookup_character`, `gear_upgrades`; bot prompt knows players ask by full name; `pnpm check`
-  1082 tests — 05:03 CDT
-- ⬜ 5 🔍 Review → PR → merge → deploy (backup first: migration)
+  1082 tests — 04:41 CDT
+- 🟡 5 🔍 Review (0 Critical) → fixed: no off-hand suggestions over a worn two-hander (a one-hander replaces it in
+  the main hand); Classic dual wield (rogues, warriors and hunters from 20, never shamans); a surname arriving late
+  re-reads gear under the new key; shirts and tabards don't trigger retries and a new change ends an old retry chain;
+  one bad slot is dropped, not the whole record; an exact first name wins → PR #61
 - ⬜ 6 🚀 Tray v0.2.1, then addon 0.5.0 published; Sam's gear uploads after the next login; "@Forever Ledger Sam
   Willikers' gear upgrades" answered in Discord
 

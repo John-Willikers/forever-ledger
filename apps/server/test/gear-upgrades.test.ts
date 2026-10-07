@@ -113,4 +113,34 @@ describe('character gear and upgrades (real Postgres)', () => {
     expect(healer.role.role).toBe('ranged');
     expect(healer.gaps[0]).toContain("can't play healer");
   });
+
+  it('never suggests an off-hand over a two-hander, and follows Classic dual wield', async () => {
+    await q(`insert into characters (key, name, realm, class, level) values
+      ('Brute Force-Bayou', 'Brute Force', 'Bayou', 'WARRIOR', 25),
+      ('Rain Caller-Bayou', 'Rain Caller', 'Bayou', 'SHAMAN', 25)`);
+    await q(`insert into items (item_id, name, quality, type, subtype, equip_loc) values
+      (90006, 'Gator Shield', 2, 'Armor', 'Shields', 'INVTYPE_SHIELD'),
+      (90007, 'Swamp Hatchet', 2, 'Weapon', 'One-Handed Axes', 'INVTYPE_WEAPON')`);
+    await q(`insert into item_snapshots (item_id, build, req_level, ilvl, stats, tooltip) values
+      (90006, 61582, 20, 24, '{"ITEM_MOD_STRENGTH_SHORT": 5}', '[]'),
+      (90007, 61582, 20, 24, '{"ITEM_MOD_STRENGTH_SHORT": 4, "ITEM_MOD_DAMAGE_PER_SECOND_SHORT": 9}', '[]')`);
+    // The warrior wears Rockslicer (a two-hander, Strength 7).
+    await q(`insert into character_gear (char, build, seen_at, slots, uploader_id, account)
+             values ('Brute Force-Bayou', 61582, now(), '[{"slot": 16, "itemId": 872}]', 'pc-1', 'A')`);
+    const brute = await gearUpgrades(s.database.db, 'Brute Force', 'melee');
+    if (!('slots' in brute) || !brute.slots) throw new Error('no slots');
+    expect(brute.slots.find((x) => x.slot === 17)?.upgrades ?? []).toEqual([]);
+    // The hatchet beats the (weak) two-hander, so it is offered for the main hand, compared with the two-hander.
+    const main = brute.slots.find((x) => x.slot === 16)!;
+    expect(main.upgrades.find((u) => u.name === 'Swamp Hatchet')?.gain).toBe(31 - 7);
+    const shaman = await gearUpgrades(s.database.db, 'Rain Caller', 'melee');
+    if (!('slots' in shaman) || !shaman.slots) throw new Error('no slots');
+    // A one-hander is a main-hand option for a shaman, never an off-hand one (no dual wield in Classic).
+    expect(
+      shaman.slots.find((x) => x.slot === 17)?.upgrades.map((u) => u.name) ?? [],
+    ).not.toContain('Swamp Hatchet');
+    expect(shaman.slots.find((x) => x.slot === 16)?.upgrades.map((u) => u.name)).toContain(
+      'Swamp Hatchet',
+    );
+  });
 });

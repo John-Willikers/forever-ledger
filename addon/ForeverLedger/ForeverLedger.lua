@@ -2327,6 +2327,8 @@ function fishLog.noteChar()
   local me = whoAmI()
   me.lastSeen = now()
   db.chars[key] = me
+  -- A new key this session (the surname arrived after login): read the gear again so it goes under this key.
+  if fishLog.onNewKey then fishLog.onNewKey() end
 end
 
 do
@@ -2443,15 +2445,22 @@ do
   local SETTLE = 2   -- seconds after the last equipment change
   local RETRIES = 3  -- re-reads while a worn item has no stats yet
 
-  function gear.read(tries)
+  -- `chain` is the read chain this retry belongs to: a newer equipment change starts a new one and ends the old.
+  gear.chain = 0
+  function gear.read(tries, chain)
     if not db or not GetInventoryItemLink then return end
+    if chain and chain ~= gear.chain then return end
     local slots, missing = {}, false
     for slot = 1, LAST_SLOT do
       local link = GetInventoryItemLink("player", slot)
       local itemID = idFromLink(link)
       if itemID then
         local ok, stats = pcall(GetItemStats, link)
-        if not (ok and type(stats) == "table" and next(stats)) then stats, missing = nil, true end
+        if not (ok and type(stats) == "table") then
+          stats, missing = nil, true -- not in the client cache yet: read again
+        elseif next(stats) == nil then
+          stats = nil -- an item without stats (a shirt, a tabard): nothing to wait for
+        end
         slots[slot] = { itemID = itemID, link = link, stats = stats }
         scanItemOnce(itemID, link)
       end
@@ -2462,7 +2471,8 @@ do
     gear.key = key
     db.gear[key] = { build = build, at = now(), slots = slots }
     if missing and (tries or 0) < RETRIES and C_Timer then
-      C_Timer.After(5, function() safely("gearRead", gear.read, (tries or 0) + 1) end)
+      local mine = gear.chain
+      C_Timer.After(5, function() safely("gearRead", gear.read, (tries or 0) + 1, mine) end)
     end
   end
 
@@ -2471,10 +2481,13 @@ do
     gear.pending = true
     C_Timer.After(SETTLE, function()
       gear.pending = false
-      safely("gearRead", gear.read, 0)
+      gear.chain = gear.chain + 1
+      safely("gearRead", gear.read, 0, gear.chain)
     end)
   end
 end
+
+fishLog.onNewKey = function() gear.changed() end
 
 ---------------------------------------------------------------- events
 local handlers = {}

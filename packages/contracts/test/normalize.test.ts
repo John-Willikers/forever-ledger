@@ -1007,13 +1007,14 @@ describe('normalize — schema 8 gear (session-v8.lua)', () => {
     expect(g!.slots.find((s) => s.slot === 8)).toBeUndefined();
   });
 
-  it('a bad slot is refused with its character, not the rest of the file', () => {
+  it('a bad slot is dropped and reported; the rest of the gear is kept', () => {
     const db = load('session-v8.lua') as {
       gear: Record<string, { slots: Record<string, unknown> }>;
     };
     db.gear['Thibodeaux Willikers-Bayou']!.slots['42'] = { itemID: 1 };
     const r = normalize(db);
-    expect(r.problems.map((p) => p.path)).toEqual(['gear.Thibodeaux Willikers-Bayou']);
-    expect(r.records.fishingCasts.length).toBeGreaterThan(0);
+    expect(r.problems.map((p) => p.path)).toEqual(['gear.Thibodeaux Willikers-Bayou.slots.42']);
+    const g = r.records.gear.find((x) => x.char === 'Thibodeaux Willikers-Bayou');
+    expect(g!.slots.map((x) => x.itemId)).toEqual(expect.arrayContaining([2568, 872]));
   });
 });

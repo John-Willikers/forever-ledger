@@ -3,6 +3,7 @@ import {
   ApiSample,
   Character,
   CharacterGear,
+  GearSlot,
   ContainerLoot,
   ContainerOpen,
   Corpse,
@@ -435,9 +436,23 @@ export function normalize(db: unknown): Normalized {
   // Schema 8: what each character wears ({ [charKey] = { build, at, slots = { [slotID] = { itemID, link, stats } } } }).
   for (const [char, g] of entries(db.gear)) {
     if (!isObj(g)) continue;
-    const slots = entries(g.slots).flatMap(([slot, it]) =>
-      isObj(it) ? [{ slot: num(slot), itemId: it.itemID, link: it.link, stats: it.stats }] : [],
-    );
+    // A slot that doesn't validate is dropped and reported; the rest of the character's gear is kept.
+    const slots = entries(g.slots).flatMap(([slot, it]) => {
+      if (!isObj(it)) return [];
+      const res = GearSlot.safeParse({
+        slot: num(slot),
+        itemId: it.itemID,
+        link: it.link,
+        stats: it.stats,
+      });
+      if (res.success) return [res.data];
+      problems.push({
+        kind: 'gear',
+        path: `gear.${char}.slots.${slot}`,
+        issues: res.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`),
+      });
+      return [];
+    });
     add('gear', CharacterGear, `gear.${char}`, { char, build: g.build, at: g.at, slots });
   }
 

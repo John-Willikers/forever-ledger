@@ -1,6 +1,6 @@
 // Gear scores are an estimate; these pin the rule of thumb so a change to it is deliberate.
 import { describe, expect, it } from 'vitest';
-import { gearScore, guessRole, SLOTS_FOR_EQUIP_LOC } from '../src/index.js';
+import { canDualWield, gearScore, guessRole, SLOTS_FOR_EQUIP_LOC } from '../src/index.js';
 
 describe('gear scores', () => {
   it('weights stats by role, armor and weapon damage included', () => {
@@ -34,5 +34,13 @@ describe('gear scores', () => {
     expect(SLOTS_FOR_EQUIP_LOC.INVTYPE_FINGER).toEqual([11, 12]);
     expect(SLOTS_FOR_EQUIP_LOC.INVTYPE_ROBE).toEqual([5]);
     expect(SLOTS_FOR_EQUIP_LOC.INVTYPE_2HWEAPON).toEqual([16]);
+  });
+
+  it('dual wield follows Classic: rogues always, warriors and hunters from 20, never shamans', () => {
+    expect(canDualWield('ROGUE', 1)).toBe(true);
+    expect(canDualWield('WARRIOR', 19)).toBe(false);
+    expect(canDualWield('WARRIOR', 20)).toBe(true);
+    expect(canDualWield('HUNTER', 20)).toBe(true);
+    expect(canDualWield('SHAMAN', 60)).toBe(false);
   });
 });

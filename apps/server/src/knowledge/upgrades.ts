@@ -5,7 +5,7 @@
 import {
   canEquip,
   CLASS_ROLES,
-  DUAL_WIELD,
+  canDualWield,
   GEAR_SCORE_VERSION,
   gearScore,
   guessRole,
@@ -37,6 +37,7 @@ interface CharacterRow {
   faction: string | null;
   level: number | null;
   last_seen: Date | null;
+  first_name: string | null;
 }
 
 /** Characters whose full name, first name or key matches (exact name first). */
@@ -45,7 +46,7 @@ export async function findCharacters(db: Db, ref: string): Promise<CharacterRow[
   if (!q) return [];
   return rows<CharacterRow>(
     db,
-    sql`select key, name, realm, class, race, faction, level, last_seen from characters
+    sql`select key, name, realm, class, race, faction, level, last_seen, first_name from characters
          where lower(name) = lower(${q}) or lower(first_name) = lower(${q}) or lower(key) = lower(${q})
             or name ilike ${containsPattern(q)} escape '\\'
          order by (lower(name) = lower(${q})) desc, last_seen desc nulls last
@@ -79,7 +80,11 @@ async function resolveCharacter(db: Db, ref: string): Promise<Resolved> {
       ],
     };
   }
-  const exact = found.filter((c) => c.name.toLowerCase() === ref.trim().toLowerCase());
+  const want = ref.trim().toLowerCase();
+  // An exact full name, else an exact first name ("Sam" is Sam Willikers, not also Samuel).
+  const exactName = found.filter((c) => c.name.toLowerCase() === want);
+  const exact =
+    exactName.length > 0 ? exactName : found.filter((c) => c.first_name?.toLowerCase() === want);
   if (exact.length === 1 || found.length === 1) {
     const character = exact[0] ?? found[0]!;
     return { character, others: found.filter((c) => c.key !== character.key) };
@@ -279,6 +284,9 @@ export async function gearUpgrades(db: Db, ref: string, askedRole?: Role) {
     gearScore(stats ?? {}, role);
   const mainHand = worn.get(16);
   const offHand = worn.get(17);
+  // With a two-hander on, anything for the off hand means taking it off: it has to beat the two-hander too.
+  const twoHanderOn = mainHand?.equipLoc === 'INVTYPE_2HWEAPON';
+  const dualWield = canDualWield(classToken, level);
   // A two-hander replaces both hands, so it has to beat both together.
   const handsScore = scoreOf(mainHand?.stats) + scoreOf(offHand?.stats);
 
@@ -302,7 +310,15 @@ export async function gearUpgrades(db: Db, ref: string, askedRole?: Role) {
     )
       continue;
     let slots = SLOTS_FOR_EQUIP_LOC[item.equip_loc] ?? [];
-    if (item.equip_loc === 'INVTYPE_WEAPON' && !DUAL_WIELD.has(classToken)) slots = [16];
+    // Off-hand weapons need dual wield (Classic: rogues; warriors and hunters from 20; never shamans).
+    if (item.equip_loc === 'INVTYPE_WEAPON' && !dualWield) slots = [16];
+    if (item.equip_loc === 'INVTYPE_WEAPONOFFHAND' && !dualWield) continue;
+    if (twoHanderOn) {
+      // With a two-hander on, a one-hander replaces it in the main hand; an off-hand-only item (shield, held item,
+      // off-hand weapon) would need a main-hand weapon too, so it is no upgrade on its own.
+      if (slots.every((x) => x === 17)) continue;
+      slots = slots.filter((x) => x !== 17);
+    }
     if (slots.length === 0) continue;
     const score = scoreOf(item.stats);
     if (score <= 0) continue;
@@ -310,7 +326,10 @@ export async function gearUpgrades(db: Db, ref: string, askedRole?: Role) {
     const target = slots
       .map((slot) => ({ slot, current: scoreOf(worn.get(slot)?.stats) }))
       .sort((a, b) => a.current - b.current)[0]!;
-    const current = item.equip_loc === 'INVTYPE_2HWEAPON' ? handsScore : target.current;
+    const current =
+      item.equip_loc === 'INVTYPE_2HWEAPON' || (target.slot === 16 && twoHanderOn)
+        ? handsScore
+        : target.current;
     const gain = Math.round((score - current) * 10) / 10;
     if (gain < MIN_GAIN) continue;
     const list = bySlot.get(target.slot) ?? [];
