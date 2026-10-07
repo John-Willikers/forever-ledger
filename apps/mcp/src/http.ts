@@ -164,7 +164,12 @@ export function createMcpHttpServer(opts: McpHttpOptions) {
     const response = await handler.fetch(request, { authInfo });
     res.writeHead(response.status, Object.fromEntries(response.headers));
     if (response.body) {
-      await pipeline(Readable.fromWeb(response.body as NodeReadableStream), res);
+      try {
+        await pipeline(Readable.fromWeb(response.body as NodeReadableStream), res);
+      } catch (err) {
+        // The client hung up before the answer was written (a health check, a cancelled call): nothing to do.
+        if ((err as { code?: string }).code !== 'ERR_STREAM_PREMATURE_CLOSE') throw err;
+      }
     } else {
       res.end();
     }
