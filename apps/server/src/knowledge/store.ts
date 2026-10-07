@@ -109,6 +109,8 @@ async function insertComments(
         body: sql`excluded.body`,
         rating: sql`excluded.rating`,
         postedAt: sql`excluded.posted_at`,
+        dataTree: sql`excluded.data_tree`,
+        gameVersion: sql`excluded.game_version`,
         snapshotId: sql`excluded.snapshot_id`,
       },
       setWhere: sql`excluded.snapshot_id >= ${webComments.snapshotId}`,

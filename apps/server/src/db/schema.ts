@@ -852,6 +852,10 @@ export const webComments = pgTable(
     postedAt: tz('posted_at'),
     rating: integer('rating'),
     body: text('body').notNull(),
+    /** Wowhead's `dataTree` for the comment: 16 Forever, 4 and 14 Classic Era, 1 retail/original WoW. */
+    dataTree: integer('data_tree'),
+    /** From `data_tree`: which game the comment was written about. */
+    gameVersion: text('game_version').notNull().default('unknown'),
   },
   (t) => [primaryKey({ name: 'web_comments_pk', columns: [t.site, t.commentId] })],
 );

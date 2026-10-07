@@ -1,4 +1,4 @@
-import type { EntityType } from '@forever-ledger/contracts';
+import type { EntityType, GameVersion } from '@forever-ledger/contracts';
 import type { HTMLElement } from 'node-html-parser';
 import { bracketedAfter, codeMarkers, topLevel, tryJson } from './scan.js';
 import type { ClaimDraft, CommentDraft, ParseResult } from './types.js';
@@ -69,6 +69,16 @@ export function wowheadEntity(url: string): { type: EntityType; id: number } | n
   const m = /\/(item|npc|quest|object|spell|zone)=(\d+)/.exec(new URL(url).pathname);
   if (!m) return null;
   return { type: PAGE_TYPES[m[1]!]!, id: Number(m[2]) };
+}
+
+/**
+ * Wowhead's data trees, as its comment toggle uses them: 16 is Forever (the page's `dataEnv` names version 1.60.1,
+ * the Forever client), 4 and 14 Classic Era. 1 is retail, which on old items means comments from original WoW.
+ */
+export function treeVersion(tree: number | null): GameVersion {
+  if (tree === 16) return 'forever';
+  if (tree === 4 || tree === 14) return 'classic';
+  return 'unknown';
 }
 
 const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : undefined);
@@ -212,6 +222,8 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
             postedAt: commentDate(r.date),
             rating: int(r.rating) ?? null,
             body,
+            dataTree: int(r.dataTree) ?? null,
+            gameVersion: treeVersion(int(r.dataTree) ?? null),
           });
         }
         continue;
