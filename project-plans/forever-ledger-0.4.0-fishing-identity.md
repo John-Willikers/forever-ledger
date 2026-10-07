@@ -34,7 +34,7 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked · 🔒 gate (ne
   - ✅ 2c Lua harness 222 passed (+8: `test_fishing.lua`, the 0.3.4 → 7 migration, the `session-v7.lua` fixture);
     0.3.4 frozen in `tests/legacy/` still writes `session-v6.lua` byte-identical
 - ✅ 3 📐 Contracts: schema 7, `FishingCast`, `Character.firstName` / `guid`, normalize, keys
-- 🟡 4 🗄️ Server (migration 0015)
+- ✅ 4 🗄️ Server (migration 0015)
   - ✅ 4a Migration: `fishing_casts` (keyed on uploader, account, char, cast time, seq) and the ingest upsert
   - ✅ 4b Identity: `character_aliases`; the canonical key is the full name (`Sam Willikers-Classic Beta PvE`).
     Ingest maps short keys to it by GUID or by full name; `characters-cli suggest|merge` handles the old rows
@@ -43,7 +43,7 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked · 🔒 gate (ne
     (`?zone=&subzone=&build=&char=&lure=&minSkill=`; `/where?item=`), and an admin **Fishing** page: yield per zone and subzone,
     catch table, rare catches, and a search by item ("where did Big-mouth Clams come from?")
   - ⬜ 4d (after release) Knowledge: per-zone fishing yields become tier 1 claims automatically, for the MCP server
-- 🟡 5 🔍 Code review (2 Critical, 6 Important): all fixed 00:47 CDT — recasts matched by CastBar id; GUID merges
+- ✅ 5 🔍 Code review (2 Critical, 6 Important): all fixed 00:47 CDT — recasts matched by CastBar id; GUID merges
   never go from a full name to a short key, never cross accounts, refuse an alias as target, take the run lock;
   aliases are per account; the player's surname doesn't depend on the display setting; `db.chars` follows a new key;
   group loot tells same-first-name party members apart; a bad GUID or off-map spot drops the field, not the record
@@ -55,7 +55,9 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked · 🔒 gate (ne
   - ✅ Merged in production 01:04 CDT: Sam, Jim, John, Jon → "… Willikers", Vic → Vic Vinny, Nyx → Nyx Ashford
     (forced: no "Nyx Ashford" upload yet); aliases per account; Sam Willikers keeps level 30 and all skills at 225
   - ✅ 🚀 `addon-v0.4.0` released and published (schema 7) 01:07 CDT; tray **v0.1.6** is GitHub latest — 2026-10-07 01:10 CDT
-  - ⬜ Friends' trays update themselves to 0.1.6, then pull addon 0.4.0; first per-cast data before ~Oct 20
+  - 🟡 Trays update themselves (now v0.2.0) and pull addon 0.4.0; as of 2026-10-07 03:10 CDT the latest uploads are
+    still schema 6 (Harlan 02:54, Cody Oct 6 22:00, Steven Sep 27): schema 7 arrives after the next play session.
+    First per-cast data before ~Oct 20
 
 ## ⚠️ Risks
 

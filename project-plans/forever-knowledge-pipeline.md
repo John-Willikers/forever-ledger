@@ -8,11 +8,11 @@
 
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/Chicago.
 
-- 🟡 0 📝 Plan approved and written, branch `feat/knowledge-pipeline` from master (354ee78), identity plan tasks 7–8
+- ✅ 0 📝 Plan approved and written, branch `feat/knowledge-pipeline` from master (354ee78), identity plan tasks 7–8
   marked shared — 06:47 CDT
   - ✅ 0b 💾 Cruiser backup: `stream-recorder` pushed to private `John-Willikers/stream-recorder` (master, 2a6cc57) —
     checked 2026-10-06 20:56 CDT
-- 🟡 1 🛰️ Cruiser fetch worker built: stream-recorder PR #1 (`feat/page-fetcher`), hand-run test fetches
+- ✅ 1 🛰️ Cruiser fetch worker built: stream-recorder PR #1 (`feat/page-fetcher`), hand-run test fetches
   2026-10-06 21:15 CDT stored both Mobalytics maps through the lease API (sha256 contract confirmed).
   - ✅ 1a 🔎 Answers: Wowhead pages carry `WH.Gatherer.addData(` and `new Listview(` (with `dropped-by`, `fished-in`)
     with no tab clicks; Wowhead's Forever scheme is `/forever/<type>=<id>` (redirects to a slug)
@@ -44,10 +44,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   - 📝 Changes from the plan: on-demand enqueue is `knowledge-cli enqueue-seen <template>` (no hook after ingest
     until the Forever URL scheme is confirmed); snapshots are JSON with base64 gzip, not a raw gzip body; seed claims
     stay on their seed sources, and re-checking them against fetched pages is a manual `knowledge-cli claim`.
-- 🟡 3 🎣 Fishing casts → now `forever-ledger-0.4.0-fishing-identity.md` (schema 7 / addon 0.4.0) — 🔒 probe `/flprobe fish` in game first; ⛔ release waits on the
-  identity plan's open questions
+- ✅ 3 🎣 Fishing casts → shipped in `forever-ledger-0.4.0-fishing-identity.md`: addon 0.4.0 (schema 7) published
+  2026-10-07 01:07 CDT. Waiting on the first schema 7 upload (as of 03:10 CDT every tray still uploads schema 6: the
+  new addon writes schema 7 the next time WoW runs)
+  - ✅ 3a Fetch throughput (`forever-ledger-fetch-throughput.md`, PR #50) and the opt-in tray helper
+    (`forever-ledger-tray-fetch-helper.md`, PRs #52–#53, tray v0.2.0); Harlan's helper stored its first page
+    (quest 91775, 11 claims) 2026-10-07 03:04 CDT
 - ⬜ 4 🧾 Character guides (DB rows, admin render)
-- ⬜ 5 🔌 MCP server `apps/mcp` (PM2 :3411, Nginx `/mcp`)
+- 🟡 5 🔌 MCP server `apps/mcp` (PM2 :3411, Nginx `/mcp`) → `forever-ledger-mcp-server.md`, started 2026-10-07
 
 ## 🧭 Context
 A Google AI answer about farming Black Pearls was half wrong. It blended Classic data, a forum anecdote and invented
