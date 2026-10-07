@@ -5,7 +5,7 @@ import { gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mintToken } from '../src/index.js';
 import { findDisputes } from '../src/knowledge/disputes.js';
-import { addManualClaim, ManualClaimError } from '../src/knowledge/manual.js';
+import { addManualClaim, ManualClaimError, relabelClaim } from '../src/knowledge/manual.js';
 import { importSeed } from '../src/knowledge/seed.js';
 import { enqueueUrl, reparseAll } from '../src/knowledge/store.js';
 import { startServer, webFixture } from './helpers.js';
@@ -134,7 +134,7 @@ describe('knowledge pipeline', () => {
     });
     const tanaris = await q(
       `select label, observed_build, value from claims
-        where entity_type = 'zone' and entity_key = 'tanaris' and parser = 'table@1'`,
+        where entity_type = 'zone' and entity_key = 'tanaris' and parser = 'mobalytics@1+table@2'`,
     );
     expect(tanaris).toEqual([
       { label: 'VERIFIED', observed_build: 70009, value: { min: 40, max: 50 } },
@@ -242,6 +242,16 @@ describe('knowledge pipeline', () => {
     const before = await s.count('claims');
     expect(await reparseAll(s.database.db)).toMatchObject({ pages: 2, added: 0 });
     expect(await s.count('claims')).toBe(before);
+    // A parser fix: claims an older parser version read off the page are swapped, hand-entered ones stay.
+    await q(`update claims set parser = 'wowhead@0' where parser = 'wowhead@1'`);
+    expect(await reparseAll(s.database.db, 'wowhead.com', { replace: true })).toMatchObject({
+      pages: 1,
+      added: 7,
+    });
+    expect(await s.count('claims')).toBe(before);
+    expect(
+      (await q(`select count(*)::int as n from claims where parser = 'wowhead@0'`))[0],
+    ).toEqual({ n: 0 });
   });
 
   it('checks a hand-entered quote against the stored page', async () => {
@@ -306,5 +316,24 @@ describe('knowledge pipeline', () => {
       [r.json().snapshotId],
     );
     expect(labels).toEqual([{ label: 'CLASSIC' }]);
+  });
+
+  it('relabels a claim with a dated reason, never its value', async () => {
+    const [c] = await q(
+      `select c.id from claims c join sources s on s.id = c.source_id
+        where s.key = 'seed:mobalytics-zone-map' and c.entity_key = 'searing gorge'`,
+    );
+    await expect(relabelClaim(s.database.db, c.id, 'FALSE', ' ')).rejects.toBeInstanceOf(
+      ManualClaimError,
+    );
+    expect(await relabelClaim(s.database.db, c.id, 'FALSE', 'the fetched page says 43–50')).toEqual(
+      { from: 'VERIFIED', to: 'FALSE' },
+    );
+    const [after] = await q(`select label, value, note from claims where id = $1`, [c.id]);
+    expect(after.label).toBe('FALSE');
+    expect(after.value).toEqual({ min: 43, max: 55 });
+    expect(after.note).toMatch(
+      /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d-0[56]:00 VERIFIED → FALSE: the fetched page says 43–50$/,
+    );
   });
 });

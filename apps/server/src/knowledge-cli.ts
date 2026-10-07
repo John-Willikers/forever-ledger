@@ -3,8 +3,9 @@
 //                            | add <url> [--priority N] [--refresh]
 //                            | seed <file.json>
 //                            | enqueue-seen <url template with {type} and {id}> [--limit N]
-//                            | reparse [--site wowhead.com]
+//                            | reparse [--site wowhead.com] [--replace]
 //                            | claim <source id|key> <type>:<id|name> <attribute> <json value> <quote> [--label L]
+//                            | relabel <claim id> <LABEL> <why>
 //                            | disputes [<type>:<key>]
 import { readFileSync } from 'node:fs';
 import { ENTITY_TYPES } from '@forever-ledger/contracts';
@@ -14,14 +15,15 @@ import { openDatabase, runMigrations } from './db/client.js';
 import { readEnv } from './env.js';
 import { findDisputes } from './knowledge/disputes.js';
 import { enqueueSeen } from './knowledge/enqueue.js';
-import { addManualClaim } from './knowledge/manual.js';
+import { addManualClaim, relabelClaim } from './knowledge/manual.js';
 import { importSeed } from './knowledge/seed.js';
 import { enqueueUrl, reparseAll } from './knowledge/store.js';
 import { chicagoIso } from './time.js';
 
 const USAGE = `usage: knowledge-cli status | add <url> [--priority N] [--refresh] | seed <file.json>
-  | enqueue-seen <template> [--limit N] | reparse [--site S]
-  | claim <source> <type>:<id|name> <attribute> <json> <quote> [--label L] | disputes [<type>:<key>]`;
+  | enqueue-seen <template> [--limit N] | reparse [--site S] [--replace]
+  | claim <source> <type>:<id|name> <attribute> <json> <quote> [--label L] | relabel <id> <LABEL> <why>
+  | disputes [<type>:<key>]`;
 
 const argv = process.argv.slice(2);
 const flag = (name: string) => {
@@ -57,6 +59,7 @@ try {
   const limit = flag('limit');
   const label = flag('label') as ClaimLabel | undefined;
   const refresh = has('refresh');
+  const replace = has('replace');
   const [command, ...args] = argv;
 
   if (command === 'status') {
@@ -98,8 +101,10 @@ try {
     const r = await enqueueSeen(db, args[0], { limit: limit ? Number(limit) : undefined });
     console.log(`enqueue-seen: ${r.seen} entities looked at, ${r.queued} URLs queued`);
   } else if (command === 'reparse') {
-    const r = await reparseAll(db, site);
-    console.log(`reparse: ${r.pages} pages, ${r.added} new claims`);
+    const r = await reparseAll(db, site, { replace });
+    console.log(
+      `reparse: ${r.pages} pages, ${r.added} new claims${replace ? ' (older parser claims replaced)' : ''}`,
+    );
     for (const p of r.problems) console.log(`  ${p}`);
   } else if (command === 'claim' && args.length >= 5) {
     const [source, spec, attribute, json, quote] = args as [string, string, string, string, string];
@@ -115,6 +120,10 @@ try {
       label,
     });
     console.log(n ? 'claim added' : 'claim already exists');
+  } else if (command === 'relabel' && args.length >= 3) {
+    const [id, to, ...why] = args as [string, string, ...string[]];
+    const r = await relabelClaim(db, Number(id), to as ClaimLabel, why.join(' '));
+    console.log(`claim #${id}: ${r.from} → ${r.to}`);
   } else if (command === 'disputes') {
     const e = args[0] ? entity(args[0]) : undefined;
     const rows = await findDisputes(db, {

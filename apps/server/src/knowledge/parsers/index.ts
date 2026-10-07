@@ -1,5 +1,6 @@
 import { classifySource } from '@forever-ledger/contracts';
 import { pageTitle, pageUpdatedAt, parseHtml } from '../html.js';
+import { MOBALYTICS_PARSER, parseMobalyticsMap } from './mobalytics.js';
 import { parseTables, TABLE_PARSER } from './tables.js';
 import type { ParseResult } from './types.js';
 import { parseWowhead } from './wowhead.js';
@@ -23,12 +24,13 @@ export function parseSnapshot(html: string, url: string): ParseResult {
   if (site === 'wowhead.com') {
     return { ...parseWowhead(root, url, title), pageUpdatedAt: updated };
   }
+  const mobalytics = site === 'mobalytics.gg';
   return {
-    parser: TABLE_PARSER,
+    parser: mobalytics ? `${MOBALYTICS_PARSER}+${TABLE_PARSER}` : TABLE_PARSER,
     title,
     pageUpdatedAt: updated,
     build: statedBuild(root.textContent),
-    claims: parseTables(root),
+    claims: mobalytics ? [...parseMobalyticsMap(root), ...parseTables(root)] : parseTables(root),
     comments: [],
     problems: [],
   };

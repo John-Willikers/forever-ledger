@@ -2,7 +2,8 @@ import { CLAIM_LABELS, defaultLabel } from '@forever-ledger/contracts';
 import type { ClaimLabel, EntityType, GameVersion, SourceTier } from '@forever-ledger/contracts';
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { sources, webSnapshots } from '../db/schema.js';
+import { claims, sources, webSnapshots } from '../db/schema.js';
+import { chicagoIso } from '../time.js';
 import { containsQuote, pageText, parseHtml } from './html.js';
 import { inflate, insertClaims } from './store.js';
 
@@ -76,4 +77,21 @@ export async function addManualClaim(db: Db, c: ManualClaim) {
     ],
     'manual',
   );
+}
+
+/**
+ * Changes a claim's label (curation: a seed transcription the fetched page contradicts becomes FALSE). The claim's
+ * value never changes; the reason is appended to its note with the America/Chicago time.
+ */
+export async function relabelClaim(db: Db, id: number, label: ClaimLabel, reason: string) {
+  if (!CLAIM_LABELS.includes(label)) throw new ManualClaimError(`bad label ${label}`);
+  if (!reason.trim()) throw new ManualClaimError('say why the label changes');
+  const [old] = await db.select().from(claims).where(eq(claims.id, id));
+  if (!old) throw new ManualClaimError(`no claim #${id}`);
+  const line = `${chicagoIso()} ${old.label} → ${label}: ${reason.trim()}`;
+  await db
+    .update(claims)
+    .set({ label, note: old.note ? `${old.note}\n${line}` : line })
+    .where(eq(claims.id, id));
+  return { from: old.label, to: label };
 }

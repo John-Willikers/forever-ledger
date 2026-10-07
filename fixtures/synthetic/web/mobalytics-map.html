@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- Synthetic excerpt in the shape of Mobalytics' interactive map sidebar (zone-map-level-ranges and dungeon-raid-map,
+     fetched 2026-10-06): nested aria-labelled sections, rows are checkbox buttons with ids map-category-*. Hand-written. -->
+<html><head><title>WoW Forever Zone Map</title></head><body>
+<section aria-label="Map markers">
+  <section aria-label="Points of Interest">
+    <div data-testid="map-sidebar-row"><button type="button" id="map-group-1" role="checkbox" aria-label="Points of Interest"></button></div>
+    <ul><li><div data-testid="map-sidebar-row"><button type="button" id="map-category-a" role="checkbox" aria-checked="true" aria-label="Auction House"><span>Auction House</span><span>0</span></button></div></li></ul>
+  </section>
+  <section aria-label="Zone Name + Levels">
+    <ul>
+      <li><div data-testid="map-sidebar-row"><button type="button" id="map-category-b" role="checkbox" aria-label="Durotar 1–10"><span>Durotar 1–10</span><span>1</span></button></div></li>
+      <li><div data-testid="map-sidebar-row"><button type="button" id="map-category-c" role="checkbox" aria-label="Searing Gorge 43–50"><span>Searing Gorge 43–50</span></button></div></li>
+      <li><div data-testid="map-sidebar-row"><button type="button" id="map-category-c2" role="checkbox" aria-label="Searing Gorge 43–50"><span>duplicate row</span></button></div></li>
+    </ul>
+  </section>
+  <section aria-label="Dungeons (Wow Forever)">
+    <ul><li><div><button type="button" id="map-category-d" role="checkbox" aria-label="Excavation Site (24-29)"></button></div></li></ul>
+  </section>
+  <section aria-label="Dungeons (WoW Classic)">
+    <ul><li><div><button type="button" id="map-category-e" role="checkbox" aria-label="Ragefire Chasm (13-18)"></button></div></li></ul>
+  </section>
+  <section aria-label="Raids (Wow Classic)">
+    <ul><li><div><button type="button" id="map-category-f" role="checkbox" aria-label="Molten Core (60-60)"></button></div></li></ul>
+  </section>
+</section>
+<h2>Dungeons</h2><h3>WoW Classic</h3>
+<table><tr><th>Dungeon</th><th>Levels</th><th>Location</th></tr><tr><td>Ragefire Chasm</td><td>13–18</td><td>Orgrimmar</td></tr></table>
+</body></html>
