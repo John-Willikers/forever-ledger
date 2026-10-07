@@ -19,8 +19,10 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   - ✅ 1b 🧩 Parsers checked against the real pages — 2026-10-06 22:35 CDT: Mobalytics keeps zone levels in the map sidebar, not
     a table (0 claims) → new `mobalytics@1` sidebar parser; `table@2` labels tables under a "WoW Classic" heading
     CLASSIC and marks raids; `reparse --replace` swaps an old parser's claims; `relabel` for curation
-  - ⬜ 1c 🎯 A real Wowhead page through the server (item 7973 queued at priority 100) to check `wowhead@1`
-  - ⬜ 1d ▶️ Harlan's call: merge stream-recorder PR #1 and enable the fetcher unit
+  - ✅ 1c 🎯 First real Wowhead page (item 7973, snapshot 3, 22:43 CDT): 112 claims, 46 comments. Its loot and
+    fishing lists are Classic-era (comments from 2005, ~1M Azshara catches) → `wowhead@2` labels player-collected
+    lists CLASSIC, drops `count: -1`, reads ISO comment dates — 22:45 CDT
+  - ✅ 1d ▶️ Harlan merged stream-recorder PR #1 and enabled the fetcher; first lease 22:43 CDT
 - ✅ 2 🗄️ Server: migration 0013, `fetch_targets`, `web_snapshots`, `sources`, `claims`, `web_comments`,
   `field_observations`, lease + snapshot routes, `can_fetch` scope — 07:06 CDT (cc7281c)
   - ✅ 2a 🧩 Parsers `wowhead@1` (embedded JSON, no eval) and `table@1` (zone/dungeon level tables) +

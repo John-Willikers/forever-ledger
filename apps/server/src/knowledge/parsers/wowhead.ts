@@ -10,7 +10,16 @@ import type { ClaimDraft, CommentDraft, ParseResult } from './types.js';
  * is evaluated. Written before the first real Forever page was fetched: check it against `fixtures/real/web/` and bump
  * the version when the output changes.
  */
-export const WOWHEAD_PARSER = 'wowhead@1';
+export const WOWHEAD_PARSER = 'wowhead@2';
+
+/**
+ * Loot and fishing lists (who drops it, where it is fished, what a container holds) are not client data: Wowhead
+ * collects them from players. On its /forever/ pages they are Classic-era numbers (comments from 2005, a million
+ * catches in Azshara: checked on item 7973, 2026-10-06), so those claims are CLASSIC. Names are datamined from the
+ * client and keep the source's label. v2: this label, `count: -1` (unknown) dropped, ISO comment dates.
+ */
+const OBSERVED_LISTS =
+  /^(dropped_by|fished_in|contained_in_|lv_contains|gathered_|mined_|herbed_|skinned_|pickpocketed_|drops$)/;
 
 const PAGE_TYPES: Record<string, EntityType> = {
   item: 'item',
@@ -102,9 +111,16 @@ function listData(
   return Array.isArray(v) ? v : undefined;
 }
 
-/** `2019/09/04 18:39:34` (Wowhead's comment dates) as a Date, else null. Wowhead does not say the zone; read as UTC. */
+/**
+ * A comment's date: ISO 8601 with an offset (`2007-05-04T16:59:25-05:00`, what the real pages carry), or the older
+ * `2019/09/04 18:39:34` read as UTC. Else null.
+ */
 function commentDate(v: unknown): Date | null {
   if (typeof v !== 'string') return null;
+  if (/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/.test(v)) {
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
   const m = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(v);
   if (!m) return null;
   const d = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`);
@@ -120,6 +136,7 @@ function rowValue(row: Record<string, unknown>, template: string | undefined) {
   const name = str(row.name) ?? str(row.name_enus);
   // Item rows prefix the name with the quality digit (`6Big-mouth Clam`).
   if (name) v.name = template === 'item' ? name.replace(/^\d/, '') : name;
+  // Wowhead writes -1 when it has no count.
   for (const [from, to] of [
     ['count', 'count'],
     ['outof', 'outOf'],
@@ -131,7 +148,7 @@ function rowValue(row: Record<string, unknown>, template: string | undefined) {
     ['skill', 'skill'],
   ] as const) {
     const n = int(row[from]);
-    if (n !== undefined) v[to] = n;
+    if (n !== undefined && !(n < 0 && (from === 'count' || from === 'outof'))) v[to] = n;
   }
   if (Array.isArray(row.location)) v.zones = row.location.filter((z) => int(z) !== undefined);
   if (typeof row.percent === 'number') v.percent = row.percent;
@@ -209,6 +226,7 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
           entityId: entity.id,
           attribute,
           value: rowValue(r as Record<string, unknown>, template),
+          ...(OBSERVED_LISTS.test(attribute) ? { label: 'CLASSIC' as const } : {}),
         });
       }
     }
