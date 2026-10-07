@@ -233,9 +233,9 @@ describe('knowledge pipeline', () => {
       [r.json().snapshotId],
     );
     expect(rows).toEqual([
-      { attribute: 'dropped_by', label: 'VERIFIED', n: 2 },
-      { attribute: 'fished_in', label: 'VERIFIED', n: 1 },
-      { attribute: 'lv_contains', label: 'VERIFIED', n: 1 },
+      { attribute: 'dropped_by', label: 'CLASSIC', n: 2 },
+      { attribute: 'fished_in', label: 'CLASSIC', n: 1 },
+      { attribute: 'lv_contains', label: 'CLASSIC', n: 1 },
       { attribute: 'name', label: 'VERIFIED', n: 3 },
     ]);
     expect(await s.count('web_comments')).toBe(1);
@@ -243,7 +243,7 @@ describe('knowledge pipeline', () => {
     expect(await reparseAll(s.database.db)).toMatchObject({ pages: 2, added: 0 });
     expect(await s.count('claims')).toBe(before);
     // A parser fix: claims an older parser version read off the page are swapped, hand-entered ones stay.
-    await q(`update claims set parser = 'wowhead@0' where parser = 'wowhead@1'`);
+    await q(`update claims set parser = 'wowhead@0' where parser = 'wowhead@2'`);
     expect(await reparseAll(s.database.db, 'wowhead.com', { replace: true })).toMatchObject({
       pages: 1,
       added: 7,

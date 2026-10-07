@@ -99,7 +99,7 @@ async function insertComments(
   comments: CommentDraft[],
 ) {
   if (comments.length === 0) return;
-  // A later fetch of the same comment carries its current body and rating.
+  // A later fetch (or a reparse of the same page) carries the comment's current body, rating and date.
   await conn
     .insert(webComments)
     .values(comments.map((c) => ({ ...c, site, snapshotId })))
@@ -108,9 +108,10 @@ async function insertComments(
       set: {
         body: sql`excluded.body`,
         rating: sql`excluded.rating`,
+        postedAt: sql`excluded.posted_at`,
         snapshotId: sql`excluded.snapshot_id`,
       },
-      setWhere: sql`excluded.snapshot_id > ${webComments.snapshotId}`,
+      setWhere: sql`excluded.snapshot_id >= ${webComments.snapshotId}`,
     });
 }
 

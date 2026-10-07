@@ -41,6 +41,7 @@ describe('wowhead parser', () => {
       entityType: 'item',
       entityId: 7973,
       attribute: 'dropped_by',
+      label: 'CLASSIC',
       value: {
         id: 5431,
         type: 'npc',
@@ -76,9 +77,34 @@ describe('wowhead parser', () => {
       },
     ]);
     expect(r.problems).toEqual(['listview broken: data is not JSON']);
-    expect(r.parser).toBe('wowhead@1');
+    expect(r.parser).toBe('wowhead@2');
     expect(r.title).toBe('Big-mouth Clam - Item - World of Warcraft Forever');
     expect(r.pageUpdatedAt).toEqual(new Date('2026-10-01T12:00:00Z'));
+  });
+});
+
+describe('wowhead parser on real-page shapes', () => {
+  it('labels player-collected lists CLASSIC, drops unknown counts, reads ISO comment dates', () => {
+    const r = parseSnapshot(
+      `<html><head><title>Big-mouth Clam - Item - Forever</title></head><body><script>
+        WH.Gatherer.addData(3, 21, {"7973":{"name_enus":"Big-mouth Clam"}});
+        new Listview({template: 'npc', id: 'dropped-by', data: [{"id":1492,"name":"Gorlash","count":-1,"outof":4469}]});
+        var lv_comments0 = [{"id":5,"body":"75 clams, 5 black pearls","date":"2007-05-04T16:59:25-05:00","rating":1}];
+        new Listview({template: 'comment', id: 'comments', data: lv_comments0});
+      </script></body></html>`,
+      ITEM_URL,
+    );
+    expect(r.claims).toEqual([
+      { entityType: 'item', entityId: 7973, attribute: 'name', value: 'Big-mouth Clam' },
+      {
+        entityType: 'item',
+        entityId: 7973,
+        attribute: 'dropped_by',
+        label: 'CLASSIC',
+        value: { id: 1492, type: 'npc', name: 'Gorlash', outOf: 4469 },
+      },
+    ]);
+    expect(r.comments[0]!.postedAt).toEqual(new Date('2007-05-04T21:59:25Z'));
   });
 });
 
