@@ -9,6 +9,28 @@ const MCP_NAME = 'forever-ledger';
 /** A server tool loop can pause a long turn; continue it this many times at most. */
 const MAX_CONTINUATIONS = 3;
 
+/** List prices per million tokens (2026-10): input, output, cache read, cache write (5-minute cache). */
+const PRICES: Record<
+  string,
+  { input: number; output: number; cacheRead: number; cacheWrite: number }
+> = {
+  ['claude-sonnet-5']: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  ['claude-opus-5-5']: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+};
+
+/** What a usage cost in USD at list prices (0 for an unknown model). */
+export function costOf(model: string, u: Answer['usage']): number {
+  const p = PRICES[model];
+  if (!p) return 0;
+  const usd =
+    (u.input * p.input +
+      u.output * p.output +
+      u.cacheRead * p.cacheRead +
+      u.cacheWrite * p.cacheWrite) /
+    1_000_000;
+  return Math.round(usd * 100_000) / 100_000;
+}
+
 export const SYSTEM_PROMPT = `You are Forever Ledger, the World of Warcraft: Forever helper in a Discord server for a small group of friends. Forever is the 2026 Classic-based beta (launch November 4, 2026).
 
 Answer only from the forever-ledger tools. Look things up before answering, even when you think you know: the group was burned by confident answers mixing Classic data with rumor. In each answer:
@@ -44,7 +66,9 @@ export interface AskConfig {
 export interface Answer {
   text: string;
   model: string;
-  usage: { input: number; output: number; cacheRead: number };
+  usage: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  /** What the answer cost, from the usage and the list prices below (USD). */
+  costUsd: number;
   stopReason: string | null;
 }
 
@@ -57,7 +81,7 @@ export function ledgerAsker(config: AskConfig, create: CreateFn) {
     const model = input.opus ? OPUS_MODEL : DEFAULT_MODEL;
     const canWrite = input.admin && config.adminToken !== undefined;
     const messages = [...input.messages];
-    const usage = { input: 0, output: 0, cacheRead: 0 };
+    const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     let response: Anthropic.Beta.BetaMessage | undefined;
     for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
       response = await create({
@@ -91,6 +115,7 @@ export function ledgerAsker(config: AskConfig, create: CreateFn) {
       usage.input += response.usage.input_tokens;
       usage.output += response.usage.output_tokens;
       usage.cacheRead += response.usage.cache_read_input_tokens ?? 0;
+      usage.cacheWrite += response.usage.cache_creation_input_tokens ?? 0;
       if (response.stop_reason !== 'pause_turn') break;
       // A paused server-tool turn: send it back as is and let Claude carry on.
       messages.push({ role: 'assistant', content: response.content });
@@ -113,6 +138,12 @@ export function ledgerAsker(config: AskConfig, create: CreateFn) {
     } else if (r.stop_reason === 'pause_turn') {
       text = text || 'That took too many lookups; try a narrower question.';
     }
-    return { text: text || '(no answer)', model, usage, stopReason: r.stop_reason };
+    return {
+      text: text || '(no answer)',
+      model,
+      usage,
+      costUsd: costOf(model, usage),
+      stopReason: r.stop_reason,
+    };
   };
 }
