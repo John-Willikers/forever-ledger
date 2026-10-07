@@ -55,12 +55,22 @@ export function registerAdminAccessRoutes(
       owner_battletag: string | null;
       can_read: boolean;
       can_fetch: boolean;
+      helper_status: 'pending' | 'approved' | 'paused' | null;
+      helper_of: number | null;
+      fetch_daily_budget: number | null;
+      fetched_today: number;
+      fetched_total: number;
       uploads: number;
       last_upload_at: Date | null;
     }>(
       db,
       sql`
       select t.id, t.label, t.created_at, t.revoked_at, t.last_used_at, t.can_read, t.can_fetch,
+             t.helper_status, t.helper_of, t.fetch_daily_budget,
+             coalesce((select sum(b.leased) from fetch_budget b where b.token_id = t.id
+                        and b.hour >= date_trunc('day', now() at time zone 'America/Chicago')
+                                      at time zone 'America/Chicago'), 0)::int as fetched_today,
+             (select count(*) from web_snapshots w where w.token_id = t.id)::int as fetched_total,
              usr.id as owner_id, usr.battletag as owner_battletag,
              coalesce(u.n, 0)::int as uploads, u.last_at as last_upload_at
       from api_tokens t
@@ -79,6 +89,16 @@ export function registerAdminAccessRoutes(
         owner: r.owner_id === null ? null : { id: r.owner_id, battletag: r.owner_battletag },
         canRead: r.can_read,
         canFetch: r.can_fetch,
+        helper:
+          r.helper_status === null
+            ? null
+            : {
+                status: r.helper_status,
+                of: r.helper_of,
+                dailyBudget: r.fetch_daily_budget,
+                fetchedToday: r.fetched_today,
+                fetchedTotal: r.fetched_total,
+              },
         uploads: r.uploads,
         lastUploadAt: iso(r.last_upload_at),
       })),
@@ -170,6 +190,44 @@ export function registerAdminAccessRoutes(
       const me = await whoAmI(req, reply);
       req.log.info({ tokenId: id, canRead, by: me?.user.id }, 'token read scope');
       return { id, canRead };
+    },
+  );
+
+  /**
+   * A friend's tray helper: `{ status?: 'approved' | 'paused', dailyBudget?: 1-2000 }`. A helper starts `pending` and
+   * leases nothing until it is approved here.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/admin/api/tokens/:id/helper',
+    { preHandler },
+    async (req, reply) => {
+      const id = idParam(req.params.id);
+      if (id === null) return badRequest(reply, 'bad token id');
+      const body = bodyOf(req);
+      const status = body?.status;
+      const dailyBudget = body?.dailyBudget;
+      if (status !== undefined && status !== 'approved' && status !== 'paused')
+        return badRequest(reply, 'status must be approved or paused');
+      if (
+        dailyBudget !== undefined &&
+        !(isPositiveInt(dailyBudget) && (dailyBudget as number) <= 2000)
+      )
+        return badRequest(reply, 'dailyBudget must be a whole number from 1 to 2000');
+      if (status === undefined && dailyBudget === undefined)
+        return badRequest(reply, 'set status or dailyBudget');
+      const updated = await rows<{ helper_status: string; fetch_daily_budget: number | null }>(
+        db,
+        sql`update api_tokens
+               set helper_status = coalesce(${status ?? null}::text, helper_status),
+                   fetch_daily_budget = coalesce(${dailyBudget ?? null}::int, fetch_daily_budget),
+                   fetch_hourly_budget = null
+             where id = ${id} and helper_status is not null and revoked_at is null
+             returning helper_status, fetch_daily_budget`,
+      );
+      if (updated.length === 0) return reply.status(404).send({ error: 'no such helper' });
+      const me = await whoAmI(req, reply);
+      req.log.info({ tokenId: id, status, dailyBudget, by: me?.user.id }, 'helper updated');
+      return { id, status: updated[0]!.helper_status, dailyBudget: updated[0]!.fetch_daily_budget };
     },
   );
 

@@ -299,6 +299,7 @@ export async function leaseTargets(
   worker: string,
   max: number,
   budget: FetchBudget = DEFAULT_FETCH_BUDGET,
+  fence: LeaseFence = { sites: null, entityPagesOnly: false },
 ): Promise<{ leases: FetchLease[]; budget: BudgetState }> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${FETCH_BUDGET_LOCK})`);
@@ -315,7 +316,7 @@ export async function leaseTargets(
       hour: { used: hour + n, limit: budget.hourly },
     });
     if (allowed === 0) return { leases: [], budget: state(0) };
-    const leases = await leaseDue(tx, tokenId, worker, allowed);
+    const leases = await leaseDue(tx, tokenId, worker, allowed, fence);
     if (leases.length > 0) {
       await tx
         .insert(fetchBudget)
@@ -333,12 +334,34 @@ export async function leaseTargets(
   });
 }
 
+/** Which pages a worker may be handed: `sites` (null: any) and, for helpers, entity pages only. */
+export interface LeaseFence {
+  sites: string[] | null;
+  entityPagesOnly: boolean;
+}
+
 async function leaseDue(
   db: Conn,
   tokenId: number,
   worker: string,
   max: number,
+  fence: LeaseFence,
 ): Promise<FetchLease[]> {
+  const fenced = sql.join(
+    [
+      sql`true`,
+      ...(fence.sites
+        ? [
+            sql`site in (${sql.join(
+              fence.sites.map((x) => sql`${x}`),
+              sql`, `,
+            )})`,
+          ]
+        : []),
+      ...(fence.entityPagesOnly ? [sql`entity_type is not null`] : []),
+    ],
+    sql` and `,
+  );
   const res = await db.execute<{
     url: string;
     site: string;
@@ -360,8 +383,9 @@ async function leaseDue(
            attempts = t.attempts + 1, updated_at = now()
      where t.url in (
        select url from fetch_targets
-        where (state in ('queued', 'done') and next_due_at <= now())
-           or (state = 'leased' and lease_until < now() and attempts < ${MAX_ATTEMPTS})
+        where ((state in ('queued', 'done') and next_due_at <= now())
+           or (state = 'leased' and lease_until < now() and attempts < ${MAX_ATTEMPTS}))
+          and ${fenced}
         order by priority desc, next_due_at
         limit ${max}
         for update skip locked)

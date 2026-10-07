@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { AdminUser, Token } from '../types';
-import { isLastAdmin, labelProblem, READ_SCOPE_LABEL, readToggle, sortTokens } from './access';
+import {
+  helperAction,
+  isLastAdmin,
+  labelProblem,
+  pendingHelpers,
+  READ_SCOPE_LABEL,
+  readToggle,
+  sortTokens,
+} from './access';
 
 const user = (id: number, role: 'admin' | 'member'): AdminUser => ({
   id,
@@ -19,6 +27,8 @@ const token = (id: number, revoked = false): Token => ({
   lastUsedAt: null,
   owner: null,
   canRead: false,
+  canFetch: false,
+  helper: null,
   uploads: 0,
   lastUploadAt: null,
 });
@@ -64,5 +74,41 @@ describe('read scope', () => {
     expect(t.next).toBe(false);
     expect(t.button).toMatch(/upload only/i);
     expect(t.danger).toBe(false);
+  });
+});
+
+describe('tray helpers', () => {
+  it('approves a pending helper, pauses an approved one, resumes a paused one', () => {
+    expect(helperAction({ status: 'pending' })).toMatchObject({
+      next: 'approved',
+      button: 'Approve',
+    });
+    expect(helperAction({ status: 'approved' })).toMatchObject({ next: 'paused', button: 'Pause' });
+    expect(helperAction({ status: 'paused' })).toMatchObject({
+      next: 'approved',
+      button: 'Resume',
+    });
+  });
+
+  it('counts only live helpers waiting for approval', () => {
+    const base = {
+      label: 'x',
+      createdAt: '',
+      lastUsedAt: null,
+      owner: null,
+      canRead: false,
+      canFetch: true,
+      uploads: 0,
+      lastUploadAt: null,
+    };
+    const helper = (status: 'pending' | 'approved', revokedAt: string | null = null) => ({
+      ...base,
+      id: Math.random(),
+      revokedAt,
+      helper: { status, of: 1, dailyBudget: 200, fetchedToday: 0, fetchedTotal: 0 },
+    });
+    expect(
+      pendingHelpers([helper('pending'), helper('approved'), helper('pending', '2026-10-07')]),
+    ).toHaveLength(1);
   });
 });

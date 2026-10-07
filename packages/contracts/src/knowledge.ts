@@ -117,6 +117,14 @@ export function defaultLabel(tier: SourceTier, gameVersion: GameVersion): ClaimL
   return 'UNVERIFIED';
 }
 
+/** POST /v1/fetch/enroll (upload token): a tray asks for its own helper token, which waits for an admin's approval. */
+export const FetchEnrollRequest = z.object({ worker: z.string().min(1).max(128).optional() });
+
+export const HELPER_STATUSES = ['pending', 'approved', 'paused'] as const;
+export type HelperStatus = (typeof HELPER_STATUSES)[number];
+
+export const FetchEnrollResponse = z.object({ token: z.string(), status: z.enum(HELPER_STATUSES) });
+
 /** POST /v1/fetch/lease: the worker asks for up to `max` URLs. */
 export const FetchLeaseRequest = z.object({
   worker: z.string().min(1).max(128),
@@ -138,6 +146,12 @@ export type FetchLease = z.infer<typeof FetchLease>;
 export const FetchBudgetState = z.object({
   day: z.object({ used: z.number().int(), limit: z.number().int() }),
   hour: z.object({ used: z.number().int(), limit: z.number().int() }),
+});
+
+/** GET /v1/fetch/status: a helper's approval and budget. */
+export const FetchStatusResponse = z.object({
+  status: z.enum(HELPER_STATUSES),
+  budget: z.lazy(() => FetchBudgetState),
 });
 
 export const FetchLeaseResponse = z.object({

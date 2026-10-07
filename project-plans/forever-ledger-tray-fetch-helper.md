@@ -77,7 +77,9 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 
 - ✅ 0 📝 Plan drafted — 2026-10-07 02:00 CDT
 - ✅ 1 ❓ Harlan answered: 200 pages a day per helper, only while idle with WoW closed, never log in — 2026-10-07 02:02 CDT
-- ⬜ 2 🗄️ Server: enroll endpoint, pending/approved helper tokens, per-helper budget, site fence, admin Access controls
+- ✅ 2 🗄️ Server: `POST /v1/fetch/enroll` (upload token → helper token, pending), `GET /v1/fetch/status`, approval gate
+  (403 until approved; pause), per-helper budget (200/day, 13/hour), site fence (wowhead.com entity pages), Access
+  page approve / pause / resume / budget, migration 0018 (additive) — 02:13 CDT
 - ⬜ 3 🖥️ Tray: `fetchHelper.ts` (sandboxed session, idle/WoW/AC gating, lease loop), unit tests for every guarantee
   in the table (window options, partition, permission handlers, navigation fence, download cancel, data wipe)
 - ⬜ 4 👀 Tray: consent screen (new install + first launch after update), settings toggle, Activity list; Playwright

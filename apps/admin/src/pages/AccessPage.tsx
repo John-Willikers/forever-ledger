@@ -10,8 +10,10 @@ import { DataTable } from '../components/DataTable';
 import type { SortableFeatures } from '../components/DataTable';
 import { ErrorState, QueryState } from '../components/State';
 import {
+  helperAction,
   isLastAdmin,
   labelProblem,
+  pendingHelpers,
   READ_SCOPE_LABEL,
   readToggle,
   sortTokens,
@@ -186,6 +188,17 @@ function TokensCard({ users }: { users: AdminUser[] }) {
       postJson(`/admin/api/tokens/${id}/read`, csrf, { canRead }),
     onSettled: () => invalidate(),
   });
+  const setHelper = useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: number;
+      status?: 'approved' | 'paused';
+      dailyBudget?: number;
+    }) => postJson(`/admin/api/tokens/${id}/helper`, csrf, body),
+    onSettled: () => invalidate(),
+  });
 
   const col = createColumnHelper<SortableFeatures, Token>();
   const columns = col.columns([
@@ -228,6 +241,50 @@ function TokensCard({ users }: { users: AdminUser[] }) {
       header: 'Scope',
       cell: (c) => {
         const t = c.row.original;
+        if (t.helper) {
+          const h = t.helper;
+          const action = helperAction(h);
+          return (
+            <span className="scope">
+              <span className={`pill ${h.status === 'approved' ? 'neutral' : 'sev-warn'}`}>
+                tray helper · {h.status === 'pending' ? 'waiting for approval' : h.status}
+              </span>
+              <span className="muted small">
+                {formatNumber(h.fetchedToday)}/{formatNumber(h.dailyBudget ?? 0)} today ·{' '}
+                {formatNumber(h.fetchedTotal)} pages in all
+              </span>
+              {!t.revokedAt && (
+                <>
+                  <ConfirmButton
+                    disabled={setHelper.isPending}
+                    confirmLabel={action.confirm}
+                    onConfirm={() => setHelper.mutate({ id: t.id, status: action.next })}
+                  >
+                    {action.button}
+                  </ConfirmButton>
+                  <label className="small">
+                    <span className="visually-hidden">Pages a day for {t.label}</span>
+                    <select
+                      id={`helper-budget-${t.id}`}
+                      value={h.dailyBudget ?? 200}
+                      disabled={setHelper.isPending}
+                      onChange={(e) =>
+                        setHelper.mutate({ id: t.id, dailyBudget: Number(e.target.value) })
+                      }
+                    >
+                      {[50, 100, 200, 300, 400].map((n) => (
+                        <option key={n} value={n}>
+                          {n} a day
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              )}
+            </span>
+          );
+        }
+        if (t.canFetch) return <span className="pill neutral">fetch worker</span>;
         const toggle = readToggle(t);
         return (
           <span className="scope">
@@ -311,15 +368,26 @@ function TokensCard({ users }: { users: AdminUser[] }) {
       {revoke.isError && <ErrorState error={revoke.error} />}
       {setOwner.isError && <ErrorState error={setOwner.error} />}
       {setRead.isError && <ErrorState error={setRead.error} />}
+      {setHelper.isError && <ErrorState error={setHelper.error} />}
       <QueryState query={tokens}>
         {({ items }) => (
-          <DataTable
-            data={sortTokens(items)}
-            columns={columns}
-            rowKey={(t) => t.id}
-            rowClassName={(t) => (t.revokedAt ? 'dim' : undefined)}
-            empty="No tokens yet."
-          />
+          <>
+            {pendingHelpers(items).length > 0 && (
+              <p className="state" role="status">
+                {pendingHelpers(items).length === 1
+                  ? '1 tray helper is'
+                  : `${pendingHelpers(items).length} tray helpers are`}{' '}
+                waiting for your approval before they fetch any Wowhead pages.
+              </p>
+            )}
+            <DataTable
+              data={sortTokens(items)}
+              columns={columns}
+              rowKey={(t) => t.id}
+              rowClassName={(t) => (t.revokedAt ? 'dim' : undefined)}
+              empty="No tokens yet."
+            />
+          </>
         )}
       </QueryState>
     </Card>
