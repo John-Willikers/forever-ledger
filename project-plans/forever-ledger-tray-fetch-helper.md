@@ -1,6 +1,6 @@
 # 🤝 Forever Ledger — Tray "help fetch" (opt-in Wowhead helper in the tray app)
 
-> Owner: John-Willikers <harlanbmiltonjr@gmail.com> · 2026-10-07 02:00 CDT · **Draft, awaiting approval** · Branch per step → PR →
+> Owner: John-Willikers <harlanbmiltonjr@gmail.com> · 2026-10-07 02:00 CDT · **Approved 2026-10-07 02:02 CDT** · Branch per step → PR →
 > merge to master. Ships as tray **v0.2.0**. Builds on `forever-ledger-fetch-throughput.md` (per-worker budgets).
 
 ## 🧭 Context
@@ -37,7 +37,7 @@ who run the tray app (Cody first) offered to share the load. Harlan (2026-10-07)
 > ledger server asks for. It sends each page back to the ledger so your group's Discord helper can answer questions
 > from real data.
 >
-> **What it does:** opens wowhead.com pages in a hidden window built into this app, at most **N pages a day**, about
+> **What it does:** opens wowhead.com pages in a hidden window built into this app, at most **200 pages a day**, about
 > one every few minutes, and only while you're away from the PC and WoW isn't running. Each page is about 400 KB.
 >
 > **What it never does:**
@@ -76,7 +76,7 @@ v0.2.0. "Not now" is remembered; the setting stays reachable in the tray's setti
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/Chicago.
 
 - ✅ 0 📝 Plan drafted — 2026-10-07 02:00 CDT
-- ⬜ 1 ❓ Harlan answers the open questions below and approves
+- ✅ 1 ❓ Harlan answered: 200 pages a day per helper, only while idle with WoW closed, never log in — 2026-10-07 02:02 CDT
 - ⬜ 2 🗄️ Server: enroll endpoint, pending/approved helper tokens, per-helper budget, site fence, admin Access controls
 - ⬜ 3 🖥️ Tray: `fetchHelper.ts` (sandboxed session, idle/WoW/AC gating, lease loop), unit tests for every guarantee
   in the table (window options, partition, permission handlers, navigation fence, download cancel, data wipe)
@@ -85,11 +85,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ⬜ 5 🔍 Security review of the helper (a dedicated reviewer pass on the sandbox guarantees)
 - ⬜ 6 🚀 Release tray v0.2.0; Cody opts in; Harlan approves his helper; watch the first day
 
-## ❓ Open questions for Harlan
+## ✅ Decisions (Harlan, 2026-10-07)
 
-1. Daily pages per helper (default suggestion **200**; cruiser keeps 400)?
-2. Only when the PC is idle and WoW is closed (recommended), or any time the tray runs?
-3. Should helpers ever log in to Wowhead? Recommended **no**: nothing to protect, nothing to steal.
+1. **200 pages a day** per helper by default (cruiser keeps 400); Harlan can change it per helper.
+2. Runs **only while the PC is idle (5 min), WoW is closed and the PC is on AC power.**
+3. Helpers **never log in** to Wowhead or anything else.
 
 ## ⚠️ Risks
 
