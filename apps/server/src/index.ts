@@ -15,6 +15,7 @@ export {
   mintToken,
   revokeToken,
   setTokenCanRead,
+  tokenOwnerIsAdmin,
   verifyBearer,
   verifyBearerToken,
 } from './auth.js';
@@ -22,3 +23,17 @@ export { openDatabase, runMigrations } from './db/client.js';
 export type { Database, Db } from './db/client.js';
 export { ingestBatch } from './ingest.js';
 export { chicagoIso } from './time.js';
+export {
+  checkClaim,
+  fishingAnswer,
+  lookupItem,
+  lookupNpc,
+  lookupQuest,
+  lookupZone,
+  searchEntities,
+  whereToGet,
+} from './knowledge/answers.js';
+export type { Answer, EntityRef, Fact, SearchHit } from './knowledge/answers.js';
+export { addManualClaim, ManualClaimError } from './knowledge/manual.js';
+export type { ManualClaim } from './knowledge/manual.js';
+export { importSeed } from './knowledge/seed.js';

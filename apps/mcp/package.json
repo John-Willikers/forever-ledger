@@ -1,0 +1,28 @@
+{
+  "name": "@forever-ledger/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Forever Ledger MCP server: answers WoW: Forever questions only from the ledger, with labels, sources and gaps.",
+  "author": "John-Willikers <harlanbmiltonjr@gmail.com>",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "start": "node dist/main.js",
+    "dev": "node --conditions=development --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@forever-ledger/contracts": "workspace:*",
+    "@forever-ledger/server": "workspace:*",
+    "@modelcontextprotocol/node": "^2.1.1",
+    "@modelcontextprotocol/server": "^2.3.1",
+    "pino": "^10.3.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@testcontainers/postgresql": "^12.1.0"
+  }
+}

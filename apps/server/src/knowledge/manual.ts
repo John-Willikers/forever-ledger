@@ -1,6 +1,7 @@
 import { CLAIM_LABELS, defaultLabel } from '@forever-ledger/contracts';
 import type { ClaimLabel, EntityType, GameVersion, SourceTier } from '@forever-ledger/contracts';
-import { eq } from 'drizzle-orm';
+import { normalizeUrl } from '@forever-ledger/contracts';
+import { and, desc, eq, isNotNull } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { claims, sources, webSnapshots } from '../db/schema.js';
 import { chicagoIso } from '../time.js';
@@ -10,7 +11,7 @@ import { inflate, insertClaims } from './store.js';
 export class ManualClaimError extends Error {}
 
 export interface ManualClaim {
-  /** Source id, or its key (`snapshot:12`, `seed:…`). */
+  /** Source id, its key (`snapshot:12`, `seed:…`), or a fetched page's URL (its newest snapshot source). */
   source: number | string;
   entityType: EntityType;
   entityId?: number;
@@ -39,10 +40,27 @@ export async function addManualClaim(db: Db, c: ManualClaim) {
   if (c.entityId === undefined && !c.entityName?.trim()) {
     throw new ManualClaimError('a claim needs an entity id or name');
   }
+  const byUrl = typeof c.source === 'string' && /^https?:\/\//i.test(c.source);
+  let url = '';
+  if (byUrl) {
+    try {
+      url = normalizeUrl(c.source as string);
+    } catch {
+      throw new ManualClaimError(`not a URL: ${String(c.source).slice(0, 200)}`);
+    }
+  }
   const [src] = await db
     .select()
     .from(sources)
-    .where(typeof c.source === 'number' ? eq(sources.id, c.source) : eq(sources.key, c.source));
+    .where(
+      typeof c.source === 'number'
+        ? eq(sources.id, c.source)
+        : byUrl
+          ? and(eq(sources.url, url), isNotNull(sources.snapshotId))
+          : eq(sources.key, c.source),
+    )
+    .orderBy(desc(sources.id))
+    .limit(1);
   if (!src) throw new ManualClaimError(`no source ${c.source}`);
   // A quote is only worth something when it can be checked: claim off a fetched page (`snapshot:<id>`).
   if (src.snapshotId === null) {
