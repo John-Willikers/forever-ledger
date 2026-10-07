@@ -1,5 +1,5 @@
 {
-  "id": "87b759a5-1937-44ae-b22d-e71c88542f57",
+  "id": "acaa6af7-a3f0-4e60-83b2-825d11ce1426",
   "prevId": "5486b823-f98e-453f-a409-a7d131d6cb7d",
   "version": "7",
   "dialect": "postgresql",
@@ -299,10 +299,16 @@
       "name": "character_aliases",
       "schema": "",
       "columns": {
+        "account": {
+          "name": "account",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "alias_key": {
           "name": "alias_key",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "canonical_key": {
@@ -327,7 +333,12 @@
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "character_aliases_pk": {
+          "name": "character_aliases_pk",
+          "columns": ["account", "alias_key"]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

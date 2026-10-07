@@ -36,7 +36,7 @@ import {
   turnIns,
   vendors,
 } from './db/schema.js';
-import { canonicalize, loadAliases, mergeCharacter } from './characters.js';
+import { accountsOf, canonicalize, hasSurname, loadAliases, mergeCharacter } from './characters.js';
 import { lockRunGroups, regroupRuns } from './runGroups.js';
 import type { RegroupLog } from './runGroups.js';
 import { fromEpoch } from './time.js';
@@ -121,8 +121,51 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
   const recordCount = RECORD_KINDS.reduce((n, k) => n + r[k].length, 0);
 
   const batchId = await db.transaction(async (tx) => {
+    // Character identity, read before any write: a character this account uploaded under another key with the same
+    // GUID is one character (a rename). Its old key merges into the batch's key, never from a full name into a key
+    // without a surname, and never across accounts (a GUID is visible to anyone in game). A GUID that can't be merged
+    // is dropped from the batch's record (the column is unique).
+    const known = await loadAliases(tx, batch.account);
+    const merges: { from: string; into: string; accounts: string[] }[] = [];
+    const keepGuid = new Map<string, boolean>();
+    // One GUID under two keys in the same file: the key with a surname keeps it (else the last one).
+    const byGuid = new Map<string, string>();
+    for (const c of r.characters) {
+      if (!c.guid) continue;
+      const held = byGuid.get(c.guid);
+      if (held === undefined || hasSurname(c.key, c.realm) || !hasSurname(held)) {
+        if (held !== undefined) keepGuid.set(held, false);
+        byGuid.set(c.guid, c.key);
+      } else {
+        keepGuid.set(c.key, false);
+      }
+    }
+    for (const c of r.characters) {
+      if (!c.guid || keepGuid.get(c.key) === false) continue;
+      const key = known.get(c.key) ?? c.key;
+      const [other] = await tx
+        .select({ key: characters.key })
+        .from(characters)
+        .where(and(eq(characters.guid, c.guid), ne(characters.key, key)));
+      if (!other) continue;
+      const accounts = await accountsOf(tx, other.key);
+      if (
+        accounts.includes(batch.account) &&
+        (hasSurname(key, c.realm) || !hasSurname(other.key))
+      ) {
+        merges.push({ from: other.key, into: key, accounts });
+      } else {
+        keepGuid.set(c.key, false);
+        ctx.log?.warn(
+          { key: c.key, other: other.key, account: batch.account },
+          'GUID already belongs to another character; not merged',
+        );
+      }
+    }
+
     // Run grouping's lock comes first, before this transaction writes (and row-locks) any run: see lockRunGroups.
-    if (r.runs.length > 0) await lockRunGroups(tx);
+    // A merge moves runs too.
+    if (r.runs.length > 0 || merges.length > 0) await lockRunGroups(tx);
     const [raw] = await tx
       .insert(rawUploads)
       .values({
@@ -180,19 +223,20 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         },
       });
 
-    // Character identity: a character seen under another key with the same GUID is one character (merge the old key
-    // into the batch's); then every record's key goes through the aliases (0.3.4 short names -> full names).
-    for (const c of r.characters) {
-      if (!c.guid) continue;
-      const [other] = await tx
-        .select({ key: characters.key })
-        .from(characters)
-        .where(and(eq(characters.guid, c.guid), ne(characters.key, c.key)));
-      if (other) await mergeCharacter(tx, other.key, c.key, 'guid');
-    }
-    const aliases = await loadAliases(tx);
-    // Mapping can make two records one (a short key and its full name): dedupe again, last wins.
-    const w = dedupe(canonicalize(r, aliases));
+    for (const m of merges) await mergeCharacter(tx, m.from, m.into, 'guid', m.accounts);
+    // Every record's key goes through this account's aliases (0.3.4 short names -> full names). Mapping can make two
+    // records one (a short key and its full name): dedupe again.
+    const aliases = await loadAliases(tx, batch.account);
+    const mapped = canonicalize(
+      {
+        ...r,
+        characters: r.characters.map((c) =>
+          keepGuid.get(c.key) === false ? { ...c, guid: undefined } : c,
+        ),
+      },
+      aliases,
+    );
+    const w = dedupe(mapped);
 
     await upsert(
       tx,

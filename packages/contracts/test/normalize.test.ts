@@ -963,12 +963,21 @@ describe('normalize — schema 7 fishing casts and full names (session-v7.lua)',
     expect(records.fishingCasts[1]!.lure).toBeUndefined();
   });
 
-  it('a bad cast is refused on its own', () => {
-    const db = load('session-v7.lua') as { fishingCasts: Record<string, unknown>[] };
+  it('a bad cast is refused on its own; an off-map spot or negative duration only drops that field', () => {
+    const db = load('session-v7.lua') as {
+      fishingCasts: Record<string, unknown>[];
+      chars: Record<string, Record<string, unknown>>;
+    };
     db.fishingCasts[0]!.outcome = 'caught a boot';
     db.fishingCasts[1]!.x = 140;
+    db.fishingCasts[1]!.secs = -3;
+    db.chars['Thibodeaux Willikers-Bayou']!.guid = 'Creature-0-1-2';
     const r = normalize(db);
-    expect(r.records.fishingCasts).toHaveLength(1);
-    expect(r.problems.map((p) => p.path)).toEqual(['fishingCasts.1', 'fishingCasts.2']);
+    expect(r.problems.map((p) => p.path)).toEqual(['fishingCasts.1']);
+    expect(r.records.fishingCasts).toHaveLength(2);
+    expect(r.records.fishingCasts[0]!.x).toBeUndefined();
+    expect(r.records.fishingCasts[0]!.secs).toBeUndefined();
+    const me = r.records.characters.find((c) => c.key === 'Thibodeaux Willikers-Bayou');
+    expect(me?.guid).toBeUndefined();
   });
 });

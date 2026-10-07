@@ -416,9 +416,14 @@ export function normalize(db: unknown): Normalized {
   // Schema 7: one record per fishing cast (SV spells ids `itemID` / `mapID` / `spellID`; records use `itemId` ...).
   list(db.fishingCasts).forEach((c, i) => {
     if (!isObj(c)) return;
-    const { mapID, spellID, loot, ...rest } = c;
+    const { mapID, spellID, loot, x, y, secs, ...rest } = c;
+    // A spot slightly off the map or a clock that stepped back drops that field, not the cast.
+    const coord = (v: unknown) => (typeof v === 'number' && v >= 0 && v <= 100 ? v : undefined);
     add('fishingCasts', FishingCast, `fishingCasts.${i + 1}`, {
       ...rest,
+      x: coord(x),
+      y: coord(y),
+      secs: typeof secs === 'number' && secs >= 0 ? secs : undefined,
       mapId: mapID,
       spellId: spellID,
       loot: list(loot).map((l) => (isObj(l) ? { itemId: l.itemID, qty: l.qty } : l)),

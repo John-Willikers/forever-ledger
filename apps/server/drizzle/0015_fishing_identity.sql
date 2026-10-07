@@ -1,8 +1,10 @@
 CREATE TABLE "character_aliases" (
-	"alias_key" text PRIMARY KEY NOT NULL,
+	"account" text NOT NULL,
+	"alias_key" text NOT NULL,
 	"canonical_key" text NOT NULL,
 	"reason" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "character_aliases_pk" PRIMARY KEY("account","alias_key")
 );
 --> statement-breakpoint
 CREATE TABLE "fishing_casts" (

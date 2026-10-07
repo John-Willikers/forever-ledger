@@ -48,6 +48,7 @@ local function profSession(H, addon, v5, v6, v7)
   local c = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true, skillLines = P.gatherLines(),
                     bags = { [0] = { [1] = 2598, [2] = 5523 } },
                     itemGUIDs = v6 and { [P.BOTTLE_GUID] = 6307 } or nil })
+  if v7 then c.world.player.guid = "Player-4618-00A9A08A" end -- one GUID for the whole session, as in the client
   c.load(addon)
   S.play(c, "ForeverLedger")
   local w = c.world
@@ -127,7 +128,7 @@ local function profSession(H, addon, v5, v6, v7)
     c.advance(10)
   end
   if v7 then
-    w.player.surname, w.player.guid = "Willikers", "Player-4618-00A9A08A"
+    w.player.surname = "Willikers"
     c.env.C_PlayerInfo = { ShouldDisplaySurname = function() return true end }
     c.fire("PLAYER_LOGIN")
     -- GetProfessions' 4th value is Fishing (stubbed here: the shared world has no profession list).

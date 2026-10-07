@@ -30,18 +30,26 @@ local function fisher(H, overrides)
   return c
 end
 
+-- The real order (probe 0.4.0): SENT, CHANNEL_START(castBar), SUCCEEDED; on a recast the old channel's STOP comes
+-- after the new SENT (`stopBar`).
 local casts = 0
-local function cast(c)
+local function cast(c, stopBar)
   casts = casts + 1
   local guid = "Cast-3-4621-1-9-7732-" .. casts
   c.fire("UNIT_SPELLCAST_SENT", "player", nil, guid, FISHING)
+  if stopBar then c.fire("UNIT_SPELLCAST_CHANNEL_STOP", "player", nil, FISHING, nil, stopBar) end
   c.fire("UNIT_SPELLCAST_CHANNEL_START", "player", nil, FISHING, "CastBar-" .. casts)
   c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", guid, FISHING, nil)
+  return "CastBar-" .. casts
+end
+
+local function stop(c, bar)
+  c.fire("UNIT_SPELLCAST_CHANNEL_STOP", "player", nil, FISHING, nil, bar or ("CastBar-" .. casts))
 end
 
 local function catch(c, slots, secs)
   c.advance(secs or 15)
-  c.fire("UNIT_SPELLCAST_CHANNEL_STOP", "player", nil, FISHING, nil, "CastBar-" .. casts)
+  stop(c)
   c.world.fishing = true
   c.world.loot = slots
   c.fire("LOOT_OPENED", true, false)
@@ -86,7 +94,7 @@ return function(H)
     -- The channel times out and no window opens: "none" once the grace has passed.
     cast(c)
     c.advance(24)
-    c.fire("UNIT_SPELLCAST_CHANNEL_STOP", "player", nil, FISHING, nil, "CastBar-x")
+    stop(c)
     c.advance(4)
     -- The fish got away.
     cast(c)
@@ -96,10 +104,12 @@ return function(H)
     cast(c)
     c.advance(3)
     c.fire("UI_ERROR_MESSAGE", 1, "No fish are hooked.")
-    -- Recast before the old channel stopped (it caught nothing), then a two-eel catch.
-    cast(c)
+    -- Recast before the old channel stopped (it caught nothing): the old STOP arrives after the new SENT and must not
+    -- end the new cast; the new cast's catch is its own.
+    local old = cast(c)
     c.advance(7)
-    cast(c)
+    cast(c, old)
+    c.advance(5) -- past the grace: an old STOP taken for this cast would have ended it as "none"
     catch(c, { { itemID = 13422, sourceGUID = BOBBER, quantity = 2 } })
     local outcomes = {}
     for i, f in ipairs(c.env.ForeverLedgerDB.fishingCasts) do outcomes[i] = f.outcome end
@@ -108,6 +118,28 @@ return function(H)
     H.eq(last.loot[1].qty, 2)
     H.eq(last.lure, nil, "no lure")
     H.eq(last.modifier, 5)
+  end)
+
+  H.test("fishing: a recast's catch stays with the recast (real event order)", function()
+    local c = fisher(H)
+    local first = cast(c)
+    c.advance(8)
+    cast(c, first)
+    c.advance(10)
+    catch(c, { { itemID = 4603, sourceGUID = BOBBER } }, 4)
+    local list = c.env.ForeverLedgerDB.fishingCasts
+    H.eq(#list, 2)
+    H.eq(list[1].outcome, "none")
+    H.eq(list[2].outcome, "loot")
+    H.eq(list[2].loot[1].itemID, 4603)
+    H.eq(list[2].secs, 14)
+  end)
+
+  H.test("fishing: a new key mid-session gets its character record", function()
+    local c = fisher(H)
+    c.world.player.name = "Samuel"
+    cast(c)
+    H.ok(c.env.ForeverLedgerDB.chars["Samuel Willikers-Bayou"], "noted on the first cast")
   end)
 
   H.test("fishing: other spells, other units and non-fishing windows are not casts", function()
@@ -140,11 +172,16 @@ return function(H)
     H.eq(me.name, "Sam Willikers")
     H.eq(me.firstName, "Sam")
     H.eq(me.guid, "Player-4618-00A9A08A")
-    -- Without ShouldDisplaySurname the second value is a server, as on retail: first name only.
+    -- The player's surname doesn't depend on the client showing surnames (a display setting).
+    local hidden = fisher(H)
+    hidden.env.C_PlayerInfo = { ShouldDisplaySurname = function() return false end }
+    hidden.fire("PLAYER_LOGIN")
+    H.eq(hidden.env.ForeverLedgerDB.chars["Sam-Bayou"], nil, "surnames hidden: still the full name")
+    -- A client whose UnitName has no second value (Classic) keys by first name.
     local classic = fisher(H)
-    classic.env.C_PlayerInfo = nil
+    classic.world.player.surname = nil
     classic.fire("PLAYER_LOGIN")
-    H.ok(classic.env.ForeverLedgerDB.chars["Sam-Bayou"], "no surname API: first name")
+    H.ok(classic.env.ForeverLedgerDB.chars["Sam-Bayou"], "no surname: first name")
   end)
 
   H.test("fishing: /fl reset confirm wipes fishing casts", function()

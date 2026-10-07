@@ -269,6 +269,22 @@ return function(H)
     H.eq(gl[3].won, true)
   end)
 
+  H.test("loot: Forever surnames tell a party member who shares my first name from me", function()
+    local g = grouped(H)
+    local me = g.world.player.name
+    g.world.player.surname = "Willikers"
+    g.world.party[1].name, g.world.party[1].realm = me, "Ashford" -- Forever: the realm slot holds the surname
+    local linen = require("harness").itemLink(2589, g.world.items[2589])
+    g.fire("CHAT_MSG_LOOT", me .. " Ashford receives loot: " .. linen .. ".", me .. " Ashford")
+    g.fire("CHAT_MSG_LOOT", me .. " Willikers receives loot: " .. linen .. "x2.", me .. " Willikers")
+    local gl = g.env.ForeverLedgerDB.runs[1].groupLoot
+    H.eq(#gl, 2)
+    H.eq(gl[1].by, "party")
+    H.eq(gl[1].class, g.world.party[1].class)
+    H.eq(gl[2].by, "self")
+    H.eq(gl[2].qty, 2)
+  end)
+
   H.test("loot: missing GlobalStrings fall back to the enUS text", function()
     local g = grouped(H, { missing = { LOOT_ITEM = true, LOOT_ITEM_MULTIPLE = true } })
     local linen = require("harness").itemLink(2589, g.world.items[2589])

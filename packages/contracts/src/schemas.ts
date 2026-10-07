@@ -97,11 +97,12 @@ export const Character = z.object({
   lastSeen: epochSecs.optional(),
   /** Schema 7: `name` is the full name (first + surname); this is the first name alone. */
   firstName: z.string().max(64).optional(),
-  /** Schema 7: `Player-<server>-<id>`, stable across renames. */
+  /** Schema 7: `Player-<server>-<id>`, stable across renames. Any other shape is dropped, not the character. */
   guid: z
     .string()
     .regex(/^Player-\d+-[0-9A-Fa-f]+$/)
-    .optional(),
+    .optional()
+    .catch(undefined),
 });
 export type Character = z.infer<typeof Character>;
 

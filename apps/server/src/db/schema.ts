@@ -119,16 +119,22 @@ export const characters = pgTable(
 );
 
 /**
- * Old character keys and the key they now belong to: build 70009 dropped surnames from UnitName, so 0.3.4 uploads
- * keyed "Sam-Realm" what is "Sam Willikers-Realm". Ingest maps every alias to its canonical key.
+ * Old character keys and the key they now belong to, per uploading account: build 70009 dropped surnames from UnitName,
+ * so 0.3.4 uploads keyed "Sam Willikers" as "Sam-Realm", a key other players' "Sam"s share. An alias only applies to
+ * uploads from its account; ingest maps that account's records through it.
  */
-export const characterAliases = pgTable('character_aliases', {
-  aliasKey: text('alias_key').primaryKey(),
-  canonicalKey: text('canonical_key').notNull(),
-  /** `guid` (same GUID, other key), `merge` (characters-cli), … */
-  reason: text('reason').notNull(),
-  createdAt: tz('created_at').notNull().defaultNow(),
-});
+export const characterAliases = pgTable(
+  'character_aliases',
+  {
+    account: text('account').notNull(),
+    aliasKey: text('alias_key').notNull(),
+    canonicalKey: text('canonical_key').notNull(),
+    /** `guid` (same GUID, other key), `merge` (characters-cli), … */
+    reason: text('reason').notNull(),
+    createdAt: tz('created_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: 'character_aliases_pk', columns: [t.account, t.aliasKey] })],
+);
 
 export const quests = pgTable('quests', {
   questId: integer('quest_id').primaryKey(),

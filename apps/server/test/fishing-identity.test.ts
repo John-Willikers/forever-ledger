@@ -2,7 +2,7 @@
 // keys merged (characters-cli) and renames merged by GUID at ingest.
 import type { UploadBatch } from '@forever-ledger/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mergeCharacter, suggestMerges } from '../src/characters.js';
+import { MergeRefused, mergeCharacter, suggestMerges } from '../src/characters.js';
 import { batchFromFixture, startServer } from './helpers.js';
 
 const FULL = 'Thibodeaux Willikers-Bayou';
@@ -101,7 +101,9 @@ describe('fishing casts and character identity (schema 7)', () => {
       await q(`select count(*)::int as n from turn_ins where char = $1`, [SHORT])
     )[0].n;
     expect(shortTurnIns).toBeGreaterThan(0);
-    const r = await s.database.db.transaction((tx) => mergeCharacter(tx, SHORT, FULL, 'merge'));
+    const r = await s.database.db.transaction((tx) =>
+      mergeCharacter(tx, SHORT, FULL, 'merge', ['ACCOUNT1']),
+    );
     expect(r.moved.turn_ins! + r.dropped.turn_ins!).toBe(shortTurnIns);
     expect(await q(`select key from characters where key = $1`, [SHORT])).toEqual([]);
     expect((await q(`select count(*)::int as n from turn_ins where char = $1`, [SHORT]))[0].n).toBe(
@@ -133,12 +135,42 @@ describe('fishing casts and character identity (schema 7)', () => {
     await ingest(renamed);
     expect(await q(`select key from characters where guid = $1`, [GUID])).toEqual([{ key: NEW }]);
     const aliases = await q(
-      `select alias_key, canonical_key, reason from character_aliases order by 1`,
+      `select account, alias_key, canonical_key, reason from character_aliases order by 2`,
     );
     expect(aliases).toEqual([
-      { alias_key: FULL, canonical_key: NEW, reason: 'guid' },
-      { alias_key: SHORT, canonical_key: NEW, reason: 'merge' },
+      { account: 'ACCOUNT1', alias_key: FULL, canonical_key: NEW, reason: 'guid' },
+      { account: 'ACCOUNT1', alias_key: SHORT, canonical_key: NEW, reason: 'merge' },
     ]);
     expect((await q(`select count(distinct char)::int as n from fishing_casts`))[0].n).toBe(1);
+  });
+
+  it("never lets another account's upload take a character over by its GUID", async () => {
+    const NEW = 'Thibodeaux Boudreaux-Bayou';
+    const thief = batchFromFixture('session-v7.lua', 'ACCOUNT2', 'pc-evil');
+    thief.records.characters = thief.records.characters.map((c) =>
+      c.guid ? { ...c, key: 'Mallory Thief-Bayou', name: 'Mallory Thief' } : c,
+    );
+    thief.records.fishingCasts = [];
+    await ingest(thief);
+    expect(await q(`select key from characters where guid = $1`, [GUID])).toEqual([{ key: NEW }]);
+    const [mallory] = await q(`select guid from characters where key = 'Mallory Thief-Bayou'`);
+    expect(mallory).toEqual({ guid: null });
+    expect(
+      (await q(`select count(*)::int as n from character_aliases where account = 'ACCOUNT2'`))[0].n,
+    ).toBe(0);
+  });
+
+  it('never merges a full name into a key without a surname, and refuses an alias as the target', async () => {
+    const NEW = 'Thibodeaux Boudreaux-Bayou';
+    const noSurname = batchFromFixture('session-v7.lua');
+    noSurname.records.characters = noSurname.records.characters.map((c) =>
+      c.guid ? { ...c, key: 'Thibodeaux-Elsewhere', name: 'Thibodeaux', realm: 'Elsewhere' } : c,
+    );
+    noSurname.records.fishingCasts = [];
+    await ingest(noSurname);
+    expect(await q(`select key from characters where guid = $1`, [GUID])).toEqual([{ key: NEW }]);
+    await expect(
+      s.database.db.transaction((tx) => mergeCharacter(tx, NEW, FULL, 'merge', ['ACCOUNT1'])),
+    ).rejects.toBeInstanceOf(MergeRefused);
   });
 });

@@ -28,8 +28,9 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked · 🔒 gate (ne
 - ✅ 2 🧩 Addon 0.4.0 (schema 7) — 2026-10-07 00:36 CDT
   - ✅ 2a Full name: `charKey` = first + surname (when `ShouldDisplaySurname`), the record keeps `firstName` and `guid`
   - ✅ 2b `db.fishingCasts`: one record per cast `{build, char, time, mapID, zone, subzone, x, y, skill, skillMax,
-    modifier, lure, pool, outcome, loot, money}`. It opens on the cast and closes on loot, on the channel stopping, or
-    after 25 s, so casts that got away are counted too. `pool` is nil (unknown) unless 1b proves we can tell.
+    modifier, lure, outcome, loot, money}`. It opens on the cast and closes on loot, on its own channel stopping
+    (matched by CastBar id: on a recast the old STOP comes after the new SENT), or after 35 s, so casts that got away
+    are counted too. No `pool` field: 1b showed the loot always comes from the bobber.
   - ✅ 2c Lua harness 222 passed (+8: `test_fishing.lua`, the 0.3.4 → 7 migration, the `session-v7.lua` fixture);
     0.3.4 frozen in `tests/legacy/` still writes `session-v6.lua` byte-identical
 - ✅ 3 📐 Contracts: schema 7, `FishingCast`, `Character.firstName` / `guid`, normalize, keys
@@ -39,10 +40,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked · 🔒 gate (ne
     Ingest maps short keys to it by GUID or by full name; `characters-cli suggest|merge` handles the old rows
     (Sam, Jon, Vic)
   - ✅ 4c 🔎 Searchable fishing: `GET /v1/fishing/casts` and `/v1/fishing/yield`
-    (`?zone=&subzone=&item=&build=&lure=&pool=&minSkill=`), and an admin **Fishing** page: yield per zone and subzone,
+    (`?zone=&subzone=&build=&char=&lure=&minSkill=`; `/where?item=`), and an admin **Fishing** page: yield per zone and subzone,
     catch table, rare catches, and a search by item ("where did Big-mouth Clams come from?")
   - ⬜ 4d (after release) Knowledge: per-zone fishing yields become tier 1 claims automatically, for the MCP server
-- 🟡 5 🔍 Code review → PR → merge → deploy → merge the old short keys in prod → 🚀 Release: PRs merged with CI green → tag `addon-v0.4.0` → `addon-cli publish 0.4.0` → tray v0.1.6 → friends
+- 🟡 5 🔍 Code review (2 Critical, 6 Important): all fixed 00:47 CDT — recasts matched by CastBar id; GUID merges
+  never go from a full name to a short key, never cross accounts, refuse an alias as target, take the run lock;
+  aliases are per account; the player's surname doesn't depend on the display setting; `db.chars` follows a new key;
+  group loot tells same-first-name party members apart; a bad GUID or off-map spot drops the field, not the record
+  - ⬜ PR → merge → deploy → merge the old short keys in prod → 🚀 Release: PRs merged with CI green → tag `addon-v0.4.0` → `addon-cli publish 0.4.0` → tray v0.1.6 → friends
   update their trays. Target: **before Oct 15**
 
 ## ⚠️ Risks
