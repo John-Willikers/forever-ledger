@@ -175,6 +175,7 @@ export function startBot(
           model: answer.model,
           stop: answer.stopReason,
           tokens: answer.usage,
+          costUsd: answer.costUsd,
           ms: Date.now() - started,
         },
         'answered',

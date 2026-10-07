@@ -1,7 +1,7 @@
 // The bot's pure parts and its Claude call, with a fake Messages API (no Discord, no network).
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MODEL, ledgerAsker, OPUS_MODEL } from '../src/ask.js';
+import { costOf, DEFAULT_MODEL, ledgerAsker, OPUS_MODEL } from '../src/ask.js';
 import { conversation, mayWrite, toContext } from '../src/bot.js';
 import {
   limitFrom,
@@ -25,7 +25,12 @@ function fakeApi(replies: Partial<Anthropic.Beta.BetaMessage>[]) {
     return {
       content: [],
       stop_reason: 'end_turn',
-      usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0 },
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
       ...r,
     } as unknown as Anthropic.Beta.BetaMessage;
   };
@@ -209,7 +214,7 @@ describe('asking the ledger', () => {
     expect(paused.calls).toHaveLength(2);
     expect(paused.calls[1]!.messages.at(-1)).toMatchObject({ role: 'assistant' });
     expect(a.text).toBe('Done.');
-    expect(a.usage).toEqual({ input: 20, output: 10, cacheRead: 0 });
+    expect(a.usage).toEqual({ input: 20, output: 10, cacheRead: 0, cacheWrite: 0 });
 
     const refused = fakeApi([{ content: [], stop_reason: 'refusal' }]);
     expect(
@@ -221,5 +226,16 @@ describe('asking the ledger', () => {
       (await ledgerAsker(config, long.create)({ messages: question, opus: false, admin: false }))
         .text,
     ).toContain('cut off');
+  });
+
+  it('prices an answer including cache writes', () => {
+    // The first real answer: 4 in, 364 out, 4,792 cache reads, plus (say) 5,000 cache writes on Sonnet 5.
+    expect(
+      costOf('claude-sonnet-5', { input: 4, output: 364, cacheRead: 4792, cacheWrite: 5000 }),
+    ).toBe(0.01711);
+    expect(costOf('claude-opus-5-5', { input: 0, output: 1000, cacheRead: 0, cacheWrite: 0 })).toBe(
+      0.02,
+    );
+    expect(costOf('mystery', { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 })).toBe(0);
   });
 });
