@@ -15,10 +15,13 @@ export async function enqueueSeen(db: Db, template: string, opts: { limit?: numb
     throw new Error('template needs {type} and {id}');
   }
   const res = await db.execute<{ type: EntityType; id: number }>(sql`
-    select 'item' as type, item_id as id from items
-    union select 'quest', quest_id from quests
-    union select 'npc', npc_id from drops
-    union select 'npc', npc_id from quest_observations where npc_id is not null
+    select * from (
+      select 'item' as type, item_id as id from items
+      union select 'quest', quest_id from quests
+      union select 'npc', npc_id from drops
+      union select 'npc', npc_id from quest_observations where npc_id is not null
+    ) seen
+    where id > 0 -- npc 0 is "source unknown" in drops
     order by 1, 2`);
   const own = ({ type, id }: { type: EntityType; id: number }) =>
     id >= (FOREVER_ID_THRESHOLDS[type as keyof typeof FOREVER_ID_THRESHOLDS] ?? Infinity);
