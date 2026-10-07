@@ -226,4 +226,30 @@ describe('fishing casts and character identity (schema 7)', () => {
       await q(`select canonical_key from character_aliases where account = 'ACCOUNT_D'`),
     ).toEqual([{ canonical_key: 'Ana New-Bayou' }]);
   });
+
+  it('a merge keeps the newer of two rows (skills ranked up after build 70009 stay)', async () => {
+    const { db } = s.database;
+    await q(
+      `insert into characters (key, name, realm) values ('Zed-Bayou', 'Zed', 'Bayou'), ('Zed Smith-Bayou', 'Zed Smith', 'Bayou')`,
+    );
+    await q(
+      `insert into skills (char, skill_line_id, name, rank, max_rank, last_seen) values
+         ('Zed Smith-Bayou', 356, 'Fishing', 152, 225, '2026-09-24T12:00:00-05:00'),
+         ('Zed-Bayou', 356, 'Fishing', 225, 225, '2026-10-07T00:00:00-05:00'),
+         ('Zed Smith-Bayou', 171, 'Alchemy', 150, 150, '2026-10-07T00:00:00-05:00'),
+         ('Zed-Bayou', 171, 'Alchemy', 100, 150, '2026-09-24T12:00:00-05:00')`,
+    );
+    const r = await db.transaction((tx) =>
+      mergeCharacter(tx, 'Zed-Bayou', 'Zed Smith-Bayou', 'merge', ['ACCOUNT_Z']),
+    );
+    expect(r.replaced.skills).toBe(1);
+    expect(r.moved.skills).toBe(1);
+    expect(r.dropped.skills).toBe(1);
+    expect(
+      await q(`select skill_line_id, rank from skills where char = 'Zed Smith-Bayou' order by 1`),
+    ).toEqual([
+      { skill_line_id: 171, rank: 150 },
+      { skill_line_id: 356, rank: 225 },
+    ]);
+  });
 });
