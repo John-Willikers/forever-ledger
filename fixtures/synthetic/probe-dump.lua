@@ -260,8 +260,10 @@ ForeverLedgerProbeDB = {
 					"GetNumQuestLogEntries", -- [2]
 				},
 			},
-			["probeVersion"] = "0.3.0",
+			["probeVersion"] = "0.4.0",
 		},
+	},
+	["fish"] = {
 	},
 	["io"] = {
 		[61582] = {
@@ -586,14 +588,14 @@ ForeverLedgerProbeDB = {
 	},
 	["loadCheck"] = {
 		["arrivedEmpty"] = false,
-		["arrivedKeys"] = 10,
+		["arrivedKeys"] = 12,
 		["arrivedNil"] = false,
 		["arrivedType"] = "table",
 		["at"] = 1790000000,
 		["build"] = 61582,
 		["loadCount"] = 2,
 		["previousLoadAt"] = 1790000000,
-		["probeVersion"] = "0.3.0",
+		["probeVersion"] = "0.4.0",
 	},
 	["loadCount"] = 2,
 	["loadHistory"] = {
@@ -604,13 +606,15 @@ ForeverLedgerProbeDB = {
 			["loadCount"] = 1,
 		}, -- [1]
 		{
-			["arrivedKeys"] = 10,
+			["arrivedKeys"] = 12,
 			["at"] = 1790000000,
 			["build"] = 61582,
 			["loadCount"] = 2,
 		}, -- [2]
 	},
-	["probeVersion"] = "0.3.0",
+	["names"] = {
+	},
+	["probeVersion"] = "0.4.0",
 	["sniff"] = {
 		[61582] = {
 			["ADDON_ACTION_BLOCKED"] = {
@@ -1262,7 +1266,7 @@ ForeverLedgerProbeDB = {
 					}, -- [2]
 				},
 			},
-			["probeVersion"] = "0.3.0",
+			["probeVersion"] = "0.4.0",
 		},
 	},
 }

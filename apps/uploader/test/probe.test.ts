@@ -21,7 +21,7 @@ describe('probe-dump', () => {
     };
     expect(json.dumps['61582']?.buildInfo.build).toBe(61582);
 
-    expect(summary.probeVersion).toBe('0.3.0');
+    expect(summary.probeVersion).toBe('0.4.0');
     expect(summary.builds).toHaveLength(1);
     const b = summary.builds[0]!;
     expect(b).toMatchObject({
@@ -121,7 +121,7 @@ describe('probe-dump', () => {
     const s = summary.specs![0]!;
     expect(s).toMatchObject({
       build: '61582',
-      probeVersion: '0.3.0',
+      probeVersion: '0.4.0',
       at: 1790000000,
       classes: 3,
       specs: 6,
@@ -181,13 +181,13 @@ describe('probe-dump', () => {
 
   it('flags missing spec APIs in the specs summary', () => {
     const s = summarizeProbe({
-      probeVersion: '0.3.0',
+      probeVersion: '0.4.0',
       dumps: {},
       sniff: {},
       specs: {
         '69913': {
           at: 1790000000,
-          probeVersion: '0.3.0',
+          probeVersion: '0.4.0',
           api: { 'C_Item.GetItemSpecInfo': 'nil', 'C_Item.DoesItemContainSpec': 'nil' },
           player: {
             class: 'MAGE',
@@ -238,7 +238,7 @@ describe('probe-dump', () => {
 
   it('keeps a non-table GetItemSpecInfo apart from an empty one and reads 1..n contains keys', () => {
     const s = summarizeProbe({
-      probeVersion: '0.3.0',
+      probeVersion: '0.4.0',
       dumps: {},
       sniff: {},
       specs: {

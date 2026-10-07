@@ -1,0 +1,65 @@
+{
+  "observations": [
+    {
+      "key": "2026-10-06-addon-fishing-70235-tanaris-hinterlands",
+      "faction": "Horde",
+      "race": "Skyborne",
+      "class": "Druid",
+      "level": 30,
+      "build": 70235,
+      "gameVersion": "forever",
+      "observedAt": "2026-10-06T09:58:51-05:00",
+      "location": {
+        "zones": ["Tanaris", "The Hinterlands", "Hillsbrad Foothills"],
+        "spots": {
+          "Tanaris": [
+            [68.3, 23.0],
+            [67.6, 24.1]
+          ],
+          "The Hinterlands": [
+            [81.6, 82.3],
+            [77.2, 74.2],
+            [79.2, 76.4]
+          ],
+          "Hillsbrad Foothills": [[35.6, 69.9]]
+        }
+      },
+      "method": "fishing",
+      "setup": {
+        "skill": 225,
+        "source": "Forever Ledger addon session 1790274455-17b9, nodes object 0, build 70235",
+        "perZoneSplit": false
+      },
+      "result": {
+        "catches": 283,
+        "bigMouthClams": 0,
+        "loot": {
+          "Raw Spotted Yellowtail": 125,
+          "Raw Glossy Mightfish": 53,
+          "Stonescale Eel": 39,
+          "Raw Rockscale Cod": 30,
+          "Firefin Snapper": 27,
+          "Oily Blackmouth": 5,
+          "Watertight Trunk": 2,
+          "Heavy Crate": 1,
+          "40 Pound Yellowtail": 1
+        }
+      },
+      "notes": "Addon data (tier 1), last updated 2026-10-06 09:58 CDT. 283 fishing loot windows across Tanaris (Steamwheedle Port) and The Hinterlands (Revantusk shore), plus one Hillsbrad spot; the addon counts per session, so catches per zone are not known. Classic odds (Tanaris 5.9%, Hinterlands 4.1% of catches) would give about 12-16 clams. Level cap 30 on this build.",
+      "claims": [
+        {
+          "entityType": "item",
+          "entityName": "Big-mouth Clam",
+          "attribute": "fishing_yield",
+          "value": {
+            "zones": ["Tanaris", "The Hinterlands", "Hillsbrad Foothills"],
+            "catches": 283,
+            "caught": 0,
+            "skill": 225,
+            "build": 70235
+          }
+        }
+      ]
+    }
+  ]
+}
