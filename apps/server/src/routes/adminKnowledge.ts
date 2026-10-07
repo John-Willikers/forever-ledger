@@ -13,7 +13,7 @@ import { intParam, iso, rows } from './adminData.js';
 import { badRequest, containsPattern, searchParam, textParam } from './shared.js';
 
 export const KNOWLEDGE_LIST_LIMIT = 200;
-const QUEUE_STATES = ['queued', 'leased', 'done', 'needs_human', 'failed'] as const;
+const QUEUE_STATES = ['queued', 'leased', 'done', 'needs_human', 'failed', 'skipped'] as const;
 
 const oneOf = <T extends string>(q: unknown, key: string, allowed: readonly T[]): T | null => {
   const v = textParam(q, key, 64);

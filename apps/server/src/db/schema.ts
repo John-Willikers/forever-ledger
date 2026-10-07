@@ -763,6 +763,7 @@ export const zoneMaps = pgTable(
 /**
  * The fetch queue. `url` is normalized (contracts `normalizeUrl`). A worker leases due rows; a lease that runs out
  * (`lease_until`) makes the row due again. `needs_human`: a challenge page never cleared, a person must look.
+ * `skipped`: taken off the queue by hand (`knowledge-cli skip`), never fetched and never queued again.
  */
 export const fetchTargets = pgTable(
   'fetch_targets',
@@ -773,7 +774,7 @@ export const fetchTargets = pgTable(
     entityId: integer('entity_id'),
     /** Higher goes first. */
     priority: integer('priority').notNull().default(0),
-    state: text('state', { enum: ['queued', 'leased', 'done', 'needs_human', 'failed'] })
+    state: text('state', { enum: ['queued', 'leased', 'done', 'needs_human', 'failed', 'skipped'] })
       .notNull()
       .default('queued'),
     leaseTokenId: integer('lease_token_id').references(() => apiTokens.id, {
@@ -795,7 +796,7 @@ export const fetchTargets = pgTable(
   (t) => [
     check(
       'fetch_targets_state_check',
-      sql`${t.state} in ('queued', 'leased', 'done', 'needs_human', 'failed')`,
+      sql`${t.state} in ('queued', 'leased', 'done', 'needs_human', 'failed', 'skipped')`,
     ),
     index('fetch_targets_due_idx').on(t.state, t.nextDueAt),
     index('fetch_targets_entity_idx').on(t.entityType, t.entityId),

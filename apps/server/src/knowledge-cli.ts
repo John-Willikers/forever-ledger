@@ -6,6 +6,7 @@
 //                            | reparse [--site wowhead.com] [--replace]
 //                            | claim <source id|key> <type>:<id|name> <attribute> <json value> <quote> [--label L]
 //                            | relabel <claim id> <LABEL> <why>
+//                            | skip <file with one URL per line> <why>
 //                            | disputes [<type>:<key>]
 import { readFileSync } from 'node:fs';
 import { ENTITY_TYPES } from '@forever-ledger/contracts';
@@ -17,12 +18,13 @@ import { findDisputes } from './knowledge/disputes.js';
 import { enqueueSeen } from './knowledge/enqueue.js';
 import { addManualClaim, relabelClaim } from './knowledge/manual.js';
 import { importSeed } from './knowledge/seed.js';
-import { enqueueUrl, reparseAll } from './knowledge/store.js';
+import { enqueueUrl, reparseAll, skipUrls } from './knowledge/store.js';
 import { chicagoIso } from './time.js';
 
 const USAGE = `usage: knowledge-cli status | add <url> [--priority N] [--refresh] | seed <file.json>
   | enqueue-seen <template> [--limit N] | reparse [--site S] [--replace]
   | claim <source> <type>:<id|name> <attribute> <json> <quote> [--label L] | relabel <id> <LABEL> <why>
+  | skip <file of URLs> <why>
   | disputes [<type>:<key>]`;
 
 const argv = process.argv.slice(2);
@@ -124,6 +126,14 @@ try {
     const [id, to, ...why] = args as [string, string, ...string[]];
     const r = await relabelClaim(db, Number(id), to as ClaimLabel, why.join(' '));
     console.log(`claim #${id}: ${r.from} → ${r.to}`);
+  } else if (command === 'skip' && args.length >= 2) {
+    const [file, ...why] = args as [string, ...string[]];
+    const urls = readFileSync(file, 'utf8')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'));
+    const n = await skipUrls(db, urls, why.join(' '));
+    console.log(`skipped ${n} of ${urls.length} URLs`);
   } else if (command === 'disputes') {
     const e = args[0] ? entity(args[0]) : undefined;
     const rows = await findDisputes(db, {
