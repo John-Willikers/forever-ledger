@@ -15,7 +15,7 @@ import type {
   GameVersion,
   SourceTier,
 } from '@forever-ledger/contracts';
-import { and, eq, ne, notInArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import type { Db } from '../db/client.js';
 import { claims, fetchTargets, sources, webComments, webSnapshots } from '../db/schema.js';
@@ -234,6 +234,26 @@ export async function enqueueUrl(conn: Conn, opts: EnqueueOptions): Promise<bool
         .returning({ url: fetchTargets.url })
     : await q.onConflictDoNothing().returning({ url: fetchTargets.url });
   return res.length > 0;
+}
+
+/**
+ * Takes URLs off the queue for good: they become `skipped`, so a later `enqueue-seen` or seed leaves them alone (only
+ * `knowledge-cli add --refresh` or the panel brings one back). A URL being fetched right now is left alone. Returns
+ * how many were skipped.
+ */
+export async function skipUrls(conn: Conn, urls: string[], reason: string): Promise<number> {
+  if (urls.length === 0) return 0;
+  const res = await conn
+    .update(fetchTargets)
+    .set({ state: 'skipped', lastError: reason.slice(0, 500), updatedAt: new Date() })
+    .where(
+      and(
+        inArray(fetchTargets.url, urls.map(normalizeUrl)),
+        sql`not (${fetchTargets.state} = 'leased' and ${fetchTargets.leaseUntil} >= now())`,
+      ),
+    )
+    .returning({ url: fetchTargets.url });
+  return res.length;
 }
 
 /** Leases up to `max` due URLs to a worker: queued or refetch-due rows, and leases that ran out. */

@@ -1,5 +1,5 @@
 export type ClaimLabel = 'VERIFIED' | 'CLASSIC' | 'ANECDOTE' | 'UNVERIFIED' | 'FALSE';
-export type QueueState = 'queued' | 'leased' | 'done' | 'needs_human' | 'failed';
+export type QueueState = 'queued' | 'leased' | 'done' | 'needs_human' | 'failed' | 'skipped';
 
 export interface KnowledgeSummary {
   snapshots: number;

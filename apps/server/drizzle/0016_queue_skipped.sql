@@ -1,0 +1,2 @@
+ALTER TABLE "fetch_targets" DROP CONSTRAINT "fetch_targets_state_check";--> statement-breakpoint
+ALTER TABLE "fetch_targets" ADD CONSTRAINT "fetch_targets_state_check" CHECK ("fetch_targets"."state" in ('queued', 'leased', 'done', 'needs_human', 'failed', 'skipped'));

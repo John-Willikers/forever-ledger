@@ -8,7 +8,7 @@ import { findDisputes } from '../src/knowledge/disputes.js';
 import { addManualClaim, ManualClaimError, relabelClaim } from '../src/knowledge/manual.js';
 import { importSeed } from '../src/knowledge/seed.js';
 import { enqueueSeen } from '../src/knowledge/enqueue.js';
-import { enqueueUrl, reparseAll } from '../src/knowledge/store.js';
+import { enqueueUrl, reparseAll, skipUrls } from '../src/knowledge/store.js';
 import { startServer, webFixture } from './helpers.js';
 
 const ZONES = 'https://mobalytics.gg/wow-forever/guides/zone-map-level-ranges';
@@ -357,5 +357,23 @@ describe('knowledge pipeline', () => {
       { url: 'https://www.wowhead.com/forever/quest=90001', priority: 10 },
     ]);
     await expect(enqueueSeen(s.database.db, 'https://x/{id}')).rejects.toThrow(/\{type\}/);
+  });
+
+  it('skipped URLs are never leased and never queued again', async () => {
+    const url = 'https://www.wowhead.com/forever/item=3167';
+    await enqueueUrl(s.database.db, { url, addedBy: 'ingest', priority: 100 });
+    expect(
+      await skipUrls(s.database.db, [url, 'https://example.org/not-queued'], 'junk tier A'),
+    ).toBe(1);
+    expect(
+      (await q(`select state, last_error from fetch_targets where url = $1`, [url]))[0],
+    ).toEqual({
+      state: 'skipped',
+      last_error: 'junk tier A',
+    });
+    expect(await enqueueUrl(s.database.db, { url, addedBy: 'ingest' })).toBe(false);
+    const leases = (await post('/v1/fetch/lease', { worker: 'cruiser', max: 10 })).json().leases;
+    expect(leases.map((l: { url: string }) => l.url)).not.toContain(url);
+    expect(await enqueueUrl(s.database.db, { url, addedBy: 'cli', refresh: true })).toBe(true);
   });
 });

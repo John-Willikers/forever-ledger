@@ -354,7 +354,14 @@ function Sources() {
   );
 }
 
-const STATES: readonly QueueState[] = ['queued', 'leased', 'done', 'needs_human', 'failed'];
+const STATES: readonly QueueState[] = [
+  'queued',
+  'leased',
+  'done',
+  'needs_human',
+  'failed',
+  'skipped',
+];
 
 const queueCol = createColumnHelper<SortableFeatures, QueueRow>();
 const queueColumns = queueCol.columns([
