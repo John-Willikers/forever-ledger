@@ -34,7 +34,9 @@ local FIXTURE_V6 = "../../fixtures/synthetic/session-v6.lua"
 local ADDON_0_3_2 = "legacy/ForeverLedger-0.3.2.lua" -- last schema 4 release, writes session-v4
 local ADDON_0_3_3 = "legacy/ForeverLedger-0.3.3.lua" -- last schema 5 release, writes session-v5
 local ADDON_0_3_4 = "legacy/ForeverLedger-0.3.4.lua" -- last schema 6 release, writes session-v6
+local ADDON_0_4_0 = "legacy/ForeverLedger-0.4.0.lua" -- last schema 7 release, writes session-v7
 local FIXTURE_V7 = "../../fixtures/synthetic/session-v7.lua"
+local FIXTURE_V8 = "../../fixtures/synthetic/session-v8.lua"
 
 -- The schema 4 fixture: the shared play session (quests, loot, a dungeon run), then a profession session that
 -- touches every appendix table: skills and a skill-up, a trainer (a recipe learned there), a vendor, the profession
@@ -43,11 +45,13 @@ local FIXTURE_V7 = "../../fixtures/synthetic/session-v7.lua"
 -- item and a currency. `v6` (the schema 6 fixture) then opens a fished Message in a Bottle (named by its item GUID)
 -- and a stack of two clams (named by the bag item lock), one with copper, and one item nothing can name (container 0).
 -- `v7` (the schema 7 fixture) gives the character a Forever surname and fishes three casts at 0.4.0's cast log:
--- a lured catch, one that got away and one that timed out.
-local function profSession(H, addon, v5, v6, v7)
+-- a lured catch, one that got away and one that timed out. `v8` (the schema 8 fixture) dresses the character
+-- (boots, a vest, an axe) and takes the boots off at the end, so gear holds what is worn last.
+local function profSession(H, addon, v5, v6, v7, v8)
   local c = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true, skillLines = P.gatherLines(),
                     bags = { [0] = { [1] = 2598, [2] = 5523 } },
-                    itemGUIDs = v6 and { [P.BOTTLE_GUID] = 6307 } or nil })
+                    itemGUIDs = v6 and { [P.BOTTLE_GUID] = 6307 } or nil,
+                    equipped = v8 and { [8] = 5555, [5] = 2568, [16] = 872 } or nil })
   if v7 then c.world.player.guid = "Player-4618-00A9A08A" end -- one GUID for the whole session, as in the client
   c.load(addon)
   S.play(c, "ForeverLedger")
@@ -162,6 +166,11 @@ local function profSession(H, addon, v5, v6, v7)
     end
   end
   c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "UseAction()") -- reaches the server in the errors sample
+  if v8 then
+    c.world.equipped[8] = nil
+    c.fire("PLAYER_EQUIPMENT_CHANGED", 8, true)
+    c.advance(3)
+  end
   return c.env.ForeverLedgerDB
 end
 
@@ -361,6 +370,7 @@ return function(H)
 
   H.test("professions: window scans are throttled to one per 2 s with one trailing scan", function()
     local c = session(H)
+    c.advance(3) -- the login's gear read (schema 8) runs first, so only scan timers are counted below
     openTrade(c)
     H.eq(c.world.calls.GetAllRecipeIDs, 1)
     c.fire("TRADE_SKILL_LIST_UPDATE")
@@ -1819,8 +1829,8 @@ return function(H)
     H.eq(d.apiSamples["GetLootSourceInfo:container"].sample.via, "guid")
   end)
 
-  H.test("professions: session-v7 fixture adds fishing casts and the full-name character", function()
-    local d = profSession(H, ADDON, true, true, true)
+  H.test("professions: session-v7 fixture (0.4.0) adds fishing casts and the full-name character", function()
+    local d = profSession(H, ADDON_0_4_0, true, true, true)
     H.writeFile(FIXTURE_V7, H.serialize("ForeverLedgerDB", d))
     H.eq(d.meta.schemaVersion, 7)
     H.eq(d.meta.addonVersion, "0.4.0")
@@ -1839,5 +1849,22 @@ return function(H)
     H.eq(casts[2].outcome, "escaped")
     H.eq(casts[3].outcome, "none")
     H.eq(casts[3].char, "Thibodeaux Willikers-Bayou")
+  end)
+
+  H.test("professions: session-v8 fixture adds what the character wears", function()
+    local d = profSession(H, ADDON, true, true, true, true)
+    H.writeFile(FIXTURE_V8, H.serialize("ForeverLedgerDB", d))
+    H.eq(d.meta.schemaVersion, 8)
+    H.eq(d.meta.addonVersion, "0.5.0")
+    H.eq(#d.fishingCasts, 3, "schema 7 data as before")
+    local g = d.gear["Thibodeaux Willikers-Bayou"]
+    H.ok(g, "gear under the full-name key")
+    H.eq(g.build, B)
+    H.eq(g.slots[8], nil, "the boots came off")
+    H.eq(g.slots[5].itemID, 2568)
+    H.eq(g.slots[16].itemID, 872)
+    H.ok(g.slots[16].link:find("item:872", 1, true), "the link is kept")
+    H.eq(g.slots[16].stats.ITEM_MOD_STRENGTH_SHORT, 7)
+    H.ok(d.items[872].byBuild[B], "worn items are scanned like any item")
   end)
 end

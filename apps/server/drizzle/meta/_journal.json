@@ -134,6 +134,13 @@
       "when": 1791356901463,
       "tag": "0018_tray_helpers",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791365514764,
+      "tag": "0019_character_gear",
+      "breakpoints": true
     }
   ]
 }

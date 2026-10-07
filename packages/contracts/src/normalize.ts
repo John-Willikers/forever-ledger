@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import {
   ApiSample,
   Character,
+  CharacterGear,
   ContainerLoot,
   ContainerOpen,
   Corpse,
@@ -175,6 +176,7 @@ export function normalize(db: unknown): Normalized {
     containerOpens: [],
     containerLoot: [],
     fishingCasts: [],
+    gear: [],
     trainers: [],
     vendors: [],
     apiSamples: [],
@@ -429,6 +431,15 @@ export function normalize(db: unknown): Normalized {
       loot: list(loot).map((l) => (isObj(l) ? { itemId: l.itemID, qty: l.qty } : l)),
     });
   });
+
+  // Schema 8: what each character wears ({ [charKey] = { build, at, slots = { [slotID] = { itemID, link, stats } } } }).
+  for (const [char, g] of entries(db.gear)) {
+    if (!isObj(g)) continue;
+    const slots = entries(g.slots).flatMap(([slot, it]) =>
+      isObj(it) ? [{ slot: num(slot), itemId: it.itemID, link: it.link, stats: it.stats }] : [],
+    );
+    add('gear', CharacterGear, `gear.${char}`, { char, build: g.build, at: g.at, slots });
+  }
 
   for (const [b, byNpc] of entries(db.trainers)) {
     for (const [npc, t] of entries(byNpc)) {

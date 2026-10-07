@@ -315,7 +315,17 @@ function H.new(worldOverrides)
   end
   env.GetItemStats = function(link)
     local it = world.items[linkID(link)]
+    if it and it.cached == false then return nil end
     return it and copy(it.stats) or {}
+  end
+  -- world.equipped = { [slot] = itemID }: what the player wears (GetInventoryItemLink("player", slot)); a world item
+  -- with cached = false links but has no stats yet, like a worn item the client hasn't loaded.
+  -- Opt-in, so the probe's global census (probe-dump fixture) stays as it was.
+  if world.equipped then
+    env.GetInventoryItemLink = function(unit, slot)
+      local id = unit == "player" and world.equipped[slot]
+      return id and world.items[id] and itemLink(id, world.items[id]) or nil
+    end
   end
 
   -- loot

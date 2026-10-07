@@ -1,16 +1,16 @@
--- Forever Ledger v0.5.0 (SavedVariables schema 8)
+-- Forever Ledger v0.4.0 (SavedVariables schema 7)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.5.0"
+local VERSION = "0.4.0"
 -- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
 -- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
 -- items[].classID/subclassID and apiSamples; 5 adds vendors[].title, vendors[].items[].costs (extended costs paid in
 -- items or currencies) and trainers[].title; 6 adds containers, containerLoot and containerQty (what opened items
 -- held); 7 adds fishingCasts (one record per cast: zone, spot, skill, lure, outcome, catch) and chars[].firstName /
--- guid, and keys characters by full name (first name + Forever surname); 8 adds gear (what each character wears:
--- item, link with enchant and suffix, stats per slot). Each is additive: older data is valid as it is.
-local SCHEMA_VERSION = 8
+-- guid, and keys characters by full name (first name + Forever surname). Each is additive: older data is valid as
+-- it is.
+local SCHEMA_VERSION = 7
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local LIST_CAP = 500     -- bossLoot and groupLoot entries kept per run
 local f = CreateFrame("Frame")
@@ -2278,10 +2278,10 @@ local function newSessionID()
   return format("%d-%04x", now(), rnd(0, 65535))
 end
 
--- Schema 4 (professions), 6 (containers), 7 (fishing casts) and 8 (gear) tables; /fl reset confirm wipes them too.
+-- Schema 4 (professions), 6 (containers) and 7 (fishing casts) tables; /fl reset confirm wipes them too.
 local PROFESSION_TABLES = { "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
                             "trainers", "vendors", "apiSamples", "containers", "containerLoot", "containerQty",
-                            "fishingCasts", "gear" }
+                            "fishingCasts" }
 
 local function initDB()
   ForeverLedgerDB = ForeverLedgerDB or {}
@@ -2294,7 +2294,7 @@ local function initDB()
   local hadData = next(db.quests) or next(db.items) or next(db.runs) or next(db.drops)
   local existed = db.meta.schemaVersion ~= nil or hadData
   if not db.meta.schemaVersion and hadData then migrateV0() end
-  -- 1 -> 2 -> ... -> 8 only add fields, so older data needs nothing but the new stamp.
+  -- 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 only add fields, so older data needs nothing but the new stamp.
   if (tonumber(db.meta.schemaVersion) or 0) < SCHEMA_VERSION then db.meta.schemaVersion = SCHEMA_VERSION end
   -- Per-session totals (drops, dropQty, corpses, containers, containerLoot, containerQty) belong to this session id
   -- for the life of the table. Forever starts every load with an empty table, so each load is a session. A table
@@ -2431,51 +2431,6 @@ do
   end
 end
 
----------------------------------------------------------------- gear (schema 8)
--- What the character wears now, in db.gear[charKey] = { build, at, slots = { [slotID] = { itemID, link, stats } } }:
--- inventory slots 1-19 (head to tabard). The link keeps enchant and random suffix; stats come from GetItemStats(link),
--- so an "of the Bear" piece counts its suffix. Read at login and 2 s after the last PLAYER_EQUIPMENT_CHANGED (a
--- swap fires one event per slot). A worn item the client hasn't cached yet has no stats: the read is repeated a few
--- times. Each worn item is also scanned into db.items like any other item.
-local gear = { pending = false } -- key: the character key this session's gear was last written under
-do
-  local LAST_SLOT = 19
-  local SETTLE = 2   -- seconds after the last equipment change
-  local RETRIES = 3  -- re-reads while a worn item has no stats yet
-
-  function gear.read(tries)
-    if not db or not GetInventoryItemLink then return end
-    local slots, missing = {}, false
-    for slot = 1, LAST_SLOT do
-      local link = GetInventoryItemLink("player", slot)
-      local itemID = idFromLink(link)
-      if itemID then
-        local ok, stats = pcall(GetItemStats, link)
-        if not (ok and type(stats) == "table" and next(stats)) then stats, missing = nil, true end
-        slots[slot] = { itemID = itemID, link = link, stats = stats }
-        scanItemOnce(itemID, link)
-      end
-    end
-    -- The key can change within a session (the surname arrives after login): the earlier read goes with the old key.
-    local key = charKey()
-    if gear.key and gear.key ~= key then db.gear[gear.key] = nil end
-    gear.key = key
-    db.gear[key] = { build = build, at = now(), slots = slots }
-    if missing and (tries or 0) < RETRIES and C_Timer then
-      C_Timer.After(5, function() safely("gearRead", gear.read, (tries or 0) + 1) end)
-    end
-  end
-
-  function gear.changed()
-    if gear.pending or not C_Timer then return end
-    gear.pending = true
-    C_Timer.After(SETTLE, function()
-      gear.pending = false
-      safely("gearRead", gear.read, 0)
-    end)
-  end
-end
-
 ---------------------------------------------------------------- events
 local handlers = {}
 
@@ -2492,11 +2447,8 @@ function handlers.PLAYER_LOGIN()
   db.chars[charKey()] = me
   lastXP, lastMax, lastLevel = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
   safely("scanSkills", scanSkills)
-  gear.changed()
   say("v" .. VERSION .. " recording. /fl for commands.")
 end
-
-function handlers.PLAYER_EQUIPMENT_CHANGED() gear.changed() end
 
 function handlers.PLAYER_LEVEL_UP(level)
   if db.chars and db.chars[charKey()] then db.chars[charKey()].level = level end

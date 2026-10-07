@@ -13,6 +13,7 @@ import {
   corpses,
   crafts,
   fishingCasts,
+  characterGear,
   drops,
   items,
   itemSnapshots,
@@ -206,6 +207,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       'containerOpens',
       'containerLoot',
       'fishingCasts',
+      'gear',
       'trainers',
       'vendors',
       'apiSamples',
@@ -484,6 +486,20 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         account: batch.account,
       })),
       [fishingCasts.id],
+    );
+
+    // Schema 8: what each character wears, per build; only a newer read replaces the stored one.
+    await upsert(
+      tx,
+      characterGear,
+      w.gear.map(({ at, ...g }) => ({
+        ...g,
+        seenAt: fromEpoch(at)!,
+        uploaderId: batch.uploaderId,
+        account: batch.account,
+      })),
+      [characterGear.char, characterGear.build],
+      { setWhere: sql`excluded.seen_at >= ${characterGear.seenAt}` },
     );
 
     // Trainer and vendor lists: a newer scan wins, an older SavedVariables session uploaded late changes nothing. A

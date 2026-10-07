@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** SavedVariables / upload schema major. Bump together with `SCHEMA_VERSION` in the addon. */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * Schema majors this code reads. Each one is additive, so older files and queued older batches stay valid:
@@ -11,9 +11,10 @@ export const SCHEMA_VERSION = 7;
  * `costs` (extended costs paid in items or currencies) (addon 0.3.3); 6 adds container opens and container loot —
  * what opened items (clams, lockboxes, a Message in a Bottle) held, per session (addon 0.3.4); 7 adds fishing casts
  * (one per cast: zone, spot, skill, lure, outcome, catch) and the character's `firstName` / `guid`, with characters
- * keyed by full name, first name + Forever surname (addon 0.4.0).
+ * keyed by full name, first name + Forever surname (addon 0.4.0); 8 adds gear: what each character wears, per slot
+ * (item, link with enchant and suffix, stats) (addon 0.5.0).
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
 /** The newest schema this code reads: what the tray sends as `?schema=` when it asks for an addon manifest. */
 export const MAX_SUPPORTED_SCHEMA: SchemaVersion = Math.max(
@@ -31,6 +32,7 @@ const schemaVersion = z.union([
   z.literal(5),
   z.literal(6),
   z.literal(7),
+  z.literal(8),
 ]);
 
 /** Schema 3 `meta.session`: `<epoch>-<4 hex>`, one per SavedVariables table. '' for older files. */
@@ -426,6 +428,27 @@ export const FishingCast = z.object({
 });
 export type FishingCast = z.infer<typeof FishingCast>;
 
+/** Inventory slots the addon reads: 1 head … 19 tabard (INVSLOT_*). */
+export const GEAR_SLOT_MAX = 19;
+
+/** One worn item: the link keeps enchant and random suffix; stats are GetItemStats(link), absent until cached. */
+export const GearSlot = z.object({
+  slot: z.number().int().min(1).max(GEAR_SLOT_MAX),
+  itemId: nonNegInt,
+  link: z.string().max(512).optional(),
+  stats: z.record(z.string().max(64), z.number()).optional(),
+});
+export type GearSlot = z.infer<typeof GearSlot>;
+
+/** Schema 8: what a character wore when last read on a build (login, or after an equipment change). */
+export const CharacterGear = z.object({
+  char: charKey,
+  build,
+  at: epochSecs,
+  slots: z.array(GearSlot).max(GEAR_SLOT_MAX),
+});
+export type CharacterGear = z.infer<typeof CharacterGear>;
+
 export const TrainerService = z.object({
   name: z.string(),
   /** GetTrainerServiceInfo type, e.g. 'available', 'unavailable', 'used'. */
@@ -614,6 +637,7 @@ export const Records = z.object({
   containerOpens: z.array(ContainerOpen).default([]),
   containerLoot: z.array(ContainerLoot).default([]),
   fishingCasts: z.array(FishingCast).default([]),
+  gear: z.array(CharacterGear).default([]),
   trainers: z.array(Trainer).default([]),
   vendors: z.array(Vendor).default([]),
   apiSamples: z.array(ApiSample).default([]),

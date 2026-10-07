@@ -5,7 +5,9 @@ import {
   addManualClaim,
   checkClaim,
   fishingAnswer,
+  gearUpgrades,
   importSeed,
+  lookupCharacter,
   lookupItem,
   lookupNpc,
   lookupQuest,
@@ -30,6 +32,7 @@ Every answer has:
 - firstParty: what our own players' addon uploads observed (tier 1, the strongest evidence; counts and rates are real).
 - facts: claims from sources, best first. Each has a label (VERIFIED = Forever data, CLASSIC = Classic-era data that Forever may change, ANECDOTE = a player's report, UNVERIFIED = unconfirmed), a tier (1 best … 7 worst), the source URL and the build.
 - gaps: what the ledger does not know.
+Players' own characters (by full name, e.g. "Sam Willikers") are in lookup_character and gear_upgrades; gear upgrade scores are estimates (Forever has no spec data), and a role the asker didn't name is a guess: say so.
 Answer from these only. Say which label each statement rests on, prefer first-party data and lower tiers, and say plainly when the ledger has a gap instead of filling it from memory. FALSE claims are never facts: check_claim lists them as refuted.`;
 
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
@@ -162,6 +165,45 @@ export function buildServer(deps: ToolDeps): McpServer {
     'A zone or dungeon: level range and other labeled claims, what our players fished there and the gathering nodes they found.',
     'zone',
     lookupZone,
+  );
+
+  server.registerTool(
+    'lookup_character',
+    {
+      title: "Look up a player's character",
+      description:
+        'One of our players\' characters, by full name ("Sam Willikers") or first name: class, race, level, professions, quests turned in and what they wear (recorded by addon 0.5.0 at login).',
+      inputSchema: z.object({ character: ref.describe('Full name, first name, or Name-Realm') }),
+      annotations: READ_ONLY,
+    },
+    guarded(deps, 'lookup_character', async ({ character }: { character: string }) =>
+      reply(await lookupCharacter(db, character)),
+    ),
+  );
+
+  server.registerTool(
+    'gear_upgrades',
+    {
+      title: "A character's gear upgrades",
+      description:
+        'Gear upgrades for one of our players\' characters: per slot, items the ledger knows that their class can wear at (or up to 3 levels above) their level and that score higher for the role than what they wear, each with where to get it (our drops, quest rewards and vendors first, then source claims). Scores are an estimate. Pass the role when the asker names one ("as a tank"); otherwise it is guessed from their gear.',
+      inputSchema: z.object({
+        character: ref.describe('Full name, first name, or Name-Realm'),
+        role: z.enum(['tank', 'healer', 'caster', 'melee', 'ranged']).optional(),
+      }),
+      annotations: READ_ONLY,
+    },
+    guarded(
+      deps,
+      'gear_upgrades',
+      async ({
+        character,
+        role,
+      }: {
+        character: string;
+        role?: 'tank' | 'healer' | 'caster' | 'melee' | 'ranged';
+      }) => reply(await gearUpgrades(db, character, role)),
+    ),
   );
 
   server.registerTool(
