@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import { IPC } from './main/ipc.js';
 import type { LedgerApi, WowFolderPick } from './main/ipc.js';
+import type { HelperView } from './main/helper/service.js';
 import type { Snapshot } from './main/state.js';
 
 /** Subscribes to a main → renderer channel; returns the unsubscribe function. */
@@ -26,6 +27,9 @@ const api: LedgerApi = {
   openLogs: () => ipcRenderer.invoke(IPC.openLogs) as Promise<void>,
   getLog: () => ipcRenderer.invoke(IPC.log) as Promise<string[]>,
   onLogLine: (listener) => listen<string>(IPC.logLine, listener),
+  helperState: () => ipcRenderer.invoke(IPC.helperState) as Promise<HelperView>,
+  onHelperChange: (listener) => listen<HelperView>(IPC.helperChanged, listener),
+  helperSetEnabled: (enabled) => ipcRenderer.invoke(IPC.helperSetEnabled, enabled) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('ledger', api);

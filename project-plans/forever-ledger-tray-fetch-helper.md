@@ -80,11 +80,12 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 2 🗄️ Server: `POST /v1/fetch/enroll` (upload token → helper token, pending), `GET /v1/fetch/status`, approval gate
   (403 until approved; pause), per-helper budget (200/day, 13/hour), site fence (wowhead.com entity pages), Access
   page approve / pause / resume / budget, migration 0018 (additive) — 02:13 CDT
-- ⬜ 3 🖥️ Tray: `fetchHelper.ts` (sandboxed session, idle/WoW/AC gating, lease loop), unit tests for every guarantee
+- ✅ 3 🖥️ Tray (02:24 CDT): `src/main/helper/` — policy, core loop, sandboxed browser, gate, encrypted store, server API;
+  helper tests pin the guarantees. Was: `fetchHelper.ts` (sandboxed session, idle/WoW/AC gating, lease loop), unit tests for every guarantee
   in the table (window options, partition, permission handlers, navigation fence, download cancel, data wipe)
-- ⬜ 4 👀 Tray: consent screen (new install + first launch after update), settings toggle, Activity list; Playwright
+- ✅ 4 👀 (02:24 CDT, smoke test passes under xvfb, screenshots checked) Tray: consent screen (new install + first launch after update), settings toggle, Activity list; Playwright
   smoke test for the consent flow
-- ⬜ 5 🔍 Security review of the helper (a dedicated reviewer pass on the sandbox guarantees)
+- 🟡 5 🔍 Security review of the helper (a dedicated reviewer pass on the sandbox guarantees)
 - ⬜ 6 🚀 Release tray v0.2.0; Cody opts in; Harlan approves his helper; watch the first day
 
 ## ✅ Decisions (Harlan, 2026-10-07)

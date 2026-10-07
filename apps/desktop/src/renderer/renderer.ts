@@ -1,3 +1,4 @@
+import type { HelperView } from '../main/helper/service.js';
 import type { WowFlavor, WowFolderPick } from '../main/ipc.js';
 import type { Snapshot } from '../main/state.js';
 import {
@@ -5,6 +6,8 @@ import {
   addonLine,
   chicagoTime,
   diagnosticsLine,
+  helperActivityLine,
+  helperLine,
   ipcErrorMessage,
   uploadsLine,
 } from './format.js';
@@ -229,6 +232,45 @@ function appendLog(line: string) {
   while (log.childElementCount > MAX_LOG_LINES) log.firstElementChild?.remove();
   log.scrollTop = log.scrollHeight;
 }
+
+// ---- fetch helper ----
+let helperView: HelperView | undefined;
+const consent = el<HTMLDialogElement>('consent');
+function renderHelper(v: HelperView) {
+  helperView = v;
+  setText('helper-line', helperLine(v));
+  setOptional('helper-detail', v.enabled ? v.detail : undefined);
+  setText('helper-toggle', v.enabled ? 'Turn off' : 'Turn on');
+  setList('helper-activity', v.enabled ? v.activity.slice(0, 10).map(helperActivityLine) : []);
+  // Read again while on: the buttons keep or end it, they never quietly flip it.
+  setText('consent-yes', v.enabled ? 'Keep it on' : 'Turn on');
+  setText('consent-no', v.enabled ? 'Turn off' : 'Not now');
+  if (v.consentNeeded && !consent.open && !current?.setupNeeded) consent.showModal();
+}
+const answer = (enabled: boolean) => {
+  consent.close();
+  setOptional('helper-error', undefined);
+  api
+    .helperSetEnabled(enabled)
+    .catch((err: unknown) => setOptional('helper-error', ipcErrorMessage(err)));
+};
+el('consent-yes').addEventListener('click', () => answer(true));
+el('consent-no').addEventListener('click', () => answer(false));
+// Escape: the first time it answers "Not now" (so the screen doesn't come back every time); later it only closes.
+consent.addEventListener('cancel', (e) => {
+  e.preventDefault();
+  if (helperView?.consentNeeded) answer(false);
+  else consent.close();
+});
+el('helper-explain').addEventListener('click', () => {
+  if (!consent.open) consent.showModal();
+});
+action('helper-toggle', 'helper-error', async () => {
+  if (helperView?.enabled) await api.helperSetEnabled(false);
+  else consent.showModal();
+});
+api.onHelperChange(renderHelper);
+void api.helperState().then(renderHelper);
 
 api.onChange(render);
 api.onLogLine(appendLog);

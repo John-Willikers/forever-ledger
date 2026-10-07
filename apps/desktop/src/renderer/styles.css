@@ -202,3 +202,44 @@ button:disabled {
 .log li.bad {
   color: var(--bad);
 }
+
+/* fetch helper: the consent screen and the card's short activity list */
+dialog {
+  max-width: 440px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  padding: 18px 20px;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+dialog h3 {
+  margin: 14px 0 4px;
+  font-size: 13px;
+}
+
+dialog ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+dialog li {
+  margin: 3px 0;
+}
+
+.log.short {
+  max-height: 140px;
+}
+
+button.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}

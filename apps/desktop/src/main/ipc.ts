@@ -1,4 +1,5 @@
 import type { SettingsInput } from './controller.js';
+import type { HelperView } from './helper/service.js';
 import type { Snapshot } from './state.js';
 
 /** IPC channel names shared by the main process and the preload script. */
@@ -16,6 +17,10 @@ export const IPC = {
   /** Recent log lines (invoke) and each new line (main → renderer). */
   log: 'ledger:log',
   logLine: 'ledger:log-line',
+  /** The Wowhead fetch helper: its view (invoke), changes (main → renderer), the on/off switch. */
+  helperState: 'ledger:helper-state',
+  helperChanged: 'ledger:helper-changed',
+  helperSetEnabled: 'ledger:helper-set-enabled',
 } as const;
 
 /** A game flavor folder (`_classic_era_`…) that has a WTF folder. */
@@ -52,6 +57,10 @@ export interface LedgerApi {
   openLogs(): Promise<void>;
   getLog(): Promise<string[]>;
   onLogLine(listener: (line: string) => void): () => void;
+  helperState(): Promise<HelperView>;
+  onHelperChange(listener: (v: HelperView) => void): () => void;
+  /** The consent screen's answer, or the settings switch. */
+  helperSetEnabled(enabled: boolean): Promise<void>;
 }
 
 /** Keeps only known, well-typed settings fields from renderer input (never the server URL). */

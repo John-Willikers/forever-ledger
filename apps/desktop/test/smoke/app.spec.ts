@@ -7,7 +7,7 @@ import { _electron as electron, expect, test } from '@playwright/test';
 // resolve() drops the trailing separator: on Windows `...\\desktop\\"` would escape the closing quote of the argument.
 const appDir = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
-test('starts, shows the four cards and writes its log', async () => {
+test('starts, asks about the helper once, shows the cards and writes its log', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'fl-smoke-'));
   const wow = join(dir, 'World of Warcraft');
   await mkdir(join(wow, '_classic_beta_', 'WTF', 'Account', 'SMOKE', 'SavedVariables'), {
@@ -32,7 +32,12 @@ test('starts, shows the four cards and writes its log', async () => {
   const app = await electron.launch({
     args: [appDir],
     timeout: 30_000,
-    env: { ...process.env, FOREVER_LEDGER_CONFIG: config, FL_SMOKE: '1' },
+    env: {
+      ...process.env,
+      FOREVER_LEDGER_CONFIG: config,
+      FL_SMOKE: '1',
+      FL_USER_DATA: join(dir, 'userData'),
+    },
   });
   const output: string[] = [];
   app.process().stdout?.on('data', (d: Buffer) => output.push(`[stdout] ${String(d)}`));
@@ -41,9 +46,17 @@ test('starts, shows the four cards and writes its log', async () => {
 
   try {
     const win = await app.firstWindow({ timeout: 30_000 });
-    for (const card of ['uploads', 'addon', 'app', 'settings']) {
+    // A fresh install that finished setup asks once about the Wowhead helper; it stays off until "Turn on".
+    const consent = win.locator('#consent');
+    await expect(consent).toBeVisible({ timeout: 20_000 });
+    await expect(consent).toContainText('never opens or reads your Chrome, Edge');
+    await win.locator('#consent-no').click();
+    await expect(consent).toBeHidden();
+    for (const card of ['uploads', 'addon', 'app', 'helper', 'settings']) {
       await expect(win.locator(`[data-card="${card}"]`)).toBeVisible({ timeout: 20_000 });
     }
+    await expect(win.locator('#helper-line')).toContainText('Off');
+    await expect(win.locator('#helper-toggle')).toHaveText('Turn on');
     // Error reports: on by default, shown in the App card.
     await expect(win.locator('#app-diagnostics')).toContainText('Error reports:');
     await expect(win.locator('#set-errorreports')).toBeChecked();
