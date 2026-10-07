@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as uploader from '@forever-ledger/uploader/lib';
@@ -18,7 +18,7 @@ import {
 } from 'electron';
 import electronUpdater from 'electron-updater';
 import { DEFAULT_PREFS, LedgerController } from './controller.js';
-import { createHelperBrowser } from './helper/browser.js';
+import { createHelperBrowser, wipeHelperSession } from './helper/browser.js';
 import { blockedBy } from './helper/gate.js';
 import { HelperService } from './helper/service.js';
 import { helperStore } from './helper/store.js';
@@ -345,6 +345,12 @@ async function run() {
     }),
     target: () => controller.serverTarget(),
     browser: createHelperBrowser,
+    wipe: wipeHelperSession,
+    removeSessionFolder: () =>
+      rmSync(join(app.getPath('userData'), 'Partitions', 'fetch-helper'), {
+        recursive: true,
+        force: true,
+      }),
     blockedBy,
     logger,
   });

@@ -35,6 +35,34 @@ describe('fetch helper settings', () => {
     });
   });
 
+  it("keeps today's page count across restarts", () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'fh-')), 'fetch-helper.json');
+    helperStore(file, crypto(true)).set({ day: '2026-10-07', pagesToday: 42 });
+    expect(helperStore(file, crypto(true)).get()).toMatchObject({
+      day: '2026-10-07',
+      pagesToday: 42,
+    });
+  });
+
+  it("a key that can't be decrypted is dropped and flagged; the choices stay", () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'fh-')), 'fetch-helper.json');
+    helperStore(file, crypto(true)).set({ consentAnswered: true, enabled: true, token: 'flt_x' });
+    const broken = {
+      ...crypto(true),
+      decrypt: () => {
+        throw new Error('keystore changed');
+      },
+    };
+    expect(helperStore(file, broken).get()).toEqual({
+      consentAnswered: true,
+      enabled: true,
+      token: undefined,
+      tokenLost: true,
+      day: undefined,
+      pagesToday: undefined,
+    });
+  });
+
   it('an unreadable file starts over (the consent screen shows again)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fh-'));
     const file = join(dir, 'fetch-helper.json');

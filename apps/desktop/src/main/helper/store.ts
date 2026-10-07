@@ -8,6 +8,11 @@ export interface HelperSettings {
   consentAnswered: boolean;
   enabled: boolean;
   token?: string;
+  /** Pages fetched on `day` (America/Chicago date), for the tray's own daily cap. */
+  day?: string;
+  pagesToday?: number;
+  /** The stored key couldn't be read back (the OS keystore changed): the window says why approval is asked again. */
+  tokenLost?: boolean;
 }
 
 export interface Crypto {
@@ -21,6 +26,8 @@ interface OnDisk {
   enabled?: boolean;
   tokenEnc?: string;
   token?: string;
+  day?: string;
+  pagesToday?: number;
 }
 
 export function helperStore(file: string, crypto: Crypto) {
@@ -30,8 +37,20 @@ export function helperStore(file: string, crypto: Crypto) {
     settings = {
       consentAnswered: raw.consentAnswered === true,
       enabled: raw.enabled === true,
-      token: raw.tokenEnc && crypto.available() ? crypto.decrypt(raw.tokenEnc) : raw.token,
+      day: typeof raw.day === 'string' ? raw.day : undefined,
+      pagesToday: typeof raw.pagesToday === 'number' ? raw.pagesToday : undefined,
     };
+    // A key that can't be decrypted any more is dropped, not the user's choices: the helper asks for a new one.
+    try {
+      settings.token = raw.tokenEnc
+        ? crypto.available()
+          ? crypto.decrypt(raw.tokenEnc)
+          : undefined
+        : raw.token;
+      if (raw.tokenEnc && !settings.token) settings.tokenLost = true;
+    } catch {
+      settings.tokenLost = true;
+    }
   } catch {
     // no file yet, or unreadable: start over (the consent screen shows again)
   }
@@ -39,7 +58,12 @@ export function helperStore(file: string, crypto: Crypto) {
     get: (): HelperSettings => ({ ...settings }),
     set(patch: Partial<HelperSettings>) {
       settings = { ...settings, ...patch };
-      const disk: OnDisk = { consentAnswered: settings.consentAnswered, enabled: settings.enabled };
+      const disk: OnDisk = {
+        consentAnswered: settings.consentAnswered,
+        enabled: settings.enabled,
+        day: settings.day,
+        pagesToday: settings.pagesToday,
+      };
       if (settings.token) {
         if (crypto.available()) disk.tokenEnc = crypto.encrypt(settings.token);
         else disk.token = settings.token;

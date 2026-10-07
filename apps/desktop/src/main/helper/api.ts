@@ -43,6 +43,7 @@ export function helperApi(serverUrl: string, fetchFn: FetchFn = fetch) {
       if (r.status === 403 && (r.json.status === 'pending' || r.json.status === 'paused')) {
         return { refused: r.json.status, leases: [] };
       }
+      if (r.status === 401) return { refused: 'revoked', leases: [] };
       if (r.status !== 200) {
         throw new HelperApiError(r.status, String(r.json.error ?? `lease failed (${r.status})`));
       }
@@ -50,6 +51,13 @@ export function helperApi(serverUrl: string, fetchFn: FetchFn = fetch) {
         leases: (r.json.leases as { url: string }[]) ?? [],
         budget: r.json.budget as Budget | undefined,
       };
+    },
+    /** Gives the helper key back: the ledger revokes it (turning the helper off). */
+    async unenroll(token: string): Promise<void> {
+      const r = await call('/v1/fetch/unenroll', token, 'POST', {});
+      if (r.status !== 200 && r.status !== 401) {
+        throw new HelperApiError(r.status, String(r.json.error ?? `unenroll failed (${r.status})`));
+      }
     },
     async report(token: string, report: FetchReport): Promise<{ result?: string }> {
       const r = await call('/v1/fetch/snapshots', token, 'POST', report);

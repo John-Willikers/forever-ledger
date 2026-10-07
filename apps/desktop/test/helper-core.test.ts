@@ -18,6 +18,8 @@ function deps(over: Partial<CoreDeps> = {}) {
     now: () => Date.UTC(2026, 9, 7, 15, 20, 0),
     random: () => 0.5,
     enabled: () => true,
+    pagesLeftToday: () => 200,
+    countPage: () => undefined,
     blockedBy: async () => null,
     lease: async (): Promise<LeaseAnswer> => ({ leases: [{ url: URL1 }], budget: budget(1, 1) }),
     fetchPage: async (url) =>
@@ -69,6 +71,41 @@ describe('fetch helper loop', () => {
       expect(t.states[0]![0]).toBe(refused);
       expect(t.reports).toEqual([]);
     }
+  });
+
+  it('stops for good when the ledger revoked the helper key', async () => {
+    const t = deps({ lease: async () => ({ refused: 'revoked', leases: [] }) });
+    expect(await step(t.d, { n: 0 })).toBe(60 * 60_000);
+    expect(t.states[0]![0]).toBe('revoked');
+    expect(t.reports).toEqual([]);
+  });
+
+  it("keeps the tray's own daily cap whatever the server allows", async () => {
+    const t = deps({
+      pagesLeftToday: () => 0,
+      lease: async () => {
+        throw new Error('must not lease');
+      },
+    });
+    expect(await step(t.d, { n: 0 })).toBe(60 * 60_000);
+    expect(t.states).toEqual([['resting', "today's pages are done"]]);
+  });
+
+  it('counts each page it loads, and loads nothing if turned off during the lease', async () => {
+    let counted = 0;
+    const on = deps({ countPage: () => void counted++ });
+    await step(on.d, { n: 0 });
+    expect(counted).toBe(1);
+    let enabledCalls = 0;
+    const off = deps({
+      enabled: () => enabledCalls++ === 0,
+      fetchPage: async () => {
+        throw new Error('must not fetch');
+      },
+    });
+    await step(off.d, { n: 0 });
+    expect(off.states.at(-1)![0]).toBe('off');
+    expect(off.reports).toEqual([]);
   });
 
   it("rests when the day's or the hour's budget is spent, or nothing is queued", async () => {

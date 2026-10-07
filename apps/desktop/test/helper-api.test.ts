@@ -41,9 +41,27 @@ describe('fetch helper server calls', () => {
     expect(JSON.parse(String(ok.calls[0]!.init.body))).toEqual({ worker: 'pc-1', max: 1 });
   });
 
-  it('throws on other failures', async () => {
+  it('a 401 means the ledger revoked this helper', async () => {
     const f = fakeFetch({
       '/v1/fetch/lease': { status: 401, body: { error: 'invalid or revoked token' } },
+    });
+    expect(await helperApi('https://ledger.example', f.fn).lease('flt_h', 'pc-1')).toEqual({
+      refused: 'revoked',
+      leases: [],
+    });
+  });
+
+  it('hands the key back when turned off (an already revoked key is fine)', async () => {
+    for (const status of [200, 401]) {
+      const f = fakeFetch({ '/v1/fetch/unenroll': { status, body: {} } });
+      await helperApi('https://ledger.example', f.fn).unenroll('flt_h');
+      expect(f.calls[0]!.url).toBe('https://ledger.example/v1/fetch/unenroll');
+    }
+  });
+
+  it('throws on other failures', async () => {
+    const f = fakeFetch({
+      '/v1/fetch/lease': { status: 500, body: { error: 'boom' } },
     });
     await expect(
       helperApi('https://ledger.example', f.fn).lease('flt_h', 'pc-1'),

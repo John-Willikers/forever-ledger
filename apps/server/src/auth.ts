@@ -1,9 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import type { Db } from './db/client.js';
 import { apiTokens } from './db/schema.js';
 
 const PREFIX = 'flt_';
+
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
@@ -13,7 +15,7 @@ export const hashToken = (token: string) => createHash('sha256').update(token).d
  * knowledge fetch routes (lease URLs, post page snapshots). Never log the returned `token`.
  */
 export async function mintToken(
-  db: Db,
+  db: Db | Tx,
   label: string,
   opts: {
     userId?: number | null;
@@ -46,13 +48,14 @@ export async function mintToken(
   return { id: row!.id, token };
 }
 
+/** Revokes a token and, with it, every tray helper that enrolled through it. False when it was already revoked. */
 export async function revokeToken(db: Db, id: number) {
   const rows = await db
     .update(apiTokens)
     .set({ revokedAt: new Date() })
-    .where(and(eq(apiTokens.id, id), isNull(apiTokens.revokedAt)))
+    .where(and(or(eq(apiTokens.id, id), eq(apiTokens.helperOf, id)), isNull(apiTokens.revokedAt)))
     .returning({ id: apiTokens.id });
-  return rows.length > 0;
+  return rows.some((r) => r.id === id);
 }
 
 export async function listTokens(db: Db) {

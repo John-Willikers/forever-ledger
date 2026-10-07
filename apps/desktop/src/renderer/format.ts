@@ -122,6 +122,8 @@ export function helperLine(v: Pick<HelperView, 'enabled' | 'state'>): string {
       return 'On: loading a page…';
     case 'stopped':
       return 'Stopped: Wowhead kept refusing pages.';
+    case 'revoked':
+      return 'Stopped: the ledger turned this helper off.';
     default:
       return 'On.';
   }

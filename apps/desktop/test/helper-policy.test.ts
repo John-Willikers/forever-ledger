@@ -2,12 +2,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   allowPermission,
+  chicagoDay,
   HELPER_PARTITION,
   HELPER_WEB_PREFERENCES,
+  HELPER_WINDOW,
   isAllowedPageUrl,
   isWowRunning,
   nextPageDelayMs,
   processNames,
+  tasklistPath,
 } from '../src/main/helper/policy.js';
 
 describe('fetch helper sandbox', () => {
@@ -25,13 +28,27 @@ describe('fetch helper sandbox', () => {
       webviewTag: false,
       webSecurity: true,
       allowRunningInsecureContent: false,
+      disableDialogs: true,
     });
+    // Never on screen, never takes focus, never in the taskbar.
+    expect(HELPER_WINDOW).toMatchObject({ show: false, focusable: false, skipTaskbar: true });
     expect(HELPER_WEB_PREFERENCES).not.toHaveProperty('preload');
   });
 
-  it('opens only https www.wowhead.com pages', () => {
-    expect(isAllowedPageUrl('https://www.wowhead.com/forever/item=7973')).toBe(true);
+  it('opens only https www.wowhead.com entity pages', () => {
+    for (const ok of [
+      'https://www.wowhead.com/forever/item=7973',
+      'https://www.wowhead.com/forever/npc=5431/sergeant-bly',
+      'https://www.wowhead.com/forever/quest=2861?x=1',
+      'https://www.wowhead.com/item=7973',
+    ]) {
+      expect(isAllowedPageUrl(ok), ok).toBe(true);
+    }
     for (const bad of [
+      'https://www.wowhead.com/',
+      'https://www.wowhead.com/account',
+      'https://www.wowhead.com/forever/guide/fishing',
+      'https://www.wowhead.com/forever/item=7973/a/b',
       'http://www.wowhead.com/forever/item=7973',
       'https://wowhead.com.evil.example/',
       'https://evil.example/?u=https://www.wowhead.com/',
@@ -71,5 +88,13 @@ describe('fetch helper sandbox', () => {
     expect(isWowRunning(processNames(csv))).toBe(true);
     expect(isWowRunning(['chrome.exe', 'Wowza.txt', 'Discord.exe'])).toBe(false);
     expect(isWowRunning(['Wow.exe'])).toBe(true);
+    // Windows' own tasklist by full path, never whatever "tasklist" is first on PATH.
+    expect(tasklistPath('C:\\Windows')).toBe('C:\\Windows\\System32\\tasklist.exe');
+  });
+
+  it('counts the daily cap by the Chicago day', () => {
+    // 2026-10-08 03:30 UTC is still the 7th in Chicago.
+    expect(chicagoDay(Date.UTC(2026, 9, 8, 3, 30))).toBe('2026-10-07');
+    expect(chicagoDay(Date.UTC(2026, 9, 8, 6, 0))).toBe('2026-10-08');
   });
 });

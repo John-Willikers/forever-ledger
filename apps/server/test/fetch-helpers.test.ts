@@ -148,4 +148,21 @@ describe('tray fetch helpers (real Postgres)', () => {
       'pending',
     );
   });
+
+  it('a helper hands its key back when turned off; only helpers can', async () => {
+    const h = (await call('POST', '/v1/fetch/enroll', s.token, {})).json().token as string;
+    expect((await call('POST', '/v1/fetch/unenroll', h, {})).json()).toEqual({ status: 'revoked' });
+    expect((await call('GET', '/v1/fetch/status', h)).statusCode).toBe(401);
+    expect((await call('POST', '/v1/fetch/unenroll', s.token, {})).statusCode).toBe(403);
+  });
+
+  it('revoking an upload token revokes the helpers enrolled through it', async () => {
+    const minted = await adminPost('/admin/api/tokens', { label: 'cody tray' });
+    expect(minted.statusCode, minted.body).toBe(201);
+    const { id, token } = minted.json() as { id: number; token: string };
+    const h = (await call('POST', '/v1/fetch/enroll', token, {})).json().token as string;
+    expect((await call('GET', '/v1/fetch/status', h)).statusCode).toBe(200);
+    expect((await adminPost(`/admin/api/tokens/${id}/revoke`, {})).statusCode).toBe(200);
+    expect((await call('GET', '/v1/fetch/status', h)).statusCode).toBe(401);
+  });
 });

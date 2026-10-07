@@ -5,6 +5,7 @@ import type { Logger } from '@forever-ledger/uploader/lib';
 import { helperApi } from './api.js';
 import type { HelperBrowser } from './browser.js';
 import { step } from './core.js';
+import { chicagoDay, DAILY_CAP } from './policy.js';
 import type { ActivityEntry, HelperState } from './core.js';
 import type { helperStore } from './store.js';
 
@@ -25,6 +26,10 @@ export interface HelperServiceDeps {
   store: ReturnType<typeof helperStore>;
   target: () => { serverUrl: string; token: string; uploaderId: string } | undefined;
   browser: () => HelperBrowser;
+  /** Deletes everything the helper session stored (works with or without an open window). */
+  wipe: () => Promise<void>;
+  /** Removes the session's folder on disk; only safe before the session is first used this run. */
+  removeSessionFolder: () => void;
   blockedBy: () => Promise<string | null>;
   logger: Logger;
   now?: () => number;
@@ -69,11 +74,35 @@ export class HelperService extends EventEmitter {
   }
 
   private browser() {
+    // Never re-open the browser once the helper was turned off.
+    if (!this.deps.store.get().enabled) throw new Error('the helper is off');
     this.browserInstance ??= this.deps.browser();
     return this.browserInstance;
   }
 
+  private pagesLeftToday() {
+    const s = this.deps.store.get();
+    const today = chicagoDay((this.deps.now ?? Date.now)());
+    return DAILY_CAP - (s.day === today ? (s.pagesToday ?? 0) : 0);
+  }
+
+  private countPage() {
+    const s = this.deps.store.get();
+    const today = chicagoDay((this.deps.now ?? Date.now)());
+    this.deps.store.set({
+      day: today,
+      pagesToday: (s.day === today ? (s.pagesToday ?? 0) : 0) + 1,
+    });
+  }
+
   start() {
+    // Off at startup: leave nothing of the helper on disk (its session folder is only removed before first use).
+    if (!this.deps.store.get().enabled) this.deps.removeSessionFolder();
+    if (this.deps.store.get().tokenLost) {
+      this.deps.logger.warn(
+        'fetch helper key could not be read back; it will ask for approval again',
+      );
+    }
     this.schedule(5_000);
   }
 
@@ -118,9 +147,15 @@ export class HelperService extends EventEmitter {
     }
     const api = helperApi(target.serverUrl);
     if (!settings.token) {
-      this.setState('enrolling', 'asking the ledger for a helper key');
+      // A key lost to the OS keystore is never replaced quietly: the new one waits for Harlan's approval again.
+      this.setState(
+        'enrolling',
+        settings.tokenLost
+          ? "this PC's saved helper key couldn't be read, so it's asking for approval again"
+          : 'asking the ledger for a helper key',
+      );
       const token = await api.enroll(target.token, target.uploaderId);
-      this.deps.store.set({ token });
+      this.deps.store.set({ token, tokenLost: undefined });
     }
     const token = this.deps.store.get().token!;
     return step(
@@ -128,6 +163,8 @@ export class HelperService extends EventEmitter {
         now: this.deps.now ?? Date.now,
         random: this.deps.random ?? Math.random,
         enabled: () => this.deps.store.get().enabled,
+        pagesLeftToday: () => this.pagesLeftToday(),
+        countPage: () => this.countPage(),
         blockedBy: this.deps.blockedBy,
         lease: () => api.lease(token, target.uploaderId),
         fetchPage: (url) => this.browser().fetchPage(url, target.uploaderId, FETCHER),
@@ -143,16 +180,33 @@ export class HelperService extends EventEmitter {
     );
   }
 
-  /** The consent screen's answer, or the settings switch. Turning off wipes everything the helper session stored. */
+  /**
+   * The consent screen's answer, or the settings switch. Turning off wipes everything the helper session stored, gives
+   * the helper key back to the ledger (which revokes it) and forgets it here.
+   */
   async setEnabled(enabled: boolean) {
-    this.deps.store.set({ enabled, consentAnswered: true });
+    const before = this.deps.store.get();
+    this.deps.store.set({ enabled, consentAnswered: true, tokenLost: undefined });
+    this.strikes.n = 0;
     if (!enabled) {
-      this.strikes.n = 0;
-      await this.browserInstance?.wipe();
+      this.browserInstance?.close();
       this.browserInstance = undefined;
+      await this.deps
+        .wipe()
+        .catch((err: unknown) =>
+          this.deps.logger.warn({ err: String(err) }, 'fetch helper wipe failed'),
+        );
+      const target = this.deps.target();
+      if (before.token && target) {
+        await helperApi(target.serverUrl)
+          .unenroll(before.token)
+          .catch((err: unknown) =>
+            this.deps.logger.warn({ err: String(err) }, 'fetch helper unenroll failed'),
+          );
+      }
+      this.deps.store.set({ token: undefined });
       this.setState('off');
     } else {
-      this.strikes.n = 0;
       this.schedule(1_000);
     }
     this.changed();

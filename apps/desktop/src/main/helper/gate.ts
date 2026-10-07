@@ -1,14 +1,15 @@
 // When the helper may work: the PC has been idle for a while, it is on mains power, and World of Warcraft isn't
-// running. Reading the process list is the only thing it looks at on the PC, and only for WoW's name.
+// running. Reading the process list is the only thing it looks at on the PC, and only for WoW's name. When the list
+// can't be read, it assumes WoW is running and waits.
 import { execFile } from 'node:child_process';
 import { powerMonitor } from 'electron';
-import { IDLE_SECONDS, isWowRunning, processNames } from './policy.js';
+import { IDLE_SECONDS, isWowRunning, processNames, tasklistPath } from './policy.js';
 
 function wowRunning(): Promise<boolean> {
   if (process.platform !== 'win32') return Promise.resolve(false);
   return new Promise((resolve) => {
     execFile(
-      'tasklist',
+      tasklistPath(),
       ['/fo', 'csv', '/nh'],
       { windowsHide: true, timeout: 10_000 },
       (err, out) => resolve(err ? true : isWowRunning(processNames(String(out)))),

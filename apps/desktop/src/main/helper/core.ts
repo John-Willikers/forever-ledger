@@ -4,7 +4,15 @@ import type { FetchReport } from '@forever-ledger/contracts';
 import { nextPageDelayMs } from './policy.js';
 
 export type HelperState =
-  'off' | 'enrolling' | 'pending' | 'paused' | 'waiting' | 'resting' | 'fetching' | 'stopped';
+  | 'off'
+  | 'enrolling'
+  | 'pending'
+  | 'paused'
+  | 'waiting'
+  | 'resting'
+  | 'fetching'
+  | 'stopped'
+  | 'revoked';
 
 export interface Budget {
   day: { used: number; limit: number };
@@ -12,8 +20,8 @@ export interface Budget {
 }
 
 export interface LeaseAnswer {
-  /** Set when the server refused: the helper is waiting for approval or was paused. */
-  refused?: 'pending' | 'paused';
+  /** Set when the server refused: waiting for approval, paused, or the helper key was revoked. */
+  refused?: 'pending' | 'paused' | 'revoked';
   leases: { url: string }[];
   budget?: Budget;
 }
@@ -29,6 +37,10 @@ export interface CoreDeps {
   now(): number;
   random(): number;
   enabled(): boolean;
+  /** Pages this PC may still fetch today (the tray's own cap, whatever the server allows). */
+  pagesLeftToday(): number;
+  /** Counts a fetched page against today's cap. */
+  countPage(): void;
   /** Why the helper must wait right now (you're at the PC, on battery, WoW is running), or null to go ahead. */
   blockedBy(): Promise<string | null>;
   lease(): Promise<LeaseAnswer>;
@@ -54,12 +66,23 @@ export async function step(d: CoreDeps, strikes: { n: number }): Promise<number>
     d.setState('stopped', 'Wowhead kept refusing pages; turn the helper off and on to try again');
     return 60 * MINUTE;
   }
+  if (d.pagesLeftToday() <= 0) {
+    d.setState('resting', "today's pages are done");
+    return 60 * MINUTE;
+  }
   const blocked = await d.blockedBy();
   if (blocked) {
     d.setState('waiting', blocked);
     return MINUTE;
   }
   const answer = await d.lease();
+  if (answer.refused === 'revoked') {
+    d.setState(
+      'revoked',
+      'the ledger no longer accepts this helper; turn it off and on to ask again',
+    );
+    return 60 * MINUTE;
+  }
   if (answer.refused) {
     d.setState(
       answer.refused,
@@ -84,7 +107,13 @@ export async function step(d: CoreDeps, strikes: { n: number }): Promise<number>
     return 10 * MINUTE;
   }
 
+  // Turned off while the lease was in flight: load nothing (the lease simply runs out on the server).
+  if (!d.enabled()) {
+    d.setState('off');
+    return MINUTE;
+  }
   d.setState('fetching', lease.url);
+  d.countPage();
   let report: FetchReport;
   try {
     report = await d.fetchPage(lease.url);
