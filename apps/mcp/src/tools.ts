@@ -15,9 +15,10 @@ import {
   whereToGet,
 } from '@forever-ledger/server';
 import type { Db } from '@forever-ledger/server';
-import { ENTITY_TYPES, CLAIM_LABELS } from '@forever-ledger/contracts';
+import { CLAIM_LABELS, ENTITY_TYPES } from '@forever-ledger/contracts';
 import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
+import { randomUUID } from 'node:crypto';
 import * as z from 'zod/v4';
 
 export const SERVER_NAME = 'forever-ledger';
@@ -32,6 +33,10 @@ Every answer has:
 Answer from these only. Say which label each statement rests on, prefer first-party data and lower tiers, and say plainly when the ledger has a gap instead of filling it from memory. FALSE claims are never facts: check_claim lists them as refuted.`;
 
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
+/** Postgres int4: a bigger number would fail in the database (and its error text must never reach a client). */
+const INT4_MAX = 2_147_483_647;
+const build = z.number().int().positive().max(INT4_MAX);
+const gameId = z.number().int().nonnegative().max(INT4_MAX);
 const ref = z.string().trim().min(1).max(200);
 
 /** One text block holding the answer as JSON (what every client reads), plus the same as structured content. */
@@ -47,13 +52,29 @@ const failure = (message: string): CallToolResult => ({
   isError: true,
 });
 
+/**
+ * Runs a tool; an unexpected failure (a database error carries its SQL and parameters) is logged here and the client
+ * gets a plain message instead.
+ */
+const guarded =
+  <A>(deps: ToolDeps, tool: string, fn: (args: A) => Promise<CallToolResult>) =>
+  async (args: A): Promise<CallToolResult> => {
+    try {
+      return await fn(args);
+    } catch (err) {
+      deps.onError?.(tool, err);
+      return failure('the ledger could not answer that right now');
+    }
+  };
+
 export interface ToolDeps {
   db: Db;
   /** The token's owner is an admin: the write tools are offered. */
   canWrite: boolean;
   /** Who called (token label), for the observation and claim notes. */
   caller: string;
-  now?: () => Date;
+  /** Unexpected tool failures (logged by the HTTP layer, never sent to the client). */
+  onError?: (tool: string, err: unknown) => void;
 }
 
 export function buildServer(deps: ToolDeps): McpServer {
@@ -75,14 +96,18 @@ export function buildServer(deps: ToolDeps): McpServer {
       }),
       annotations: READ_ONLY,
     },
-    async ({ query, type }) => {
-      const hits = await searchEntities(db, query, type);
-      return reply({
-        query,
-        hits,
-        gaps: hits.length === 0 ? [`the ledger has nothing named like "${query}"`] : [],
-      });
-    },
+    guarded(
+      deps,
+      'search',
+      async ({ query, type }: { query: string; type?: (typeof ENTITY_TYPES)[number] }) => {
+        const hits = await searchEntities(db, query, type);
+        return reply({
+          query,
+          hits,
+          gaps: hits.length === 0 ? [`the ledger has nothing named like "${query}"`] : [],
+        });
+      },
+    ),
   );
 
   const lookup = (
@@ -100,7 +125,7 @@ export function buildServer(deps: ToolDeps): McpServer {
         inputSchema: z.object({ [what]: ref.describe(`The ${what}'s id or name`) }),
         annotations: READ_ONLY,
       },
-      async (args: Record<string, string>) => reply(await fn(db, args[what]!)),
+      guarded(deps, name, async (args: Record<string, string>) => reply(await fn(db, args[what]!))),
     );
 
   lookup(
@@ -149,13 +174,15 @@ export function buildServer(deps: ToolDeps): McpServer {
         item: ref.optional().describe('An item id or name: where it was caught, per cast'),
         zone: z.string().max(128).optional(),
         subzone: z.string().max(128).optional(),
-        build: z.number().int().positive().optional(),
+        build: build.optional(),
         lure: z.enum(['yes', 'no']).optional(),
         minSkill: z.number().int().min(0).max(1000).optional(),
       }),
       annotations: READ_ONLY,
     },
-    async (args) => reply(await fishingAnswer(db, args)),
+    guarded(deps, 'fishing_yield', async (args: Parameters<typeof fishingAnswer>[1]) =>
+      reply(await fishingAnswer(db, args)),
+    ),
   );
 
   server.registerTool(
@@ -171,14 +198,26 @@ export function buildServer(deps: ToolDeps): McpServer {
       }),
       annotations: READ_ONLY,
     },
-    async ({ statement, entityType, entity }) =>
-      reply(
-        await checkClaim(
-          db,
-          statement,
-          entityType && entity ? { type: entityType, ref: entity } : undefined,
+    guarded(
+      deps,
+      'check_claim',
+      async ({
+        statement,
+        entityType,
+        entity,
+      }: {
+        statement: string;
+        entityType?: (typeof ENTITY_TYPES)[number];
+        entity?: string;
+      }) =>
+        reply(
+          await checkClaim(
+            db,
+            statement,
+            entityType && entity ? { type: entityType, ref: entity } : undefined,
+          ),
         ),
-      ),
+    ),
   );
 
   if (!deps.canWrite) return server;
@@ -192,7 +231,7 @@ export function buildServer(deps: ToolDeps): McpServer {
       inputSchema: z.object({
         character: z.string().max(128).optional(),
         level: z.number().int().min(1).max(80).optional(),
-        build: z.number().int().positive().optional(),
+        build: build.optional(),
         observedAt: z.iso.datetime({ offset: true }).describe('When, with a UTC offset'),
         durationMins: z.number().int().positive().optional(),
         location: z
@@ -206,7 +245,7 @@ export function buildServer(deps: ToolDeps): McpServer {
           .array(
             z.object({
               entityType: z.enum(ENTITY_TYPES),
-              entityId: z.number().int().nonnegative().optional(),
+              entityId: gameId.optional(),
               entityName: z.string().min(1).max(200).optional(),
               attribute: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
               value: z.json(),
@@ -218,12 +257,14 @@ export function buildServer(deps: ToolDeps): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async (args) => {
-      const at = (deps.now ?? (() => new Date()))();
+      // observedAt (not the logging time) plus a random part: two sessions never share a key, so neither overwrites
+      // the other (importSeed upserts by key).
       const slug = `${args.method}-${args.location?.zone ?? 'somewhere'}`
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .slice(0, 48);
-      const key = `mcp-${at.toISOString().slice(0, 16).replace(/[-:T]/g, '')}-${slug}`;
+        .slice(0, 40);
+      const when = new Date(args.observedAt).toISOString().slice(0, 16).replace(/[-:T]/g, '');
+      const key = `mcp-${when}-${slug}-${randomUUID().slice(0, 8)}`;
       const notes = [args.notes, `logged through MCP by ${deps.caller}`].filter(Boolean).join('\n');
       try {
         const res = await importSeed(db, {
@@ -231,7 +272,10 @@ export function buildServer(deps: ToolDeps): McpServer {
         });
         return reply({ key, claimsAdded: res.claims });
       } catch (err) {
-        return failure(`not logged: ${err instanceof Error ? err.message : String(err)}`);
+        // A ZodError names what's wrong with the input; anything else is the database's business.
+        if (err instanceof z.ZodError) return failure(`not logged: ${z.prettifyError(err)}`);
+        deps.onError?.('log_observation', err);
+        return failure('not logged: the ledger could not store it');
       }
     },
   );
@@ -249,13 +293,13 @@ export function buildServer(deps: ToolDeps): McpServer {
           .max(2048)
           .describe('The fetched page URL, or a source key such as snapshot:12'),
         entityType: z.enum(ENTITY_TYPES),
-        entityId: z.number().int().nonnegative().optional(),
+        entityId: gameId.optional(),
         entityName: z.string().min(1).max(200).optional(),
         attribute: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
         value: z.json(),
         quote: z.string().min(1).max(2000),
         label: z.enum(CLAIM_LABELS).optional(),
-        observedBuild: z.number().int().positive().optional(),
+        observedBuild: build.optional(),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
@@ -268,7 +312,8 @@ export function buildServer(deps: ToolDeps): McpServer {
         return reply({ added, note: added === 0 ? 'that claim already exists' : undefined });
       } catch (err) {
         if (err instanceof ManualClaimError) return failure(`not added: ${err.message}`);
-        throw err;
+        deps.onError?.('add_claim', err);
+        return failure('not added: the ledger could not store it');
       }
     },
   );

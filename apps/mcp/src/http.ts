@@ -3,6 +3,7 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { tokenOwnerIsAdmin, verifyBearerToken } from '@forever-ledger/server';
 import type { Db } from '@forever-ledger/server';
@@ -23,8 +24,10 @@ export interface McpHttpOptions {
   allowedHosts: string[];
   /** Calls per token per minute. */
   perMinute?: number;
-  now?: () => Date;
 }
+
+/** Failed token checks per client address per minute (each one costs a database lookup). */
+const FAILED_AUTH_PER_MINUTE = 20;
 
 type Caller = { tokenId: number; label: string; canWrite: boolean };
 
@@ -38,13 +41,16 @@ function send(
   res.end(JSON.stringify(body));
 }
 
-/** A fixed one-minute window per token: plenty for a person or a bot, not for a scraper. */
-function limiter(perMinute: number) {
-  const windows = new Map<number, { start: number; n: number }>();
-  return (tokenId: number, now: number) => {
-    const w = windows.get(tokenId);
+/** A fixed one-minute window per key: plenty for a person or a bot, not for a scraper. Old windows are swept. */
+function limiter<K>(perMinute: number) {
+  const windows = new Map<K, { start: number; n: number }>();
+  return (key: K, now: number) => {
+    if (windows.size > 10_000) {
+      for (const [k, w] of windows) if (now - w.start >= 60_000) windows.delete(k);
+    }
+    const w = windows.get(key);
     if (!w || now - w.start >= 60_000) {
-      windows.set(tokenId, { start: now, n: 1 });
+      windows.set(key, { start: now, n: 1 });
       return true;
     }
     w.n += 1;
@@ -52,14 +58,32 @@ function limiter(perMinute: number) {
   };
 }
 
+/** The client's address: nginx's X-Real-IP when the request came through it, else the socket. */
+const clientAddress = (req: IncomingMessage) => {
+  const socket = req.socket.remoteAddress ?? '';
+  const real = req.headers['x-real-ip'];
+  return socket === '127.0.0.1' && typeof real === 'string' ? real : socket;
+};
+
 export function createMcpHttpServer(opts: McpHttpOptions) {
   const { db, log } = opts;
   const allowed = new Set(opts.allowedHosts.map((h) => h.toLowerCase()));
-  const allow = limiter(opts.perMinute ?? 120);
+  const allow = limiter<number>(opts.perMinute ?? 120);
+  const allowFailure = limiter<string>(FAILED_AUTH_PER_MINUTE);
+  const failedRecently = new Map<string, number>();
   const handler = createMcpHandler(
     ({ authInfo }) => {
       const caller = authInfo?.extra as Caller;
-      return buildServer({ db, canWrite: caller.canWrite, caller: caller.label, now: opts.now });
+      return buildServer({
+        db,
+        canWrite: caller.canWrite,
+        caller: caller.label,
+        onError: (tool, err) =>
+          log.error(
+            { tool, token: caller.tokenId, err: err instanceof Error ? err.message : String(err) },
+            'mcp tool failed',
+          ),
+      });
     },
     {
       onerror: (err) => log.warn({ err: err.message }, 'mcp error'),
@@ -69,8 +93,25 @@ export function createMcpHttpServer(opts: McpHttpOptions) {
 
   /** The caller of a request, or the HTTP answer that turns it away. */
   async function authenticate(req: IncomingMessage, res: ServerResponse): Promise<Caller | null> {
+    const address = clientAddress(req);
+    const now = Date.now();
+    // Guessing tokens: after a few misses an address waits out the minute before another lookup.
+    const blockedUntil = failedRecently.get(address);
+    if (blockedUntil !== undefined) {
+      if (blockedUntil > now) {
+        send(
+          res,
+          429,
+          { error: 'too many failed attempts; try again in a minute' },
+          { 'retry-after': '60' },
+        );
+        return null;
+      }
+      failedRecently.delete(address);
+    }
     const token = await verifyBearerToken(db, req.headers.authorization);
     if (token === null) {
+      if (!allowFailure(address, now)) failedRecently.set(address, now + 60_000);
       send(
         res,
         401,
@@ -123,7 +164,7 @@ export function createMcpHttpServer(opts: McpHttpOptions) {
     const response = await handler.fetch(request, { authInfo });
     res.writeHead(response.status, Object.fromEntries(response.headers));
     if (response.body) {
-      Readable.fromWeb(response.body as NodeReadableStream).pipe(res);
+      await pipeline(Readable.fromWeb(response.body as NodeReadableStream), res);
     } else {
       res.end();
     }

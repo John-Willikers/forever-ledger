@@ -41,6 +41,14 @@ export async function addManualClaim(db: Db, c: ManualClaim) {
     throw new ManualClaimError('a claim needs an entity id or name');
   }
   const byUrl = typeof c.source === 'string' && /^https?:\/\//i.test(c.source);
+  let url = '';
+  if (byUrl) {
+    try {
+      url = normalizeUrl(c.source as string);
+    } catch {
+      throw new ManualClaimError(`not a URL: ${String(c.source).slice(0, 200)}`);
+    }
+  }
   const [src] = await db
     .select()
     .from(sources)
@@ -48,7 +56,7 @@ export async function addManualClaim(db: Db, c: ManualClaim) {
       typeof c.source === 'number'
         ? eq(sources.id, c.source)
         : byUrl
-          ? and(eq(sources.url, normalizeUrl(c.source)), isNotNull(sources.snapshotId))
+          ? and(eq(sources.url, url), isNotNull(sources.snapshotId))
           : eq(sources.key, c.source),
     )
     .orderBy(desc(sources.id))

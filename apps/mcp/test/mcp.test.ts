@@ -162,6 +162,24 @@ describe('forever-ledger MCP endpoint (real Postgres)', () => {
     await client.close();
   });
 
+  it('a read token cannot call the write tools, and database errors never reach the client', async () => {
+    const client = await connect(tokens.reader);
+    // Not offered at all to a non-admin: the call is refused as an unknown tool.
+    await expect(
+      client.callTool({
+        name: 'log_observation',
+        arguments: { observedAt: '2026-10-07T20:00:00-05:00', method: 'fishing', result: {} },
+      }),
+    ).rejects.toThrow('Tool log_observation not found');
+    const huge = await client.callTool({
+      name: 'fishing_yield',
+      arguments: { build: 3_000_000_000 },
+    });
+    expect(huge.isError).toBe(true);
+    expect(JSON.stringify(huge.content)).not.toMatch(/select|integer/i);
+    await client.close();
+  });
+
   it('turns away missing, upload-only and fetch tokens, other hosts and browsers', async () => {
     expect((await post(null)).status).toBe(401);
     expect((await post('flt_nope')).status).toBe(401);

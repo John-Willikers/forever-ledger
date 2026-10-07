@@ -27,7 +27,7 @@ Claude Code / Discord bot ── HTTPS /mcp (Bearer flt_ read token) ──▶ n
 - **Answers live in the server package** (`knowledge/answers.ts`, pure `db → {facts, gaps}` functions) so they are tested
   against the real Postgres harness; `apps/mcp` is a thin layer (auth, tool schemas, formatting).
 - **Answer contract** for every tool:
-  `{ query, facts: [{ entity, attribute, value, label, tier, source: {site, url, kind}, build, observedAt }], firstParty: {…}, gaps: [string] }`.
+  `{ query, entity, firstParty: {…}, facts: [{ claimId, entity, attribute, value, label, tier, source: {kind, site, url, title}, build, gameVersion, quote }], gaps: [string] }`.
   First-party data (our own uploads: drops, nodes, fishing casts, quests seen) comes first; then claims by tier.
   **FALSE claims are never returned as facts** (only `check_claim` lists them, as refuted).
 - **No republishing of pages:** tools return structured facts, a URL and at most a short quote (≤ 240 chars); never
@@ -68,6 +68,11 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - ✅ 2 🔌 `apps/mcp`: stateless HTTP (`createMcpHandler`, JSON responses), bearer check in front (read token, not a
   fetch token; write tools only for an admin-owned token), host check, no browser origins, 120 calls/min per token,
   256 KB bodies; 4 end-to-end tests with the real MCP client; `pnpm check` 1055 tests — 03:21 CDT
+- ✅ 2a 🔍 Review (0 Critical left after fixes): a claim's value no longer names an id-only entity (it had named item
+  7973 "Muckshell Pincer" and lost the 0-clam observations); FALSE claims bypass the caps in `check_claim`; database
+  errors are logged, never sent (ints capped at int4); observation keys can't collide; failed token checks limited per
+  address; `pipeline` for responses; bad URLs are a claim error. Live recheck: 7973 and "Big-mouth Clam" both answer
+  the Steamwheedle observation first — 03:28 CDT
 - ⬜ 3 🚀 Deploy: PM2 `forever-ledger-mcp` :3411 in `deploy/ecosystem.config.cjs`, nginx `location /mcp`, read token
   minted for Harlan, `claude mcp add --scope user` here
 - ⬜ 4 🔍 Review → PR → merge; try it: "where do I get Black Pearls?" answers the 0-clam Steamwheedle observation first

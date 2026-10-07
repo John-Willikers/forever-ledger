@@ -166,6 +166,33 @@ describe('MCP answers (real Postgres)', () => {
     expect(fishing.facts.map((f) => f.attribute)).toEqual(['fishing_yield']);
   });
 
+  it('an id-only claim never names its entity with another attribute', async () => {
+    // Item 7973's claims carry its id but no name except the `name` claim: the lookup must not be named "Murloc 0".
+    await q(`delete from items where item_id = 7973`);
+    const a = await lookupItem(s.database.db, '7973');
+    expect(a.entity).toEqual({ type: 'item', id: 7973, name: null });
+    expect(a.facts.some((f) => f.attribute === 'fishing_yield')).toBe(true);
+    await q(`insert into items (item_id, name) values (7973, 'Big-mouth Clam')`);
+  });
+
+  it('check_claim lists every FALSE claim, whatever the caps', async () => {
+    await importSeed(s.database.db, {
+      sources: [{ key: 'seed:ai2', site: 'other-ai', tier: 7 }],
+      claims: [
+        {
+          source: 'seed:ai2',
+          entityType: 'item',
+          entityId: 7973,
+          attribute: 'dropped_by',
+          value: { id: 99, type: 'npc', name: 'Clam King', count: 1 },
+          label: 'FALSE',
+        },
+      ],
+    });
+    const a = await checkClaim(s.database.db, 'Clam King drops it', { type: 'item', ref: 7973 });
+    expect(a.refuted).toMatchObject([{ attribute: 'dropped_by', value: { name: 'Clam King' } }]);
+  });
+
   it('check_claim lists FALSE claims as refuted, never as facts', async () => {
     const a = await checkClaim(s.database.db, 'craft a Fishing Hut at 225');
     expect(a.facts).toEqual([]);

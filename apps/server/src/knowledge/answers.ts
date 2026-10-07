@@ -68,6 +68,8 @@ export async function claimsAbout(
     includeFalse?: boolean;
     where?: SQL;
     perAttribute?: number;
+    /** Internal: the FALSE-only pass. */
+    labels?: 'false';
   } = {},
 ): Promise<{ facts: Fact[]; more: number }> {
   const targets = entities.filter((e) => e.keys.length > 0);
@@ -96,7 +98,9 @@ export async function claimsAbout(
       )})`,
     );
   }
-  if (!opts.includeFalse) parts.push(sql`c.label <> 'FALSE'`);
+  // FALSE claims never compete with the others for the caps: check_claim lists every one (up to FACTS_MAX).
+  const falseOnly = opts.labels === 'false';
+  parts.push(falseOnly ? sql`c.label = 'FALSE'` : sql`c.label <> 'FALSE'`);
   const res = await rows<{
     id: number;
     entity_type: string;
@@ -129,7 +133,7 @@ export async function claimsAbout(
                             c.observed_build desc nulls last, c.id) as rank
             from claims c join sources s on s.id = c.source_id
            where ${sql.join(parts, sql` and `)}) ranked
-         where rank <= ${opts.perAttribute ?? FACTS_PER_ATTRIBUTE}
+         where rank <= ${falseOnly ? FACTS_MAX : (opts.perAttribute ?? FACTS_PER_ATTRIBUTE)}
          order by tier, array_position(array['VERIFIED','CLASSIC','ANECDOTE','UNVERIFIED','FALSE'], label),
                   attribute, rank
          limit ${FACTS_MAX}`,
@@ -146,7 +150,10 @@ export async function claimsAbout(
     gameVersion: r.game_version,
     quote: clip(r.quote),
   }));
-  return { facts, more: Math.max(0, (res[0]?.total ?? 0) - res.length) };
+  const found = { facts, more: Math.max(0, (res[0]?.total ?? 0) - res.length) };
+  if (!opts.includeFalse || falseOnly) return found;
+  const refuted = await claimsAbout(db, entities, { ...opts, labels: 'false' });
+  return { facts: [...found.facts, ...refuted.facts], more: found.more + refuted.more };
 }
 
 /** Gaps every answer shares: truncation, and when all it has is Classic-era or unconfirmed data. */
@@ -235,7 +242,9 @@ export async function searchEntities(
     }
   }
   // Claims name entities nothing of ours has seen (NPCs, zones, dungeons from guides).
-  parts.push(sql`select distinct c.entity_type, c.entity_id, coalesce(c.entity_name, c.value #>> '{}'), 'claims'
+  // Named only by the claim's entity name or a `name` claim's value (never another attribute's value).
+  parts.push(sql`select distinct c.entity_type, c.entity_id,
+                         coalesce(c.entity_name, case when c.attribute = 'name' then c.value #>> '{}' end), 'claims'
                   from claims c
                  where c.label <> 'FALSE' and ${type === undefined ? sql`true` : sql`c.entity_type = ${type}`}
                    and ${
@@ -252,7 +261,9 @@ export async function searchEntities(
   }>(
     db,
     sql`select * from (${sql.join(parts, sql` union all `)}) hits(type, id, name, matched_by)
-         where name is not null limit 500`,
+         where name is not null
+         order by (lower(name) = ${q.toLowerCase()}) desc, length(name), (id is null)
+         limit 500`,
   );
   // Zones by the game's own map names (the addon records map ids).
   if (want('zone')) {
@@ -477,7 +488,8 @@ const NO_FISHING_FILTER: FishingFilters = {
 
 /** Field observations whose result mentions the item (the Steamwheedle "0 clams" kind of evidence). */
 async function observationsMentioning(db: Db, name: string | null) {
-  if (!name) return [];
+  // A name this short would match half the ledger.
+  if (!name || name.trim().length < 4) return [];
   const res = await rows<{
     key: string;
     build: number | null;
