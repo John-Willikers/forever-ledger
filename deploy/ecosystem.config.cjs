@@ -1,4 +1,4 @@
-// PM2 config for the Forever Ledger API and MCP server. Nginx (ledger.willikers.dev) proxies /v1 and /admin to
+// PM2 config for the Forever Ledger API, MCP server and Discord bot. Nginx (ledger.willikers.dev) proxies /v1 and /admin to
 // 127.0.0.1:3410 and /mcp to 127.0.0.1:3411.
 // Usage: pnpm build && pm2 start deploy/ecosystem.config.cjs && pm2 save
 const path = require('node:path');
@@ -60,6 +60,37 @@ module.exports = {
         MCP_ALLOWED_HOSTS:
           process.env.MCP_ALLOWED_HOSTS || 'ledger.willikers.dev,localhost,127.0.0.1',
         MCP_PER_MINUTE: process.env.MCP_PER_MINUTE,
+        LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+      },
+    },
+    {
+      // Discord bot (project-plans/forever-ledger-discord-bot.md): @mention it, it answers from the ledger through
+      // /mcp. Needs DISCORD_BOT_TOKEN, ANTHROPIC_API_KEY, DISCORD_GUILD_IDS and LEDGER_DISCORD_READ_TOKEN in deploy/.env:
+      // start it with `pm2 start deploy/ecosystem.config.cjs --only forever-ledger-discord` once they are there (a
+      // missing one stops it after a few tries instead of restarting forever).
+      name: 'forever-ledger-discord',
+      max_restarts: 5,
+      min_uptime: '30s',
+      restart_delay: 10000,
+      cwd: path.join(__dirname, '..', 'apps', 'discord'),
+      script: 'dist/main.js',
+      node_args: '--enable-source-maps',
+      instances: 1,
+      exec_mode: 'fork',
+      max_memory_restart: '300M',
+      time: false,
+      env: {
+        NODE_ENV: 'production',
+        TZ: 'America/Chicago',
+        DISCORD_BOT_TOKEN: process.env.DISCORD_BOT_TOKEN,
+        DISCORD_ADMIN_ROLE_IDS: process.env.DISCORD_ADMIN_ROLE_IDS,
+        DISCORD_GUILD_IDS: process.env.DISCORD_GUILD_IDS,
+        DISCORD_QUESTIONS_PER_HOUR: process.env.DISCORD_QUESTIONS_PER_HOUR,
+        DISCORD_OPUS_PER_HOUR: process.env.DISCORD_OPUS_PER_HOUR,
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+        LEDGER_MCP_URL: process.env.LEDGER_MCP_URL,
+        LEDGER_DISCORD_READ_TOKEN: process.env.LEDGER_DISCORD_READ_TOKEN,
+        LEDGER_DISCORD_ADMIN_TOKEN: process.env.LEDGER_DISCORD_ADMIN_TOKEN,
         LOG_LEVEL: process.env.LOG_LEVEL || 'info',
       },
     },
