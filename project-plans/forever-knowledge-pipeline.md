@@ -12,8 +12,15 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   marked shared — 06:47 CDT
   - ✅ 0b 💾 Cruiser backup: `stream-recorder` pushed to private `John-Willikers/stream-recorder` (master, 2a6cc57) —
     checked 2026-10-06 20:56 CDT
-- 🟡 1 🛰️ Cruiser fetch worker: token #8 minted (fetch scope, unused so far); no `feat/page-fetcher` branch yet. Paste `docs/cruiser-fetcher-handoff.md` on cruiser. The server routes are live; Harlan
-  mints the token on the VPS (`token:mint "cruiser fetcher" --fetch`)
+- 🟡 1 🛰️ Cruiser fetch worker built: stream-recorder PR #1 (`feat/page-fetcher`), hand-run test fetches
+  2026-10-06 21:15 CDT stored both Mobalytics maps through the lease API (sha256 contract confirmed).
+  - ✅ 1a 🔎 Answers: Wowhead pages carry `WH.Gatherer.addData(` and `new Listview(` (with `dropped-by`, `fished-in`)
+    with no tab clicks; Wowhead's Forever scheme is `/forever/<type>=<id>` (redirects to a slug)
+  - ✅ 1b 🧩 Parsers checked against the real pages — 2026-10-06 22:35 CDT: Mobalytics keeps zone levels in the map sidebar, not
+    a table (0 claims) → new `mobalytics@1` sidebar parser; `table@2` labels tables under a "WoW Classic" heading
+    CLASSIC and marks raids; `reparse --replace` swaps an old parser's claims; `relabel` for curation
+  - ⬜ 1c 🎯 A real Wowhead page through the server (item 7973 queued at priority 100) to check `wowhead@1`
+  - ⬜ 1d ▶️ Harlan's call: merge stream-recorder PR #1 and enable the fetcher unit
 - ✅ 2 🗄️ Server: migration 0013, `fetch_targets`, `web_snapshots`, `sources`, `claims`, `web_comments`,
   `field_observations`, lease + snapshot routes, `can_fetch` scope — 07:06 CDT (cc7281c)
   - ✅ 2a 🧩 Parsers `wowhead@1` (embedded JSON, no eval) and `table@1` (zone/dungeon level tables) +

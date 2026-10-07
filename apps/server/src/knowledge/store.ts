@@ -15,7 +15,7 @@ import type {
   GameVersion,
   SourceTier,
 } from '@forever-ledger/contracts';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, ne, notInArray, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import type { Db } from '../db/client.js';
 import { claims, fetchTargets, sources, webComments, webSnapshots } from '../db/schema.js';
@@ -160,10 +160,29 @@ async function snapshotSource(
   return { ...row!, tier: row!.tier as SourceTier };
 }
 
-/** Parses a stored page into its source, claims and comments. Safe to repeat. */
-export async function applySnapshot(conn: Conn, snap: SnapshotRef, html: string) {
+/**
+ * Parses a stored page into its source, claims and comments. Safe to repeat. With `replace`, claims an older parser
+ * read off this same page are dropped first (a parser fix, not new information); hand-entered claims stay.
+ */
+export async function applySnapshot(
+  conn: Conn,
+  snap: SnapshotRef,
+  html: string,
+  opts: { replace?: boolean } = {},
+) {
   const parsed = parseSnapshot(html, snap.finalUrl);
   const source = await snapshotSource(conn, snap, parsed);
+  if (opts.replace) {
+    await conn
+      .delete(claims)
+      .where(
+        and(
+          eq(claims.sourceId, source.id),
+          ne(claims.parser, parsed.parser),
+          notInArray(claims.parser, ['manual', 'seed', 'observation']),
+        ),
+      );
+  }
   const added = await insertClaims(conn, source, parsed.claims, parsed.parser);
   await insertComments(conn, classifySource(snap.finalUrl).site, snap.id, parsed.comments);
   return { sourceId: source.id, claims: added, problems: parsed.problems };
@@ -399,8 +418,11 @@ export async function recordFetchReport(db: Db, tokenId: number, report: FetchRe
   }
 }
 
-/** Re-runs the parsers over every stored page (optionally one site). Claims are append-only, so this only adds. */
-export async function reparseAll(db: Db, site?: string) {
+/**
+ * Re-runs the parsers over every stored page (optionally one site). Claims are append-only, so this only adds, unless
+ * `replace` swaps out what older parser versions read off the same pages.
+ */
+export async function reparseAll(db: Db, site?: string, opts: { replace?: boolean } = {}) {
   const snaps = await db
     .select({
       id: webSnapshots.id,
@@ -420,7 +442,7 @@ export async function reparseAll(db: Db, site?: string) {
       .from(webSnapshots)
       .where(eq(webSnapshots.id, s.id));
     try {
-      const r = await db.transaction((tx) => applySnapshot(tx, s, inflate(row!.htmlGz)));
+      const r = await db.transaction((tx) => applySnapshot(tx, s, inflate(row!.htmlGz), opts));
       pages++;
       added += r.claims;
       problems.push(...r.problems.map((p) => `#${s.id} ${s.url}: ${p}`));

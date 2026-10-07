@@ -226,6 +226,8 @@ $K add https://www.wowhead.com/forever/item=7973 --priority 30
 $K enqueue-seen 'https://www.wowhead.com/forever/{type}={id}' --limit 50   # ids the addon saw; confirm the URL scheme first
 $K claim snapshot:12 zone:Feralas level_range '{"min":40,"max":50}' "Feralas … 40-50"   # quote must be on the page
 $K reparse --site wowhead.com                  # after a parser change; claims only ever get added
+$K reparse --site mobalytics.gg --replace      # a parser fix: swap what the older parser read off the same pages
+$K relabel 23 FALSE "the fetched page says 43–50"   # curation: label + dated reason, the value never changes
 $K disputes zone:Tanaris
 ```
 

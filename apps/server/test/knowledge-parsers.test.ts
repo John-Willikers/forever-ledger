@@ -3,6 +3,7 @@ import { looksLikeChallenge } from '../src/knowledge/challenge.js';
 import { containsQuote, pageText, parseHtml } from '../src/knowledge/html.js';
 import { parseSnapshot, statedBuild } from '../src/knowledge/parsers/index.js';
 import { matchBracket } from '../src/knowledge/parsers/scan.js';
+import { nameAndLevels, parseMobalyticsMap } from '../src/knowledge/parsers/mobalytics.js';
 import { levelRange } from '../src/knowledge/parsers/tables.js';
 import { wowheadEntity } from '../src/knowledge/parsers/wowhead.js';
 import { webFixture } from './helpers.js';
@@ -122,35 +123,35 @@ describe('table parser', () => {
   );
 
   it('claims level ranges from zone and dungeon tables, quoting the row', () => {
-    expect(r.parser).toBe('table@1');
+    expect(r.parser).toBe('mobalytics@1+table@2');
     expect(r.claims).toEqual([
       {
         entityType: 'zone',
         entityName: 'Tanaris',
         attribute: 'level_range',
         value: { min: 40, max: 50 },
-        quote: 'Tanaris | 40 – 50 | Contested',
+        quote: 'Zones › Tanaris | 40 – 50 | Contested',
       },
       {
         entityType: 'zone',
         entityName: 'Searing Gorge',
         attribute: 'level_range',
         value: { min: 43, max: 55 },
-        quote: 'Searing Gorge | 43-55 | Contested',
+        quote: 'Zones › Searing Gorge | 43-55 | Contested',
       },
       {
         entityType: 'dungeon',
         entityName: 'Excavation Site',
         attribute: 'level_range',
         value: { min: 24, max: 29 },
-        quote: 'Excavation Site | Wetlands | 24-29',
+        quote: 'Zones › Excavation Site | Wetlands | 24-29',
       },
       {
         entityType: 'dungeon',
         entityName: 'Excavation Site',
         attribute: 'zone',
         value: 'Wetlands',
-        quote: 'Excavation Site | Wetlands | 24-29',
+        quote: 'Zones › Excavation Site | Wetlands | 24-29',
       },
     ]);
     expect(r.build).toBe(70009);
@@ -169,6 +170,80 @@ describe('table parser', () => {
     expect(statedBuild('on build 70009 and Build: 70009')).toBe(70009);
     expect(statedBuild('build 69977 then build 70009')).toBeNull();
     expect(statedBuild('built 12345 things')).toBeNull();
+  });
+});
+
+describe('mobalytics map parser', () => {
+  const r = parseSnapshot(
+    webFixture('mobalytics-map.html'),
+    'https://mobalytics.gg/wow-forever/guides/zone-map-level-ranges',
+  );
+
+  it('reads level ranges from the map sidebar, by the nearest group', () => {
+    expect(parseMobalyticsMap(parseHtml(webFixture('mobalytics-map.html')))).toEqual([
+      {
+        entityType: 'zone',
+        entityName: 'Durotar',
+        attribute: 'level_range',
+        value: { min: 1, max: 10 },
+        quote: 'Zone Name + Levels › Durotar 1–10',
+      },
+      {
+        entityType: 'zone',
+        entityName: 'Searing Gorge',
+        attribute: 'level_range',
+        value: { min: 43, max: 50 },
+        quote: 'Zone Name + Levels › Searing Gorge 43–50',
+      },
+      {
+        entityType: 'dungeon',
+        entityName: 'Excavation Site',
+        attribute: 'level_range',
+        value: { min: 24, max: 29 },
+        quote: 'Dungeons (Wow Forever) › Excavation Site (24-29)',
+      },
+      {
+        entityType: 'dungeon',
+        entityName: 'Ragefire Chasm',
+        attribute: 'level_range',
+        value: { min: 13, max: 18 },
+        quote: 'Dungeons (WoW Classic) › Ragefire Chasm (13-18)',
+        label: 'CLASSIC',
+      },
+      {
+        entityType: 'dungeon',
+        entityName: 'Molten Core',
+        attribute: 'level_range',
+        value: { min: 60, max: 60 },
+        quote: 'Raids (Wow Classic) › Molten Core (60-60)',
+        label: 'CLASSIC',
+      },
+      {
+        entityType: 'dungeon',
+        entityName: 'Molten Core',
+        attribute: 'kind',
+        value: 'raid',
+        quote: 'Raids (Wow Classic) › Molten Core (60-60)',
+      },
+    ]);
+  });
+
+  it('labels a table under a WoW Classic heading CLASSIC', () => {
+    expect(r.parser).toBe('mobalytics@1+table@2');
+    const table = r.claims.filter((c) => c.quote?.startsWith('Dungeons › WoW Classic'));
+    expect(table.map((c) => [c.attribute, c.value, c.label])).toEqual([
+      ['level_range', { min: 13, max: 18 }, 'CLASSIC'],
+      ['zone', 'Orgrimmar', 'CLASSIC'],
+    ]);
+  });
+
+  it('splits names from level ranges', () => {
+    expect(nameAndLevels('Durotar 1–10')).toEqual({ name: 'Durotar', levels: '1–10' });
+    expect(nameAndLevels("Shaper's Terrace (58-60)")).toEqual({
+      name: "Shaper's Terrace",
+      levels: '58-60',
+    });
+    expect(nameAndLevels('Auction House')).toBeNull();
   });
 });
 
