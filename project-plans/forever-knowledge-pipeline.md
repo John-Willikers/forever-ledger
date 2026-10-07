@@ -22,6 +22,9 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   - ✅ 1c 🎯 First real Wowhead page (item 7973, snapshot 3, 22:43 CDT): 112 claims, 46 comments. Its loot and
     fishing lists are Classic-era (comments from 2005, ~1M Azshara catches) → `wowhead@2` labels player-collected
     lists CLASSIC, drops `count: -1`, reads ISO comment dates — 22:45 CDT
+  - ✅ 1e 🔀 Forever vs Classic on Wowhead (item 7973, 23:01 CDT): `/forever/` loot counts are the `/classic/`
+    counts plus a small delta (90 of 95 drop rows identical; Feralas fishing +315 catches, 0 clams). Comment versions
+    kept (PR #42, migration 0014). Open: turn the Forever − Classic delta into its own claims?
   - ✅ 1d ▶️ Harlan merged stream-recorder PR #1 and enabled the fetcher; first lease 22:43 CDT
 - ✅ 2 🗄️ Server: migration 0013, `fetch_targets`, `web_snapshots`, `sources`, `claims`, `web_comments`,
   `field_observations`, lease + snapshot routes, `can_fetch` scope — 07:06 CDT (cc7281c)
