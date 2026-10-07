@@ -10,15 +10,24 @@ import { characterAliases, characters } from './db/schema.js';
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type Conn = Db | Tx;
 
-/** Tables with a `char` column and their primary key (rows whose key would collide stay with the canonical row). */
-export const CHAR_TABLES: readonly { table: string; pk: readonly string[] }[] = [
-  { table: 'quest_observations', pk: ['quest_id', 'build', 'stage', 'char'] },
+/**
+ * Tables with a `char` column, their primary key, and the column that says which of two colliding rows is newer.
+ * When both keys have the same row (same skill line, same recipe and build), the newer one is kept: the short key's
+ * rows are usually the newer ones (written after build 70009 dropped the surname). Without a `newer` column the
+ * canonical row stays.
+ */
+export const CHAR_TABLES: readonly { table: string; pk: readonly string[]; newer?: string }[] = [
+  { table: 'quest_observations', pk: ['quest_id', 'build', 'stage', 'char'], newer: 'observed_at' },
   { table: 'turn_ins', pk: ['id'] },
   { table: 'fishing_casts', pk: ['id'] },
-  { table: 'skills', pk: ['char', 'skill_line_id'] },
+  { table: 'skills', pk: ['char', 'skill_line_id'], newer: 'last_seen' },
   { table: 'skill_ups', pk: ['char', 'skill_line_id', 'observed_at', 'to_rank'] },
-  { table: 'recipe_status', pk: ['recipe_id', 'build', 'char'] },
-  { table: 'recipe_difficulty', pk: ['recipe_id', 'build', 'char', 'difficulty'] },
+  { table: 'recipe_status', pk: ['recipe_id', 'build', 'char'], newer: 'seen_at' },
+  {
+    table: 'recipe_difficulty',
+    pk: ['recipe_id', 'build', 'char', 'difficulty'],
+    newer: 'updated_at',
+  },
   { table: 'recipes_learned', pk: ['char', 'recipe_id', 'learned_at'] },
   { table: 'runs', pk: ['id'] },
 ];
@@ -95,8 +104,10 @@ export interface MergeResult {
   into: string;
   /** Rows moved to `into`, per table. */
   moved: Record<string, number>;
-  /** Rows dropped because `into` already had the same row, per table. */
+  /** Rows dropped because `into` already had the same row and it was as new, per table. */
   dropped: Record<string, number>;
+  /** `into`'s own rows replaced by a newer row of `from`, per table. */
+  replaced: Record<string, number>;
 }
 
 export class MergeRefused extends Error {}
@@ -122,7 +133,7 @@ export async function mergeCharacter(
     .from(characterAliases)
     .where(and(eq(characterAliases.aliasKey, into), inArray(characterAliases.account, accounts)));
   if (intoIsAlias.length > 0) throw new MergeRefused(`${into} is itself an alias`);
-  const result: MergeResult = { from, into, moved: {}, dropped: {} };
+  const result: MergeResult = { from, into, moved: {}, dropped: {}, replaced: {} };
   const [src] = await conn.select().from(characters).where(eq(characters.key, from));
   const [dst] = await conn.select().from(characters).where(eq(characters.key, into));
   if (!dst) {
@@ -135,11 +146,22 @@ export async function mergeCharacter(
       guid: null,
     });
   }
-  for (const { table, pk } of CHAR_TABLES) {
+  for (const { table, pk, newer } of CHAR_TABLES) {
     const others = pk.filter((c) => c !== 'char');
     const clash = others.length
       ? sql.raw(others.map((c) => `x."${c}" = t."${c}"`).join(' and '))
       : sql.raw('false');
+    // Where `from` has the newer copy of a row, `into`'s older copy goes and `from`'s moves in its place.
+    let replaced = 0;
+    if (newer && others.length) {
+      const res = await conn.execute(
+        sql`delete from ${sql.identifier(table)} x using ${sql.identifier(table)} t
+             where t.char = ${from} and x.char = ${into} and ${clash}
+               and t.${sql.identifier(newer)} > x.${sql.identifier(newer)}`,
+      );
+      replaced = res.rowCount ?? 0;
+    }
+    result.replaced[table] = replaced;
     const moved = await conn.execute(
       sql`update ${sql.identifier(table)} t set char = ${into}
            where t.char = ${from}
