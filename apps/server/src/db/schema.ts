@@ -72,6 +72,18 @@ export const apiTokens = pgTable('api_tokens', {
   canRead: boolean('can_read').notNull().default(false),
   /** Fetch scope: may lease URLs and post page snapshots (the browser worker on cruiser). Nothing else. */
   canFetch: boolean('can_fetch').notNull().default(false),
+  /**
+   * A friend's tray helper (fetch token it asked for itself): `pending` until an admin approves it, then `approved` or
+   * `paused`. Null for every other token (cruiser's fetch token is minted by hand and needs no approval).
+   */
+  helperStatus: text('helper_status', { enum: ['pending', 'approved', 'paused'] }),
+  /** The upload token whose tray asked for this helper token. */
+  helperOf: integer('helper_of'),
+  /** Per-token fetch budget, overriding FETCH_DAILY_BUDGET / FETCH_HOURLY_BUDGET (helpers: 200 a day). */
+  fetchDailyBudget: integer('fetch_daily_budget'),
+  fetchHourlyBudget: integer('fetch_hourly_budget'),
+  /** Sites this token may be handed (null: any). Helpers: wowhead.com entity pages only. */
+  fetchSites: text('fetch_sites').array(),
 });
 
 export const rawUploads = pgTable(

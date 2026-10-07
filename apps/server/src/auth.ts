@@ -15,7 +15,12 @@ export const hashToken = (token: string) => createHash('sha256').update(token).d
 export async function mintToken(
   db: Db,
   label: string,
-  opts: { userId?: number | null; canRead?: boolean; canFetch?: boolean } = {},
+  opts: {
+    userId?: number | null;
+    canRead?: boolean;
+    canFetch?: boolean;
+    helper?: { of: number; dailyBudget: number; sites: string[] };
+  } = {},
 ) {
   // A fetch token lives on the fetch worker: it may lease and post pages, and nothing else.
   if (opts.canFetch && opts.canRead) throw new Error('a fetch token cannot also read');
@@ -27,7 +32,15 @@ export async function mintToken(
       tokenHash: hashToken(token),
       userId: opts.userId ?? null,
       canRead: opts.canRead ?? false,
-      canFetch: opts.canFetch ?? false,
+      canFetch: opts.canFetch ?? Boolean(opts.helper),
+      ...(opts.helper
+        ? {
+            helperStatus: 'pending' as const,
+            helperOf: opts.helper.of,
+            fetchDailyBudget: opts.helper.dailyBudget,
+            fetchSites: opts.helper.sites,
+          }
+        : {}),
     })
     .returning({ id: apiTokens.id });
   return { id: row!.id, token };
@@ -67,18 +80,38 @@ export async function setTokenCanRead(db: Db, id: number, canRead: boolean) {
   return rows.length > 0;
 }
 
+export interface VerifiedToken {
+  id: number;
+  label: string;
+  canRead: boolean;
+  canFetch: boolean;
+  helperStatus: 'pending' | 'approved' | 'paused' | null;
+  fetchDailyBudget: number | null;
+  fetchHourlyBudget: number | null;
+  fetchSites: string[] | null;
+}
+
 /** The id and scopes of a valid, unrevoked bearer token (and marks it used), else null. */
 export async function verifyBearerToken(
   db: Db,
   header: string | undefined,
-): Promise<{ id: number; canRead: boolean; canFetch: boolean } | null> {
+): Promise<VerifiedToken | null> {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? '');
   if (!m?.[1]?.startsWith(PREFIX)) return null;
   const [row] = await db
     .update(apiTokens)
     .set({ lastUsedAt: new Date() })
     .where(and(eq(apiTokens.tokenHash, hashToken(m[1])), isNull(apiTokens.revokedAt)))
-    .returning({ id: apiTokens.id, canRead: apiTokens.canRead, canFetch: apiTokens.canFetch });
+    .returning({
+      id: apiTokens.id,
+      label: apiTokens.label,
+      canRead: apiTokens.canRead,
+      canFetch: apiTokens.canFetch,
+      helperStatus: apiTokens.helperStatus,
+      fetchDailyBudget: apiTokens.fetchDailyBudget,
+      fetchHourlyBudget: apiTokens.fetchHourlyBudget,
+      fetchSites: apiTokens.fetchSites,
+    });
   return row ?? null;
 }
 

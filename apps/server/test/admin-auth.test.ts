@@ -768,14 +768,15 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       ['/v1/fishing/zones', 200],
     ];
 
-    it('the read list covers every GET /v1 route but health and the addon manifest', () => {
+    it('the read list covers every GET /v1 route but health, the addon manifest and fetch status', () => {
       const routes = app
         .printRoutes({ commonPrefix: false })
         .split('\n')
         .map((l) => /(\/v1\/\S+) \((.*)\)/.exec(l))
         .filter((m): m is RegExpExecArray => m !== null && m[2]!.split(', ').includes('GET'))
         .map((m) => m[1]!)
-        .filter((r) => r !== '/v1/health' && r !== '/v1/addon/manifest')
+        // Not data reads: liveness, the tray's addon manifest, and a fetch worker's own status.
+        .filter((r) => r !== '/v1/health' && r !== '/v1/addon/manifest' && r !== '/v1/fetch/status')
         .sort();
       const listed = READS.map(([u]) => u.split('?')[0]!.replace('/v1/items/1', '/v1/items/:id'));
       expect(routes).toEqual([...listed].sort());

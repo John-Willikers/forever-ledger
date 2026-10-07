@@ -411,6 +411,7 @@ describe('admin API (real Postgres)', () => {
         owner: null,
         canRead: false,
         canFetch: false,
+        helper: null,
         uploads: 2,
         lastUploadAt: expect.stringMatching(CHICAGO_ISO),
       });

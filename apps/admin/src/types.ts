@@ -95,8 +95,21 @@ export interface Token {
   owner: UserRef | null;
   /** Read scope: may also read every /v1 read route (all data, export, diagnostics). */
   canRead: boolean;
+  /** Fetch scope: a Wowhead fetch worker (cruiser, or a friend's tray helper). */
+  canFetch: boolean;
+  /** A friend's tray helper: waits for approval, then fetches within its daily budget. */
+  helper: TokenHelper | null;
   uploads: number;
   lastUploadAt: string | null;
+}
+
+export interface TokenHelper {
+  status: 'pending' | 'approved' | 'paused';
+  /** The upload token whose tray asked for it. */
+  of: number | null;
+  dailyBudget: number | null;
+  fetchedToday: number;
+  fetchedTotal: number;
 }
 
 export interface MintedToken {
