@@ -94,7 +94,8 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   kill, entity-page-only fence on the whole session, load-validity check, no dialogs/focus/taskbar, real wipe on off +
   folder removal at start, unenroll, cascade revoke, transactional enroll, tray-side daily cap, revoked state, lost-key
   re-approval, IPC sender check, full-path `tasklist`. Consent text now says plainly that ads and trackers load.
-- ⬜ 6 🚀 Release tray v0.2.0; Cody opts in; Harlan approves his helper; watch the first day
+- 🟡 6 🚀 (2026-10-07 02:46 CDT, PR #53 merged, server deployed, tray v0.2.0 is GitHub latest) Release tray v0.2.0;
+  Cody opts in; Harlan approves his helper; watch the first day
 
 ## ✅ Decisions (Harlan, 2026-10-07)
 
