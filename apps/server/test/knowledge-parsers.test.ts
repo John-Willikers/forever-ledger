@@ -74,6 +74,8 @@ describe('wowhead parser', () => {
         postedAt: new Date('2019-09-04T18:39:34Z'),
         rating: 12,
         body: '2 pearls in 30 min off the Steamwheedle dock',
+        dataTree: null,
+        gameVersion: 'unknown',
       },
     ]);
     expect(r.problems).toEqual(['listview broken: data is not JSON']);
@@ -89,7 +91,9 @@ describe('wowhead parser on real-page shapes', () => {
       `<html><head><title>Big-mouth Clam - Item - Forever</title></head><body><script>
         WH.Gatherer.addData(3, 21, {"7973":{"name_enus":"Big-mouth Clam"}});
         new Listview({template: 'npc', id: 'dropped-by', data: [{"id":1492,"name":"Gorlash","count":-1,"outof":4469}]});
-        var lv_comments0 = [{"id":5,"body":"75 clams, 5 black pearls","date":"2007-05-04T16:59:25-05:00","rating":1}];
+        var lv_comments0 = [{"id":5,"body":"75 clams, 5 black pearls","date":"2007-05-04T16:59:25-05:00","rating":1,"dataTree":1},
+          {"id":6,"body":"0 clams in 40 min at Steamwheedle","date":"2026-10-06T21:00:00-05:00","rating":0,"dataTree":16},
+          {"id":7,"body":"pearl macro","date":"2019-12-04T08:28:31-06:00","rating":0,"dataTree":4}];
         new Listview({template: 'comment', id: 'comments', data: lv_comments0});
       </script></body></html>`,
       ITEM_URL,
@@ -105,6 +109,12 @@ describe('wowhead parser on real-page shapes', () => {
       },
     ]);
     expect(r.comments[0]!.postedAt).toEqual(new Date('2007-05-04T21:59:25Z'));
+    // Wowhead's comment toggle: tree 16 is Forever, 4 Classic Era, 1 retail / original WoW.
+    expect(r.comments.map((c) => [c.dataTree, c.gameVersion])).toEqual([
+      [1, 'unknown'],
+      [16, 'forever'],
+      [4, 'classic'],
+    ]);
   });
 });
 

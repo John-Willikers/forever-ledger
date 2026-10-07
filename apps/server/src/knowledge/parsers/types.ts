@@ -1,4 +1,4 @@
-import type { ClaimLabel, EntityType } from '@forever-ledger/contracts';
+import type { ClaimLabel, EntityType, GameVersion } from '@forever-ledger/contracts';
 
 /** A claim before it has a source row: what a parser read off a page. */
 export interface ClaimDraft {
@@ -22,6 +22,9 @@ export interface CommentDraft {
   postedAt: Date | null;
   rating: number | null;
   body: string;
+  /** The site's own version tag for the comment (Wowhead `dataTree`), when it gives one. */
+  dataTree: number | null;
+  gameVersion: GameVersion;
 }
 
 export interface ParseResult {
