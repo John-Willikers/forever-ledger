@@ -211,7 +211,8 @@ function H.new(worldOverrides)
     if i and world.raid then return world.raid[i] end
   end
   env.UnitName = function(u)
-    if u == "player" then return world.player.name end
+    -- Forever 70009+: the surname is the second value (world.player.surname; nil keeps the Classic one-value form).
+    if u == "player" then return world.player.name, world.player.surname end
     if u == "npc" and world.npc then return world.npc.name end
     local m = groupUnit(u)
     if m and m.name then return m.name, m.realm end

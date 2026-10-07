@@ -27,6 +27,12 @@ export const NAV: readonly NavItem[] = [
     summary: 'Recipes, gathering, skill-ups.',
   },
   {
+    path: 'fishing',
+    label: 'Fishing',
+    phase: 7,
+    summary: 'Every cast: yield per zone, lure, where an item comes up.',
+  },
+  {
     path: 'vendors',
     label: 'Vendors & trainers',
     phase: 5,

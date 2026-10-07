@@ -156,12 +156,13 @@ return function(H)
     for k in pairs(d) do keys[#keys + 1] = k end
     table.sort(keys)
     H.eq(table.concat(keys, ","), "apiSamples,chars,containerLoot,containerQty,containers,corpses,crafts,dropQty,drops,"
-      .. "items,learned,meta,nodeLoot,nodes,quests,recipeSeen,recipes,runs,skillUps,skills,trainers,turnIns,vendors")
+      .. "fishingCasts,items,learned,meta,nodeLoot,nodes,quests,recipeSeen,recipes,runs,skillUps,skills,trainers,"
+      .. "turnIns,vendors")
     local meta = {}
     for k in pairs(d.meta) do meta[#meta + 1] = k end
     table.sort(meta)
     H.eq(table.concat(meta, ","),
       "addonVersion,build,buildDate,interface,lastChar,schemaVersion,session,version")
-    H.eq(d.meta.schemaVersion, 6)
+    H.eq(d.meta.schemaVersion, 7)
   end)
 end

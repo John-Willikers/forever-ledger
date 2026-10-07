@@ -10,6 +10,7 @@ local ADDON_0_2_3 = "legacy/ForeverLedger-0.2.3.lua"
 local ADDON_0_2_4 = "legacy/ForeverLedger-0.2.4.lua" -- writes the schema 3 session-migrated fixture
 local ADDON_0_3_2 = "legacy/ForeverLedger-0.3.2.lua" -- last schema 4 release
 local ADDON_0_3_3 = "legacy/ForeverLedger-0.3.3.lua" -- last schema 5 release
+local ADDON_0_3_4 = "legacy/ForeverLedger-0.3.4.lua" -- last schema 6 release
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
 local FIXTURES = "../../fixtures/synthetic/"
 local ME = "Thibodeaux-Bayou"
@@ -38,8 +39,8 @@ return function(H)
   H.writeFile(FIXTURES .. "session-migrated.lua", H.serialize("ForeverLedgerDB", migrate(ADDON_0_2_4)))
   local db = migrate(ADDON)
 
-  H.test("migration: stamps the current schema (6) and flattens meta.build", function()
-    H.eq(db.meta.schemaVersion, 6)
+  H.test("migration: stamps the current schema (7) and flattens meta.build", function()
+    H.eq(db.meta.schemaVersion, 7)
     H.eq(db.meta.session, "")
     H.eq(db.meta.build, 61582)
   end)
@@ -88,7 +89,7 @@ return function(H)
   end)
 
   for _, legacy in ipairs({ { ADDON_0_2_2, 1 }, { ADDON_0_2_3, 2 } }) do
-    H.test("migration: schema " .. legacy[2] .. " data is stamped 6, keeps session \"\" and is kept as is", function()
+    H.test("migration: schema " .. legacy[2] .. " data is stamped 7, keeps session \"\" and is kept as is", function()
       local old2 = H.new({ items = S.items(), questLog = S.questLog() })
       old2.load(legacy[1])
       S.play(old2, "ForeverLedger")
@@ -101,8 +102,8 @@ return function(H)
       up.load(ADDON)
       up.login("ForeverLedger")
       local d = up.env.ForeverLedgerDB
-      H.eq(d.meta.schemaVersion, 6)
-      H.eq(d.meta.addonVersion, "0.3.4")
+      H.eq(d.meta.schemaVersion, 7)
+      H.eq(d.meta.addonVersion, "0.4.0")
       H.eq(d.meta.session, "")
       H.eq(#d.turnIns, 1)
       H.eq(d.turnIns[1].id, before.turnIns[1].id)
@@ -114,7 +115,7 @@ return function(H)
     end)
   end
 
-  H.test("migration: schema 4 data from 0.3.2 is stamped 6; its session and professions tables are kept", function()
+  H.test("migration: schema 4 data from 0.3.2 is stamped 7; its session and professions tables are kept", function()
     local P = require("professions_world")
     local c4 = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true,
                        skillLines = P.gatherLines() })
@@ -132,7 +133,7 @@ return function(H)
     up.load(ADDON)
     up.login("ForeverLedger")
     local d = up.env.ForeverLedgerDB
-    H.eq(d.meta.schemaVersion, 6)
+    H.eq(d.meta.schemaVersion, 7)
     H.eq(d.meta.session, before.meta.session)
     H.eq(#d.vendors[61582][1347].items, #before.vendors[61582][1347].items)
     H.eq(d.vendors[61582][1347].title, nil)
@@ -141,7 +142,7 @@ return function(H)
     H.eq(#d.turnIns, 1)
   end)
 
-  H.test("migration: schema 5 data from 0.3.3 is stamped 6; titles and costs are kept, no containers", function()
+  H.test("migration: schema 5 data from 0.3.3 is stamped 7; titles and costs are kept, no containers", function()
     local P = require("professions_world")
     local c5 = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true,
                        skillLines = P.gatherLines() })
@@ -159,7 +160,7 @@ return function(H)
     up.load(ADDON)
     up.login("ForeverLedger")
     local d = up.env.ForeverLedgerDB
-    H.eq(d.meta.schemaVersion, 6)
+    H.eq(d.meta.schemaVersion, 7)
     H.eq(d.meta.session, before.meta.session)
     H.eq(d.vendors[61582][248196].title, "Tailoring")
     H.eq(#d.vendors[61582][248196].items[1].costs, #before.vendors[61582][248196].items[1].costs)
@@ -167,5 +168,34 @@ return function(H)
     H.eq(next(d.containerLoot), nil)
     H.eq(next(d.containerQty), nil)
     H.eq(H.count(d.drops), H.count(before.drops))
+  end)
+
+  H.test("migration: schema 6 data from 0.3.4 is stamped 7; its short-name character is kept", function()
+    local P = require("professions_world")
+    local c6 = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true,
+                       skillLines = P.gatherLines() })
+    c6.world.player.surname = "Willikers" -- 0.3.4 only reads the first name
+    c6.load(ADDON_0_3_4)
+    S.play(c6, "ForeverLedger")
+    local v = c6.env.ForeverLedgerDB
+    H.eq(v.meta.schemaVersion, 6)
+    H.eq(v.fishingCasts, nil)
+    local before = H.copy(v)
+
+    local up = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true,
+                       skillLines = P.gatherLines(), clock = c6.world.clock + 60 })
+    up.world.player.surname = "Willikers"
+    up.env.C_PlayerInfo = { ShouldDisplaySurname = function() return true end }
+    up.env.ForeverLedgerDB = H.copy(v)
+    up.load(ADDON)
+    up.login("ForeverLedger")
+    local d = up.env.ForeverLedgerDB
+    H.eq(d.meta.schemaVersion, 7)
+    H.eq(d.meta.session, before.meta.session)
+    H.eq(next(d.fishingCasts), nil)
+    H.ok(d.chars["Thibodeaux-Bayou"], "the 0.3.4 short-name record is kept (the server merges it)")
+    H.ok(d.chars["Thibodeaux Willikers-Bayou"], "0.4.0 adds the full-name record")
+    H.eq(H.count(d.drops), H.count(before.drops))
+    H.eq(#d.turnIns, #before.turnIns)
   end)
 end

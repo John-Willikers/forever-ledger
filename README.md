@@ -54,6 +54,15 @@ and milling open the same kind of loot window, so their results are recorded too
 processed (a disenchanted sword "contains" its dust). The admin item page shows a container's 🎁 Contents and, for
 its loot, where it came from (opened or processed).
 
+Since 0.4.0 (schema 7) every fishing cast is its own record: zone, subzone and spot, the skill and its modifier, the
+lure on the pole (`GetWeaponEnchantInfo`), how the cast ended (caught, got away, not hooked, nothing) and what came up.
+The admin **Fishing** page and `GET /v1/fishing/{yield,where,casts,zones}` search them by zone, lure and item. A pool
+can't be told from open water on the beta (the loot always comes from the bobber), so there is no pool field.
+Characters are keyed by full name again: Forever returns the surname as `UnitName`'s second value (build 70009+), and
+on its single server many players share a first name. The record also keeps the first name and the GUID, so a later
+rename is merged automatically. Old 0.3.4 short keys ("Sam-…") are merged with
+`pnpm --filter @forever-ledger/server characters suggest` / `characters merge <from> <into> --apply`.
+
 Since 0.2.2 the addon reminds you at natural checkpoints (a boss kill, a dungeon run closing, a quest turn-in, a
 dungeon finder reward): `Forever Ledger: N new records since your last /reload — type /reload to save them`. It
 prints at most once every 5 minutes, waits until you leave combat, and only prints; the tray app uploads within
@@ -199,6 +208,9 @@ session, an upload-only token gets 403):
 | `POST /v1/diagnostics`                           | Tray app error report (30/min per token, 256 KB)                                             |
 | `GET /v1/diagnostics?since=&limit=`              | Error reports and refused uploads, newest first (`since`: epoch secs or ISO)                 |
 | `GET /v1/diagnostics?type=&level=&source=`       | Filters: `type=diagnostic\|ingest-error`; refused uploads are level `error`, source `ingest` |
+| `GET /v1/fishing/yield?zone=&lure=`              | Per zone and subzone: casts by outcome, lure share, each catch per cast                      |
+| `GET /v1/fishing/where?item=`                    | Where an item was fished (id or part of its name), per cast in each place                    |
+| `GET /v1/fishing/casts?limit=`                   | The casts, newest first, with their catch                                                    |
 | `POST /v1/fetch/lease`                           | Fetch token: lease up to `max` due URLs for 15 min (`{ worker, max }`)                       |
 | `POST /v1/fetch/snapshots`                       | Fetch token: one fetch's outcome; an `ok` page is gzip+base64 HTML with its sha256           |
 

@@ -33,6 +33,8 @@ local FIXTURE_V5 = "../../fixtures/synthetic/session-v5.lua"
 local FIXTURE_V6 = "../../fixtures/synthetic/session-v6.lua"
 local ADDON_0_3_2 = "legacy/ForeverLedger-0.3.2.lua" -- last schema 4 release, writes session-v4
 local ADDON_0_3_3 = "legacy/ForeverLedger-0.3.3.lua" -- last schema 5 release, writes session-v5
+local ADDON_0_3_4 = "legacy/ForeverLedger-0.3.4.lua" -- last schema 6 release, writes session-v6
+local FIXTURE_V7 = "../../fixtures/synthetic/session-v7.lua"
 
 -- The schema 4 fixture: the shared play session (quests, loot, a dungeon run), then a profession session that
 -- touches every appendix table: skills and a skill-up, a trainer (a recipe learned there), a vendor, the profession
@@ -40,10 +42,13 @@ local ADDON_0_3_3 = "legacy/ForeverLedger-0.3.3.lua" -- last schema 5 release, w
 -- `v5` (the schema 5 fixture) adds NPC subtitles to the trainer and a Forever recipe vendor whose pattern costs an
 -- item and a currency. `v6` (the schema 6 fixture) then opens a fished Message in a Bottle (named by its item GUID)
 -- and a stack of two clams (named by the bag item lock), one with copper, and one item nothing can name (container 0).
-local function profSession(H, addon, v5, v6)
+-- `v7` (the schema 7 fixture) gives the character a Forever surname and fishes three casts at 0.4.0's cast log:
+-- a lured catch, one that got away and one that timed out.
+local function profSession(H, addon, v5, v6, v7)
   local c = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true, skillLines = P.gatherLines(),
                     bags = { [0] = { [1] = 2598, [2] = 5523 } },
                     itemGUIDs = v6 and { [P.BOTTLE_GUID] = 6307 } or nil })
+  if v7 then c.world.player.guid = "Player-4618-00A9A08A" end -- one GUID for the whole session, as in the client
   c.load(addon)
   S.play(c, "ForeverLedger")
   local w = c.world
@@ -121,6 +126,40 @@ local function profSession(H, addon, v5, v6)
     end
     P.openItem(c, { { itemID = 5503 } }, true) -- no source GUID, no recent lock
     c.advance(10)
+  end
+  if v7 then
+    w.player.surname = "Willikers"
+    c.env.C_PlayerInfo = { ShouldDisplaySurname = function() return true end }
+    c.fire("PLAYER_LOGIN")
+    -- GetProfessions' 4th value is Fishing (stubbed here: the shared world has no profession list).
+    c.env.GetProfessions = function() return 1, 2, nil, 4 end
+    c.env.GetProfessionInfo = function(i)
+      if i == 4 then return "Fishing", 136245, 25, 75, 2, 89, 356, 75 end
+    end
+    w.spells[7732] = { name = "Fishing" }
+    local lure = true
+    c.env.GetWeaponEnchantInfo = function()
+      if lure then return true, 540000, 0, 265 end
+      return false
+    end
+    for i, how in ipairs({ "loot", "escaped", "none" }) do
+      c.fire("UNIT_SPELLCAST_SENT", "player", nil, "Cast-V7-" .. i, 7732)
+      c.fire("UNIT_SPELLCAST_CHANNEL_START", "player", nil, 7732, "CastBar-V7-" .. i)
+      c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-V7-" .. i, 7732)
+      c.advance(12)
+      if how == "loot" then
+        c.fire("UNIT_SPELLCAST_CHANNEL_STOP", "player", nil, 7732, nil, "CastBar-V7-" .. i)
+        w.fishing = true
+        lootNode(c, { { itemID = 6303, sourceGUID = BOBBER } })
+        w.fishing = false
+      elseif how == "escaped" then
+        c.fire("UI_ERROR_MESSAGE", 1, "Your fish got away!")
+      else
+        c.fire("UNIT_SPELLCAST_CHANNEL_STOP", "player", nil, 7732, nil, "CastBar-V7-" .. i)
+      end
+      lure = false
+      c.advance(5)
+    end
   end
   c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "UseAction()") -- reaches the server in the errors sample
   return c.env.ForeverLedgerDB
@@ -1753,8 +1792,8 @@ return function(H)
     end
   end)
 
-  H.test("professions: session-v6 fixture adds container opens and their loot", function()
-    local d = profSession(H, ADDON, true, true)
+  H.test("professions: session-v6 fixture (0.3.4) adds container opens and their loot", function()
+    local d = profSession(H, ADDON_0_3_4, true, true)
     H.writeFile(FIXTURE_V6, H.serialize("ForeverLedgerDB", d))
     H.eq(d.meta.schemaVersion, 6)
     H.eq(d.meta.addonVersion, "0.3.4")
@@ -1778,5 +1817,27 @@ return function(H)
     H.eq(d.drops[5503], nil)
     H.eq(d.items[6307].name, "Message in a Bottle")
     H.eq(d.apiSamples["GetLootSourceInfo:container"].sample.via, "guid")
+  end)
+
+  H.test("professions: session-v7 fixture adds fishing casts and the full-name character", function()
+    local d = profSession(H, ADDON, true, true, true)
+    H.writeFile(FIXTURE_V7, H.serialize("ForeverLedgerDB", d))
+    H.eq(d.meta.schemaVersion, 7)
+    H.eq(d.meta.addonVersion, "0.4.0")
+    H.eq(d.containers[5523][B].opened, 2, "schema 6 data as before")
+    local me = d.chars["Thibodeaux Willikers-Bayou"]
+    H.ok(me, "full-name character")
+    H.eq(me.firstName, "Thibodeaux")
+    H.eq(me.guid, "Player-4618-00A9A08A")
+    local casts = d.fishingCasts
+    H.eq(#casts, 3)
+    H.eq(casts[1].outcome, "loot")
+    H.eq(casts[1].lure, 265)
+    H.eq(casts[1].skill, 25)
+    H.eq(casts[1].modifier, 75)
+    H.eq(casts[1].loot[1].itemID, 6303)
+    H.eq(casts[2].outcome, "escaped")
+    H.eq(casts[3].outcome, "none")
+    H.eq(casts[3].char, "Thibodeaux Willikers-Bayou")
   end)
 end

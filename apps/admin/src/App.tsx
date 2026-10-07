@@ -49,6 +49,9 @@ const BuildsPage = lazy(() =>
   import('./pages/builds/BuildsPage').then((m) => ({ default: m.BuildsPage })),
 );
 const MapsPage = lazy(() => import('./pages/maps/MapsPage').then((m) => ({ default: m.MapsPage })));
+const FishingPage = lazy(() =>
+  import('./pages/fishing/FishingPage').then((m) => ({ default: m.FishingPage })),
+);
 const KnowledgePage = lazy(() =>
   import('./pages/knowledge/KnowledgePage').then((m) => ({ default: m.KnowledgePage })),
 );
@@ -70,6 +73,7 @@ const PAGES: Readonly<Record<string, () => ReactElement>> = {
   builds: () => <BuildsPage />,
   maps: () => <MapsPage />,
   knowledge: () => <KnowledgePage />,
+  fishing: () => <FishingPage />,
 };
 
 /** Detail pages reached from a listing (not in the sidebar). */

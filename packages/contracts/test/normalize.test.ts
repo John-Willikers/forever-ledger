@@ -27,6 +27,7 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
     ['session-v4.lua', 4],
     ['session-v5.lua', 5],
     ['session-v6.lua', 6],
+    ['session-v7.lua', 7],
   ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
@@ -105,8 +106,8 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 7, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 7 is not supported \(expected 1 or 2 or 3 or 4 or 5 or 6\)/,
+    expect(() => normalize({ meta: { schemaVersion: 8, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 8 is not supported \(expected 1 or 2 or 3 or 4 or 5 or 6 or 7\)/,
     );
   });
 
@@ -199,7 +200,7 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(t2).toEqual(v1.records.turnIns[0]);
   });
 
-  it('accepts schema 1 and 2 upload batches, not 7', () => {
+  it('accepts schema 1 and 2 upload batches, not 8', () => {
     const batch = { uploaderId: 'pc-1', account: 'A', meta: v2.meta, records: v2.records };
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 2 }).success).toBe(true);
     expect(
@@ -208,7 +209,7 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     ).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 5 }).success).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 6 }).success).toBe(true);
-    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 7 }).success).toBe(false);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 8 }).success).toBe(false);
   });
 });
 
@@ -822,13 +823,12 @@ describe('normalize — schema 6 container loot (session-v6.lua)', () => {
   const S = meta.session!;
   const B = 61582;
 
-  it('validates with no problems as schema 6; schema 6 is the current major', () => {
+  it('validates with no problems as schema 6', () => {
     expect(problems).toEqual([]);
     expect(meta).toMatchObject({ schemaVersion: 6, addonVersion: '0.3.4' });
     expect(S).toMatch(/^\d+-[0-9a-f]{4}$/);
-    expect(SCHEMA_VERSION).toBe(6);
     expect(isSupportedSchemaVersion(6)).toBe(true);
-    expect(isSupportedSchemaVersion(7)).toBe(false);
+    expect(records.fishingCasts).toEqual([]);
     for (const kind of RECORD_KINDS) {
       const keys = (records[kind] as never[]).map((r) => recordKey(kind, r));
       expect(new Set(keys).size).toBe(keys.length);
@@ -908,5 +908,76 @@ describe('contentHash', () => {
       contentHash({ b: { d: 3, c: 2 }, a: 1, z: undefined }),
     );
     expect(contentHash({ a: 1 })).not.toBe(contentHash({ a: 2 }));
+  });
+});
+
+describe('normalize — schema 7 fishing casts and full names (session-v7.lua)', () => {
+  const { meta, records, problems } = normalize(load('session-v7.lua'));
+  const B = 61582;
+
+  it('validates with no problems as schema 7; schema 7 is the current major', () => {
+    expect(problems).toEqual([]);
+    expect(meta).toMatchObject({ schemaVersion: 7, addonVersion: '0.4.0' });
+    expect(SCHEMA_VERSION).toBe(7);
+    expect(isSupportedSchemaVersion(7)).toBe(true);
+    expect(isSupportedSchemaVersion(8)).toBe(false);
+    for (const kind of RECORD_KINDS) {
+      const keys = (records[kind] as never[]).map((r) => recordKey(kind, r));
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+    expect(
+      UploadBatch.safeParse({ schemaVersion: 7, uploaderId: 'pc-1', account: 'A', meta, records })
+        .success,
+    ).toBe(true);
+  });
+
+  it('characters: keyed by full name, with first name and GUID', () => {
+    const me = records.characters.find((c) => c.key === 'Thibodeaux Willikers-Bayou');
+    expect(me).toMatchObject({
+      name: 'Thibodeaux Willikers',
+      realm: 'Bayou',
+      firstName: 'Thibodeaux',
+      guid: 'Player-4618-00A9A08A',
+    });
+  });
+
+  it('fishing casts: one record per cast with zone, skill, lure, outcome and catch', () => {
+    expect(records.fishingCasts.map((c) => c.outcome)).toEqual(['loot', 'escaped', 'none']);
+    const [first] = records.fishingCasts;
+    expect(first).toMatchObject({
+      char: 'Thibodeaux Willikers-Bayou',
+      build: B,
+      spellId: 7732,
+      skill: 25,
+      skillMax: 75,
+      modifier: 75,
+      lure: 265,
+      lureSecs: 540,
+      outcome: 'loot',
+      loot: [{ itemId: 6303, qty: 1 }],
+      money: 0,
+    });
+    expect(first!.mapId).toBeTypeOf('number');
+    expect(recordKey('fishingCasts', first!)).toBe(`fish:${first!.id}`);
+    expect(records.fishingCasts[1]).toMatchObject({ outcome: 'escaped', loot: [] });
+    expect(records.fishingCasts[1]!.lure).toBeUndefined();
+  });
+
+  it('a bad cast is refused on its own; an off-map spot or negative duration only drops that field', () => {
+    const db = load('session-v7.lua') as {
+      fishingCasts: Record<string, unknown>[];
+      chars: Record<string, Record<string, unknown>>;
+    };
+    db.fishingCasts[0]!.outcome = 'caught a boot';
+    db.fishingCasts[1]!.x = 140;
+    db.fishingCasts[1]!.secs = -3;
+    db.chars['Thibodeaux Willikers-Bayou']!.guid = 'Creature-0-1-2';
+    const r = normalize(db);
+    expect(r.problems.map((p) => p.path)).toEqual(['fishingCasts.1']);
+    expect(r.records.fishingCasts).toHaveLength(2);
+    expect(r.records.fishingCasts[0]!.x).toBeUndefined();
+    expect(r.records.fishingCasts[0]!.secs).toBeUndefined();
+    const me = r.records.characters.find((c) => c.key === 'Thibodeaux Willikers-Bayou');
+    expect(me?.guid).toBeUndefined();
   });
 });

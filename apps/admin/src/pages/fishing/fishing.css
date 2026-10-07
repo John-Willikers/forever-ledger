@@ -1,0 +1,16 @@
+/* Fishing page only (lazy chunk). */
+.fishing-groups {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.fishing-group h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.fishing-groups .num,
+.fishing-where .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
