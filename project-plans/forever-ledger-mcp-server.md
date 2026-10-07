@@ -78,7 +78,8 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   live call over HTTPS: where_to_get(Big-mouth Clam) → both 0-clam observations first, check_claim(Fishing Hut at
   225) → refuted
 - ✅ 4 🔍 Review → PR #56 → merged → deployed; try it: "where do I get Black Pearls?" answers the 0-clam Steamwheedle observation first
-- ⬜ 5 🤖 Discord helper hookup (its own token; read-only)
+- ✅ 5 🤖 Discord helper → `forever-ledger-discord-bot.md`: live in Ninjas With Attitude 2026-10-07 04:01 CDT (own
+  tokens: read-only for everyone, admin-owned for Warchief / War Council)
 
 ## ⚠️ Risks
 

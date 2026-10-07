@@ -54,12 +54,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   connector; `--opus` → Opus 5.5 at high effort; admin role → write token; 20 questions/hour per user (5 on Opus);
   answers split into at most 3 messages, never pinging anyone; PM2 entry `forever-ledger-discord`; 8 tests with a
   fake API; `pnpm check` 1066 tests — 03:50 CDT
-- 🟡 2 🔍 Review (0 Critical) → fixed: an admin's answer is read-only when anyone else's question is in the thread (a
+- ✅ 2 🔍 Review (0 Critical) → fixed: an admin's answer is read-only when anyone else's question is in the thread (a
   borrowed nickname can't get a claim logged); the bot answers only in `DISCORD_GUILD_IDS` and has bot-wide hourly
   caps; bad limit settings fall back to defaults; unreadable history still gets an answer; the answer is the text
   after the last lookup; automatic prompt caching; one API retry; PM2 stops after 5 failed starts → PR #58
-- ⬜ 3 🔑 Harlan: Discord app + invite + API key in `deploy/.env`; ledger tokens minted on the VPS
-- ⬜ 4 🚀 PM2 `forever-ledger-discord` started; first real question answered in the server
+- ✅ 3 🔑 (04:01 CDT) Harlan: Discord app + API key + admin roles (Warchief, War Council); bot invited to Ninjas With
+  Attitude; server id and ledger tokens #11 (read) / #12 (admin-owned) written to `deploy/.env` on the VPS
+- ✅ 4 🚀 PM2 `forever-ledger-discord` started and saved (04:01 CDT); first real question answered at 04:04 CDT
+  (Sonnet 5, 6.4 s, ledger looked up through /mcp, 4.8k tokens read from cache)
 
 ## ⚠️ Risks
 
