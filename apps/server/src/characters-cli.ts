@@ -49,8 +49,13 @@ try {
           for (const table of Object.keys(r.moved)) {
             const m = r.moved[table]!;
             const d = r.dropped[table]!;
+            const n = r.replaced[table]!;
+            const notes = [
+              n ? `${n} replaced older rows of ${into}` : '',
+              d ? `${d} older than ${into}'s, dropped` : '',
+            ].filter(Boolean);
             if (m || d)
-              console.log(`${table}: ${m} moved${d ? `, ${d} already there (dropped)` : ''}`);
+              console.log(`${table}: ${m} moved${notes.length ? ` (${notes.join('; ')})` : ''}`);
           }
           console.log(
             apply ? `merged ${from} into ${into}` : 'dry run: nothing changed (add --apply)',

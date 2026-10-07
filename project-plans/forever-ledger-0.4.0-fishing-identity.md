@@ -47,8 +47,15 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked · 🔒 gate (ne
   never go from a full name to a short key, never cross accounts, refuse an alias as target, take the run lock;
   aliases are per account; the player's surname doesn't depend on the display setting; `db.chars` follows a new key;
   group loot tells same-first-name party members apart; a bad GUID or off-map spot drops the field, not the record
-  - ⬜ PR → merge → deploy → merge the old short keys in prod → 🚀 Release: PRs merged with CI green → tag `addon-v0.4.0` → `addon-cli publish 0.4.0` → tray v0.1.6 → friends
-  update their trays. Target: **before Oct 15**
+  - ✅ Second review: N1 (a GUID merge could move another account's rows) and N2 (a rename depended on file order)
+    fixed; raid names, cast duration cap
+  - ✅ PR #45 CI green → merged → backup `forever_ledger-2026-10-07-0058-pre0015.sql.gz` → deployed, migration 0015
+  - ✅ PR #46: the production dry run showed a merge would drop Sam's newer skill rows (225, Oct 7) for older ones
+    (108–152, Sep 24) → a merge now keeps the newer row; deployed
+  - ✅ Merged in production 01:04 CDT: Sam, Jim, John, Jon → "… Willikers", Vic → Vic Vinny, Nyx → Nyx Ashford
+    (forced: no "Nyx Ashford" upload yet); aliases per account; Sam Willikers keeps level 30 and all skills at 225
+  - ✅ 🚀 `addon-v0.4.0` released and published (schema 7) 01:07 CDT; tray **v0.1.6** is GitHub latest — 2026-10-07 01:10 CDT
+  - ⬜ Friends' trays update themselves to 0.1.6, then pull addon 0.4.0; first per-cast data before ~Oct 20
 
 ## ⚠️ Risks
 
