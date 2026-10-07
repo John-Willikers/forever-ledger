@@ -1,4 +1,5 @@
-// PM2 config for the Forever Ledger API. Nginx (ledger.willikers.dev) proxies to 127.0.0.1:3410.
+// PM2 config for the Forever Ledger API and MCP server. Nginx (ledger.willikers.dev) proxies /v1 and /admin to
+// 127.0.0.1:3410 and /mcp to 127.0.0.1:3411.
 // Usage: pnpm build && pm2 start deploy/ecosystem.config.cjs && pm2 save
 const path = require('node:path');
 
@@ -38,6 +39,28 @@ module.exports = {
         COOKIE_SECRET: process.env.COOKIE_SECRET,
         COOKIE_INSECURE: process.env.COOKIE_INSECURE,
         ADMIN_DIST_DIR: process.env.ADMIN_DIST_DIR,
+      },
+    },
+    {
+      // MCP server (project-plans/forever-ledger-mcp-server.md): answers only from the ledger, read tokens only.
+      name: 'forever-ledger-mcp',
+      cwd: path.join(__dirname, '..', 'apps', 'mcp'),
+      script: 'dist/main.js',
+      node_args: '--enable-source-maps',
+      instances: 1,
+      exec_mode: 'fork',
+      max_memory_restart: '300M',
+      time: false,
+      env: {
+        NODE_ENV: 'production',
+        TZ: 'America/Chicago',
+        DATABASE_URL: process.env.DATABASE_URL,
+        MCP_HOST: process.env.MCP_HOST || '127.0.0.1',
+        MCP_PORT: process.env.MCP_PORT || '3411',
+        MCP_ALLOWED_HOSTS:
+          process.env.MCP_ALLOWED_HOSTS || 'ledger.willikers.dev,localhost,127.0.0.1',
+        MCP_PER_MINUTE: process.env.MCP_PER_MINUTE,
+        LOG_LEVEL: process.env.LOG_LEVEL || 'info',
       },
     },
   ],

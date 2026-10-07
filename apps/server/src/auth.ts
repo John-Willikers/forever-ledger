@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import type { Db } from './db/client.js';
-import { apiTokens } from './db/schema.js';
+import { apiTokens, users } from './db/schema.js';
 
 const PREFIX = 'flt_';
 
@@ -125,4 +125,14 @@ export async function verifyBearerToken(
 export async function verifyBearer(db: Db, header: string | undefined): Promise<number | null> {
   const token = await verifyBearerToken(db, header);
   return token && !token.canFetch ? token.id : null;
+}
+
+/** Whether a token belongs to an admin user (the MCP server's write tools are theirs only). */
+export async function tokenOwnerIsAdmin(db: Db, tokenId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ role: users.role })
+    .from(apiTokens)
+    .innerJoin(users, eq(users.id, apiTokens.userId))
+    .where(and(eq(apiTokens.id, tokenId), isNull(apiTokens.revokedAt)));
+  return row?.role === 'admin';
 }
