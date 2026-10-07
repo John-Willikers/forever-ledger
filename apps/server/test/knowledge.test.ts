@@ -7,6 +7,7 @@ import { mintToken } from '../src/index.js';
 import { findDisputes } from '../src/knowledge/disputes.js';
 import { addManualClaim, ManualClaimError, relabelClaim } from '../src/knowledge/manual.js';
 import { importSeed } from '../src/knowledge/seed.js';
+import { enqueueSeen } from '../src/knowledge/enqueue.js';
 import { enqueueUrl, reparseAll } from '../src/knowledge/store.js';
 import { startServer, webFixture } from './helpers.js';
 
@@ -335,5 +336,26 @@ describe('knowledge pipeline', () => {
     expect(after.note).toMatch(
       /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d-0[56]:00 VERIFIED → FALSE: the fetched page says 43–50$/,
     );
+  });
+
+  it('queues entity pages for ids the addon has seen, Forever ids first, never id 0', async () => {
+    await q(`insert into items (item_id, name) values (4655, 'Clam'), (250001, 'Forever Thing')`);
+    await q(`insert into quests (quest_id, title) values (90001, 'A Forever Quest')`);
+    await q(
+      `insert into drops (item_id, build, npc_id, uploader_id, account, session, count, quantity)
+       values (4655, 1, 0, 'pc', 'A', 's', 1, 1), (4655, 1, 5431, 'pc', 'A', 's', 1, 1)`,
+    );
+    const r = await enqueueSeen(s.database.db, 'https://www.wowhead.com/forever/{type}={id}');
+    // item 4655 was queued by an earlier test; npc 0 is skipped.
+    expect(r).toEqual({ seen: 4, queued: 3 });
+    const rows = await q(
+      `select url, priority from fetch_targets where added_by = 'ingest' order by priority desc, url`,
+    );
+    expect(rows.map((x) => x.url)).not.toContain('https://www.wowhead.com/forever/npc=0');
+    expect(rows.slice(0, 2)).toEqual([
+      { url: 'https://www.wowhead.com/forever/item=250001', priority: 10 },
+      { url: 'https://www.wowhead.com/forever/quest=90001', priority: 10 },
+    ]);
+    await expect(enqueueSeen(s.database.db, 'https://x/{id}')).rejects.toThrow(/\{type\}/);
   });
 });
