@@ -10,6 +10,7 @@ describe('NAV', () => {
       'Loot',
       'Dungeons',
       'Professions',
+      'Fishing',
       'Vendors & trainers',
       'Builds',
       'Maps',

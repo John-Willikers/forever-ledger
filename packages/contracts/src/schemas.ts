@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** SavedVariables / upload schema major. Bump together with `SCHEMA_VERSION` in the addon. */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Schema majors this code reads. Each one is additive, so older files and queued older batches stay valid:
@@ -9,9 +9,11 @@ export const SCHEMA_VERSION = 6;
  * (addon 0.2.4); 4 adds professions — skills, recipes, crafts, gathering nodes, trainers, vendors, API samples and
  * `items[].classID/subclassID` (addon 0.3.0); 5 adds vendor and trainer `title` (the NPC's subtitle) and vendor item
  * `costs` (extended costs paid in items or currencies) (addon 0.3.3); 6 adds container opens and container loot —
- * what opened items (clams, lockboxes, a Message in a Bottle) held, per session (addon 0.3.4).
+ * what opened items (clams, lockboxes, a Message in a Bottle) held, per session (addon 0.3.4); 7 adds fishing casts
+ * (one per cast: zone, spot, skill, lure, outcome, catch) and the character's `firstName` / `guid`, with characters
+ * keyed by full name, first name + Forever surname (addon 0.4.0).
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7] as const;
 export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
 /** The newest schema this code reads: what the tray sends as `?schema=` when it asks for an addon manifest. */
 export const MAX_SUPPORTED_SCHEMA: SchemaVersion = Math.max(
@@ -28,6 +30,7 @@ const schemaVersion = z.union([
   z.literal(4),
   z.literal(5),
   z.literal(6),
+  z.literal(7),
 ]);
 
 /** Schema 3 `meta.session`: `<epoch>-<4 hex>`, one per SavedVariables table. '' for older files. */
@@ -92,6 +95,13 @@ export const Character = z.object({
   faction: z.string().optional(),
   level: nonNegInt.optional(),
   lastSeen: epochSecs.optional(),
+  /** Schema 7: `name` is the full name (first + surname); this is the first name alone. */
+  firstName: z.string().max(64).optional(),
+  /** Schema 7: `Player-<server>-<id>`, stable across renames. */
+  guid: z
+    .string()
+    .regex(/^Player-\d+-[0-9A-Fa-f]+$/)
+    .optional(),
 });
 export type Character = z.infer<typeof Character>;
 
@@ -373,6 +383,48 @@ export const ContainerLoot = z.object({
 });
 export type ContainerLoot = z.infer<typeof ContainerLoot>;
 
+// ---------------------------------------------------------------------------------------------------------------
+// Schema 7: fishing casts (0.4.0 plan). One record per cast, so fishing is searchable by zone, spot, skill and lure.
+// ---------------------------------------------------------------------------------------------------------------
+
+export const FISHING_OUTCOMES = ['loot', 'escaped', 'notHooked', 'none'] as const;
+export type FishingOutcome = (typeof FISHING_OUTCOMES)[number];
+
+export const FishingCatch = z.object({ itemId: int.positive(), qty: nonNegInt });
+export type FishingCatch = z.infer<typeof FishingCatch>;
+
+/** A map coordinate, 0-100 with one decimal (the addon's `where()`). */
+const mapCoord = z.number().min(0).max(100);
+
+/**
+ * One fishing cast. `outcome`: `loot` (its loot window), `escaped` ("Your fish got away!"), `notHooked` (clicked too
+ * early), `none` (the channel ended or the next cast began with no window). `lure` is the main-hand enchant id (a
+ * lure), `modifier` the skill bonus at the cast (lure and gear). A pool can't be told apart on build 70245, so there
+ * is no pool field.
+ */
+export const FishingCast = z.object({
+  id: z.string().min(1).max(256),
+  char: charKey,
+  build,
+  time: epochSecs,
+  spellId: nonNegInt.optional(),
+  mapId: nonNegInt.optional(),
+  zone: z.string().max(128).optional(),
+  subzone: z.string().max(128).optional(),
+  x: mapCoord.optional(),
+  y: mapCoord.optional(),
+  skill: nonNegInt.optional(),
+  skillMax: nonNegInt.optional(),
+  modifier: int.optional(),
+  lure: nonNegInt.optional(),
+  lureSecs: nonNegInt.optional(),
+  outcome: z.enum(FISHING_OUTCOMES),
+  secs: nonNegInt.optional(),
+  loot: z.array(FishingCatch).max(16).default([]),
+  money: nonNegInt.default(0),
+});
+export type FishingCast = z.infer<typeof FishingCast>;
+
 export const TrainerService = z.object({
   name: z.string(),
   /** GetTrainerServiceInfo type, e.g. 'available', 'unavailable', 'used'. */
@@ -560,6 +612,7 @@ export const Records = z.object({
   nodeLoot: z.array(NodeLoot).default([]),
   containerOpens: z.array(ContainerOpen).default([]),
   containerLoot: z.array(ContainerLoot).default([]),
+  fishingCasts: z.array(FishingCast).default([]),
   trainers: z.array(Trainer).default([]),
   vendors: z.array(Vendor).default([]),
   apiSamples: z.array(ApiSample).default([]),

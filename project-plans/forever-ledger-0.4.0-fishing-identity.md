@@ -20,28 +20,29 @@
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked · 🔒 gate (needs Harlan in game). Times America/Chicago.
 
 - ✅ 0 📝 Decisions (2026-10-07): full names are the identity; ship 0.4.0 + tray; Nyx Ashford is a full name
-- 🟡 1 🔬 Probe 0.4.0 (`/flprobe names`, `/flprobe fish on|off`) — written and tested 23:26 CDT
-  - 🔒 1a In game on build 70235+: `/flprobe names` (also with another player targeted), `/flprobe fish on`, ~10
-    casts with and without a lure, one into a pool, `/flprobe fish off`, `/reload`, send `ForeverLedgerProbe.lua`
-  - ⬜ 1b Answers recorded in the CLAUDE.md table: where the surname comes from, `GetWeaponEnchantInfo` with a lure, the
-    fishing channel events, the loot source GUID, whether a pool can be told apart
-- ⬜ 2 🧩 Addon 0.4.0 (schema 7)
-  - ⬜ 2a Full name: the character record carries `fullName` (from the surname source in 1b) and `guid`
-  - ⬜ 2b `db.fishingCasts`: one record per cast `{build, char, time, mapID, zone, subzone, x, y, skill, skillMax,
+- ✅ 1 🔬 Probe 0.4.0 (`/flprobe names`, `/flprobe fish on|off`) — written and tested 2026-10-06 23:26 CDT
+  - ✅ 1a Harlan ran it on build 70245 (names with a target, 11 casts, 5 with a lure) — 2026-10-07
+  - ✅ 1b Answers in CLAUDE.md: `UnitName` returns the surname as its 2nd value (`GetUnitName`,
+    `C_PlayerInfo.GetName`, `GetPlayerInfoByGUID` give "Sam Willikers"); fishing is spell 7732; lure = enchant 265
+    (+75 modifier); loot source is always the bobber (35591), so no pool field — 2026-10-07 00:36 CDT
+- ✅ 2 🧩 Addon 0.4.0 (schema 7) — 2026-10-07 00:36 CDT
+  - ✅ 2a Full name: `charKey` = first + surname (when `ShouldDisplaySurname`), the record keeps `firstName` and `guid`
+  - ✅ 2b `db.fishingCasts`: one record per cast `{build, char, time, mapID, zone, subzone, x, y, skill, skillMax,
     modifier, lure, pool, outcome, loot, money}`. It opens on the cast and closes on loot, on the channel stopping, or
     after 25 s, so casts that got away are counted too. `pool` is nil (unknown) unless 1b proves we can tell.
-  - ⬜ 2c Lua harness tests, 0.3.4 frozen in `tests/legacy/`, the `session-v7.lua` fixture, the 6 → 7 migration
-- ⬜ 3 📐 Contracts: schema 7, `FishingCast`, `Character.fullName` / `guid`, normalize, keys, int4 caps
-- ⬜ 4 🗄️ Server
-  - ⬜ 4a Migration: `fishing_casts` (keyed on uploader, account, char, cast time, seq) and the ingest upsert
-  - ⬜ 4b Identity: `character_aliases`; the canonical key is the full name (`Sam Willikers-Classic Beta PvE`).
+  - ✅ 2c Lua harness 222 passed (+8: `test_fishing.lua`, the 0.3.4 → 7 migration, the `session-v7.lua` fixture);
+    0.3.4 frozen in `tests/legacy/` still writes `session-v6.lua` byte-identical
+- ✅ 3 📐 Contracts: schema 7, `FishingCast`, `Character.firstName` / `guid`, normalize, keys
+- 🟡 4 🗄️ Server (migration 0015)
+  - ✅ 4a Migration: `fishing_casts` (keyed on uploader, account, char, cast time, seq) and the ingest upsert
+  - ✅ 4b Identity: `character_aliases`; the canonical key is the full name (`Sam Willikers-Classic Beta PvE`).
     Ingest maps short keys to it by GUID or by full name; `characters-cli suggest|merge` handles the old rows
     (Sam, Jon, Vic)
-  - ⬜ 4c 🔎 Searchable fishing: `GET /v1/fishing/casts` and `/v1/fishing/yield`
+  - ✅ 4c 🔎 Searchable fishing: `GET /v1/fishing/casts` and `/v1/fishing/yield`
     (`?zone=&subzone=&item=&build=&lure=&pool=&minSkill=`), and an admin **Fishing** page: yield per zone and subzone,
     catch table, rare catches, and a search by item ("where did Big-mouth Clams come from?")
-  - ⬜ 4d Knowledge: per-zone fishing yields become tier 1 claims automatically, for the MCP server
-- ⬜ 5 🚀 Release: PRs merged with CI green → tag `addon-v0.4.0` → `addon-cli publish 0.4.0` → tray v0.1.6 → friends
+  - ⬜ 4d (after release) Knowledge: per-zone fishing yields become tier 1 claims automatically, for the MCP server
+- 🟡 5 🔍 Code review → PR → merge → deploy → merge the old short keys in prod → 🚀 Release: PRs merged with CI green → tag `addon-v0.4.0` → `addon-cli publish 0.4.0` → tray v0.1.6 → friends
   update their trays. Target: **before Oct 15**
 
 ## ⚠️ Risks

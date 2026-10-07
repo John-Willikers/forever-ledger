@@ -24,7 +24,8 @@
     "token:list": "node dist/tokens-cli.js list",
     "token:revoke": "node dist/tokens-cli.js revoke",
     "addon": "node dist/addon-cli.js",
-    "knowledge": "node dist/knowledge-cli.js"
+    "knowledge": "node dist/knowledge-cli.js",
+    "characters": "node dist/characters-cli.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

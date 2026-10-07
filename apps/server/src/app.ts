@@ -29,6 +29,7 @@ import { registerAnalysisRoutes } from './routes/analysis.js';
 import { recordIngestError, registerDiagnosticsRoutes } from './routes/diagnostics.js';
 import { registerExportRoutes } from './routes/export.js';
 import { registerFetchRoutes } from './routes/fetch.js';
+import { registerFishingRoutes } from './routes/fishing.js';
 import { chicagoIso } from './time.js';
 
 export interface AppOptions {
@@ -167,6 +168,7 @@ export async function buildApp(opts: AppOptions) {
   const guards = registerAdminAuth(app, db, { ...opts.admin, cookieSecret });
   registerAnalysisRoutes(app, db, guards.requireReader);
   registerExportRoutes(app, db, guards.requireReader);
+  registerFishingRoutes(app, db, { reader: guards.requireReader, admin: guards.requireAdmin });
   registerAddonRoutes(app, db);
   registerFetchRoutes(app, db, { perMinute: opts.fetchPerMinute });
   registerDiagnosticsRoutes(app, db, {

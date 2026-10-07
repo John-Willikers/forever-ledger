@@ -1,16 +1,14 @@
--- Forever Ledger v0.4.0 (SavedVariables schema 7)
+-- Forever Ledger v0.3.4 (SavedVariables schema 6)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.4.0"
+local VERSION = "0.3.4"
 -- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
 -- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
 -- items[].classID/subclassID and apiSamples; 5 adds vendors[].title, vendors[].items[].costs (extended costs paid in
 -- items or currencies) and trainers[].title; 6 adds containers, containerLoot and containerQty (what opened items
--- held); 7 adds fishingCasts (one record per cast: zone, spot, skill, lure, outcome, catch) and chars[].firstName /
--- guid, and keys characters by full name (first name + Forever surname). Each is additive: older data is valid as
--- it is.
-local SCHEMA_VERSION = 7
+-- held). Each is additive: older data is valid as it is.
+local SCHEMA_VERSION = 6
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local LIST_CAP = 500     -- bossLoot and groupLoot entries kept per run
 local f = CreateFrame("Frame")
@@ -86,20 +84,7 @@ end
 
 ---------------------------------------------------------------- helpers
 local function idFromLink(link) return link and tonumber(link:match("item:(%d+)")) end
--- A unit's full name. Forever (build 70009+) returns the surname as UnitName's second value, where retail puts a
--- cross-realm server, and shows it when C_PlayerInfo.ShouldDisplaySurname() is true (probe 0.4.0, build 70245:
--- UnitName("player") = "Sam", "Willikers"). On its one server many players share a first name, so first name +
--- surname is a character's identity.
-local function fullName(unit)
-  local first, second = UnitName(unit)
-  if type(first) == "string" and type(second) == "string" and second ~= ""
-     and C_PlayerInfo and C_PlayerInfo.ShouldDisplaySurname then
-    local ok, show = pcall(C_PlayerInfo.ShouldDisplaySurname)
-    if ok and show then return first .. " " .. second end
-  end
-  return first
-end
-local function charKey() return (fullName("player") or "?") .. "-" .. (GetRealmName() or "?") end
+local function charKey() return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?") end
 
 -- What a GUID is, for loot and NPC windows: "npc" for Creature/Vehicle-0-server-instance-zoneUID-npcID-spawnUID,
 -- "object" for GameObject-0-server-instance-zoneUID-objectID-spawnUID (the id is the 6th field in both).
@@ -134,10 +119,8 @@ end
 local function whoAmI()
   local _, class = UnitClass("player")
   local _, race = UnitRace("player")
-  local guid = UnitGUID and UnitGUID("player")
-  return { name = fullName("player"), firstName = (UnitName("player")), realm = GetRealmName(), class = class,
-           race = race, faction = UnitFactionGroup("player"), level = UnitLevel("player"),
-           guid = type(guid) == "string" and guid:sub(1, 64) or nil }
+  return { name = UnitName("player"), realm = GetRealmName(), class = class,
+           race = race, faction = UnitFactionGroup("player"), level = UnitLevel("player") }
 end
 
 local function packed(...) return select("#", ...), { ... } end
@@ -2245,10 +2228,9 @@ local function newSessionID()
   return format("%d-%04x", now(), rnd(0, 65535))
 end
 
--- Schema 4 (professions), 6 (containers) and 7 (fishing casts) tables; /fl reset confirm wipes them too.
+-- Schema 4 (professions) and 6 (containers) tables; /fl reset confirm wipes them too.
 local PROFESSION_TABLES = { "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
-                            "trainers", "vendors", "apiSamples", "containers", "containerLoot", "containerQty",
-                            "fishingCasts" }
+                            "trainers", "vendors", "apiSamples", "containers", "containerLoot", "containerQty" }
 
 local function initDB()
   ForeverLedgerDB = ForeverLedgerDB or {}
@@ -2261,7 +2243,7 @@ local function initDB()
   local hadData = next(db.quests) or next(db.items) or next(db.runs) or next(db.drops)
   local existed = db.meta.schemaVersion ~= nil or hadData
   if not db.meta.schemaVersion and hadData then migrateV0() end
-  -- 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 only add fields, so older data needs nothing but the new stamp.
+  -- 1 -> 2 -> 3 -> 4 -> 5 -> 6 only add fields, so older data needs nothing but the new stamp.
   if (tonumber(db.meta.schemaVersion) or 0) < SCHEMA_VERSION then db.meta.schemaVersion = SCHEMA_VERSION end
   -- Per-session totals (drops, dropQty, corpses, containers, containerLoot, containerQty) belong to this session id
   -- for the life of the table. Forever starts every load with an empty table, so each load is a session. A table
@@ -2272,106 +2254,6 @@ local function initDB()
   build = tonumber(buildStr) or 0
   db.meta.addonVersion = VERSION
   db.meta.build, db.meta.version, db.meta.buildDate, db.meta.interface = build, version, buildDate, interface
-end
-
----------------------------------------------------------------- fishing casts (schema 7)
--- One record per fishing cast in db.fishingCasts, so fishing can be searched by zone, subzone, spot, skill and lure
--- (db.nodes only counts fishing windows per session). Probe 0.4.0 on build 70245: the cast is spell 7732 (matched by
--- gatherSkill like any Fishing rank); UNIT_SPELLCAST_SENT, _CHANNEL_START, _SUCCEEDED, then _CHANNEL_STOP when the
--- bobber goes; the catch is a fishing loot window (source: the bobber, object 35591), so a pool can't be told apart
--- and pool is not recorded. GetWeaponEnchantInfo() shows a lure (enchant 265 raised the skill modifier 5 -> 80).
--- A cast ends with: "loot" (its loot window), "escaped" / "notHooked" (the client's error message), or "none" (the
--- channel stopped and no window came within CAST_GRACE seconds, or the next cast began).
-local fishLog = { n = 0 }
-do
-  local CAST_GRACE = 3   -- seconds after the channel stops that the loot window may still open
-  local CAST_MAX = 35    -- a cast still open after this is over, whatever happened
-  local ESCAPED = ERR_FISH_ESCAPED or "Your fish got away!"
-  local NOT_HOOKED = ERR_FISH_NOT_HOOKED or "No fish are hooked."
-
-  local function fishingSkill()
-    if not GetProfessions or not GetProfessionInfo then return nil end
-    local ok, _, _, _, fishing = pcall(GetProfessions)
-    if not ok or not fishing then return nil end
-    local ok2, _, _, rank, maxRank, _, _, _, modifier = pcall(GetProfessionInfo, fishing)
-    if ok2 then return tonumber(rank), tonumber(maxRank), tonumber(modifier) end
-  end
-
-  local function lure()
-    if not GetWeaponEnchantInfo then return nil end
-    local ok, has, expiresMs, _, enchantID = pcall(GetWeaponEnchantInfo)
-    if ok and has and tonumber(enchantID) then
-      return tonumber(enchantID), tonumber(expiresMs) and floor(expiresMs / 1000) or nil
-    end
-  end
-
-  local function finish(outcome)
-    local c = fishLog.cast
-    if not c then return end
-    fishLog.cast = nil
-    c.outcome = c.outcome or outcome
-    c.secs = c.stoppedAt and (c.stoppedAt - c.time) or (now() - c.time)
-    c.stoppedAt = nil
-    db.fishingCasts[#db.fishingCasts + 1] = c
-    trim(db.fishingCasts, HISTORY_CAP)
-    added()
-  end
-
-  local function expire()
-    local c = fishLog.cast
-    if not c then return end
-    if (c.stoppedAt and now() - c.stoppedAt >= CAST_GRACE) or now() - c.time >= CAST_MAX then finish("none") end
-  end
-  fishLog.expire = expire
-
-  -- UNIT_SPELLCAST_SENT of a player Fishing spell: a new cast (the previous one, if still open, caught nothing).
-  function fishLog.sent(spellID)
-    if gatherSkill(spellID) ~= 356 then return end
-    finish("none")
-    fishLog.n = fishLog.n + 1
-    local t = now()
-    local loc = where()
-    local rank, maxRank, modifier = fishingSkill()
-    local lureID, lureSecs = lure()
-    fishLog.cast = { id = format("%s-%d-%d", charKey(), t, fishLog.n), build = build, char = charKey(), time = t,
-                     spellID = tonumber(spellID), mapID = loc.mapID, zone = loc.zone, subzone = loc.subzone,
-                     x = loc.x, y = loc.y, skill = rank, skillMax = maxRank, modifier = modifier,
-                     lure = lureID, lureSecs = lureSecs, loot = {}, money = 0 }
-  end
-
-  function fishLog.channelStop()
-    local c = fishLog.cast
-    if not c or c.stoppedAt then return end
-    c.stoppedAt = now()
-    if C_Timer and C_Timer.After then C_Timer.After(CAST_GRACE, function() safely("fishExpire", expire) end) end
-  end
-
-  function fishLog.uiError(message)
-    if not fishLog.cast or type(message) ~= "string" then return end
-    if message == ESCAPED then
-      finish("escaped")
-    elseif message == NOT_HOOKED then
-      finish("notHooked")
-    end
-  end
-
-  -- A fishing loot window: its items and copper are this cast's catch.
-  function fishLog.loot()
-    expire()
-    local c = fishLog.cast
-    if not c or not isFishingLoot() then return end
-    for i = 1, GetNumLootItems() or 0 do
-      if slotType(i) == MONEY_SLOT then
-        for _, src in ipairs(lootSources(i)) do c.money = c.money + (tonumber(src.qty) or 0) end
-      else
-        local itemID = idFromLink(GetLootSlotLink(i))
-        local _, _, qty = GetLootSlotInfo(i)
-        if itemID then c.loot[#c.loot + 1] = { itemID = itemID, qty = tonumber(qty) or 1 } end
-      end
-    end
-    c.stoppedAt = c.stoppedAt or now()
-    finish("loot")
-  end
 end
 
 ---------------------------------------------------------------- events
@@ -2405,10 +2287,7 @@ function handlers.QUEST_COMPLETE()
   completeWindow = questID and { questID = questID, choices = o.choices } or nil
 end
 function handlers.PLAYER_XP_UPDATE() onXP() end
-function handlers.LOOT_OPENED(autoLoot, isFromItem)
-  safely("onLootOpened", onLootOpened, autoLoot, isFromItem)
-  safely("fishLoot", fishLog.loot)
-end
+function handlers.LOOT_OPENED(autoLoot, isFromItem) safely("onLootOpened", onLootOpened, autoLoot, isFromItem) end
 function handlers.ITEM_LOCK_CHANGED(bag, slot) safely("onItemLock", onItemLock, bag, slot) end
 function handlers.LOOT_SLOT_CLEARED(slot) safely("onLootSlotCleared", ct.onLootSlotCleared, slot) end
 function handlers.LOOT_CLOSED() safely("onLootClosed", ct.onLootClosed) end
@@ -2516,15 +2395,8 @@ function handlers.UNIT_SPELLCAST_START(unit)
   if unit == "player" then safely("onPlayerCastStart", onPlayerCastStart) end
 end
 function handlers.UNIT_SPELLCAST_SENT(unit, target, castGUID, spellID)
-  if unit ~= "player" then return end
-  safely("onGatherSent", onGatherSent, target, castGUID, spellID)
-  safely("fishSent", fishLog.sent, spellID)
+  if unit == "player" then safely("onGatherSent", onGatherSent, target, castGUID, spellID) end
 end
-function handlers.UNIT_SPELLCAST_CHANNEL_STOP(unit)
-  if unit == "player" then safely("fishStop", fishLog.channelStop) end
-end
--- UI_ERROR_MESSAGE(errorType, message): "Your fish got away!" / "No fish are hooked." end a cast.
-function handlers.UI_ERROR_MESSAGE(_, message) safely("fishError", fishLog.uiError, message) end
 function handlers.UNIT_SPELLCAST_SUCCEEDED(unit, castGUID, spellID)
   if unit ~= "player" then return end
   safely("onPlayerSpellForRecipeItem", onPlayerSpellForRecipeItem, spellID)
@@ -2552,8 +2424,7 @@ function handlers.LUA_WARNING(...)
 end
 
 -- Unit events only for the player where the client can filter them (the handlers check the unit too).
-local PLAYER_EVENTS = { UNIT_SPELLCAST_START = true, UNIT_SPELLCAST_SENT = true, UNIT_SPELLCAST_SUCCEEDED = true,
-                        UNIT_SPELLCAST_CHANNEL_STOP = true }
+local PLAYER_EVENTS = { UNIT_SPELLCAST_START = true, UNIT_SPELLCAST_SENT = true, UNIT_SPELLCAST_SUCCEEDED = true }
 for event in pairs(handlers) do -- pcall: skip events a client lacks
   if not (PLAYER_EVENTS[event] and f.RegisterUnitEvent and pcall(f.RegisterUnitEvent, f, event, "player")) then
     pcall(f.RegisterEvent, f, event)

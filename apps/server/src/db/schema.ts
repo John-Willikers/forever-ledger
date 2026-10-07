@@ -10,6 +10,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  real,
   serial,
   text,
   timestamp,
@@ -97,16 +98,36 @@ export const builds = pgTable('builds', {
   lastSeen: tz('last_seen').notNull().defaultNow(),
 });
 
-export const characters = pgTable('characters', {
-  key: text('key').primaryKey(), // Name-Realm
-  name: text('name').notNull(),
-  realm: text('realm').notNull(),
-  class: text('class'),
-  race: text('race'),
-  faction: text('faction'),
-  level: integer('level'),
-  lastSeen: tz('last_seen'),
-  updatedAt: updatedAt(),
+export const characters = pgTable(
+  'characters',
+  {
+    key: text('key').primaryKey(), // Name-Realm; schema 7: full name (first + Forever surname)-Realm
+    name: text('name').notNull(),
+    realm: text('realm').notNull(),
+    class: text('class'),
+    race: text('race'),
+    faction: text('faction'),
+    level: integer('level'),
+    lastSeen: tz('last_seen'),
+    /** Schema 7: the first name alone. */
+    firstName: text('first_name'),
+    /** Schema 7: `Player-<server>-<id>`; one character, whatever its key. */
+    guid: text('guid'),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('characters_guid_idx').on(t.guid)],
+);
+
+/**
+ * Old character keys and the key they now belong to: build 70009 dropped surnames from UnitName, so 0.3.4 uploads
+ * keyed "Sam-Realm" what is "Sam Willikers-Realm". Ingest maps every alias to its canonical key.
+ */
+export const characterAliases = pgTable('character_aliases', {
+  aliasKey: text('alias_key').primaryKey(),
+  canonicalKey: text('canonical_key').notNull(),
+  /** `guid` (same GUID, other key), `merge` (characters-cli), … */
+  reason: text('reason').notNull(),
+  createdAt: tz('created_at').notNull().defaultNow(),
 });
 
 export const quests = pgTable('quests', {
@@ -173,6 +194,45 @@ export const turnIns = pgTable(
   (t) => [
     index('turn_ins_quest_idx').on(t.questId, t.build),
     index('turn_ins_run_idx').on(t.runId),
+  ],
+);
+
+/** Schema 7: one row per fishing cast (zone, spot, skill, lure, outcome, catch), searchable by zone and item. */
+export const fishingCasts = pgTable(
+  'fishing_casts',
+  {
+    id: text('id').primaryKey(),
+    char: text('char').notNull(),
+    build: integer('build').notNull(),
+    castAt: tz('cast_at').notNull(),
+    spellId: integer('spell_id'),
+    mapId: integer('map_id'),
+    zone: text('zone'),
+    subzone: text('subzone'),
+    x: real('x'),
+    y: real('y'),
+    skill: integer('skill'),
+    skillMax: integer('skill_max'),
+    modifier: integer('modifier'),
+    lure: integer('lure'),
+    lureSecs: integer('lure_secs'),
+    outcome: text('outcome', { enum: ['loot', 'escaped', 'notHooked', 'none'] }).notNull(),
+    secs: integer('secs'),
+    /** `[{ itemId, qty }]`. */
+    loot: jsonb('loot').$type<{ itemId: number; qty: number }[]>().notNull(),
+    money: integer('money').notNull(),
+    uploaderId: text('uploader_id').notNull(),
+    account: text('account').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check(
+      'fishing_casts_outcome_check',
+      sql`${t.outcome} in ('loot', 'escaped', 'notHooked', 'none')`,
+    ),
+    index('fishing_casts_zone_idx').on(t.zone, t.subzone, t.build),
+    index('fishing_casts_char_idx').on(t.char, t.castAt),
+    index('fishing_casts_loot_idx').using('gin', t.loot),
   ],
 );
 

@@ -1,6 +1,6 @@
 import { contentHash, RECORD_KINDS, recordKey } from '@forever-ledger/contracts';
 import type { Acknowledged, Records, RecordKind, UploadBatch } from '@forever-ledger/contracts';
-import { getTableColumns, inArray, sql } from 'drizzle-orm';
+import { and, eq, getTableColumns, inArray, ne, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { Db } from './db/client.js';
@@ -12,6 +12,7 @@ import {
   containerOpens,
   corpses,
   crafts,
+  fishingCasts,
   drops,
   items,
   itemSnapshots,
@@ -35,6 +36,7 @@ import {
   turnIns,
   vendors,
 } from './db/schema.js';
+import { canonicalize, loadAliases, mergeCharacter } from './characters.js';
 import { lockRunGroups, regroupRuns } from './runGroups.js';
 import type { RegroupLog } from './runGroups.js';
 import { fromEpoch } from './time.js';
@@ -152,6 +154,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       'nodeLoot',
       'containerOpens',
       'containerLoot',
+      'fishingCasts',
       'trainers',
       'vendors',
       'apiSamples',
@@ -177,21 +180,37 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         },
       });
 
+    // Character identity: a character seen under another key with the same GUID is one character (merge the old key
+    // into the batch's); then every record's key goes through the aliases (0.3.4 short names -> full names).
+    for (const c of r.characters) {
+      if (!c.guid) continue;
+      const [other] = await tx
+        .select({ key: characters.key })
+        .from(characters)
+        .where(and(eq(characters.guid, c.guid), ne(characters.key, c.key)));
+      if (other) await mergeCharacter(tx, other.key, c.key, 'guid');
+    }
+    const aliases = await loadAliases(tx);
+    // Mapping can make two records one (a short key and its full name): dedupe again, last wins.
+    const w = dedupe(canonicalize(r, aliases));
+
     await upsert(
       tx,
       characters,
-      r.characters.map((c) => ({ ...c, lastSeen: fromEpoch(c.lastSeen) })),
+      w.characters.map((c) => ({ ...c, lastSeen: fromEpoch(c.lastSeen) })),
       [characters.key],
+      // A 0.3.4 upload has no GUID or first name: keep what a 0.4.0 one told us.
+      { keepKnown: true },
     );
 
     // Static facts: Forever doesn't load SavedVariables back, so a quest rebuilt after /reload from the turn-in window
     // alone has no level/category. Keep what an earlier upload knew.
-    await upsert(tx, quests, r.quests, [quests.questId], { keepKnown: true });
+    await upsert(tx, quests, w.quests, [quests.questId], { keepKnown: true });
 
     await upsert(
       tx,
       questObservations,
-      r.questObservations.map((o) => ({
+      w.questObservations.map((o) => ({
         questId: o.questId,
         build: o.build,
         stage: o.stage,
@@ -216,7 +235,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     );
 
     const options = new Map<string, typeof questRewardOptions.$inferInsert>();
-    for (const o of r.questObservations) {
+    for (const o of w.questObservations) {
       for (const [kind, list] of [
         ['choice', o.choices],
         ['reward', o.rewards],
@@ -249,7 +268,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       turnIns,
-      r.turnIns.map(({ choice, ...t }) => ({
+      w.turnIns.map(({ choice, ...t }) => ({
         ...t,
         turnedInAt: fromEpoch(t.time)!,
         choiceIndex: choice?.index,
@@ -258,25 +277,25 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       [turnIns.id],
     );
 
-    await upsert(tx, items, r.items, [items.itemId], { keepKnown: true });
+    await upsert(tx, items, w.items, [items.itemId], { keepKnown: true });
     await upsert(
       tx,
       itemSnapshots,
-      r.itemSnapshots.map((s) => ({ ...s, firstSeen: fromEpoch(s.firstSeen) })),
+      w.itemSnapshots.map((s) => ({ ...s, firstSeen: fromEpoch(s.firstSeen) })),
       [itemSnapshots.itemId, itemSnapshots.build],
     );
 
     await upsert(
       tx,
       drops,
-      r.drops.map((d) => ({ ...d, uploaderId: batch.uploaderId, account: batch.account })),
+      w.drops.map((d) => ({ ...d, uploaderId: batch.uploaderId, account: batch.account })),
       [drops.itemId, drops.build, drops.npcId, drops.uploaderId, drops.account, drops.session],
     );
     // Per-session totals: setting them is safe, a later upload of the same session only grows them.
     await upsert(
       tx,
       corpses,
-      r.corpses.map((c) => ({ ...c, uploaderId: batch.uploaderId, account: batch.account })),
+      w.corpses.map((c) => ({ ...c, uploaderId: batch.uploaderId, account: batch.account })),
       [corpses.npcId, corpses.build, corpses.uploaderId, corpses.account, corpses.session],
     );
 
@@ -287,14 +306,14 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       skills,
-      r.skills.map((s) => ({ ...s, lastSeen: fromEpoch(s.lastSeen)! })),
+      w.skills.map((s) => ({ ...s, lastSeen: fromEpoch(s.lastSeen)! })),
       [skills.char, skills.skillLineId],
       { setWhere: notOlder(skills.lastSeen) },
     );
     await upsert(
       tx,
       skillUps,
-      r.skillUps.map((u) => ({
+      w.skillUps.map((u) => ({
         char: u.char,
         skillLineId: u.skillLineId,
         fromRank: u.from,
@@ -306,15 +325,15 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       [skillUps.char, skillUps.skillLineId, skillUps.observedAt, skillUps.toRank],
     );
 
-    await upsert(tx, recipes, r.recipes, [recipes.recipeId], { keepKnown: true });
-    await upsert(tx, recipeSnapshots, r.recipeSnapshots, [
+    await upsert(tx, recipes, w.recipes, [recipes.recipeId], { keepKnown: true });
+    await upsert(tx, recipeSnapshots, w.recipeSnapshots, [
       recipeSnapshots.recipeId,
       recipeSnapshots.build,
     ]);
     await upsert(
       tx,
       recipeStatus,
-      r.recipeStatus.map((s) => ({ ...s, seenAt: fromEpoch(s.seenAt)! })),
+      w.recipeStatus.map((s) => ({ ...s, seenAt: fromEpoch(s.seenAt)! })),
       [recipeStatus.recipeId, recipeStatus.build, recipeStatus.char],
       { setWhere: notOlder(recipeStatus.seenAt) },
     );
@@ -322,7 +341,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       recipeDifficulty,
-      r.recipeDifficulty,
+      w.recipeDifficulty,
       [
         recipeDifficulty.recipeId,
         recipeDifficulty.build,
@@ -339,7 +358,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       recipesLearned,
-      r.recipesLearned.map((l) => ({
+      w.recipesLearned.map((l) => ({
         char: l.char,
         recipeId: l.recipeId,
         build: l.build,
@@ -353,19 +372,19 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       crafts,
-      r.crafts.map((c) => ({ ...c, ...perSession })),
+      w.crafts.map((c) => ({ ...c, ...perSession })),
       [crafts.recipeId, crafts.build, crafts.uploaderId, crafts.account, crafts.session],
     );
     await upsert(
       tx,
       nodes,
-      r.nodes.map((n) => ({ ...n, ...perSession })),
+      w.nodes.map((n) => ({ ...n, ...perSession })),
       [nodes.objectId, nodes.build, nodes.uploaderId, nodes.account, nodes.session],
     );
     await upsert(
       tx,
       nodeLoot,
-      r.nodeLoot.map((l) => ({ ...l, ...perSession })),
+      w.nodeLoot.map((l) => ({ ...l, ...perSession })),
       [
         nodeLoot.itemId,
         nodeLoot.objectId,
@@ -380,7 +399,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       containerOpens,
-      r.containerOpens.map((c) => ({ ...c, ...perSession })),
+      w.containerOpens.map((c) => ({ ...c, ...perSession })),
       [
         containerOpens.containerId,
         containerOpens.build,
@@ -392,7 +411,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       containerLoot,
-      r.containerLoot.map((l) => ({ ...l, ...perSession })),
+      w.containerLoot.map((l) => ({ ...l, ...perSession })),
       [
         containerLoot.itemId,
         containerLoot.build,
@@ -401,6 +420,18 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         containerLoot.account,
         containerLoot.session,
       ],
+    );
+    // Schema 7: one row per fishing cast; a re-upload of the same cast id replaces it.
+    await upsert(
+      tx,
+      fishingCasts,
+      w.fishingCasts.map(({ time, ...c }) => ({
+        ...c,
+        castAt: fromEpoch(time)!,
+        uploaderId: batch.uploaderId,
+        account: batch.account,
+      })),
+      [fishingCasts.id],
     );
 
     // Trainer and vendor lists: a newer scan wins, an older SavedVariables session uploaded late changes nothing. A
@@ -423,7 +454,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       trainers,
-      r.trainers.map((t) => ({
+      w.trainers.map((t) => ({
         ...t,
         complete: t.complete ?? false,
         seenAt: fromEpoch(t.seenAt)!,
@@ -442,7 +473,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       vendors,
-      r.vendors.map((v) => ({ ...v, seenAt: fromEpoch(v.seenAt)! })),
+      w.vendors.map((v) => ({ ...v, seenAt: fromEpoch(v.seenAt)! })),
       [vendors.npcId, vendors.build],
       {
         setWhere: notOlder(vendors.seenAt),
@@ -452,7 +483,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       apiSamples,
-      r.apiSamples.map((a) => ({
+      w.apiSamples.map((a) => ({
         api: a.api,
         build: a.build,
         observedAt: fromEpoch(a.time)!,
@@ -464,7 +495,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     await upsert(
       tx,
       runs,
-      r.runs.map((run) => ({
+      w.runs.map((run) => ({
         id: run.id,
         build: run.build,
         char: run.char,
@@ -492,14 +523,14 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       { set: { groupId: sql`${runs.groupId}` } },
     );
     // A run's boss and party lists are replaced wholesale: a resumed run can gain bosses after upload.
-    const runIds = r.runs.map((run) => run.id);
+    const runIds = w.runs.map((run) => run.id);
     if (runIds.length > 0) {
       await tx.delete(runBosses).where(inArray(runBosses.runId, runIds));
       await tx.delete(runParty).where(inArray(runParty.runId, runIds));
       await insertChunked(
         tx,
         runBosses,
-        r.runs.flatMap((run) =>
+        w.runs.flatMap((run) =>
           run.bosses.map((b, i) => ({
             runId: run.id,
             ord: i + 1,
@@ -513,7 +544,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       await insertChunked(
         tx,
         runParty,
-        r.runs.flatMap((run) =>
+        w.runs.flatMap((run) =>
           run.party.map((p, i) => ({ runId: run.id, slot: i + 1, class: p.class, level: p.level })),
         ),
       );

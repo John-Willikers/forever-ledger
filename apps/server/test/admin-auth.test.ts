@@ -762,6 +762,10 @@ describe('admin auth (real Postgres, stubbed Battle.net)', () => {
       ['/v1/professions/skills', 200],
       ['/v1/export', 200],
       ['/v1/diagnostics', 200],
+      ['/v1/fishing/yield', 200],
+      ['/v1/fishing/where?item=1', 200],
+      ['/v1/fishing/casts', 200],
+      ['/v1/fishing/zones', 200],
     ];
 
     it('the read list covers every GET /v1 route but health and the addon manifest', () => {

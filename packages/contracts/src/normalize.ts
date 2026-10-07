@@ -5,6 +5,7 @@ import {
   ContainerLoot,
   ContainerOpen,
   Corpse,
+  FishingCast,
   Craft,
   Drop,
   GatherNode,
@@ -173,6 +174,7 @@ export function normalize(db: unknown): Normalized {
     nodeLoot: [],
     containerOpens: [],
     containerLoot: [],
+    fishingCasts: [],
     trainers: [],
     vendors: [],
     apiSamples: [],
@@ -410,6 +412,18 @@ export function normalize(db: unknown): Normalized {
       }
     }
   }
+
+  // Schema 7: one record per fishing cast (SV spells ids `itemID` / `mapID` / `spellID`; records use `itemId` ...).
+  list(db.fishingCasts).forEach((c, i) => {
+    if (!isObj(c)) return;
+    const { mapID, spellID, loot, ...rest } = c;
+    add('fishingCasts', FishingCast, `fishingCasts.${i + 1}`, {
+      ...rest,
+      mapId: mapID,
+      spellId: spellID,
+      loot: list(loot).map((l) => (isObj(l) ? { itemId: l.itemID, qty: l.qty } : l)),
+    });
+  });
 
   for (const [b, byNpc] of entries(db.trainers)) {
     for (const [npc, t] of entries(byNpc)) {
