@@ -1182,42 +1182,58 @@ local function lootMethod()
   return enumName(Enum and Enum.LootMethod, m)
 end
 
+-- groupMemberClass and isMe share groupUnits, scoped to this block (the main chunk is close to Lua 5.1's 200 locals).
+local groupMemberClass, isMe
+do
+-- The group's unit tokens, the player left out: raid1..40 in a raid (party units would count members twice), else
+-- party1..4.
+local function groupUnits()
+  local units = {}
+  local raid = IsInRaid and IsInRaid()
+  local me = UnitGUID("player")
+  for i = 1, raid and 40 or 4 do
+    local unit = (raid and "raid" or "party") .. i
+    if UnitExists(unit) and (not me or UnitGUID(unit) ~= me) then units[#units + 1] = unit end
+  end
+  return units
+end
+
 -- The class of the group member called `name` ("Name", "Name Surname" or "Name-Realm"), or nil. A full-name match
 -- wins; a first name alone counts only when exactly one member has it (Forever has many Sams). Names are only
 -- compared, never kept.
-local function groupMemberClass(name)
+function groupMemberClass(name)
   if type(name) ~= "string" or name == "" then return nil end
   local short = name:match("^([^%-]+)") or name
   local exact, byFirst, firstHits = nil, nil, 0
-  local function check(unit)
+  for _, unit in ipairs(groupUnits()) do
     local n, second = UnitName(unit)
-    if not n then return end
-    local _, class = UnitClass(unit)
-    if second and second ~= "" and (n .. " " .. second == name or n .. "-" .. second == name) then
-      exact = exact or class or false
-    elseif n == name or n == short then
-      firstHits = firstHits + 1
-      byFirst = class or false
+    if n then
+      local _, class = UnitClass(unit)
+      if second and second ~= "" and (n .. " " .. second == name or n .. "-" .. second == name) then
+        exact = exact or class or false
+      elseif n == name or n == short then
+        firstHits = firstHits + 1
+        byFirst = class or false
+      end
     end
   end
-  for i = 1, 4 do check("party" .. i) end
-  for i = 1, 40 do check("raid" .. i) end
   if exact ~= nil then return exact or nil end
   if firstHits == 1 then return byFirst or nil end
 end
 
--- Whether a chat name is the player: the full name, "Name-Realm", or the first name when no group member shares it.
-local function isMe(name)
+-- Whether a chat name is the player: the full name (with or without "-Realm"), "First-Realm", or the first name when
+-- no group member shares it.
+function isMe(name)
   local first = UnitName("player")
   local full = fullName("player")
-  if name == full or name == first .. "-" .. (GetRealmName() or "") then return true end
-  local short = name:match("^([^%-]+)")
-  if short == full then return true end
-  if name ~= first and short ~= first then return false end
-  for i = 1, 4 do
-    if UnitName("party" .. i) == first then return false end
+  local realm = GetRealmName() or ""
+  if name == full or name == full .. "-" .. realm or name == first .. "-" .. realm then return true end
+  if name ~= first then return false end
+  for _, unit in ipairs(groupUnits()) do
+    if UnitName(unit) == first then return false end
   end
   return true
+end
 end
 
 ---------------------------------------------------------------- dungeon runs
@@ -2303,7 +2319,8 @@ end
 -- seen, and only with that channel's CastBar id when the client gives one.
 -- db.chars gets the character's record whenever its key is new this session (the key can change after PLAYER_LOGIN
 -- if the surname arrives later), so every record's `char` has its character.
-local function noteChar()
+local fishLog = { n = 0 }
+function fishLog.noteChar()
   if not db or not db.chars then return end
   local key = charKey()
   if db.chars[key] then return end
@@ -2312,7 +2329,6 @@ local function noteChar()
   db.chars[key] = me
 end
 
-local fishLog = { n = 0 }
 do
   local CAST_GRACE = 3   -- seconds after the channel stops that the loot window may still open
   local CAST_MAX = 35    -- a cast still open after this is over, whatever happened
@@ -2340,7 +2356,8 @@ do
     if not c then return end
     fishLog.cast, fishLog.bar = nil, nil
     c.outcome = c.outcome or outcome
-    c.secs = c.stoppedAt and (c.stoppedAt - c.time) or (now() - c.time)
+    -- A cast whose channel never started (it failed) is closed by the next cast: never longer than CAST_MAX.
+    c.secs = math.min(c.stoppedAt and (c.stoppedAt - c.time) or (now() - c.time), CAST_MAX)
     c.stoppedAt = nil
     db.fishingCasts[#db.fishingCasts + 1] = c
     trim(db.fishingCasts, HISTORY_CAP)
@@ -2358,7 +2375,7 @@ do
   function fishLog.sent(spellID)
     if gatherSkill(spellID) ~= 356 then return end
     finish("none")
-    noteChar()
+    fishLog.noteChar()
     fishLog.n = fishLog.n + 1
     local t = now()
     local loc = where()
@@ -2439,7 +2456,7 @@ end
 
 function handlers.PLAYER_ENTERING_WORLD()
   checkInstance()
-  safely("noteChar", noteChar)
+  safely("noteChar", fishLog.noteChar)
 end
 function handlers.ZONE_CHANGED_NEW_AREA() checkInstance() end
 function handlers.QUEST_DETAIL() captureQuestFrame("detail") end

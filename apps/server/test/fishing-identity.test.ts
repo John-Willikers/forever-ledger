@@ -173,4 +173,57 @@ describe('fishing casts and character identity (schema 7)', () => {
       s.database.db.transaction((tx) => mergeCharacter(tx, NEW, FULL, 'merge', ['ACCOUNT1'])),
     ).rejects.toBeInstanceOf(MergeRefused);
   });
+
+  it('never merges a key another account also uploaded (a shared 0.3.4 short name)', async () => {
+    const G2 = 'Player-4618-00BBBBBB';
+    // Account B's 0.3.4 tray uploaded "Shared-Bayou"; account C (another player) did too.
+    for (const account of ['ACCOUNT_B', 'ACCOUNT_C']) {
+      const b = batchFromFixture('session-v6.lua', account, `pc-${account}`);
+      b.records.characters = b.records.characters.map((c) => ({
+        ...c,
+        key: 'Shared-Bayou',
+        name: 'Shared',
+      }));
+      await ingest(b);
+    }
+    // B's 0.4.0 file still has the short key with B's GUID (before the surname was known), and the full name.
+    const v7 = batchFromFixture('session-v7.lua', 'ACCOUNT_B', 'pc-ACCOUNT_B');
+    v7.records.characters = [
+      { key: 'Shared-Bayou', name: 'Shared', realm: 'Bayou', guid: G2, lastSeen: 100 },
+      { key: 'Shared Smith-Bayou', name: 'Shared Smith', realm: 'Bayou', guid: G2, lastSeen: 50 },
+    ];
+    v7.records.fishingCasts = [];
+    await ingest(v7);
+    // The full name keeps the GUID (a surname beats none, whatever lastSeen says); the shared key is not merged.
+    expect(await q(`select key from characters where guid = $1`, [G2])).toEqual([
+      { key: 'Shared Smith-Bayou' },
+    ]);
+    expect(await q(`select key from characters where key = 'Shared-Bayou'`)).toEqual([
+      { key: 'Shared-Bayou' },
+    ]);
+  });
+
+  it('a rename: the most recently seen key keeps the GUID and the old key merges into it', async () => {
+    const G3 = 'Player-4618-00CCCCCC';
+    const first = batchFromFixture('session-v7.lua', 'ACCOUNT_D', 'pc-d');
+    first.records.characters = [
+      { key: 'Ana Old-Bayou', name: 'Ana Old', realm: 'Bayou', guid: G3, lastSeen: 100 },
+    ];
+    first.records.fishingCasts = [];
+    await ingest(first);
+    // After the rename the file lists the new key first and the old one (older lastSeen) after it.
+    const later = batchFromFixture('session-v7.lua', 'ACCOUNT_D', 'pc-d');
+    later.records.characters = [
+      { key: 'Ana New-Bayou', name: 'Ana New', realm: 'Bayou', guid: G3, lastSeen: 200 },
+      { key: 'Ana Old-Bayou', name: 'Ana Old', realm: 'Bayou', guid: G3, lastSeen: 100 },
+    ];
+    later.records.fishingCasts = [];
+    await ingest(later);
+    expect(await q(`select key from characters where guid = $1`, [G3])).toEqual([
+      { key: 'Ana New-Bayou' },
+    ]);
+    expect(
+      await q(`select canonical_key from character_aliases where account = 'ACCOUNT_D'`),
+    ).toEqual([{ canonical_key: 'Ana New-Bayou' }]);
+  });
 });

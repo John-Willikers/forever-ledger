@@ -105,8 +105,8 @@ export class MergeRefused extends Error {}
  * Moves every row of character `from` onto `into`, records `from` as an alias of `into` for `accounts` (the accounts
  * whose uploads used `from`), and deletes the `from` character (its known fields fill gaps in `into`). `into` is
  * created from `from` when it doesn't exist yet (a rename). Refused when `into` is itself an alias for one of those
- * accounts. Takes the run-group lock first when `from` has runs (callers must not have written yet: see
- * lockRunGroups). Safe to run again: a second run finds nothing to move.
+ * accounts. The caller takes the run-group lock first (lockRunGroups), before writing anything: a merge moves runs.
+ * Safe to run again: a second run finds nothing to move.
  */
 export async function mergeCharacter(
   conn: Conn,

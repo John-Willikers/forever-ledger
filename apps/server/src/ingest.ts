@@ -128,14 +128,22 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     const known = await loadAliases(tx, batch.account);
     const merges: { from: string; into: string; accounts: string[] }[] = [];
     const keepGuid = new Map<string, boolean>();
-    // One GUID under two keys in the same file: the key with a surname keeps it (else the last one).
-    const byGuid = new Map<string, string>();
+    // One GUID under two keys in the same file (a rename keeps its old record): a key with a surname beats one
+    // without, then the most recently seen key keeps the GUID.
+    type Char = (typeof r.characters)[number];
+    const better = (a: Char, b: Char) => {
+      const sa = hasSurname(a.key, a.realm);
+      const sb = hasSurname(b.key, b.realm);
+      if (sa !== sb) return sa;
+      return (a.lastSeen ?? 0) >= (b.lastSeen ?? 0);
+    };
+    const byGuid = new Map<string, Char>();
     for (const c of r.characters) {
       if (!c.guid) continue;
       const held = byGuid.get(c.guid);
-      if (held === undefined || hasSurname(c.key, c.realm) || !hasSurname(held)) {
-        if (held !== undefined) keepGuid.set(held, false);
-        byGuid.set(c.guid, c.key);
+      if (held === undefined || better(c, held)) {
+        if (held !== undefined) keepGuid.set(held.key, false);
+        byGuid.set(c.guid, c);
       } else {
         keepGuid.set(c.key, false);
       }
@@ -148,11 +156,11 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         .from(characters)
         .where(and(eq(characters.guid, c.guid), ne(characters.key, key)));
       if (!other) continue;
+      // Only this account ever uploaded the old key: a merge moves every row of that key, so a key another account
+      // also used (a shared 0.3.4 short name, or a spoofed record) is never merged.
       const accounts = await accountsOf(tx, other.key);
-      if (
-        accounts.includes(batch.account) &&
-        (hasSurname(key, c.realm) || !hasSurname(other.key))
-      ) {
+      const onlyMine = accounts.length === 1 && accounts[0] === batch.account;
+      if (onlyMine && (hasSurname(key, c.realm) || !hasSurname(other.key))) {
         merges.push({ from: other.key, into: key, accounts });
       } else {
         keepGuid.set(c.key, false);
