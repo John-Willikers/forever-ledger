@@ -10,8 +10,9 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 
 - 🟡 0 📝 Plan approved and written, branch `feat/knowledge-pipeline` from master (354ee78), identity plan tasks 7–8
   marked shared — 06:47 CDT
-  - ⛔ 0b 💾 Cruiser backup: Harlan creates a private GitHub repo for `stream-recorder`; the cruiser session pushes it
-- ⬜ 1 🛰️ Cruiser fetch worker: paste `docs/cruiser-fetcher-handoff.md` on cruiser. The server routes are live; Harlan
+  - ✅ 0b 💾 Cruiser backup: `stream-recorder` pushed to private `John-Willikers/stream-recorder` (master, 2a6cc57) —
+    checked 2026-10-06 20:56 CDT
+- 🟡 1 🛰️ Cruiser fetch worker: token #8 minted (fetch scope, unused so far); no `feat/page-fetcher` branch yet. Paste `docs/cruiser-fetcher-handoff.md` on cruiser. The server routes are live; Harlan
   mints the token on the VPS (`token:mint "cruiser fetcher" --fetch`)
 - ✅ 2 🗄️ Server: migration 0013, `fetch_targets`, `web_snapshots`, `sources`, `claims`, `web_comments`,
   `field_observations`, lease + snapshot routes, `can_fetch` scope — 07:06 CDT (cc7281c)
