@@ -25,7 +25,8 @@ read_globals = {
   "LoggingChat", "LoggingCombat",
   -- units
   "UnitLevel", "UnitName", "UnitXP", "UnitXPMax", "UnitClass", "UnitRace", "UnitGUID", "UnitFactionGroup",
-  "UnitExists", "GetRealmName", "UnitAffectingCombat", "IsInGroup", "GetNumGroupMembers", "GetLootMethod",
+  "UnitExists", "GetRealmName", "UnitFullName", "UnitPVPName", "GetUnitName", "GetPlayerInfoByGUID", "C_PlayerInfo",
+  "PlayerLocation", "IsSwimming", "GetWeaponEnchantInfo", "UnitAffectingCombat", "IsInGroup", "GetNumGroupMembers", "GetLootMethod",
   -- zone / instance
   "GetRealZoneText", "GetSubZoneText", "IsInInstance", "GetInstanceInfo",
   -- quests

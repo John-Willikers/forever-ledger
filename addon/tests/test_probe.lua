@@ -116,7 +116,7 @@ return function(H)
     H.eq(pdb.loadCheck.arrivedEmpty, true)
     H.eq(pdb.loadCheck.arrivedKeys, 0)
     H.eq(pdb.loadCheck.arrivedType, "nil")
-    H.eq(pdb.loadCheck.probeVersion, "0.3.0")
+    H.eq(pdb.loadCheck.probeVersion, "0.4.0")
     H.eq(#pdb.loadHistory, 1)
   end)
 
@@ -396,7 +396,7 @@ return function(H)
 
   H.test("probe specs: the catalog lists every class's specs with role and primary stat", function()
     H.ok(specs, "specs for build 61582")
-    H.eq(specs.probeVersion, "0.3.0")
+    H.eq(specs.probeVersion, "0.4.0")
     H.eq(specs.at, sc.world.clock)
     local warrior = specs.catalog[1]
     H.eq(warrior.info.values[2], "WARRIOR")
@@ -544,6 +544,65 @@ return function(H)
     H.eq(H.count(pdb.specs), 0)
     c.slash("FOREVERLEDGERPROBE", "status")
     H.ok(printedHas(c, "specs"), "help mentions specs")
+  end)
+
+  H.test("probe names: records every way the client names you, and finds surname functions", function()
+    local c = freshProbe({})
+    c.env.UnitFullName = function() return "Sam", "Classic Beta PvE" end
+    c.env.GetUnitName = function(_, server) return server and "Sam-Classic Beta PvE" or "Sam" end
+    c.env.PlayerLocation = { CreateFromUnit = function(_, unit) return { unit = unit } end }
+    c.env.C_PlayerInfo = {
+      ShouldDisplaySurname = function() return true end,
+      GetPlayerSurname = function(loc) return loc and loc.unit == "player" and "Willikers" or nil end,
+      GetClass = function() return { className = "Druid", classID = 11 } end,
+      SetSomething = function() error("never called") end,
+      SetCharacterName = function() error("setters are never called") end,
+    }
+    c.env.PlayerName = { GetText = function() return "Sam Willikers" end }
+    c.slash("FOREVERLEDGERPROBE", "names")
+    local n = c.env.ForeverLedgerProbeDB.names[61582]
+    H.ok(n, "names for the build")
+    H.eq(n.units.player.UnitFullName.values[1], "Sam")
+    H.eq(n.units.player.GetUnitNameServer.values[1], "Sam-Classic Beta PvE")
+    H.eq(n.units.player.calls.GetPlayerSurname.values[1], "Willikers")
+    H.eq(n.units.player.calls.GetClass.values[1].className, "Druid", "tables kept one level deep")
+    H.eq(n.units.player.calls.SetSomething, nil, "only getters are called")
+    H.eq(n.ShouldDisplaySurname.values[1], true)
+    H.eq(n.frames.PlayerName, "Sam Willikers")
+    local found = false
+    for _, name in ipairs(n.functions) do found = found or name == "C_PlayerInfo.GetPlayerSurname" end
+    H.ok(found, "surname function found")
+    H.eq(n.units.target, nil, "no target, no entry")
+    H.eq(n.direct["C_PlayerInfo.SetCharacterName"], nil, "name-like setters are listed, not called")
+    H.eq(n.direct["C_PlayerInfo.GetPlayerSurname"].player.ok, true)
+  end)
+
+  H.test("probe fish: records a cast's events, lure, tooltip, zone and loot sources", function()
+    local c = freshProbe({ professionAPI = true, spells = { [7620] = { name = "Fishing" } }, fishing = true,
+                           items = { [6359] = { name = "Firefin Snapper" } },
+                           loot = { { itemID = 6359, sourceGUID = "GameObject-0-1-2-3-4-35591-0000" } } })
+    c.env.GetWeaponEnchantInfo = function() return true, 540000, 0, 263 end
+    c.slash("FOREVERLEDGERPROBE", "fish on")
+    c.fire("UNIT_SPELLCAST_SENT", "player", "", "Cast-1", 7620)
+    c.fire("UNIT_SPELLCAST_CHANNEL_START", "player", "Cast-1", 7620)
+    c.fire("UNIT_SPELLCAST_SENT", "target", "", "Cast-x", 7620)
+    c.fire("LOOT_OPENED", false, false)
+    c.fire("LOOT_CLOSED")
+    c.fire("UNIT_SPELLCAST_SENT", "player", "", "Cast-2", 133)
+    local f = c.env.ForeverLedgerProbeDB.fish[61582]
+    H.eq(#f, 1, "one fishing cast; a Fireball is not one")
+    H.eq(f[1].lure.values[4], 263)
+    H.eq(f[1].where.zone, "Elwynn Forest")
+    H.eq(f[1].where.mapID, 1429)
+    H.eq(f[1].loot.fishingLoot.values[1], true)
+    H.eq(f[1].loot.slots[1].sources.values[1], "GameObject-0-1-2-3-4-35591-0000")
+    H.eq(f[1].loot.slots[1].info.values[2], "Firefin Snapper")
+    local events = {}
+    for i, e in ipairs(f[1].events) do events[i] = e.event end
+    H.eq(table.concat(events, ","), "UNIT_SPELLCAST_SENT,UNIT_SPELLCAST_CHANNEL_START,LOOT_OPENED,LOOT_CLOSED")
+    c.slash("FOREVERLEDGERPROBE", "fish off")
+    c.fire("UNIT_SPELLCAST_SENT", "player", "", "Cast-3", 7620)
+    H.eq(#c.env.ForeverLedgerProbeDB.fish[61582], 1, "off stops recording")
   end)
 
   H.writeFile(FIXTURES .. "probe-dump.lua", H.serialize("ForeverLedgerProbeDB", db))

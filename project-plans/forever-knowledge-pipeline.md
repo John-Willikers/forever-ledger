@@ -44,7 +44,7 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   - 📝 Changes from the plan: on-demand enqueue is `knowledge-cli enqueue-seen <template>` (no hook after ingest
     until the Forever URL scheme is confirmed); snapshots are JSON with base64 gzip, not a raw gzip body; seed claims
     stay on their seed sources, and re-checking them against fetched pages is a manual `knowledge-cli claim`.
-- ⬜ 3 🎣 Fishing casts (schema 7 / addon 0.4.0) — 🔒 probe `/flprobe fish` in game first; ⛔ release waits on the
+- 🟡 3 🎣 Fishing casts → now `forever-ledger-0.4.0-fishing-identity.md` (schema 7 / addon 0.4.0) — 🔒 probe `/flprobe fish` in game first; ⛔ release waits on the
   identity plan's open questions
 - ⬜ 4 🧾 Character guides (DB rows, admin render)
 - ⬜ 5 🔌 MCP server `apps/mcp` (PM2 :3411, Nginx `/mcp`)

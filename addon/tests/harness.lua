@@ -233,6 +233,7 @@ function H.new(worldOverrides)
   env.UnitRace = function() return world.player.race, world.player.race end
   env.UnitFactionGroup = function() return world.player.faction end
   env.UnitExists = function(u)
+    if u == "player" then return true end
     local i = tonumber((u or ""):match("party(%d)"))
     return i ~= nil and world.party[i] ~= nil
   end

@@ -1,9 +1,12 @@
--- Forever Ledger Probe v0.3.0
+-- Forever Ledger Probe v0.4.0
 -- Read-only: records what this client supports so Forever Ledger can be built against the real API.
 -- Nothing is automated. Output lands in WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedgerProbe.lua on /reload.
 --
 --   /flprobe             dump build info, API docs (same data as /api), globals and event support
 --   /flprobe specs       spec catalog per class and, for every bag/equipped item, which specs the client says want it
+--   /flprobe names       every way the client names you (and your target / party): looking for the surname
+--   /flprobe fish on     record each fishing cast: events, lure, tooltip, loot sources, zone, skill (off after /reload)
+--   /flprobe fish off
 --   /flprobe sniff on    record the first few payloads of every event while you play (off after /reload unless on)
 --   /flprobe sniff off
 --   /flprobe io          record chat/combat logging state (plus the SavedVariables load check)
@@ -15,7 +18,7 @@
 --   /flprobe status
 --   /flprobe reset confirm
 
-local VERSION = "0.3.0"
+local VERSION = "0.4.0"
 local SAMPLE_LIMIT = 5     -- payloads kept per event
 local MAX_EVENTS = 1500    -- distinct events tracked per build while sniffing
 local MAX_STRING = 200
@@ -663,6 +666,232 @@ local function dumpSpecs()
   say("Type /reload to write ForeverLedgerProbe.lua.")
 end
 
+---------------------------------------------------------------- names (where is the surname?)
+local MAX_FISH = 300
+-- Lua patterns have no alternation: a name matches when any of these is in it (lowercased).
+local NAME_PATTERNS = { "surname", "lastname", "familyname", "fullname", "charactername", "playername" }
+local NAME_UNITS = { "player", "target", "party1", "mouseover" }
+
+-- A table's first-level entries, clipped (enough to see what a getter returns).
+local function shallow(t)
+  if type(t) ~= "table" then return clip(t) end
+  local out, n = {}, 0
+  for k, v in pairs(t) do
+    n = n + 1
+    if n > MAX_LIST then break end
+    out[tostring(k)] = clip(v)
+  end
+  return out
+end
+
+-- Like try, but every return value that is a table is kept one level deep.
+local function tryDeep(fn, ...)
+  if type(fn) ~= "function" then return { ok = false, missing = true, err = "missing" } end
+  local res = { pcall(fn, ...) }
+  if not res[1] then return { ok = false, err = clip(tostring(res[2])) } end
+  local values = {}
+  for i = 2, #res do values[i - 1] = shallow(res[i]) end
+  return { ok = true, values = values }
+end
+
+local function nameLike(name)
+  local lower = name:lower()
+  for _, p in ipairs(NAME_PATTERNS) do
+    if lower:find(p, 1, true) then return true end
+  end
+  return false
+end
+
+-- Every function whose name looks like it gives a name, in _G and the C_ namespaces.
+local function nameFunctions()
+  local found = {}
+  for k, v in pairs(_G) do
+    if type(k) == "string" then
+      if type(v) == "function" and nameLike(k) then
+        found[#found + 1] = k
+      elseif type(v) == "table" and k:sub(1, 2) == "C_" then
+        for fk, fv in pairs(v) do
+          if type(fk) == "string" and type(fv) == "function" and nameLike(fk) then
+            found[#found + 1] = k .. "." .. fk
+          end
+        end
+      end
+    end
+  end
+  table.sort(found)
+  return found
+end
+
+local function unitNames(unit)
+  local exists = UnitExists and UnitExists(unit)
+  if not exists then return nil end
+  local guid = UnitGUID and UnitGUID(unit)
+  local loc = PlayerLocation and PlayerLocation.CreateFromUnit and PlayerLocation:CreateFromUnit(unit)
+  local r = {
+    UnitName = try(UnitName, unit),
+    UnitFullName = try(UnitFullName, unit),
+    GetUnitNameShort = try(GetUnitName, unit, false),
+    GetUnitNameServer = try(GetUnitName, unit, true),
+    UnitPVPName = try(UnitPVPName, unit),
+    guid = clip(guid),
+    GetPlayerInfoByGUID = guid and try(GetPlayerInfoByGUID, guid) or nil,
+    GetNameAndServerNameFromGUID = guid and try(C_PlayerInfo and C_PlayerInfo.GetNameAndServerNameFromGUID, guid)
+      or nil,
+    calls = {},
+  }
+  -- C_PlayerInfo getters that take a PlayerLocation: only Get*/Is*/Should*/Can*/Has* names (read-only by convention).
+  if C_PlayerInfo and loc then
+    for fk, fv in pairs(C_PlayerInfo) do
+      if type(fv) == "function" and (fk:find("^Get") or fk:find("^Is") or fk:find("^Should") or fk:find("^Has")) then
+        local res = tryDeep(fv, loc)
+        if res.ok then r.calls[fk] = res end
+      end
+    end
+  end
+  return r
+end
+
+local function frameText(path)
+  local f = resolve(path)
+  if type(f) ~= "table" or type(f.GetText) ~= "function" then return nil end
+  local ok, text = pcall(f.GetText, f)
+  return ok and clip(text) or nil
+end
+
+local function dumpNames()
+  db.names = db.names or {}
+  local out = { at = time(), probeVersion = VERSION, functions = nameFunctions(), units = {},
+                ShouldDisplaySurname = try(C_PlayerInfo and C_PlayerInfo.ShouldDisplaySurname),
+                frames = { PlayerName = frameText("PlayerName"), PlayerFrameName = frameText("PlayerFrame.name"),
+                           TargetFrameName = frameText("TargetFrame.name"),
+                           CharacterTitle = frameText("CharacterFrameTitleText") } }
+  for _, unit in ipairs(NAME_UNITS) do out.units[unit] = unitNames(unit) end
+  -- Name-like globals and C_ functions called with no argument and with "player".
+  out.direct = {}
+  for _, name in ipairs(out.functions) do
+    -- Read-only: only getters are called (Get*, Is*, Should*, Has*, Unit*); the rest are just listed.
+    local short = name:match("[^%.]+$")
+    local getter = short:find("^Get") or short:find("^Is") or short:find("^Should") or short:find("^Has")
+    if getter or short:find("^Unit") then
+      local fn = resolve(name)
+      out.direct[name] = { none = tryDeep(fn), player = tryDeep(fn, "player") }
+    end
+  end
+  db.names[build] = out
+  local p = out.units.player
+  say(format("UnitName %s | UnitFullName %s | player frame %s | surname shown: %s | %d name function(s)",
+    p and show(p.UnitName) or "?", p and show(p.UnitFullName) or "?", tostring(out.frames.PlayerName),
+    show(out.ShouldDisplaySurname), #out.functions))
+  say("Target another player (or open the character frame) and run it again for more. /reload to write the file.")
+end
+
+---------------------------------------------------------------- fishing casts
+local fishFrame = CreateFrame("Frame")
+local fishCast   -- the cast being recorded
+
+local function isFishingSpell(spellID, name)
+  if spellID == 7620 or spellID == 7731 or spellID == 7732 or spellID == 18248 then return true end
+  return type(name) == "string" and name:lower():find("fishing") ~= nil
+end
+
+local function spellName(spellID)
+  local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+  if type(info) == "table" then return info.name end
+  return GetSpellInfo and (GetSpellInfo(spellID)) or nil
+end
+
+local function fishingSkill()
+  local out = {}
+  local ok, a, b, c, fish = pcall(GetProfessions)
+  out.GetProfessions = ok and { clip(a), clip(b), clip(c), clip(fish) } or clip(a)
+  if ok and fish then out.fishing = try(GetProfessionInfo, fish) end
+  return out
+end
+
+local function tooltipLines()
+  if not GameTooltip or not GameTooltip.IsShown or not GameTooltip:IsShown() then return nil end
+  local lines = {}
+  for i = 1, math.min(GameTooltip:NumLines() or 0, 4) do
+    local fs = _G["GameTooltipTextLeft" .. i]
+    lines[i] = fs and clip(fs:GetText()) or nil
+  end
+  return lines
+end
+
+local function where()
+  local mapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+  local pos = mapID and C_Map.GetPlayerMapPosition and C_Map.GetPlayerMapPosition(mapID, "player")
+  local x, y
+  if pos and pos.GetXY then x, y = pos:GetXY() end
+  return { mapID = mapID, zone = clip(GetRealZoneText and GetRealZoneText()),
+           subzone = clip(GetSubZoneText and GetSubZoneText()),
+           x = x and math.floor(x * 1000 + 0.5) / 10, y = y and math.floor(y * 1000 + 0.5) / 10,
+           swimming = IsSwimming and IsSwimming() or nil }
+end
+
+local function startCast()
+  db.fish[build] = db.fish[build] or {}
+  local list = db.fish[build]
+  if #list >= MAX_FISH then return end
+  fishCast = { at = time(), events = {}, lure = try(GetWeaponEnchantInfo), tooltip = tooltipLines(),
+               mouseover = UnitExists and UnitExists("mouseover") and clip(UnitName("mouseover")) or nil,
+               where = where(), skill = fishingSkill() }
+  list[#list + 1] = fishCast
+end
+
+local function addEvent(event, ...)
+  if not fishCast then return end
+  local args = {}
+  for i = 1, select("#", ...) do args[i] = clip((select(i, ...))) end
+  fishCast.events[#fishCast.events + 1] = { event = event, t = GetTime and GetTime() or 0, args = args }
+end
+
+local function recordLoot()
+  local loot = { fishingLoot = try(IsFishingLoot), slots = {} }
+  local ok, n = pcall(GetNumLootItems)
+  for i = 1, ok and n or 0 do
+    loot.slots[i] = { info = try(GetLootSlotInfo, i), link = try(GetLootSlotLink, i),
+                      sources = try(GetLootSourceInfo, i) }
+  end
+  return loot
+end
+
+fishFrame:SetScript("OnEvent", function(_, event, ...)
+  if event == "UNIT_SPELLCAST_SENT" then
+    local unit, _, _, spellID = ...
+    if unit ~= "player" then return end
+    if isFishingSpell(spellID, spellName(spellID)) then startCast() end
+    addEvent(event, ...)
+  elseif event == "LOOT_OPENED" then
+    if fishCast and not fishCast.loot then
+      addEvent(event, ...)
+      fishCast.loot = recordLoot()
+      local n = #fishCast.loot.slots
+      local first = n > 0 and fishCast.loot.slots[1].info.ok and fishCast.loot.slots[1].info.values[2] or "-"
+      say(format("cast %d: %s %s, lure %s, %d slot(s), first %s", #db.fish[build], tostring(fishCast.where.zone),
+        tostring(fishCast.where.subzone), show(fishCast.lure), n, tostring(first)))
+    end
+  elseif event == "LOOT_CLOSED" then
+    addEvent(event, ...)
+    fishCast = nil
+  else
+    local unit = ...
+    if unit == "player" then addEvent(event, ...) end
+  end
+end)
+
+local FISH_EVENTS = { "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
+  "UNIT_SPELLCAST_CHANNEL_STOP", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED",
+  "UNIT_SPELLCAST_STOP", "LOOT_READY", "LOOT_OPENED", "LOOT_CLOSED" }
+
+local function setFish(on)
+  db.fishing = on and true or nil
+  for _, e in ipairs(FISH_EVENTS) do
+    if on then pcall(fishFrame.RegisterEvent, fishFrame, e) else pcall(fishFrame.UnregisterEvent, fishFrame, e) end
+  end
+  if not on then fishCast = nil end
+end
+
 ---------------------------------------------------------------- lifecycle
 local lifecycle = CreateFrame("Frame")
 lifecycle:RegisterEvent("ADDON_LOADED")
@@ -676,6 +905,7 @@ lifecycle:SetScript("OnEvent", function(_, event, name, func)
     ForeverLedgerProbeDB = type(arrived) == "table" and arrived or {}
     db = ForeverLedgerProbeDB
     db.dumps, db.sniff, db.io, db.specs = db.dumps or {}, db.sniff or {}, db.io or {}, db.specs or {}
+    db.names, db.fish = db.names or {}, db.fish or {}
     db.probeVersion = VERSION
     local _, buildStr = GetBuildInfo()
     build = tonumber(buildStr) or 0
@@ -713,8 +943,17 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
     ioReloadButtons(msg == "io reloadbtn hide")
   elseif msg == "specs" then
     dumpSpecs()
+  elseif msg == "names" then
+    dumpNames()
+  elseif msg == "fish on" then
+    setFish(true)
+    say("recording fishing casts (up to " .. MAX_FISH .. " this build). Fish a bit, then /flprobe fish off, /reload.")
+  elseif msg == "fish off" then
+    setFish(false)
+    say(format("fishing recorder off; %d cast(s) recorded this build.", #(db.fish[build] or {})))
   elseif msg == "reset confirm" then
-    wipe(db.dumps); wipe(db.sniff); wipe(db.io); wipe(db.specs); db.sniffEventCount = 0
+    wipe(db.dumps); wipe(db.sniff); wipe(db.io); wipe(db.specs); wipe(db.names); wipe(db.fish)
+    db.sniffEventCount = 0
     say("probe data wiped.")
   else
     local ndumps = 0
@@ -724,7 +963,7 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
     say(format("build %d: %d dump(s), specs %s, sniffer %s, %d events seen this build, %d io entries, load #%d.",
       build, ndumps, db.specs[build] and "recorded" or "not run", db.sniffing and "ON" or "off", nev,
       #(db.io[build] or {}), db.loadCount or 0))
-    say("/flprobe  |  /flprobe specs  |  /flprobe sniff on|off  |  /flprobe io [on|toggle|off|reloadbtn]  |  " ..
-      "/flprobe reset confirm")
+    say("/flprobe  |  /flprobe specs  |  /flprobe names  |  /flprobe fish on|off  |  /flprobe sniff on|off  |  " ..
+      "/flprobe io [on|toggle|off|reloadbtn]  |  /flprobe reset confirm")
   end
 end
