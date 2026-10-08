@@ -57,7 +57,8 @@ export const TRANSPORTS: readonly Transport[] = [
     confidence: 'guess',
   },
   {
-    // Guess: Booty Bay dock and Ratchet pier.
+    // Guess: Booty Bay dock and Ratchet pier. Harlan's ride (2026-10-08, build 70245, two trips merged in
+    // knowledge/character-state.ts) boarded 19 yd and landed 23 yd from these spots: close enough to keep.
     name: 'Booty Bay ↔ Ratchet',
     kind: 'boat',
     a: { mapId: 1434, x: 25.8, y: 73.0 },

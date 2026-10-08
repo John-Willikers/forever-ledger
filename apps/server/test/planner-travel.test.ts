@@ -3,13 +3,24 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { distance, toWorld } from '../src/planner/geo.js';
-import { FLIGHT_SPEED, flightSeconds, route, type TravelData } from '../src/planner/travel.js';
+import {
+  FLIGHT_SPEED,
+  flightSeconds,
+  groundTravel,
+  route,
+  type TravelData,
+} from '../src/planner/travel.js';
 import { TRANSPORTS } from '../src/planner/transports.js';
 import type { CharacterState, MapSpot } from '../src/planner/types.js';
 
-type Ch = Pick<CharacterState, 'faction' | 'flightPaths' | 'hearth' | 'mounted'>;
+type Ch = Pick<
+  CharacterState,
+  'faction' | 'flightPaths' | 'hearth' | 'mounted' | 'className' | 'level'
+>;
 const horde = (over: Partial<Ch> = {}): Ch => ({
   faction: 'Horde',
+  className: 'WARRIOR',
+  level: 10,
   flightPaths: new Set(),
   hearth: null,
   mounted: false,
@@ -40,6 +51,43 @@ describe('planner travel', () => {
       yards(a, b) / 11.2,
       3,
     );
+  });
+
+  it('uses Travel Form (druid 30+) and Ghost Wolf (shaman 20+) at +40 %, unless a mount is faster', () => {
+    const a = { mapId: 1420, x: 61, y: 52 };
+    const b = { mapId: 1420, x: 40, y: 50 };
+    const d = yards(a, b);
+    const go = (over: Partial<Ch>) => route(a, b, horde(over), DATA, 0)!;
+
+    const druid = go({ className: 'DRUID', level: 30 });
+    expect(druid.seconds).toBeCloseTo(d / 9.8, 3);
+    expect(druid.legs).toMatchObject([{ how: 'walk', note: 'Travel Form' }]);
+    const wolf = go({ className: 'SHAMAN', level: 20 });
+    expect(wolf.seconds).toBeCloseTo(d / 9.8, 3);
+    expect(wolf.legs).toMatchObject([{ how: 'walk', note: 'Ghost Wolf' }]);
+
+    // Below the training level: on foot, no note.
+    for (const over of [
+      { className: 'DRUID', level: 29 },
+      { className: 'SHAMAN', level: 19 },
+      { className: 'WARRIOR', level: 60 },
+    ]) {
+      const r = go(over);
+      expect(r.seconds).toBeCloseTo(d / 7, 3);
+      expect(r.legs[0]!.note).toBeUndefined();
+    }
+    // A mount (riding 40, +60 %) beats the form.
+    const mounted = go({ className: 'DRUID', level: 40, mounted: true });
+    expect(mounted.seconds).toBeCloseTo(d / 11.2, 3);
+    expect(mounted.legs[0]!.note).toBeUndefined();
+
+    expect(groundTravel({ className: 'DRUID', level: 30, mounted: false })).toEqual({
+      speed: 9.8,
+      form: 'Travel Form',
+    });
+    expect(groundTravel({ className: 'SHAMAN', level: 25, mounted: true })).toEqual({
+      speed: 11.2,
+    });
   });
 
   it('flies between two learned nodes far apart', () => {
@@ -182,5 +230,17 @@ describe('planner travel', () => {
     expect(r.legs.map((l) => l.how)).toEqual(['fly']);
     expect(r.seconds).toBeGreaterThan(89.7 * 0.6);
     expect(r.seconds).toBeLessThan(89.7 * 1.4);
+  });
+
+  it('records the Orgrimmar → Ratchet flight: the default detour is short, recorded flights fit it', () => {
+    // Harlan (Sam Willikers, addon 0.8.0, build 70245, 2026-10-08): node 23 → node 80 in 161.2 s. The straight line
+    // on map 1414 is about 2627 yd, so the default 1.25 detour says about 123 s (measured / estimate ≈ 1.31) and the
+    // detour this flight implies is about 1.70 (the path bends via the Crossroads). loadCharacter fits it from trips.
+    const org = { mapId: 1414, x: 58.1, y: 45.34 };
+    const ratchet = { mapId: 1414, x: 56.63, y: 55.82 };
+    const d = yards(org, ratchet);
+    expect(d).toBeCloseTo(2627, -1);
+    expect(161.2 / flightSeconds(d)).toBeCloseTo(1.31, 2);
+    expect(((161.2 - 15) * FLIGHT_SPEED) / d).toBeCloseTo(1.7, 2);
   });
 });

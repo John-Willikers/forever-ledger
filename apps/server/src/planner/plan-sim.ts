@@ -4,7 +4,7 @@
 import { canTake, isClassQuest, type Taker } from './available.js';
 import { distance, mapInfo, toWorld } from './geo.js';
 import { buildHubs, type Hub } from './hubs.js';
-import { route, MOUNT_SPEED, RUN_SPEED, type TravelData } from './travel.js';
+import { groundTravel, route, type TravelData } from './travel.js';
 import type {
   Atlas,
   AtlasObjective,
@@ -73,7 +73,6 @@ export class Sim {
   readonly maxSteps: number;
   readonly xpCurve: XpCurve | undefined;
   readonly toLevel: number;
-  readonly speed: number;
 
   clock = 0;
   pos: MapSpot;
@@ -115,7 +114,6 @@ export class Sim {
     this.maxSteps = opts.maxSteps ?? MAX_STEPS;
     this.xpCurve = opts.xpCurve;
     this.toLevel = opts.toLevel;
-    this.speed = ch.mounted ? MOUNT_SPEED : RUN_SPEED;
     this.pos = ch.position;
     this.level = ch.level;
     this.xp = ch.xp;
@@ -159,7 +157,14 @@ export class Sim {
       flightPaths: this.ch.flightPaths,
       hearth: this.hearth,
       mounted: this.ch.mounted,
+      className: this.ch.className,
+      level: this.level,
     };
+  }
+
+  /** Ground speed now: a travel form comes with a level-up on the way. */
+  get speed(): number {
+    return groundTravel(this.traveller()).speed;
   }
 
   here(): WorldPos {
@@ -338,7 +343,7 @@ export class Sim {
     const h = this.hearth;
     const wait = h ? Math.max(0, h.readyAt - this.clock) : -1;
     const bucket = wait < 0 ? 'n' : wait === 0 ? 'r' : `w${Math.ceil(wait / 300)}`;
-    const key = `${spotKey(from)}>${spotKey(to)}|${bucket}`;
+    const key = `${spotKey(from)}>${spotKey(to)}|${bucket}|${this.speed}`;
     if (!this.routes.has(key)) {
       const r = route(from, to, this.traveller(), this.travel, this.clock);
       this.routes.set(

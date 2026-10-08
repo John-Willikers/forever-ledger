@@ -117,12 +117,61 @@ function flightNodes(taxis: unknown[], gaps: string[]): TravelData['flightNodes'
 }
 
 interface TripRow {
+  char: string;
   kind: string;
+  /** Epoch seconds. */
+  startedAt: number;
   seconds: number;
   from: unknown;
   to: unknown;
   fromNode: unknown;
   toNode: unknown;
+}
+
+/** A transport trip starting this soon (seconds) and this near (yards) to where the last one ended continues it. */
+const SPLIT_GAP_SECONDS = 60;
+const SPLIT_GAP_YARDS = 300;
+
+/**
+ * One ride recorded as two trips, joined: moving on deck interrupts the addon's transport detection (0.8.0). Harlan's
+ * Ratchet → Booty Bay boat (build 70245, 2026-10-08) came in as 82 s Ratchet → mid-sea, then 24 s, starting 2 s later
+ * and 57 yd on, → the Booty Bay dock. Consecutive transport trips of one character merge when the second starts
+ * ≤ SPLIT_GAP_SECONDS after the first ends and ≤ SPLIT_GAP_YARDS from where it ended: first's from → second's to,
+ * seconds = second's end − first's start.
+ */
+function mergeSplitRides(trips: TripRow[]): TripRow[] {
+  const at = (v: unknown) => {
+    const s = spotOf(v);
+    return s && toWorld(s);
+  };
+  const out: TripRow[] = [];
+  const last = new Map<string, TripRow>();
+  const ordered = trips
+    .filter((t) => t.kind === 'transport')
+    .sort((a, b) => (a.char < b.char ? -1 : a.char > b.char ? 1 : a.startedAt - b.startedAt));
+  for (const t of ordered) {
+    const prev = last.get(t.char);
+    if (prev) {
+      const end = prev.startedAt + prev.seconds;
+      const p = at(prev.to);
+      const q = at(t.from);
+      if (
+        t.startedAt >= end - 1 &&
+        t.startedAt - end <= SPLIT_GAP_SECONDS &&
+        p &&
+        q &&
+        distance(p, q) <= SPLIT_GAP_YARDS
+      ) {
+        prev.to = t.to;
+        prev.seconds = t.startedAt + t.seconds - prev.startedAt;
+        continue;
+      }
+    }
+    const copy = { ...t };
+    out.push(copy);
+    last.set(t.char, copy);
+  }
+  return [...trips.filter((t) => t.kind !== 'transport'), ...out];
 }
 
 /**
@@ -131,7 +180,7 @@ interface TripRow {
  * the ship moves), so `crossing` is replaced and the schedule `wait` stays the curated guess.
  */
 function measuredTransports(trips: TripRow[]): Transport[] {
-  const rides = trips
+  const rides = mergeSplitRides(trips)
     .filter((t) => t.kind === 'transport')
     .map((t) => {
       const a = spotOf(t.from);
@@ -302,7 +351,8 @@ export async function loadCharacter(
   );
   const trips = await rows<TripRow>(
     db,
-    sql`select kind, seconds, "from", "to", from_node as "fromNode", to_node as "toNode"
+    sql`select char, kind, extract(epoch from started_at)::float8 as "startedAt", seconds, "from", "to",
+               from_node as "fromNode", to_node as "toNode"
           from trips where kind in ('flight', 'transport')`,
   );
   const travel: TravelData = { flightNodes: nodes, transports: measuredTransports(trips) };
