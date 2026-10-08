@@ -92,14 +92,16 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   out), 101 with a map pin, to Sam's tray (token 2). Waiting on: Harlan sends it, restarts WoW (first guide), follows
   a few steps; objective spots fill in as people play 0.6.0
 
-## 🔧 After the first real guide (Harlan, 2026-10-07 23:20 CDT)
+## 🔧 After the first real guide (Harlan, 2026-10-07 23:05 CDT)
 
-- 🟡 6 🎚️ Lee Willikers (level 1) was sent to step 5, The Damned, which Timbo took at level 2: guides had no level
+- ✅ 6 🎚️ Lee Willikers (level 1) was sent to step 5, The Damned, which Timbo took at level 2: guides had no level
   requirements. Pickups now carry `minLevel` (Wowhead's `req_level` claim when the ledger has it, else the lowest level
   one of our characters took the quest at, `minLevelFrom`); the viewer passes over a pickup the player is too low for,
   keeps it as a "Later: <quest> at level N from <NPC>" note (and its objectives / turn-in while they can't have it),
   and turns it gold, "Ready: pick up …" with the spot, once they level (`PLAYER_LEVEL_UP`); pickups show "(level N)",
-  red when too low. Needs tray v0.3.1 (carries the new field) + addon 0.6.1; Lee's guide is rebuilt in place.
+  red when too low. PR #71 merged and deployed; Lee's guide rebuilt in place (61 pickups got a level; The Damned: 2);
+  tray v0.3.1 GitHub latest and addon 0.6.1 published — 23:18 CDT. Waiting on: Lee's tray updates, /reload, the
+  Later note shows.
 
 ## ⚠️ Risks
 
