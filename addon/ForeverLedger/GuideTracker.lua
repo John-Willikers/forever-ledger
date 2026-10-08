@@ -64,23 +64,10 @@ function T.layoutSafe(module)
   end
 end
 
--- Header click: a menu (Next, Back, Pick guide, Hide); without MenuUtil, left is Next and right is Back.
+-- Header click: left is Next, right is Back, shift-click hides the guide. No menu: Blizzard's context menu crashes
+-- Forever's beta client when its owner is our module (build 70245: an assertion in ldebug.c from Menu.lua AcquireMenu).
 function T.click(button)
-  local menu = MenuUtil
-  if type(menu) == "table" and type(menu.CreateContextMenu) == "function" then
-    local ok = pcall(menu.CreateContextMenu, T.module, function(_, root)
-      root:CreateTitle("Forever Ledger guide")
-      root:CreateButton("Next step", function() G.go(1); G.sync() end)
-      root:CreateButton("Back", function() G.go(-1); G.sync() end)
-      local mine = G.myGuides()
-      if #mine > 1 then
-        local pick = root:CreateButton("Pick guide")
-        for i, g in ipairs(mine) do pick:CreateButton(G.esc(g.title), function() G.slash("use " .. i) end) end
-      end
-      root:CreateButton("Hide guide", function() G.hide() end)
-    end)
-    if ok then return end
-  end
+  if IsShiftKeyDown and IsShiftKeyDown() then return G.hide() end
   G.go(button == "RightButton" and -1 or 1)
   G.sync()
 end

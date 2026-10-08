@@ -619,24 +619,21 @@ return function(H)
     H.eq(n, 1, "the objective is drawn")
   end)
 
-  H.test("guide tracker: the header menu moves steps and hides; without a menu, left is Next and right Back", function()
+  -- Blizzard's context menu crashes Forever's beta client when its owner is our module (build 70245, 2026-10-08:
+  -- assertion in ldebug.c from Menu.lua AcquireMenu), so header clicks never open a menu.
+  H.test("guide tracker: header clicks: left is Next, right Back, shift hides; never Blizzard's menu", function()
     local c = viewer(H, { tracker = true })
-    local t, buttons = c.tracker, {}
-    c.env.MenuUtil = { CreateContextMenu = function(_, gen)
-      local root = {}
-      function root:CreateTitle() end
-      function root:CreateButton(text, fn) buttons[text] = fn; return root end
-      gen(nil, root)
-    end }
+    local t, shift = c.tracker, false
+    c.env.MenuUtil = { CreateContextMenu = function() error("never open Blizzard's menu") end }
+    c.env.IsShiftKeyDown = function() return shift end
     t.module:OnBlockHeaderClick(nil, "LeftButton")
-    buttons["Next step"]()
-    H.ok(t.draw().lines[#t.laidOut.lines]:find("Step 2 of 5", 1, true), "next")
-    buttons["Hide guide"]()
-    H.eq(t.draw(), nil, "hidden: nothing drawn")
-    c.slash("FOREVERLEDGER", "guide")
-    c.env.MenuUtil = nil
+    H.ok(t.draw().lines[#t.laidOut.lines]:find("Step 2 of 5", 1, true), "left-click is Next")
     t.module:OnBlockHeaderClick(nil, "RightButton")
     H.ok(t.draw().lines[#t.laidOut.lines]:find("Step 1 of 5", 1, true), "right-click is Back")
+    shift = true
+    t.module:OnBlockHeaderClick(nil, "LeftButton")
+    H.eq(t.draw(), nil, "shift-click hides the guide")
+    H.ok(not printed(c, "guide viewer error"), "no error")
   end)
 
   H.test("guide tracker: a blocked action moves the guide to its window", function()

@@ -56,4 +56,7 @@ the step's spot.
   `/console taintLog 1`; Guide section + header menu; accept a quest (watch list changes), hide (yours come back),
   `/reload` mid-guide; arrow walking/turning + Undercity ↔ Tirisfal; use a quest item in and out of combat; send
   `Logs/taint.log` lines naming ForeverLedger (if any)
+  - 🐞 2026-10-08 02:11 CDT: clicking the Guide header **crashed the client** (Harlan, 01:48 CDT). Crash log: Blizzard's
+    `MenuUtil.CreateContextMenu` → `Menu.lua:2212 AcquireMenu` → C assertion in `ldebug.c(747)`; our menu code never
+    ran. Fix: no menu. Left-click Next, right-click Back, shift-click Hide. Recorded in `CLAUDE.md`. Re-test needed.
 - ⏳ 5 🚀 Addon 0.7.0 (`addon-v0.7.0` → `addon-cli publish 0.7.0`)

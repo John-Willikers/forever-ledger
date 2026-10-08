@@ -9,7 +9,7 @@
 - **The guide takes over the tracked quests**: only the current step's quests are watched; the player's own list is
   saved and restored when the guide is hidden or finished.
 - **Non-quest steps show in a "Guide" section inside Blizzard's tracker** (a real `ObjectiveTrackerModule`, above
-  Quests), with Next / Back / Pick guide / Hide guide in its header menu.
+  Quests), with header clicks: left Next, right Back, shift-click Hide (no menu: Blizzard's context menu crashes the beta client).
 - **Our own TomTom-style arrow** to the step's spot. The Pin button and the old window go away.
 
 ## Pieces
