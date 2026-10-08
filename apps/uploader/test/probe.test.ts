@@ -21,7 +21,7 @@ describe('probe-dump', () => {
     };
     expect(json.dumps['61582']?.buildInfo.build).toBe(61582);
 
-    expect(summary.probeVersion).toBe('0.5.0');
+    expect(summary.probeVersion).toBe('0.6.0');
     expect(summary.builds).toHaveLength(1);
     const b = summary.builds[0]!;
     expect(b).toMatchObject({
@@ -121,7 +121,7 @@ describe('probe-dump', () => {
     const s = summary.specs![0]!;
     expect(s).toMatchObject({
       build: '61582',
-      probeVersion: '0.5.0',
+      probeVersion: '0.6.0',
       at: 1790000000,
       classes: 3,
       specs: 6,

@@ -116,7 +116,7 @@ return function(H)
     H.eq(pdb.loadCheck.arrivedEmpty, true)
     H.eq(pdb.loadCheck.arrivedKeys, 0)
     H.eq(pdb.loadCheck.arrivedType, "nil")
-    H.eq(pdb.loadCheck.probeVersion, "0.5.0")
+    H.eq(pdb.loadCheck.probeVersion, "0.6.0")
     H.eq(#pdb.loadHistory, 1)
   end)
 
@@ -396,7 +396,7 @@ return function(H)
 
   H.test("probe specs: the catalog lists every class's specs with role and primary stat", function()
     H.ok(specs, "specs for build 61582")
-    H.eq(specs.probeVersion, "0.5.0")
+    H.eq(specs.probeVersion, "0.6.0")
     H.eq(specs.at, sc.world.clock)
     local warrior = specs.catalog[1]
     H.eq(warrior.info.values[2], "WARRIOR")
@@ -720,6 +720,257 @@ return function(H)
     H.eq(a[2].facing, 0.1)
     H.eq(a[20].facing, 1.9)
     H.ok(printedHas(c, "arrow: 20 sample(s)"), "summary when done")
+  end)
+
+  ---------------------------------------------------------------- /flprobe travel, trip
+  -- A client with the retail-style taxi, bind, hearth, mount and map APIs.
+  local function travelClient(overrides)
+    local c = freshProbe(overrides or { professionAPI = true })
+    local t = { taxiCalls = {}, opened = 0, taken = {} }
+    local function vec(x, y) return { x = x, y = y, GetXY = function(self) return self.x, self.y end } end
+    c.env.CreateVector2D = vec
+    local maps = {
+      [1414] = { mapID = 1414, name = "Kalimdor", mapType = 2, parentMapID = 947, w = 36800, h = 24533 },
+      [1415] = { mapID = 1415, name = "Eastern Kingdoms", mapType = 2, parentMapID = 947, w = 40741, h = 27160 },
+      [1429] = { mapID = 1429, name = "Elwynn Forest", mapType = 3, parentMapID = 1415, w = 3470, h = 2314 },
+    }
+    c.env.C_Map.GetMapInfo = function(id)
+      local m = maps[id]
+      if m then return { mapID = m.mapID, name = m.name, mapType = m.mapType, parentMapID = m.parentMapID } end
+    end
+    c.env.C_Map.GetMapWorldSize = function(id) local m = maps[id]; if m then return m.w, m.h end end
+    c.env.C_Map.GetWorldPosFromMapPos = function(id, pos)
+      local m = maps[id]
+      if not m then return nil end
+      return id == 1414 and 1 or 0, vec(1000 - pos.x * m.h, 500 - pos.y * m.w)
+    end
+    local nodes = {
+      { nodeID = 2, name = "Stormwind, Elwynn", position = vec(0.4, 0.6), state = 0, slotIndex = 1 },
+      { nodeID = 4, name = "Sentinel Hill, Westfall", position = vec(0.38, 0.72), state = 1, slotIndex = 2 },
+    }
+    c.env.C_TaxiMap = {
+      GetAllTaxiNodes = function(id)
+        t.taxiCalls[#t.taxiCalls + 1] = "all " .. id
+        return id == 1415 and nodes or {}
+      end,
+      GetTaxiNodesForMap = function(id)
+        t.taxiCalls[#t.taxiCalls + 1] = "map " .. id
+        if id ~= 1415 then return {} end
+        return { { nodeID = 2, name = "Stormwind, Elwynn", position = vec(0.4, 0.6), faction = 2 } }
+      end,
+    }
+    c.env.GetTaxiMapID = function() return 1415 end
+    c.env.NumTaxiNodes = function() return t.open and 2 or 0 end
+    c.env.TaxiNodeName = function(i) return nodes[i] and nodes[i].name or "INVALID" end
+    c.env.TaxiNodeGetType = function(i) return i == 1 and "CURRENT" or "REACHABLE" end
+    c.env.TaxiNodePosition = function(i) return nodes[i].position.x, nodes[i].position.y end
+    c.env.TakeTaxiNode = function(i) t.taken[#t.taken + 1] = i end
+    c.env.UnitOnTaxi = function() return t.onTaxi or false end
+    c.env.GetBindLocation = function() return "Goldshire" end
+    c.env.C_Item = c.env.C_Item or {}
+    c.env.C_Item.GetItemCount = function(id) return id == 6948 and 1 or 0 end
+    c.env.C_Container = c.env.C_Container or {}
+    c.env.C_Container.GetItemCooldown = function() return 1000, 1800, 1 end
+    c.env.C_Spell = c.env.C_Spell or {}
+    c.env.C_Spell.GetSpellCooldown = function()
+      return { startTime = 1000, duration = 1800, isEnabled = true, modRate = 1 }
+    end
+    c.env.IsMounted = function() return t.mounted or false end
+    c.env.IsIndoors = function() return false end
+    c.env.IsFlying = function() return false end
+    c.env.GetUnitSpeed = function() return t.speed or 0, 7, 7, 4.72 end
+    c.env.C_MountJournal = {
+      GetNumMounts = function() return 2 end,
+      GetMountIDs = function() return { 6, 9 } end,
+      GetMountInfoByID = function(id)
+        local name = id == 6 and "Brown Horse" or "Pinto"
+        return name, id * 100, 132261, false, true, 0, false, false, nil, false, true, id
+      end,
+    }
+    return c, t
+  end
+  local function travel(c) return c.env.ForeverLedgerProbeDB.travel[61582] end
+
+  H.test("probe travel: records taxi nodes, bind, hearth, mount, speed and APIs", function()
+    local c, t = travelClient()
+    c.slash("FOREVERLEDGERPROBE", "travel")
+    local s = travel(c)
+    H.ok(s, "travel for the build")
+    H.eq(s.probeVersion, "0.6.0")
+    H.eq(s.apis["C_TaxiMap.GetAllTaxiNodes"], "function")
+    H.eq(s.apis.TakeTaxiNode, "function")
+    H.eq(s.apis.GetItemCooldown, "nil")
+    H.eq(s.apis["C_MountJournal.GetMountIDs"], "function")
+    H.eq(s.taxi[1415].all.count, 2)
+    local n = s.taxi[1415].all.nodes[2]
+    H.eq(n.name, "Sentinel Hill, Westfall")
+    H.eq(n.nodeID, 4)
+    H.eq(n.position[1], 0.38, "positions read through the vector")
+    H.eq(n.position[2], 0.72)
+    H.eq(s.taxi[1415].forMap.nodes[1].faction, 2)
+    H.eq(s.taxi[1414].all.count, 0)
+    H.ok(s.taxi[1429], "the current map is asked too")
+    H.eq(#t.taken, 0, "never takes a flight")
+    H.eq(s.bind.values[1], "Goldshire")
+    H.eq(s.hearth.count["C_Item.GetItemCount"].values[1], 1)
+    H.eq(s.hearth.count.GetItemCount.missing, true)
+    H.eq(s.hearth.cooldown["C_Container.GetItemCooldown"].values[2], 1800)
+    H.eq(s.hearth.cooldown["C_Spell.GetSpellCooldown"].values[1].duration, 1800)
+    H.eq(s.hearth.cooldown.GetSpellCooldown.missing, true)
+    H.eq(s.state.IsMounted.values[1], false)
+    H.eq(s.state.GetUnitSpeed.values[2], 7, "run speed")
+    H.eq(s.state.GetUnitSpeed.values[4], 4.72, "swim speed")
+    H.eq(s.state.UnitOnTaxi.values[1], false)
+    H.eq(s.mounts.num.values[1], 2)
+    H.eq(s.mounts.ids, 2)
+    H.eq(s.mounts.list[1].values[1], "Brown Horse")
+    H.eq(s.mounts.list[2].values[12], 9)
+    H.eq(s.here.mapID, 1429)
+    H.eq(s.here.zone, "Elwynn Forest")
+    H.ok(printedHas(c, "map catalog 3"), "summary line")
+  end)
+
+  H.test("probe travel: the map catalog is compact rows with size and world corners", function()
+    local c = travelClient()
+    c.slash("FOREVERLEDGERPROBE", "travel")
+    local m = travel(c).maps
+    H.eq(m.count, 3)
+    H.eq(m.scanned, 3000)
+    H.eq(m.vector, "CreateVector2D")
+    H.eq(table.concat(m.fields, ","), "id,name,mapType,parentMapID,width,height,c0,x0,y0,c1,x1,y1")
+    local byId = {}
+    for _, row in ipairs(m.rows) do byId[row[1]] = row end
+    local k = byId[1414]
+    H.eq(k[2], "Kalimdor")
+    H.eq(k[3], 2)
+    H.eq(k[4], 947)
+    H.eq(k[5], 36800)
+    H.eq(k[6], 24533)
+    H.eq(k[7], 1, "continent of the top-left corner")
+    H.eq(k[8], 1000)
+    H.eq(k[9], 500)
+    H.eq(k[11], 1000 - 24533)
+    H.eq(k[12], 500 - 36800)
+    H.eq(byId[1429][4], 1415)
+    H.eq(byId[1429][7], 0)
+  end)
+
+  H.test("probe travel: a bare client records gaps and doesn't throw", function()
+    local c = freshProbe({})
+    c.slash("FOREVERLEDGERPROBE", "travel")
+    local s = travel(c)
+    H.ok(s, "entry written")
+    H.eq(s.apis["C_TaxiMap.GetAllTaxiNodes"], "nil")
+    H.eq(s.taxi[1414].all.missing, true)
+    H.eq(s.bind.missing, true)
+    H.eq(s.hearth.cooldown["C_Container.GetItemCooldown"].missing, true)
+    H.eq(s.state.IsMounted.missing, true)
+    H.eq(s.mounts.num.missing, true)
+    H.eq(s.maps.missing, true)
+    H.eq(s.maps.count, 0)
+    H.ok(printedHas(c, "map catalog 0"), "summary still printed")
+    c.slash("FOREVERLEDGERPROBE", "trip on")
+    c.fire("ZONE_CHANGED")
+    local trip = c.env.ForeverLedgerProbeDB.travel.trips[61582][1]
+    H.eq(trip.hook, "missing")
+    H.eq(trip.timer, "OnUpdate", "no C_Timer: an OnUpdate throttle")
+    H.eq(#trip.events, 1)
+    H.eq(#trip.samples, 1)
+    H.eq(trip.samples[1].mapID, 1429)
+    H.eq(trip.samples[1].onTaxi, nil, "a missing getter leaves the field out")
+    local updater
+    for _, f in ipairs(c.frames) do updater = updater or f.scripts.OnUpdate end
+    H.ok(updater, "OnUpdate set")
+    updater(nil, 1.5)
+    updater(nil, 0.6)
+    H.eq(#trip.samples, 2, "a sample once 2 s have passed")
+    c.slash("FOREVERLEDGERPROBE", "trip off")
+    H.ok(printedHas(c, "trip: 2 sample(s)"), "summary on off")
+    for _, f in ipairs(c.frames) do H.eq(f.scripts.OnUpdate, nil, "off clears the throttle") end
+  end)
+
+  H.test("probe trip: records taxi windows, takeoffs, events and a sample every 2 s", function()
+    local c, t = travelClient({ professionAPI = true, rejectEvents = { LOADING_SCREEN_ENABLED = true } })
+    c.slash("FOREVERLEDGERPROBE", "trip on")
+    local trip = c.env.ForeverLedgerProbeDB.travel.trips[61582][1]
+    H.eq(trip.registered.TAXIMAP_OPENED, true)
+    H.eq(trip.registered.LOADING_SCREEN_ENABLED, false, "a failed registration is recorded")
+    H.eq(trip.hook, "TakeTaxiNode")
+    H.eq(trip.timer, "C_Timer")
+    H.eq(#trip.samples, 1, "a sample right away")
+    t.open = true
+    c.fire("TAXIMAP_OPENED", 1)
+    local opened = trip.events[1]
+    H.eq(opened.event, "TAXIMAP_OPENED")
+    H.eq(opened.taxi.numNodes, 2)
+    H.eq(opened.taxi.mapID, 1415)
+    H.eq(opened.taxi.nodes[1].name, "Stormwind, Elwynn")
+    H.eq(opened.taxi.nodes[1].type, "CURRENT")
+    H.eq(opened.taxi.nodes[2].x, 0.38)
+    H.eq(opened.taxi.all.count, 2)
+    H.eq(opened.here.mapID, 1429)
+    -- the player clicks a destination: the client's TakeTaxiNode runs, the post-hook only records
+    c.env.TakeTaxiNode(2)
+    H.eq(table.concat(t.taken, ","), "2", "the original ran once, the probe called nothing")
+    local take = trip.events[2]
+    H.eq(take.event, "TakeTaxiNode")
+    H.eq(take.node, 2)
+    H.eq(take.destination, "Sentinel Hill, Westfall")
+    H.eq(take.from, "Stormwind, Elwynn")
+    H.eq(take.x, 0.38)
+    t.open, t.onTaxi, t.speed = false, true, 31.5
+    c.fire("PLAYER_CONTROL_LOST")
+    for _ = 1, 10 do c.advance(1) end
+    t.onTaxi, t.speed = false, 0
+    c.fire("PLAYER_CONTROL_GAINED")
+    c.fire("ZONE_CHANGED_NEW_AREA")
+    H.eq(#trip.samples, 6, "one at start + one every 2 s")
+    H.eq(trip.samples[2].onTaxi, true)
+    H.eq(trip.samples[2].speed, 31.5)
+    H.eq(trip.samples[2].mapID, 1429)
+    H.eq(trip.samples[2].x, 0.421)
+    H.eq(trip.samples[2].mounted, false)
+    H.eq(trip.samples[2].indoors, false)
+    local names = {}
+    for i, e in ipairs(trip.events) do names[i] = e.event end
+    H.eq(table.concat(names, ","),
+      "TAXIMAP_OPENED,TakeTaxiNode,PLAYER_CONTROL_LOST,PLAYER_CONTROL_GAINED,ZONE_CHANGED_NEW_AREA")
+    c.slash("FOREVERLEDGERPROBE", "trip off")
+    H.eq(trip.stoppedAt, c.world.clock)
+    H.ok(printedHas(c, "trip: 6 sample(s)"), "summary on off")
+    -- off stops everything: events, samples and the hook
+    c.fire("ZONE_CHANGED")
+    c.advance(10)
+    c.env.TakeTaxiNode(1)
+    H.eq(#trip.samples, 6)
+    H.eq(#trip.events, 5)
+    H.eq(table.concat(t.taken, ","), "2,1")
+    -- on again: a new trip, the hook isn't stacked twice
+    c.slash("FOREVERLEDGERPROBE", "trip on")
+    c.env.TakeTaxiNode(2)
+    local trips = c.env.ForeverLedgerProbeDB.travel.trips[61582]
+    H.eq(#trips, 2)
+    H.eq(#trips[2].events, 1)
+    H.eq(#trips[2].samples, 1, "the old timer chain is dead")
+    c.advance(2)
+    H.eq(#trips[2].samples, 2)
+  end)
+
+  H.test("probe trip: off after /reload, samples capped, reset wipes travel", function()
+    local c = travelClient()
+    c.slash("FOREVERLEDGERPROBE", "trip on")
+    for _ = 1, 950 do c.advance(2) end
+    local pdb = c.env.ForeverLedgerProbeDB
+    H.eq(#pdb.travel.trips[61582][1].samples, 900)
+    local back = freshProbe({ professionAPI = true }, pdb)
+    back.fire("ZONE_CHANGED")
+    H.eq(#pdb.travel.trips[61582][1].events, 0, "not recording after a reload")
+    back.slash("FOREVERLEDGERPROBE", "travel")
+    back.slash("FOREVERLEDGERPROBE", "status")
+    H.ok(printedHas(back, "/flprobe travel"), "help mentions travel")
+    H.ok(printedHas(back, "/flprobe trip on|off"), "help mentions trip")
+    back.slash("FOREVERLEDGERPROBE", "reset confirm")
+    H.eq(H.count(pdb.travel), 0)
   end)
 
   H.writeFile(FIXTURES .. "probe-dump.lua", H.serialize("ForeverLedgerProbeDB", db))

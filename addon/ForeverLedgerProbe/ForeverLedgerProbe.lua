@@ -1,4 +1,4 @@
--- Forever Ledger Probe v0.5.0
+-- Forever Ledger Probe v0.6.0
 -- Read-only: records what this client supports so Forever Ledger can be built against the real API.
 -- Nothing is automated. Output lands in WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedgerProbe.lua on /reload.
 --
@@ -8,6 +8,9 @@
 --   /flprobe tracker     the quest tracker on the right: frames, templates, watched quests, waypoints, facing
 --   /flprobe tracker watch   watch + super-track one quest, read it back, then put both back (UI state only)
 --   /flprobe arrow       sample facing and position 20 times, 1 s apart (turn around and walk): for a waypoint arrow
+--   /flprobe travel      taxi nodes, bind location, hearthstone cooldown, mount + speed, every map's size and corners
+--   /flprobe trip on     record a flight or boat ride: taxi window, takeoff, zone changes, position every 2 s
+--   /flprobe trip off    (off after /reload)
 --   /flprobe fish on     record each fishing cast: events, lure, tooltip, loot sources, zone, skill (off after /reload)
 --   /flprobe fish off
 --   /flprobe sniff on    record the first few payloads of every event while you play (off after /reload unless on)
@@ -21,7 +24,7 @@
 --   /flprobe status
 --   /flprobe reset confirm
 
-local VERSION = "0.5.0"
+local VERSION = "0.6.0"
 local SAMPLE_LIMIT = 5     -- payloads kept per event
 local MAX_EVENTS = 1500    -- distinct events tracked per build while sniffing
 local MAX_STRING = 200
@@ -690,11 +693,14 @@ end
 -- Like try, but every return value that is a table is kept one level deep.
 local function tryDeep(fn, ...)
   if type(fn) ~= "function" then return { ok = false, missing = true, err = "missing" } end
-  local res = { pcall(fn, ...) }
-  if not res[1] then return { ok = false, err = clip(tostring(res[2])) } end
-  local values = {}
-  for i = 2, #res do values[i - 1] = shallow(res[i]) end
-  return { ok = true, values = values }
+  local function pack(ok, ...)
+    if not ok then return { ok = false, err = clip(tostring((...))) } end
+    local values = {}
+    -- select("#") rather than #: a nil in the middle (GetMountInfoByID's faction) must not cut the list short.
+    for i = 1, select("#", ...) do values[i] = shallow((select(i, ...))) end
+    return { ok = true, values = values }
+  end
+  return pack(pcall(fn, ...))
 end
 
 local function nameLike(name)
@@ -1154,6 +1160,325 @@ local function arrowSample()
   arrowTick()
 end
 
+---------------------------------------------------------------- travel (quest-atlas planner) + trip recorder
+-- What the route planner needs from the client: flight nodes, bind location, hearthstone cooldown, mount and speed, and
+-- every map's size and world corners. Read-only: nothing here takes a flight, moves or casts.
+local TRAVEL_APIS = { "C_TaxiMap.GetAllTaxiNodes", "C_TaxiMap.GetTaxiNodesForMap", "GetTaxiMapID", "NumTaxiNodes",
+  "TaxiNodeName", "TaxiNodeGetType", "TaxiNodePosition", "UnitOnTaxi", "TakeTaxiNode", "GetBindLocation",
+  "C_Container.GetItemCooldown", "GetItemCooldown", "C_Item.GetItemCooldown", "C_Spell.GetSpellCooldown",
+  "GetSpellCooldown", "C_Item.GetItemCount", "GetItemCount", "IsMounted", "IsIndoors", "GetUnitSpeed",
+  "C_MountJournal", "C_MountJournal.GetMountIDs", "C_MountJournal.GetMountInfoByID", "C_MountJournal.GetNumMounts",
+  "IsFlying", "IsSwimming", "UnitInVehicle", "C_Map.GetMapInfo", "C_Map.GetMapWorldSize",
+  "C_Map.GetWorldPosFromMapPos", "CreateVector2D" }
+local TRAVEL_MAPS = { 1414, 1415 }  -- Kalimdor, Eastern Kingdoms (plus the map you stand on)
+local HEARTHSTONE_ITEM, HEARTHSTONE_SPELL = 6948, 8690
+local MAX_TAXI_NODES = 200
+local MAX_MOUNTS = 20
+local MAP_SCAN = 3000               -- uiMapIDs 1..MAP_SCAN are asked
+local MAP_FIELDS = { "id", "name", "mapType", "parentMapID", "width", "height", "c0", "x0", "y0", "c1", "x1", "y1" }
+local TRIP_EVERY = 2                -- seconds between trip samples
+local MAX_TRIP_SAMPLES = 900        -- 30 min
+local MAX_TRIP_EVENTS = 300
+local MAX_TRIPS = 20                -- per build
+local TRIP_EVENTS = { "TAXIMAP_OPENED", "TAXIMAP_CLOSED", "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED",
+  "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA", "PLAYER_ENTERING_WORLD", "LOADING_SCREEN_ENABLED",
+  "LOADING_SCREEN_DISABLED" }
+
+-- The first return of a getter, or nil (missing, error, or a table/function).
+local function first(path, ...)
+  local fn = resolve(path)
+  if type(fn) ~= "function" then return nil end
+  local ok, v = pcall(fn, ...)
+  if not ok or v == nil then return nil end
+  local tv = type(v)
+  if tv == "string" or tv == "number" or tv == "boolean" then return clip(v) end
+  return nil
+end
+
+-- { x, y } of a Vector2D (fields or :GetXY()), or nil.
+local function vecXY(v, places)
+  if type(v) ~= "table" then return nil end
+  local x, y = v.x, v.y
+  if (type(x) ~= "number" or type(y) ~= "number") and type(v.GetXY) == "function" then
+    local ok, a, b = pcall(v.GetXY, v)
+    if ok then x, y = a, b end
+  end
+  if type(x) ~= "number" or type(y) ~= "number" then return nil end
+  return { round(x, places), round(y, places) }
+end
+
+-- A C_TaxiMap list: each node one level deep, its position vector read as { x, y }.
+local function taxiNodes(path, mapID)
+  local fn = resolve(path)
+  if type(fn) ~= "function" then return { ok = false, missing = true, err = "missing" } end
+  local ok, list = pcall(fn, mapID)
+  if not ok then return { ok = false, err = clip(tostring(list)) } end
+  if type(list) ~= "table" then return { ok = true, value = clip(list) } end
+  local nodes = {}
+  for i, node in ipairs(list) do
+    if i > MAX_TAXI_NODES then break end
+    local s = shallow(node)
+    if type(node) == "table" and type(s) == "table" then s.position = vecXY(node.position) or s.position end
+    nodes[i] = s
+  end
+  return { ok = true, count = #list, nodes = nodes }
+end
+
+-- Where the player is right now: one trip sample.
+local function travelSample()
+  local mapID = first("C_Map.GetBestMapForUnit", "player")
+  local x, y
+  local getPos = resolve("C_Map.GetPlayerMapPosition")
+  if type(mapID) == "number" and type(getPos) == "function" then
+    local ok, pos = pcall(getPos, mapID, "player")
+    local xy = ok and vecXY(pos)
+    if xy then x, y = xy[1], xy[2] end
+  end
+  return { t = round(first("GetTime") or time(), 2), mapID = mapID, x = x, y = y, zone = first("GetRealZoneText"),
+           subzone = first("GetSubZoneText"), onTaxi = first("UnitOnTaxi", "player"), mounted = first("IsMounted"),
+           speed = round(first("GetUnitSpeed", "player"), 2), indoors = first("IsIndoors") }
+end
+
+local function mountInfo()
+  local m = { num = call("C_MountJournal.GetNumMounts"), list = {} }
+  local fn = resolve("C_MountJournal.GetMountIDs")
+  local ok, ids = false, "missing"
+  if type(fn) == "function" then ok, ids = pcall(fn) end
+  if ok and type(ids) == "table" then
+    m.ids = #ids
+    for i = 1, math.min(#ids, MAX_MOUNTS) do m.list[i] = call("C_MountJournal.GetMountInfoByID", ids[i]) end
+  else
+    m.ids = clip(type(ids) == "string" and ids or tostring(ids))
+  end
+  return m
+end
+
+-- uiMapID 1..MAP_SCAN: one row of numbers per map that exists (see MAP_FIELDS); false where the client had no answer.
+local function mapCatalog()
+  local getInfo = resolve("C_Map.GetMapInfo")
+  if type(getInfo) ~= "function" then return { missing = true, count = 0 } end
+  local getSize, getWorld = resolve("C_Map.GetMapWorldSize"), resolve("C_Map.GetWorldPosFromMapPos")
+  local makeVec = resolve("CreateVector2D")
+  local function vec(x, y)
+    if type(makeVec) == "function" then
+      local ok, v = pcall(makeVec, x, y)
+      if ok and v then return v end
+    end
+    return { x = x, y = y }
+  end
+  local function corner(id, x, y)
+    if type(getWorld) ~= "function" then return false, false, false end
+    local ok, continent, pos = pcall(getWorld, id, vec(x, y))
+    local xy = ok and vecXY(pos, 1)
+    if not xy then return false, false, false end
+    return tonumber(continent) or false, xy[1], xy[2]
+  end
+  local rows, errors = {}, 0
+  for id = 1, MAP_SCAN do
+    local ok, info = pcall(getInfo, id)
+    if not ok then
+      errors = errors + 1
+    elseif type(info) == "table" then
+      local w, h = false, false
+      if type(getSize) == "function" then
+        local okS, a, b = pcall(getSize, id)
+        if okS then w, h = round(tonumber(a), 1) or false, round(tonumber(b), 1) or false end
+      end
+      local c0, x0, y0 = corner(id, 0, 0)
+      local c1, x1, y1 = corner(id, 1, 1)
+      rows[#rows + 1] = { id, clip(info.name), tonumber(info.mapType) or false, tonumber(info.parentMapID) or false,
+                          w, h, c0, x0, y0, c1, x1, y1 }
+    end
+  end
+  return { fields = MAP_FIELDS, rows = rows, count = #rows, scanned = MAP_SCAN, errors = errors,
+           vector = type(makeVec) == "function" and "CreateVector2D" or "table" }
+end
+
+local function dumpTravel()
+  db.travel = db.travel or {}
+  local out = { at = time(), probeVersion = VERSION, apis = {}, taxi = {}, here = travelSample() }
+  for _, api in ipairs(TRAVEL_APIS) do out.apis[api] = type(resolve(api)) end
+  local mapIDs, seen = {}, {}
+  for _, id in ipairs({ out.here.mapID, TRAVEL_MAPS[1], TRAVEL_MAPS[2] }) do
+    if type(id) == "number" and not seen[id] then mapIDs[#mapIDs + 1] = id; seen[id] = true end
+  end
+  for _, id in ipairs(mapIDs) do
+    out.taxi[id] = { all = taxiNodes("C_TaxiMap.GetAllTaxiNodes", id),
+                     forMap = taxiNodes("C_TaxiMap.GetTaxiNodesForMap", id) }
+  end
+  out.bind = call("GetBindLocation")
+  out.hearth = {
+    item = HEARTHSTONE_ITEM, spell = HEARTHSTONE_SPELL, now = call("GetTime"),
+    count = { ["C_Item.GetItemCount"] = call("C_Item.GetItemCount", HEARTHSTONE_ITEM),
+              GetItemCount = call("GetItemCount", HEARTHSTONE_ITEM) },
+    cooldown = { ["C_Container.GetItemCooldown"] = call("C_Container.GetItemCooldown", HEARTHSTONE_ITEM),
+                 GetItemCooldown = call("GetItemCooldown", HEARTHSTONE_ITEM),
+                 ["C_Item.GetItemCooldown"] = call("C_Item.GetItemCooldown", HEARTHSTONE_ITEM),
+                 ["C_Spell.GetSpellCooldown"] = call("C_Spell.GetSpellCooldown", HEARTHSTONE_SPELL),
+                 GetSpellCooldown = call("GetSpellCooldown", HEARTHSTONE_SPELL) },
+  }
+  out.state = { IsMounted = call("IsMounted"), IsFlying = call("IsFlying"), IsSwimming = call("IsSwimming"),
+                IsIndoors = call("IsIndoors"), UnitOnTaxi = call("UnitOnTaxi", "player"),
+                UnitInVehicle = call("UnitInVehicle", "player"), GetUnitSpeed = call("GetUnitSpeed", "player"),
+                NumTaxiNodes = call("NumTaxiNodes"), GetTaxiMapID = call("GetTaxiMapID") }
+  out.mounts = mountInfo()
+  out.maps = mapCatalog()
+  db.travel[build] = out
+  local function nodeCount(id)
+    local t = out.taxi[id]
+    if not t then return "-" end
+    local a, m = t.all, t.forMap
+    return (a.ok and tostring(a.count or a.value) or (a.missing and "missing" or "error")) .. "/" ..
+      (m.ok and tostring(m.count or m.value) or (m.missing and "missing" or "error"))
+  end
+  local cd = out.hearth.cooldown["C_Container.GetItemCooldown"]
+  if not cd.ok then cd = out.hearth.cooldown.GetItemCooldown end
+  say(format("taxi nodes (all/forMap) Kalimdor %s, Eastern Kingdoms %s, here (%s) %s | bind %s | hearth count %s, " ..
+    "cooldown %s | mounted %s, speed %s | %s mount(s) | map catalog %d", nodeCount(1414), nodeCount(1415),
+    tostring(out.here.mapID), nodeCount(out.here.mapID), show(out.bind),
+    show(out.hearth.count["C_Item.GetItemCount"]), show(cd), show(out.state.IsMounted), show(out.state.GetUnitSpeed),
+    tostring(out.mounts.ids), out.maps.count))
+  say("Open a flight master's map and run /flprobe trip on before flying or taking a boat. /reload to write the file.")
+end
+
+-- The flight master window: every node's name, type and position, plus C_TaxiMap's view of the same map.
+local function taxiWindow()
+  local w = { numNodes = first("NumTaxiNodes"), mapID = first("GetTaxiMapID"), nodes = {} }
+  for i = 1, math.min(tonumber(w.numNodes) or 0, MAX_TAXI_NODES) do
+    local px, py
+    local posFn = resolve("TaxiNodePosition")
+    if type(posFn) == "function" then
+      local ok, a, b = pcall(posFn, i)
+      if ok then px, py = round(tonumber(a)), round(tonumber(b)) end
+    end
+    w.nodes[i] = { name = first("TaxiNodeName", i), type = first("TaxiNodeGetType", i), x = px, y = py }
+  end
+  if type(w.mapID) == "number" then w.all = taxiNodes("C_TaxiMap.GetAllTaxiNodes", w.mapID) end
+  return w
+end
+
+local tripFrame = CreateFrame("Frame")
+local tripRun          -- the trip being recorded (a table inside db.travel.trips[build])
+local tripGen = 0      -- bumped on every on/off so a stale C_Timer chain stops
+local tripHooked       -- "TakeTaxiNode" once the post-hook is in (it can't be removed; it checks tripRun)
+
+local function tripEvent(event, extra)
+  if not tripRun or #tripRun.events >= MAX_TRIP_EVENTS then return end
+  local e = extra or {}
+  e.event, e.at, e.t = event, time(), round(first("GetTime") or time(), 2)
+  tripRun.events[#tripRun.events + 1] = e
+  return e
+end
+
+local function tripTick()
+  if not tripRun or #tripRun.samples >= MAX_TRIP_SAMPLES then return end
+  tripRun.samples[#tripRun.samples + 1] = travelSample()
+end
+
+local function scheduleTick(gen)
+  C_Timer.After(TRIP_EVERY, function()
+    if gen ~= tripGen or not tripRun then return end
+    tripTick()
+    scheduleTick(gen)
+  end)
+end
+
+-- Post-hook on the client's TakeTaxiNode: it only reads which node the player picked.
+local function onTakeTaxiNode(slot)
+  if not tripRun then return end
+  pcall(function()
+    local from
+    for i = 1, math.min(tonumber(first("NumTaxiNodes")) or 0, MAX_TAXI_NODES) do
+      if first("TaxiNodeGetType", i) == "CURRENT" then from = first("TaxiNodeName", i) end
+    end
+    local e = { node = clip(slot), destination = first("TaxiNodeName", slot), type = first("TaxiNodeGetType", slot),
+                from = from, here = travelSample() }
+    local posFn = resolve("TaxiNodePosition")
+    if type(posFn) == "function" then
+      local ok, a, b = pcall(posFn, slot)
+      if ok then e.x, e.y = round(tonumber(a)), round(tonumber(b)) end
+    end
+    tripEvent("TakeTaxiNode", e)
+  end)
+end
+
+tripFrame:SetScript("OnEvent", function(_, event, ...)
+  if not tripRun then return end
+  local args = {}
+  for i = 1, select("#", ...) do args[i] = clip((select(i, ...))) end
+  local e = { args = args, here = travelSample() }
+  if event == "TAXIMAP_OPENED" then e.taxi = taxiWindow() end
+  tripEvent(event, e)
+end)
+
+local function startTrip()
+  if tripRun then return say("already recording a trip. /flprobe trip off to stop.") end
+  db.travel = db.travel or {}
+  db.travel.trips = db.travel.trips or {}
+  db.travel.trips[build] = db.travel.trips[build] or {}
+  local list = db.travel.trips[build]
+  if #list >= MAX_TRIPS then table.remove(list, 1) end
+  local trip = { startedAt = time(), probeVersion = VERSION, registered = {}, events = {}, samples = {} }
+  list[#list + 1] = trip
+  for _, ev in ipairs(TRIP_EVENTS) do trip.registered[ev] = pcall(tripFrame.RegisterEvent, tripFrame, ev) end
+  if not tripHooked then
+    if type(resolve("TakeTaxiNode")) ~= "function" then
+      trip.hook = "missing"
+    else
+      local ok, err = pcall(hooksecurefunc, "TakeTaxiNode", onTakeTaxiNode)
+      if ok then tripHooked = "TakeTaxiNode" end
+      trip.hook = ok and "TakeTaxiNode" or clip(tostring(err))
+    end
+  else
+    trip.hook = tripHooked
+  end
+  tripRun = trip
+  tripGen = tripGen + 1
+  tripTick()
+  if C_Timer and C_Timer.After then
+    trip.timer = "C_Timer"
+    scheduleTick(tripGen)
+  else
+    trip.timer = "OnUpdate"
+    local acc = 0
+    tripFrame:SetScript("OnUpdate", function(_, elapsed)
+      acc = acc + (tonumber(elapsed) or 0)
+      if acc >= TRIP_EVERY then
+        acc = 0
+        tripTick()
+      end
+    end)
+  end
+  say(format("recording the trip: a sample every %d s (up to %d), taxi windows, takeoffs, zone changes, loading " ..
+    "screens. Fly or take the boat, then /flprobe trip off and /reload. Stops on /reload.", TRIP_EVERY,
+    MAX_TRIP_SAMPLES))
+end
+
+local function stopTrip(quiet)
+  local trip = tripRun
+  tripRun = nil
+  tripGen = tripGen + 1
+  for _, ev in ipairs(TRIP_EVENTS) do pcall(tripFrame.UnregisterEvent, tripFrame, ev) end
+  pcall(tripFrame.SetScript, tripFrame, "OnUpdate", nil)
+  if not trip then
+    if not quiet then say("no trip is being recorded.") end
+    return
+  end
+  trip.stoppedAt = time()
+  if quiet then return end
+  local taxi, takeoffs, onTaxi = 0, 0, 0
+  for _, e in ipairs(trip.events) do
+    if e.event == "TAXIMAP_OPENED" then taxi = taxi + 1 end
+    if e.event == "TakeTaxiNode" then takeoffs = takeoffs + 1 end
+  end
+  for _, s in ipairs(trip.samples) do
+    if s.onTaxi then onTaxi = onTaxi + 1 end
+  end
+  say(format("trip: %d sample(s) over %d s, %d event(s): %d taxi window(s), %d takeoff(s), on a taxi in %d " ..
+    "sample(s). /reload to write the file.", #trip.samples, trip.stoppedAt - trip.startedAt, #trip.events, taxi,
+    takeoffs, onTaxi))
+end
+
 ---------------------------------------------------------------- lifecycle
 local lifecycle = CreateFrame("Frame")
 lifecycle:RegisterEvent("ADDON_LOADED")
@@ -1168,6 +1493,7 @@ lifecycle:SetScript("OnEvent", function(_, event, name, func)
     db = ForeverLedgerProbeDB
     db.dumps, db.sniff, db.io, db.specs = db.dumps or {}, db.sniff or {}, db.io or {}, db.specs or {}
     db.names, db.fish, db.tracker = db.names or {}, db.fish or {}, db.tracker or {}
+    db.travel = db.travel or {}
     db.probeVersion = VERSION
     local _, buildStr = GetBuildInfo()
     build = tonumber(buildStr) or 0
@@ -1213,6 +1539,12 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
     watchTest()
   elseif msg == "arrow" then
     arrowSample()
+  elseif msg == "travel" then
+    dumpTravel()
+  elseif msg == "trip on" then
+    startTrip()
+  elseif msg == "trip off" then
+    stopTrip(false)
   elseif msg == "fish on" then
     setFish(true)
     say("recording fishing casts (up to " .. MAX_FISH .. " this build). Fish a bit, then /flprobe fish off, /reload.")
@@ -1220,6 +1552,8 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
     setFish(false)
     say(format("fishing recorder off; %d cast(s) recorded this build.", #(db.fish[build] or {})))
   elseif msg == "reset confirm" then
+    stopTrip(true)
+    wipe(db.travel)
     wipe(db.dumps); wipe(db.sniff); wipe(db.io); wipe(db.specs); wipe(db.names); wipe(db.fish); wipe(db.tracker)
     db.sniffEventCount = 0
     say("probe data wiped.")
@@ -1232,6 +1566,7 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
       build, ndumps, db.specs[build] and "recorded" or "not run", db.sniffing and "ON" or "off", nev,
       #(db.io[build] or {}), db.loadCount or 0))
     say("/flprobe  |  /flprobe specs  |  /flprobe names  |  /flprobe tracker [watch]  |  /flprobe arrow  |  " ..
+      "/flprobe travel  |  /flprobe trip on|off  |  " ..
       "/flprobe fish on|off  |  /flprobe sniff on|off  |  " ..
       "/flprobe io [on|toggle|off|reloadbtn]  |  /flprobe reset confirm")
   end
