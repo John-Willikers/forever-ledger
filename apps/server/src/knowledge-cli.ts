@@ -3,6 +3,7 @@
 //                            | add <url> [--priority N] [--refresh]
 //                            | seed <file.json>
 //                            | enqueue-seen <url template with {type} and {id}> [--limit N]
+//                            | enqueue-atlas [--dry-run] [--refresh]   (quest atlas list pages, see knowledge/atlas.ts)
 //                            | reparse [--site wowhead.com] [--replace]
 //                            | claim <source id|key> <type>:<id|name> <attribute> <json value> <quote> [--label L]
 //                            | relabel <claim id> <LABEL> <why>
@@ -16,14 +17,14 @@ import { sql } from 'drizzle-orm';
 import { openDatabase, runMigrations } from './db/client.js';
 import { readEnv } from './env.js';
 import { findDisputes } from './knowledge/disputes.js';
-import { enqueueSeen, itemCoverage } from './knowledge/enqueue.js';
+import { enqueueAtlas, enqueueSeen, itemCoverage } from './knowledge/enqueue.js';
 import { addManualClaim, relabelClaim } from './knowledge/manual.js';
 import { importSeed } from './knowledge/seed.js';
 import { enqueueUrl, reparseAll, skipUrls } from './knowledge/store.js';
 import { chicagoIso } from './time.js';
 
 const USAGE = `usage: knowledge-cli status | add <url> [--priority N] [--refresh] | seed <file.json>
-  | enqueue-seen <template> [--limit N] | reparse [--site S] [--replace]
+  | enqueue-seen <template> [--limit N] | enqueue-atlas [--dry-run] [--refresh] | reparse [--site S] [--replace]
   | claim <source> <type>:<id|name> <attribute> <json> <quote> [--label L] | relabel <id> <LABEL> <why>
   | skip <file of URLs> <why> | coverage [--apply]
   | disputes [<type>:<key>]`;
@@ -64,6 +65,7 @@ try {
   const refresh = has('refresh');
   const replace = has('replace');
   const apply = has('apply');
+  const dryRun = has('dry-run');
   const [command, ...args] = argv;
 
   if (command === 'status') {
@@ -104,10 +106,20 @@ try {
   } else if (command === 'enqueue-seen' && args[0]) {
     const r = await enqueueSeen(db, args[0], { limit: limit ? Number(limit) : undefined });
     console.log(`enqueue-seen: ${r.seen} entities looked at, ${r.queued} URLs queued`);
+  } else if (command === 'enqueue-atlas') {
+    const r = await enqueueAtlas(db, { dryRun, refresh });
+    for (const url of r.urls) console.log(url);
+    console.log(
+      dryRun
+        ? `enqueue-atlas: dry run, ${r.urls.length} list pages (nothing queued)`
+        : refresh
+          ? `enqueue-atlas: ${r.urls.length} list pages, ${r.queued} queued new or made due again (leased ones left alone), all at the atlas priority`
+          : `enqueue-atlas: ${r.urls.length} list pages, ${r.queued} newly queued (the rest already known, raised to the atlas priority)`,
+    );
   } else if (command === 'reparse') {
     const r = await reparseAll(db, site, { replace });
     console.log(
-      `reparse: ${r.pages} pages, ${r.added} new claims${replace ? ' (older parser claims replaced)' : ''}`,
+      `reparse: ${r.pages} pages, ${r.added} new claims, ${r.queued} pages queued${replace ? ' (older parser claims replaced)' : ''}`,
     );
     for (const p of r.problems) console.log(`  ${p}`);
   } else if (command === 'claim' && args.length >= 5) {

@@ -29,6 +29,9 @@ module.exports = {
         PORT: process.env.PORT || '3410',
         BODY_LIMIT: process.env.BODY_LIMIT,
         INGEST_PER_MINUTE: process.env.INGEST_PER_MINUTE,
+        // Wowhead pages the fetcher may lease (defaults 400/day, 25/hour; raised for the quest atlas fetch).
+        FETCH_DAILY_BUDGET: process.env.FETCH_DAILY_BUDGET,
+        FETCH_HOURLY_BUDGET: process.env.FETCH_HOURLY_BUDGET,
         LOG_LEVEL: process.env.LOG_LEVEL || 'info',
         // Admin panel (Battle.net login). Secrets live only in deploy/.env.
         BNET_CLIENT_ID: process.env.BNET_CLIENT_ID,

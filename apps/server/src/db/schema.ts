@@ -879,7 +879,7 @@ export const fetchTargets = pgTable(
     lastError: text('last_error'),
     nextDueAt: tz('next_due_at').notNull().defaultNow(),
     lastFetchedAt: tz('last_fetched_at'),
-    /** `seed`, `cli`, `admin` or `ingest`. */
+    /** `seed`, `cli`, `admin`, `ingest` or `parser` (a stored page named it). */
     addedBy: text('added_by').notNull(),
     addedAt: tz('added_at').notNull().defaultNow(),
     updatedAt: updatedAt(),

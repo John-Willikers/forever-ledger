@@ -2,6 +2,7 @@ import type { EntityType } from '@forever-ledger/contracts';
 import { sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { FOREVER_ID_THRESHOLDS } from '../routes/shared.js';
+import { ATLAS_LIST_PRIORITY, atlasListUrls } from './atlas.js';
 import { enqueueUrl } from './store.js';
 
 /**
@@ -87,4 +88,32 @@ export async function itemCoverage(db: Db, opts: { apply?: boolean } = {}) {
     partlyCovered: res.rows.filter((r) => r.covered > 0 && r.covered < r.sources).length,
     moved,
   };
+}
+
+/**
+ * Queues the quest atlas's list pages (9 class lists, the 1–30 zone lists) above everything else. Each fetched list
+ * then queues its quests' pages (`follow`, below the lists). A list already on the queue only gains priority (and is
+ * made due again with `refresh`). `dryRun` returns the URLs without touching the queue.
+ */
+export async function enqueueAtlas(
+  db: Db | null,
+  opts: { dryRun?: boolean; refresh?: boolean } = {},
+): Promise<{ urls: string[]; queued: number }> {
+  const urls = atlasListUrls();
+  if (opts.dryRun || !db) return { urls, queued: 0 };
+  let queued = 0;
+  for (const url of urls) {
+    const added = await enqueueUrl(db, {
+      url,
+      addedBy: 'cli',
+      priority: ATLAS_LIST_PRIORITY,
+      refresh: opts.refresh,
+    });
+    if (added) queued++;
+    else
+      await db.execute(
+        sql`update fetch_targets set priority = greatest(priority, ${ATLAS_LIST_PRIORITY}), updated_at = now() where url = ${url}`,
+      );
+  }
+  return { urls, queued };
 }

@@ -79,7 +79,7 @@ describe('wowhead parser', () => {
       },
     ]);
     expect(r.problems).toEqual(['listview broken: data is not JSON']);
-    expect(r.parser).toBe('wowhead@4');
+    expect(r.parser).toBe('wowhead@5');
     expect(r.title).toBe('Big-mouth Clam - Item - World of Warcraft Forever');
     expect(r.pageUpdatedAt).toEqual(new Date('2026-10-01T12:00:00Z'));
   });
