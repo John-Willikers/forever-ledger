@@ -1,4 +1,5 @@
-import type { HTMLElement } from 'node-html-parser';
+import { INT4_MAX } from '@forever-ledger/contracts';
+import type { HTMLElement, Node } from 'node-html-parser';
 import { bracketedAfter, codeMarkers, tryJson } from './scan.js';
 
 /**
@@ -7,15 +8,18 @@ import { bracketedAfter, codeMarkers, tryJson } from './scan.js';
  *
  * `new Mapper({...})` holds `objectives: { <wowheadZoneId>: { zone, mappable, levels: [[point, …], …] } }`; a point is
  * `{ type, point, name, id, coord, coords, reactalliance?, reacthorde?, objective?, item? }`:
- * - `type` 1 is an NPC, 2 a game object (no `react*` then); anything else is kept as `type<n>`.
+ * - `type` 1 is an NPC, 2 a game object (no `react*` then); another number is kept as `type<n>`, anything else is
+ *   `unknown`.
  * - `point` is `start`, `end`, `requirement` (a target: kill / use it; `objective` is the NPC id itself, or 0 for an
  *   object) or `sourcerequirement` (drops the objective item named in `item`; `objective` is the item objective's
  *   index, 0-based).
  * - `coord: [""]` with no `coords` means Wowhead has no spawn for it (instances).
  * The level arrays are floors of a multi-level map; every real page has one.
+ *
+ * Page data is untrusted: ids outside 1..INT4_MAX are skipped (and counted in `skipped`), every list is capped.
  */
 
-export type SpotKind = 'npc' | 'object' | 'item' | `type${number}`;
+export type SpotKind = 'npc' | 'object' | 'item' | 'unknown' | `type${number}`;
 
 export interface QuestSpot {
   kind: SpotKind;
@@ -48,12 +52,38 @@ export interface SeriesEntry {
 
 /** At most this many coordinates per spot (a mob with 170 spawns is plenty). */
 export const MAX_COORDS = 200;
+/** At most this many objective spots per quest. */
+export const MAX_OBJECTIVE_SPOTS = 200;
+/** At most this many start (or end) points per quest. */
+export const MAX_END_SPOTS = 20;
+/** At most this many mapper zones, and floors per zone. */
+export const MAX_ZONES = 30;
+export const MAX_FLOORS = 10;
+/** At most this many series steps, and quests per step. */
+export const MAX_SERIES_STEPS = 100;
+export const MAX_STEP_QUESTS = 10;
+/** Longest name or item text kept. */
+const MAX_NAME = 200;
+
+/** A game id we can store: an integer in 1..INT4_MAX. */
+export const isGameId = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= INT4_MAX;
 
 const KINDS: Record<number, SpotKind> = { 1: 'npc', 2: 'object', 3: 'item' };
-const kindOf = (type: unknown): SpotKind =>
-  typeof type === 'number' ? (KINDS[type] ?? `type${type}`) : 'npc';
+function kindOf(type: unknown): SpotKind {
+  const n =
+    typeof type === 'number'
+      ? type
+      : typeof type === 'string' && /^\d{1,6}$/.test(type)
+        ? Number(type)
+        : undefined;
+  if (n === undefined || !Number.isInteger(n)) return 'unknown';
+  return KINDS[n] ?? `type${n}`;
+}
 
 const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : undefined);
+const text = (v: unknown) =>
+  typeof v === 'string' && v.length > 0 ? v.slice(0, MAX_NAME) : undefined;
 const isPair = (c: unknown): c is [number, number] =>
   Array.isArray(c) &&
   c.length === 2 &&
@@ -68,17 +98,23 @@ function spotOf(
   floor: number,
   floors: number,
 ): QuestSpot | null {
-  const id = int(p.id);
-  if (id === undefined || typeof p.name !== 'string') return null;
-  const coords = (Array.isArray(p.coords) ? p.coords : []).filter(isPair).slice(0, MAX_COORDS);
-  if (coords.length === 0 && isPair(p.coord)) coords.push(p.coord);
+  const name = text(p.name);
+  if (!isGameId(p.id) || !name) return null;
+  const coords: [number, number][] = [];
+  if (Array.isArray(p.coords)) {
+    for (const c of p.coords) {
+      if (coords.length >= MAX_COORDS) break;
+      if (isPair(c)) coords.push([c[0], c[1]]);
+    }
+  }
+  if (coords.length === 0 && isPair(p.coord)) coords.push([p.coord[0], p.coord[1]]);
   const spot: QuestSpot = {
     kind: kindOf(p.type),
-    id,
-    name: p.name,
+    id: p.id,
+    name,
     wowheadZone: zone.id,
     zoneName: zone.name,
-    coords: coords.map(([x, y]) => [x, y]),
+    coords,
   };
   if (floors > 1) spot.floor = floor;
   const ra = int(p.reactalliance);
@@ -91,72 +127,139 @@ export interface MapperFacts {
   startsAt: QuestSpot[];
   endsAt: QuestSpot[];
   objectiveSpots: ObjectiveSpot[];
+  /** Points dropped: bad ids or names. */
+  skipped: number;
+  /** Points over a cap. */
+  capped: number;
 }
 
 /** The quest's `new Mapper({...})`, or null when the page has none (or it is not JSON: then `problem` says so). */
 export function mapperFacts(script: string): { facts: MapperFacts | null; problem?: string } {
   const [at] = codeMarkers(script, 'new Mapper(', 1);
   if (at === undefined) return { facts: null };
-  const text = bracketedAfter(script, at);
-  const data = text ? tryJson(text) : undefined;
-  if (!data || typeof data !== 'object') return { facts: null, problem: 'mapper is not JSON' };
+  const body = bracketedAfter(script, at);
+  const data = body ? tryJson(body) : undefined;
+  if (!data || typeof data !== 'object' || Array.isArray(data))
+    return { facts: null, problem: 'mapper is not JSON' };
   const objectives = (data as Record<string, unknown>).objectives;
-  const facts: MapperFacts = { startsAt: [], endsAt: [], objectiveSpots: [] };
-  if (!objectives || typeof objectives !== 'object') return { facts };
-  for (const [zoneKey, z] of Object.entries(objectives as Record<string, unknown>)) {
+  const facts: MapperFacts = {
+    startsAt: [],
+    endsAt: [],
+    objectiveSpots: [],
+    skipped: 0,
+    capped: 0,
+  };
+  if (!objectives || typeof objectives !== 'object' || Array.isArray(objectives)) return { facts };
+  for (const [zoneKey, z] of Object.entries(objectives as Record<string, unknown>).slice(
+    0,
+    MAX_ZONES,
+  )) {
     if (!z || typeof z !== 'object') continue;
     const zr = z as Record<string, unknown>;
-    const zone = {
-      id: /^-?\d+$/.test(zoneKey) ? Number(zoneKey) : null,
-      name: typeof zr.zone === 'string' ? zr.zone : null,
-    };
-    const levels = Array.isArray(zr.levels) ? zr.levels : [];
-    levels.forEach((level, floor) => {
-      if (!Array.isArray(level)) return;
+    const zoneId = /^\d{1,10}$/.test(zoneKey) ? Number(zoneKey) : null;
+    const zone = { id: isGameId(zoneId) ? zoneId : null, name: text(zr.zone) ?? null };
+    const levels = Array.isArray(zr.levels)
+      ? zr.levels.filter(Array.isArray).slice(0, MAX_FLOORS)
+      : [];
+    levels.forEach((level: unknown[], floor) => {
       for (const raw of level) {
-        if (!raw || typeof raw !== 'object') continue;
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
         const p = raw as Record<string, unknown>;
         const spot = spotOf(p, zone, floor, levels.length);
-        if (!spot) continue;
-        if (p.point === 'start') facts.startsAt.push(spot);
-        else if (p.point === 'end') facts.endsAt.push(spot);
-        else {
-          const o: ObjectiveSpot = {
-            ...spot,
-            role: p.point === 'sourcerequirement' ? 'source' : 'target',
-          };
-          if (typeof p.item === 'string' && p.item) o.item = p.item;
-          // On a target the field repeats the NPC id; only a different small number is an index.
-          const objective = int(p.objective);
-          if (objective !== undefined && objective !== spot.id && objective >= 0 && objective < 20)
-            o.objective = objective;
-          facts.objectiveSpots.push(o);
+        if (!spot) {
+          facts.skipped++;
+          continue;
         }
+        const list = p.point === 'start' ? facts.startsAt : p.point === 'end' ? facts.endsAt : null;
+        if (list) {
+          if (list.length < MAX_END_SPOTS) list.push(spot);
+          else facts.capped++;
+          continue;
+        }
+        if (facts.objectiveSpots.length >= MAX_OBJECTIVE_SPOTS) {
+          facts.capped++;
+          continue;
+        }
+        const o: ObjectiveSpot = {
+          ...spot,
+          role: p.point === 'sourcerequirement' ? 'source' : 'target',
+        };
+        const item = text(p.item);
+        if (item) o.item = item;
+        // On a target the field repeats the NPC id; only a different small number is an index.
+        const objective = int(p.objective);
+        if (objective !== undefined && objective !== spot.id && objective >= 0 && objective < 20)
+          o.objective = objective;
+        facts.objectiveSpots.push(o);
       }
     });
   }
   return { facts };
 }
 
+/** The string literal starting at `at` (a quote), unescaped enough for markup matching, and the index after it. */
+function stringLiteral(src: string, at: number): { value: string; end: number } | null {
+  const quote = src[at];
+  if (quote !== '"' && quote !== "'") return null;
+  let out = '';
+  for (let i = at + 1; i < src.length; i++) {
+    const c = src[i]!;
+    if (c === '\\') {
+      out += src[i + 1] ?? '';
+      i++;
+    } else if (c === quote) return { value: out, end: i + 1 };
+    else out += c;
+  }
+  return null;
+}
+
+/** At most this many infobox Start / End links. */
+const MAX_INFOBOX_LINKS = 10;
+
 /**
  * Starts / ends from the infobox markup (`[icon name=quest-start]Start: [url=/forever/npc=248242/…]Name[/url]`), for
- * quests the mapper has no point for (started by an item, or no known spawn). No coordinates.
+ * quests the mapper has no point for (started by an item, or no known spawn). No coordinates. Only the markup printed
+ * into `infobox-contents-0` is read: comments quote the same markup.
  */
 export function infoboxEnds(script: string): { start: QuestSpot[]; end: QuestSpot[] } {
   const out = { start: [] as QuestSpot[], end: [] as QuestSpot[] };
-  const re =
-    /\[icon name=quest-(start|end)\][A-Za-z ]*:\s*\[url=\\?\/[a-z-]*\\?\/?(npc|object|item)=(\d+)[^\]]*\]([^[]*)\[\\?\/url\]/g;
-  for (const m of script.matchAll(re)) {
-    out[m[1] as 'start' | 'end'].push({
-      kind: m[2] as SpotKind,
-      id: Number(m[3]),
-      name: m[4]!.trim(),
-      wowheadZone: null,
-      zoneName: null,
-      coords: [],
-    });
+  for (const at of codeMarkers(script, 'WH.markup.printHtml(', 20)) {
+    const lead = /^\s*/.exec(script.slice(at, at + 100))![0].length;
+    const lit = stringLiteral(script, at + lead);
+    if (!lit || !/^\s*,\s*["']infobox-contents-0["']/.test(script.slice(lit.end, lit.end + 100)))
+      continue;
+    const re =
+      /\[icon name=quest-(start|end)\][A-Za-z ]*:\s*\[url=\/[a-z-]*\/?(npc|object|item)=(\d{1,10})[^\]]*\]([^[]*)\[\/url\]/g;
+    let n = 0;
+    for (const m of lit.value.matchAll(re)) {
+      if (++n > MAX_INFOBOX_LINKS) break;
+      const id = Number(m[3]);
+      const name = text(m[4]!.trim());
+      if (!isGameId(id) || !name) continue;
+      out[m[1] as 'start' | 'end'].push({
+        kind: m[2] as SpotKind,
+        id,
+        name,
+        wowheadZone: null,
+        zoneName: null,
+        coords: [],
+      });
+    }
+    break;
   }
   return out;
+}
+
+/** The faction an element sits under: an ancestor (up to `stop`) with a class starting `icon-horde` / `icon-alliance`. */
+function sideOf(el: HTMLElement, stop: HTMLElement): 'Alliance' | 'Horde' | undefined {
+  for (let n: Node | null = el; n && n !== stop; n = n.parentNode) {
+    const cls = (n as HTMLElement).getAttribute?.('class') ?? '';
+    for (const c of cls.split(/\s+/)) {
+      if (c.startsWith('icon-horde')) return 'Horde';
+      if (c.startsWith('icon-alliance')) return 'Alliance';
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -169,32 +272,30 @@ export function seriesOf(root: HTMLElement, currentId: number): SeriesEntry[][] 
   if (!table) return null;
   const steps: SeriesEntry[][] = [];
   for (const tr of table.querySelectorAll('tr')) {
+    if (steps.length >= MAX_SERIES_STEPS) break;
     const td = tr.querySelector('td');
     if (!td) continue;
     const step: SeriesEntry[] = [];
     for (const el of td.querySelectorAll('a, b')) {
-      const side = el.closest('.icon-horde')
-        ? 'Horde'
-        : el.closest('.icon-alliance, .icon-alliance-padded')
-          ? 'Alliance'
-          : undefined;
+      if (step.length >= MAX_STEP_QUESTS) break;
       let id: number | undefined;
       if (el.tagName === 'A') {
-        const m = /\/quest=(\d+)/.exec(el.getAttribute('href') ?? '');
-        if (!m) continue;
+        const m = /\/quest=(\d{1,10})/.exec(el.getAttribute('href') ?? '');
+        if (!m || !isGameId(Number(m[1]))) continue;
         id = Number(m[1]);
       } else {
         if (el.closest('a')) continue;
         id = currentId;
       }
-      step.push({ id, name: el.textContent.trim(), ...(side ? { side } : {}) });
+      const side = sideOf(el, td);
+      step.push({ id, name: el.textContent.trim().slice(0, MAX_NAME), ...(side ? { side } : {}) });
     }
     if (step.length > 0) steps.push(step);
   }
   return steps.length > 0 ? steps : null;
 }
 
-/** Classic class ids by `reqclass` bit (bit = id - 1). */
+/** Classic class ids by `reqclass` bit (bit = id - 1). These 9 are Forever's classes. */
 const CLASSES: Record<number, string> = {
   1: 'Warrior',
   2: 'Paladin',
@@ -226,6 +327,18 @@ const RACES: Record<number, string> = {
   95: 'High Order Skyborne',
 };
 const RACE_BITS: Record<number, number> = { 32: 95 };
+/** Forever's playable races: the 8 Classic ones and High Order Skyborne. */
+const FOREVER_RACES = [
+  'Human',
+  'Orc',
+  'Dwarf',
+  'Night Elf',
+  'Undead',
+  'Tauren',
+  'Gnome',
+  'Troll',
+  'High Order Skyborne',
+];
 
 /** Set bits of a mask up to 2^52 (beyond 32 bits, so no bitwise operators). */
 function bits(mask: number): number[] {
@@ -235,17 +348,25 @@ function bits(mask: number): number[] {
   return out;
 }
 
-/** Class names a `reqclass` mask allows; unknown bits as `class<id>`. Null for no restriction. */
+/**
+ * Class names a `reqclass` mask allows; unknown bits as `class<id>`. Null for no restriction (no mask, or every
+ * Forever class).
+ */
 export function classesOf(mask: unknown): string[] | null {
   if (typeof mask !== 'number' || !Number.isSafeInteger(mask) || mask <= 0) return null;
-  return bits(mask).map((b) => CLASSES[b + 1] ?? `class${b + 1}`);
+  const names = bits(mask).map((b) => CLASSES[b + 1] ?? `class${b + 1}`);
+  return Object.values(CLASSES).every((c) => names.includes(c)) ? null : names;
 }
 
-/** Race names a `reqrace` mask allows; unknown bits as `raceBit<n>`. Null for no restriction. */
+/**
+ * Race names a `reqrace` mask allows; unknown bits as `raceBit<n>`. Null for no restriction (no mask, or every
+ * Forever race).
+ */
 export function racesOf(mask: unknown): string[] | null {
   if (typeof mask !== 'number' || !Number.isSafeInteger(mask) || mask <= 0) return null;
-  return bits(mask).map((b) => {
+  const names = bits(mask).map((b) => {
     const id = RACE_BITS[b] ?? (b < 11 ? b + 1 : undefined);
     return (id !== undefined ? RACES[id] : undefined) ?? `raceBit${b}`;
   });
+  return FOREVER_RACES.every((r) => names.includes(r)) ? null : names;
 }

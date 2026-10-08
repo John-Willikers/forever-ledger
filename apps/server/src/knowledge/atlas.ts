@@ -21,8 +21,13 @@ export const ATLAS_STARTER_QUEST_PRIORITY = 25;
 /** Quests up to this level count as starter quests. */
 export const STARTER_MAX_LEVEL = 10;
 
+/** A quest's Wowhead Forever page: the one place quest page URLs for the queue are built. */
+export function questPageUrl(id: number): string {
+  return `${WOWHEAD_FOREVER}/quest=${id}`;
+}
+
 export function questPagePriority(level: number | undefined): number {
-  return level !== undefined && level <= STARTER_MAX_LEVEL
+  return level !== undefined && level >= 1 && level <= STARTER_MAX_LEVEL
     ? ATLAS_STARTER_QUEST_PRIORITY
     : ATLAS_QUEST_PRIORITY;
 }
@@ -40,8 +45,8 @@ export interface AtlasZone {
 
 /**
  * Zones with quests in levels 1–30 for either faction, Classic's map. Not here: Eversong Woods / Ghostlands (TBC, not
- * in Forever's 1.60.1 client), Forever's own zones until we know their levels (Riverglades is 36–44; Gilneas and the
- * High Order Skyborne start area are unknown), dungeons.
+ * in Forever's 1.60.1 client), Forever's own zones (ATLAS_FOREVER_ZONES, listed by id; Gilneas is not seen yet),
+ * dungeons.
  */
 export const ATLAS_ZONES: AtlasZone[] = [
   // Eastern Kingdoms
@@ -153,14 +158,37 @@ export const ATLAS_CLASSES = [
   'druid',
 ] as const;
 
+/**
+ * Forever's own zones, by Wowhead zone id. Their slugs are unknown, so they are listed by id
+ * (`/forever/quests=<category>.<zoneId>`, the form the stored pages link, e.g. `quests=0.12` for Elwynn Forest).
+ * Ids and groups come from the zone filter on stored Forever pages (2026-10-08), which groups zones by continent; the
+ * fetch result shows which category URL exists. Quest categories: 0 Eastern Kingdoms, 1 Kalimdor, 6 Battlegrounds,
+ * 7 Miscellaneous.
+ * - Zephras Isle 16593 (client uiMap 2521/2665, its own continent): in the filter's "Other" group, so 0, 1 and 7.
+ *   Likely the High Order Skyborne start area.
+ * - Riverglades 16591 (uiMap 2548): in the Eastern Kingdoms group. Levels 36–44 (planning ahead of the cap).
+ * - Shen'dralas 16651 (uiMap 2652): in the Kalimdor group.
+ * - Darkspear Islands 16606 (uiMap 2524): Wowhead files it under Battlegrounds (with a "Call to Arms: Darkspear
+ *   Islands" quest category), not Kalimdor, so 1 and 6; whether it is the troll start zone is not known yet.
+ * Not listed: Mount Hyjal (616, Kalimdor group, uiMap 2482): no evidence it has quests at 30 or below.
+ */
+export const ATLAS_FOREVER_ZONES: { id: number; name: string; categories: number[] }[] = [
+  { id: 16593, name: 'Zephras Isle', categories: [0, 1, 7] },
+  { id: 16591, name: 'Riverglades', categories: [0] },
+  { id: 16651, name: "Shen'dralas", categories: [1] },
+  { id: 16606, name: 'Darkspear Islands', categories: [1, 6] },
+];
+
 export type AtlasList =
-  { kind: 'zone'; continent: Continent; zone: string } | { kind: 'class'; slug: string };
+  | { kind: 'zone'; continent: Continent; zone: string }
+  | { kind: 'class'; slug: string }
+  | { kind: 'zone-id'; category: number; zoneId: number };
 
 /** The one place list URLs are built. */
 export function atlasListUrl(list: AtlasList): string {
-  return list.kind === 'zone'
-    ? `${WOWHEAD_FOREVER}/quests/${list.continent}/${list.zone}`
-    : `${WOWHEAD_FOREVER}/quests/classes/${list.slug}`;
+  if (list.kind === 'zone') return `${WOWHEAD_FOREVER}/quests/${list.continent}/${list.zone}`;
+  if (list.kind === 'class') return `${WOWHEAD_FOREVER}/quests/classes/${list.slug}`;
+  return `${WOWHEAD_FOREVER}/quests=${list.category}.${list.zoneId}`;
 }
 
 /** Every atlas list page, class lists first (they are few and every character needs theirs). */
@@ -168,6 +196,9 @@ export function atlasListUrls(): string[] {
   return [
     ...ATLAS_CLASSES.map((slug) => atlasListUrl({ kind: 'class', slug })),
     ...ATLAS_ZONES.map((z) => atlasListUrl({ kind: 'zone', continent: z.continent, zone: z.slug })),
+    ...ATLAS_FOREVER_ZONES.flatMap((z) =>
+      z.categories.map((category) => atlasListUrl({ kind: 'zone-id', category, zoneId: z.id })),
+    ),
   ];
 }
 

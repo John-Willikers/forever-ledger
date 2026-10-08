@@ -459,10 +459,16 @@ describe('knowledge pipeline', () => {
     const r = await enqueueAtlas(db);
     expect(r.queued).toBe(r.urls.length - 1);
     const lists = await q(
-      `select count(*)::int as n, min(priority) as lo from fetch_targets where url like '%/forever/quests/%'`,
+      `select count(*)::int as n, min(priority) as lo from fetch_targets where url like '%/forever/quests%'`,
     );
     expect(lists[0]).toEqual({ n: r.urls.length, lo: ATLAS_LIST_PRIORITY });
-    // Fetch the Elwynn list: its quests are queued with the parser as their origin.
+    // Fetch the Elwynn list: its quests are queued with the parser as their origin. A quest page still queued only
+    // gains priority; one already fetched is left alone.
+    await enqueueUrl(db, { url: 'https://www.wowhead.com/forever/quest=91743', addedBy: 'ingest' });
+    await enqueueUrl(db, { url: 'https://www.wowhead.com/forever/quest=91724', addedBy: 'ingest' });
+    await q(`update fetch_targets set state = 'done' where url = $1`, [
+      'https://www.wowhead.com/forever/quest=91724',
+    ]);
     await q(`update fetch_targets set priority = 1000 where url = $1`, [LIST]);
     const [lease] = (await post('/v1/fetch/lease', { worker: 'cruiser', max: 1 })).json().leases;
     expect(lease.url).toBe(LIST);
@@ -470,20 +476,42 @@ describe('knowledge pipeline', () => {
       '/v1/fetch/snapshots',
       report(LIST, webFixture('wowhead-quest-list.html')),
     );
-    expect(stored.json().result).toBe('stored');
+    // The list has one row with an id out of int4 range: the page is still stored with its good rows.
+    expect(stored.json()).toMatchObject({ result: 'stored' });
+    expect(stored.json().claims).toBeGreaterThan(0);
     const quests = await q(
-      `select url, entity_type, entity_id, priority, added_by from fetch_targets
-        where added_by = 'parser' order by entity_id`,
+      `select url, state, priority, added_by from fetch_targets
+        where url = any($1) order by url`,
+      [[1638, 91724, 91743].map((id) => `https://www.wowhead.com/forever/quest=${id}`)],
     );
-    expect(quests).toEqual(
-      [1638, 91724, 91743].map((id) => ({
-        url: `https://www.wowhead.com/forever/quest=${id}`,
-        entity_type: 'quest',
-        entity_id: id,
+    expect(quests).toEqual([
+      {
+        url: 'https://www.wowhead.com/forever/quest=1638',
+        state: 'queued',
         priority: ATLAS_STARTER_QUEST_PRIORITY,
         added_by: 'parser',
-      })),
-    );
+      },
+      {
+        url: 'https://www.wowhead.com/forever/quest=91724',
+        state: 'done',
+        priority: 0,
+        added_by: 'ingest',
+      },
+      {
+        url: 'https://www.wowhead.com/forever/quest=91743',
+        state: 'queued',
+        priority: ATLAS_STARTER_QUEST_PRIORITY,
+        added_by: 'ingest',
+      },
+    ]);
+    expect(
+      await q(`select count(*)::int as n from claims where entity_key = '3000000000'`),
+    ).toEqual([{ n: 0 }]);
+    expect(
+      await q(
+        `select value from claims where entity_type = 'quest' and entity_key = '91743' and attribute = 'name'`,
+      ),
+    ).toEqual([{ value: 'Rascally Rodents' }]);
     expect(
       await q(
         `select attribute, value from claims where entity_type = 'quest' and entity_key = '1638' order by attribute`,

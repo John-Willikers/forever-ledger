@@ -112,7 +112,9 @@ try {
     console.log(
       dryRun
         ? `enqueue-atlas: dry run, ${r.urls.length} list pages (nothing queued)`
-        : `enqueue-atlas: ${r.urls.length} list pages, ${r.queued} newly queued (the rest already known, raised to the atlas priority)`,
+        : refresh
+          ? `enqueue-atlas: ${r.urls.length} list pages, ${r.queued} queued new or made due again (leased ones left alone), all at the atlas priority`
+          : `enqueue-atlas: ${r.urls.length} list pages, ${r.queued} newly queued (the rest already known, raised to the atlas priority)`,
     );
   } else if (command === 'reparse') {
     const r = await reparseAll(db, site, { replace });

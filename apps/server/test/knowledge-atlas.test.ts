@@ -6,6 +6,7 @@ import {
   atlasListUrl,
   atlasListUrls,
   isWowheadQuestList,
+  questPageUrl,
 } from '../src/knowledge/atlas.js';
 import { enqueueAtlas } from '../src/knowledge/enqueue.js';
 import { parseSnapshot } from '../src/knowledge/parsers/index.js';
@@ -122,9 +123,37 @@ describe('wowhead@5 quest pages', () => {
     expect(value('side')).toBe('Alliance');
   });
 
-  it('keeps the source label: no claim overrides it', () => {
+  it("keeps the page's label on a Forever quest's spots", () => {
     expect(r.claims.filter((c) => c.label !== undefined)).toEqual([]);
-    expect(r.follow).toBeUndefined();
+  });
+
+  it('labels the spots of a Classic-era quest CLASSIC (player-collected spawns)', () => {
+    const p = parseSnapshot(
+      webFixture('wowhead-quest.html').replaceAll('91743', '1638'),
+      'https://www.wowhead.com/forever/quest=1638/x',
+    );
+    const labels = Object.fromEntries(
+      p.claims.filter((c) => c.entityId === 1638).map((c) => [c.attribute, c.label]),
+    );
+    expect(labels).toMatchObject({
+      starts_at: 'CLASSIC',
+      ends_at: 'CLASSIC',
+      objective_spots: 'CLASSIC',
+      series: undefined,
+      level: undefined,
+      classes: undefined,
+    });
+  });
+
+  it('follows the other quests of its series', () => {
+    expect(r.follow).toEqual(
+      [91741, 91745, 97246].map((id) => ({
+        url: questPageUrl(id),
+        entityType: 'quest',
+        entityId: id,
+        priority: ATLAS_QUEST_PRIORITY,
+      })),
+    );
   });
 
   it('falls back to the infobox Start / End links when the mapper has no such point', () => {
@@ -160,7 +189,6 @@ describe('wowhead@5 quest pages', () => {
 describe('class and race masks', () => {
   it('maps Classic class bits and leaves unknown ones visible', () => {
     expect(classesOf(1)).toEqual(['Warrior']);
-    expect(classesOf(1 + 2 + 4 + 8 + 16 + 64 + 128 + 256 + 1024)).toHaveLength(9);
     expect(classesOf(32)).toEqual(['class6']);
     expect(classesOf(0)).toBeNull();
     expect(classesOf(undefined)).toBeNull();
@@ -172,6 +200,14 @@ describe('class and race masks', () => {
     expect(racesOf(2 ** 32 + 72)).toEqual(['Night Elf', 'Gnome', 'High Order Skyborne']);
     expect(racesOf(2 ** 20)).toEqual(['raceBit20']);
   });
+
+  it('reads a mask allowing every Forever class or race as no restriction', () => {
+    expect(classesOf(1 + 2 + 4 + 8 + 16 + 64 + 128 + 256 + 1024)).toBeNull();
+    expect(classesOf(2 ** 31 - 1)).toBeNull();
+    expect(racesOf(255 + 2 ** 32)).toBeNull();
+    // All Classic races but not Skyborne is a restriction.
+    expect(racesOf(255)).toHaveLength(8);
+  });
 });
 
 describe('wowhead@5 quest list pages', () => {
@@ -182,7 +218,7 @@ describe('wowhead@5 quest list pages', () => {
     expect(isWowheadQuestList('https://www.wowhead.com/forever/quests/classes/warrior')).toBe(true);
     expect(isWowheadQuestList('https://www.wowhead.com/forever/quests=0.12')).toBe(true);
     expect(isWowheadQuestList(QUEST_URL)).toBe(false);
-    expect(r.problems).toEqual([]);
+    expect(r.problems).toEqual(['quest lists: skipped 1 rows with ids outside 1..INT4_MAX']);
   });
 
   it('claims each row on its own quest', () => {
@@ -208,7 +244,7 @@ describe('wowhead@5 quest list pages', () => {
       zone_category: { category: -81, category2: 4 },
     });
     expect(of(91724)).toMatchObject({ money_reward: 350 });
-    expect(r.claims.some((c) => c.entityId === 0)).toBe(false);
+    expect(r.claims.some((c) => c.entityId === 3_000_000_000)).toBe(false);
   });
 
   it('follows every quest to its page, starter quests first, below the lists', () => {
@@ -270,7 +306,13 @@ describe('enqueue-atlas', () => {
     expect(urls).toContain('https://www.wowhead.com/forever/quests/kalimdor/thunder-bluff');
     expect(new Set(urls).size).toBe(urls.length);
     expect(urls.every(isWowheadQuestList)).toBe(true);
-    expect(urls).toHaveLength(9 + 28);
+    // Forever's own zones by id, under each category they may be filed in (the fetch shows which exists).
+    expect(urls.slice(-7)).toEqual(
+      ['0.16593', '1.16593', '7.16593', '0.16591', '1.16651', '1.16606', '6.16606'].map(
+        (c) => `https://www.wowhead.com/forever/quests=${c}`,
+      ),
+    );
+    expect(urls).toHaveLength(9 + 28 + 7);
   });
 
   it('builds list URLs in one place', () => {

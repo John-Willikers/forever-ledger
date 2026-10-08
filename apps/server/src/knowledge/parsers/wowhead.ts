@@ -1,9 +1,23 @@
+import { classifySource } from '@forever-ledger/contracts';
 import type { EntityType, GameVersion } from '@forever-ledger/contracts';
 import type { HTMLElement } from 'node-html-parser';
-import { isWowheadQuestList, questPagePriority, WOWHEAD_FOREVER } from '../atlas.js';
+import { FOREVER_ID_THRESHOLDS } from '../../routes/shared.js';
+import {
+  ATLAS_QUEST_PRIORITY,
+  isWowheadQuestList,
+  questPagePriority,
+  questPageUrl,
+} from '../atlas.js';
 import { bracketedAfter, codeMarkers, topLevel, tryJson } from './scan.js';
 import type { ClaimDraft, CommentDraft, FollowDraft, ParseResult } from './types.js';
-import { classesOf, infoboxEnds, mapperFacts, racesOf, seriesOf } from './wowhead-quest.js';
+import {
+  classesOf,
+  infoboxEnds,
+  isGameId,
+  mapperFacts,
+  racesOf,
+  seriesOf,
+} from './wowhead-quest.js';
 
 /**
  * Wowhead entity pages (item=, npc=, quest=, object=, spell=, zone=). The facts are in inline scripts:
@@ -25,7 +39,11 @@ export const WOWHEAD_PARSER = 'wowhead@5';
  * v5 (quest atlas): a quest page's `new Mapper` gives `starts_at` / `ends_at` / `objective_spots` (infobox Start/End
  * links stand in when the mapper has no point), `<table class="series">` gives `series`, `reqclass` / `reqrace` masks
  * give `classes` / `races`; quest list pages (`/forever/quests/…`) give each row's quest facts plus `zone_category`, and
- * queue every quest's page (`follow`).
+ * queue every quest's page (`follow`), as does a quest page for its series. Where a quest starts, ends and has its
+ * objectives is Wowhead's player-collected spawn data: CLASSIC for Classic-era quest ids (below
+ * FOREVER_ID_THRESHOLDS.quest), the page's own label for Forever's own quests. Ids outside 1..INT4_MAX are skipped
+ * everywhere (a problem line, never a failed page); follows are deduped, capped (MAX_FOLLOWS) and only taken from
+ * /forever/ pages.
  */
 /** Listviews that are page media, not facts. */
 const MEDIA_LISTS = new Set(['screenshots', 'videos', 'videos-english', 'see-also']);
@@ -118,8 +136,8 @@ export const MAX_ROWS_PER_LIST = 500;
 
 /** The entity a Wowhead URL is about: `/forever/item=4655/big-mouth-clam` → item 4655. */
 export function wowheadEntity(url: string): { type: EntityType; id: number } | null {
-  const m = /\/(item|npc|quest|object|spell|zone)=(\d+)/.exec(new URL(url).pathname);
-  if (!m) return null;
+  const m = /\/(item|npc|quest|object|spell|zone)=(\d{1,10})(?!\d)/.exec(new URL(url).pathname);
+  if (!m || !isGameId(Number(m[2]))) return null;
   return { type: PAGE_TYPES[m[1]!]!, id: Number(m[2]) };
 }
 
@@ -192,8 +210,7 @@ function commentDate(v: unknown): Date | null {
 /** The fields of a Listview row worth keeping in a claim. */
 function rowValue(row: Record<string, unknown>, template: string | undefined) {
   const v: Record<string, unknown> = {};
-  const id = int(row.id);
-  if (id !== undefined) v.id = id;
+  if (isGameId(row.id)) v.id = row.id;
   if (template) v.type = template;
   const name = str(row.name) ?? str(row.name_enus);
   // Item rows prefix the name with the quality digit (`6Big-mouth Clam`).
@@ -228,6 +245,7 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
   const comments: CommentDraft[] = [];
   const problems: string[] = [];
   const follow: FollowDraft[] = [];
+  let badIds = 0;
   const script = root
     .querySelectorAll('script')
     .filter((el) => !el.getAttribute('src'))
@@ -242,9 +260,13 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
     const data = text ? tryJson(text) : undefined;
     if (!type || !data || typeof data !== 'object') continue;
     for (const [idText, row] of Object.entries(data as Record<string, unknown>)) {
-      const id = Number(idText);
+      const id = /^\d{1,10}$/.test(idText) ? Number(idText) : NaN;
       const name = str((row as Record<string, unknown>)?.name_enus);
-      if (!Number.isInteger(id) || !name) continue;
+      if (!name) continue;
+      if (!isGameId(id)) {
+        badIds++;
+        continue;
+      }
       claims.push({ entityType: type, entityId: id, attribute: 'name', value: name });
     }
   }
@@ -268,7 +290,11 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
         }
       }
     }
-    if (entity.type === 'quest') claims.push(...questPageClaims(root, script, entity.id, problems));
+    if (entity.type === 'quest') {
+      const q = questPageClaims(root, script, entity.id, problems);
+      claims.push(...q.claims);
+      follow.push(...q.follow);
+    }
     const npcName =
       entity.type === 'npc'
         ? ((claims.find(
@@ -326,8 +352,8 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
           ...(OBSERVED_LISTS.test(attribute) ? { label: 'CLASSIC' as const } : {}),
         });
         // An NPC's drops are each item's sources too: the item gets the same row, seen from its side.
-        const itemId = int((r as Record<string, unknown>).id);
-        if (entity.type === 'npc' && attribute === 'drops' && itemId !== undefined) {
+        const itemId = (r as Record<string, unknown>).id;
+        if (entity.type === 'npc' && attribute === 'drops' && isGameId(itemId)) {
           const {
             id: _item,
             type: _t,
@@ -364,6 +390,8 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
   } else {
     problems.push('not a Wowhead entity page; only names were read');
   }
+  if (badIds > 0) problems.push(`gatherer: skipped ${badIds} names with ids outside 1..INT4_MAX`);
+  const follows = followsOf(follow, url, problems);
 
   return {
     parser: WOWHEAD_PARSER,
@@ -373,34 +401,82 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
     claims,
     comments,
     problems,
-    ...(follow.length > 0 ? { follow } : {}),
+    ...(follows.length > 0 ? { follow: follows } : {}),
   };
 }
 
-/** v5 quest-page facts: mapper points, infobox ends as a fallback, the series. */
-function questPageClaims(
-  root: HTMLElement,
-  script: string,
-  questId: number,
-  problems: string[],
-): ClaimDraft[] {
-  const out: ClaimDraft[] = [];
-  const claim = (attribute: string, value: unknown) =>
-    out.push({ entityType: 'quest', entityId: questId, attribute, value });
-  const { facts, problem } = mapperFacts(script);
-  if (problem) problems.push(problem);
-  const infobox = infoboxEnds(script);
-  const starts = facts?.startsAt.length ? facts.startsAt : infobox.start;
-  const ends = facts?.endsAt.length ? facts.endsAt : infobox.end;
-  if (starts.length > 0) claim('starts_at', starts);
-  if (ends.length > 0) claim('ends_at', ends);
-  if (facts && facts.objectiveSpots.length > 0) claim('objective_spots', facts.objectiveSpots);
-  const series = seriesOf(root, questId);
-  if (series) claim('series', series);
+/** Most pages one page may queue. */
+export const MAX_FOLLOWS = 2000;
+
+/**
+ * The pages to queue: only from a Wowhead Forever page (a retail or Classic list must not fill the queue with pages of
+ * another game), one per URL (the highest priority wins), at most MAX_FOLLOWS.
+ */
+function followsOf(follow: FollowDraft[], url: string, problems: string[]): FollowDraft[] {
+  if (follow.length === 0) return [];
+  if (classifySource(url).gameVersion !== 'forever') {
+    problems.push(`not a Forever page: ${follow.length} pages not followed`);
+    return [];
+  }
+  const byUrl = new Map<string, FollowDraft>();
+  for (const f of follow) {
+    const seen = byUrl.get(f.url);
+    if (!seen) byUrl.set(f.url, f);
+    else if (f.priority > seen.priority) byUrl.set(f.url, { ...seen, priority: f.priority });
+  }
+  const out = [...byUrl.values()];
+  if (out.length > MAX_FOLLOWS) {
+    problems.push(`follow: kept ${MAX_FOLLOWS} of ${out.length} pages`);
+    return out.slice(0, MAX_FOLLOWS);
+  }
   return out;
 }
 
-/** Most rows one list page may give (Wowhead caps its own lists at 1000). */
+/**
+ * v5 quest-page facts: mapper points, infobox ends as a fallback, the series (and its other quests to follow). Spots
+ * of a Classic-era quest are CLASSIC (Wowhead's player-collected spawns); a Forever quest's keep the page's label.
+ */
+function questPageClaims(root: HTMLElement, script: string, questId: number, problems: string[]) {
+  const out: ClaimDraft[] = [];
+  const follow: FollowDraft[] = [];
+  const classicEra = questId < FOREVER_ID_THRESHOLDS.quest;
+  const claim = (attribute: string, value: unknown, spots = false) =>
+    out.push({
+      entityType: 'quest',
+      entityId: questId,
+      attribute,
+      value,
+      ...(spots && classicEra ? { label: 'CLASSIC' as const } : {}),
+    });
+  const { facts, problem } = mapperFacts(script);
+  if (problem) problems.push(problem);
+  if (facts?.skipped)
+    problems.push(`mapper: skipped ${facts.skipped} points with a bad id or name`);
+  if (facts?.capped) problems.push(`mapper: ${facts.capped} points over the caps dropped`);
+  const infobox = infoboxEnds(script);
+  const starts = facts?.startsAt.length ? facts.startsAt : infobox.start;
+  const ends = facts?.endsAt.length ? facts.endsAt : infobox.end;
+  if (starts.length > 0) claim('starts_at', starts, true);
+  if (ends.length > 0) claim('ends_at', ends, true);
+  if (facts && facts.objectiveSpots.length > 0)
+    claim('objective_spots', facts.objectiveSpots, true);
+  const series = seriesOf(root, questId);
+  if (series) {
+    claim('series', series);
+    for (const step of series)
+      for (const q of step)
+        if (q.id !== questId)
+          follow.push({
+            url: questPageUrl(q.id),
+            entityType: 'quest',
+            entityId: q.id,
+            priority: ATLAS_QUEST_PRIORITY,
+          });
+  }
+  return { claims: out, follow };
+}
+
+/** Most rows one list page may give, all its quest Listviews together (Wowhead caps its own lists at 1000). */
 export const MAX_QUEST_LIST_ROWS = 2000;
 
 /**
@@ -414,25 +490,35 @@ function questListClaims(script: string, problems: string[]) {
   const claims: ClaimDraft[] = [];
   const follow: FollowDraft[] = [];
   let lists = 0;
+  let kept = 0;
+  let over = 0;
+  let badIds = 0;
   for (const at of codeMarkers(script, 'new Listview(')) {
     const obj = bracketedAfter(script, at);
     if (!obj) continue;
     const head = topLevel(obj);
     if (stringKey(head, 'template') !== 'quest') continue;
     const id = stringKey(head, 'id') ?? '?';
+    if (MEDIA_LISTS.has(id)) continue;
     const rows = listData(script, obj, head, at);
     if (!rows) {
       problems.push(`listview ${id}: data is not JSON`);
       continue;
     }
     lists++;
-    if (rows.length > MAX_QUEST_LIST_ROWS)
-      problems.push(`listview ${id}: kept ${MAX_QUEST_LIST_ROWS} of ${rows.length}`);
-    for (const raw of rows.slice(0, MAX_QUEST_LIST_ROWS)) {
+    for (const raw of rows) {
       if (!raw || typeof raw !== 'object') continue;
+      if (kept >= MAX_QUEST_LIST_ROWS) {
+        over++;
+        continue;
+      }
       const row = raw as Record<string, unknown>;
-      const questId = int(row.id);
-      if (questId === undefined || questId <= 0) continue;
+      const questId = row.id;
+      if (!isGameId(questId)) {
+        badIds++;
+        continue;
+      }
+      kept++;
       const claim = (attribute: string, value: unknown) =>
         claims.push({ entityType: 'quest', entityId: questId, attribute, value });
       const name = str(row.name) ?? str(row.name_enus);
@@ -443,7 +529,7 @@ function questListClaims(script: string, problems: string[]) {
       if (category !== undefined || category2 !== undefined)
         claim('zone_category', { category: category ?? null, category2: category2 ?? null });
       follow.push({
-        url: `${WOWHEAD_FOREVER}/quest=${questId}`,
+        url: questPageUrl(questId),
         entityType: 'quest',
         entityId: questId,
         priority: questPagePriority(int(row.level)),
@@ -451,5 +537,7 @@ function questListClaims(script: string, problems: string[]) {
     }
   }
   if (lists === 0) problems.push('quest list page without a quest Listview');
+  if (over > 0) problems.push(`quest lists: kept ${MAX_QUEST_LIST_ROWS} of ${kept + over} rows`);
+  if (badIds > 0) problems.push(`quest lists: skipped ${badIds} rows with ids outside 1..INT4_MAX`);
   return { claims, follow };
 }
