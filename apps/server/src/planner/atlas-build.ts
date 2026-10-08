@@ -438,13 +438,16 @@ const CLASS_NAMES = new Set([
   'druid',
 ]);
 
+/**
+ * Races of one faction. High Order Skyborne is on both sides (our two Skyborne characters are Horde; Wowhead lists
+ * the race on Elwynn's Alliance quests, build 70245), so it is absent: it says nothing about a quest's side.
+ */
 const RACE_SIDE: Record<string, 'Alliance' | 'Horde'> = {
   Human: 'Alliance',
   Dwarf: 'Alliance',
   NightElf: 'Alliance',
   Gnome: 'Alliance',
   Draenei: 'Alliance',
-  Skyborne: 'Alliance',
   Orc: 'Horde',
   Scourge: 'Horde',
   Tauren: 'Horde',
@@ -557,7 +560,7 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
               ?.flat()
               .find((e) => e.id === id)?.side,
           ]) ??
-          (races ? oneSide(races.map((r) => RACE_SIDE[r])) : undefined) ??
+          (races ? oneSide(races.map((r) => RACE_SIDE[r]).filter(Boolean)) : undefined) ??
           oneSide((takers.get(id) ?? []).map((t) => t.faction)) ??
           'both');
     if (side === 'both' && sideClaim !== 'both') lacks.push("no side ('both' assumed)");
