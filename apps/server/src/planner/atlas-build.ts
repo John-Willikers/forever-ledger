@@ -63,8 +63,20 @@ export interface QuestRow {
   objectives: string[] | null;
 }
 
+/** One objective increment: the count a character had after it, and when (epoch seconds). */
+export interface TickRow {
+  questId: number;
+  /** The client's objective index, 1-based. */
+  idx: number;
+  char: string;
+  at: number;
+  have: number;
+}
+
 export interface AtlasRows {
   claims: ClaimRow[];
+  /** Objective increments, for seconds per unit; optional. */
+  ticks?: TickRow[];
   seen: SeenRow[];
   progress: ProgressRow[];
   turnIns: TurnInRow[];
@@ -74,12 +86,20 @@ export interface AtlasRows {
 export interface AtlasBuild {
   atlas: Atlas;
   gaps: string[];
+  /** Forever's quest XP against Wowhead's: the median ratio over quests with both, null under XP_PAIRS_MIN pairs. */
+  calibration: { xpRatio: number | null; pairs: number };
 }
 
 /** At most this many spots per giver, ender or objective. */
 const MAX_SPOTS = 200;
 /** A turn-in this many levels or fewer above the quest gave its full XP (planner/xp.ts questXp). */
 const FULL_XP_LEVELS = 5;
+/** Quests with both our full XP and Wowhead's needed before Wowhead-only XP is scaled. */
+export const XP_PAIRS_MIN = 5;
+/** Objective increments needed before an objective is timed. */
+export const TICKS_MIN = 3;
+/** A pause longer than this between two increments is a break, not time spent on the objective. */
+export const TICK_BREAK_SECONDS = 600;
 /** Quests listed per unmapped-zone gap. */
 const GAP_QUESTS = 10;
 
@@ -252,6 +272,27 @@ function wowheadPoint(questId: number, v: unknown, zoneGaps: ZoneGaps): QuestPoi
   return first;
 }
 
+/**
+ * Seconds per unit of one objective: the steps between one character's consecutive increments (a count that drops or
+ * stays is a restart, a pause over TICK_BREAK_SECONDS a break), each counted once per unit gained; the median.
+ */
+function secondsEach(ticks: TickRow[]): number | undefined {
+  if (ticks.length < TICKS_MIN) return undefined;
+  const steps: number[] = [];
+  const byChar = new Map<string, TickRow[]>();
+  for (const t of ticks) byChar.set(t.char, [...(byChar.get(t.char) ?? []), t]);
+  for (const list of byChar.values()) {
+    list.sort((a, b) => a.at - b.at);
+    for (let i = 1; i < list.length; i++) {
+      const units = list[i]!.have - list[i - 1]!.have;
+      const dt = list[i]!.at - list[i - 1]!.at;
+      if (units <= 0 || dt <= 0 || dt > TICK_BREAK_SECONDS) continue;
+      for (let u = 0; u < units; u++) steps.push(dt / units);
+    }
+  }
+  return steps.length > 0 ? Math.round(median(steps) * 10) / 10 : undefined;
+}
+
 /** "0/8 Mindless Zombie slain" (Forever) or "Mindless Zombie slain: 0/8" (Classic) → name and count; null without one. */
 export function parseObjective(text: string): { name: string; count: number } | null {
   text = text.replace(/\|c[0-9a-fA-F]{8}|\|r/g, '');
@@ -411,6 +452,9 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
   const seen = group(rows.seen);
   const progress = group(rows.progress);
   const turnIns = group(rows.turnIns);
+  const ticks = group(rows.ticks ?? []);
+  const xpPairs: number[] = [];
+  const wowheadOnly: number[] = [];
 
   const quests = new Map<number, AtlasQuest>();
   const ids = [...new Set([...best.keys(), ...ours.keys()])].sort((a, b) => a - b);
@@ -474,17 +518,25 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
         const need = r.find((p) => isNum(p.need))?.need;
         return { index: idx - 1, name: parsed?.name ?? '', count: need ?? parsed?.count ?? 1 };
       });
+    const qTicks = ticks.get(id) ?? [];
     const objectives = objectivesOf(
       id,
       fromLog.length > 0 ? fromLog : fromProgress,
       wowheadObjectives(id, c.get('objective_spots'), zoneGaps),
       qProgress,
-    );
+    ).map((o) => {
+      const s = secondsEach(qTicks.filter((t) => t.idx - 1 === o.index));
+      return s === undefined ? o : { ...o, secondsEach: s };
+    });
 
     const fullXp = (turnIns.get(id) ?? [])
       .filter((t) => isNum(t.xp) && t.xp > 0 && isNum(t.level) && t.level <= level + FULL_XP_LEVELS)
       .map((t) => t.xp!);
-    const xp = fullXp.length > 0 ? Math.max(...fullXp) : num('xp_reward');
+    const ourXp = fullXp.length > 0 ? Math.max(...fullXp) : undefined;
+    const whXp = num('xp_reward');
+    if (ourXp !== undefined && whXp !== undefined && whXp > 0) xpPairs.push(ourXp / whXp);
+    else if (ourXp === undefined && whXp !== undefined) wowheadOnly.push(id);
+    const xp = ourXp ?? whXp;
     if (xp === undefined) lacks.push('no xp (0 assumed)');
 
     if (lacks.length > 0) gaps.push(`quest ${id} (${title}): ${lacks.join(', ')}`);
@@ -506,6 +558,18 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
     });
   }
 
+  // Forever's quest XP differs from Wowhead's (Classic-era) numbers: scale Wowhead-only XP by what our turn-ins show.
+  const xpRatio = xpPairs.length >= XP_PAIRS_MIN ? Math.round(median(xpPairs) * 100) / 100 : null;
+  if (xpRatio !== null && wowheadOnly.length > 0) {
+    for (const id of wowheadOnly) {
+      const q = quests.get(id);
+      if (q) q.xp = Math.round(q.xp * xpRatio);
+    }
+    gaps.push(
+      `quest XP: Wowhead's xp_reward × ${xpRatio} (median of ours / Wowhead's over ${xpPairs.length} quests) for ${wowheadOnly.length} quest${wowheadOnly.length === 1 ? '' : 's'} our players have not turned in at full XP`,
+    );
+  }
+
   for (const [zone, g] of [...zoneGaps].sort((a, b) => b[1].dropped - a[1].dropped)) {
     const qs = [...g.quests].sort((a, b) => a - b);
     const list = qs.slice(0, GAP_QUESTS).join(', ') + (qs.length > GAP_QUESTS ? ', …' : '');
@@ -513,5 +577,5 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
       `Wowhead zone "${zone}" has no client map: ${g.dropped} spot${g.dropped === 1 ? '' : 's'} dropped (quest${qs.length === 1 ? '' : 's'} ${list})`,
     );
   }
-  return { atlas: { quests }, gaps };
+  return { atlas: { quests }, gaps, calibration: { xpRatio, pairs: xpPairs.length } };
 }

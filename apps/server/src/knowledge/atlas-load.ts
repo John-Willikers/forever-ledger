@@ -9,6 +9,7 @@ import type {
   ProgressRow,
   QuestRow,
   SeenRow,
+  TickRow,
   TurnInRow,
 } from '../planner/atlas-build.js';
 import { rows } from '../routes/adminData.js';
@@ -87,5 +88,10 @@ export async function loadAtlas(db: Db): Promise<AtlasBuild> {
     db,
     sql`select quest_id as "questId", title, level, objectives from quests`,
   );
-  return buildAtlas({ claims, seen, progress, turnIns, quests });
+  const ticks = await rows<TickRow>(
+    db,
+    sql`select quest_id as "questId", idx, char, extract(epoch from at)::float8 as at, have
+          from quest_objective_progress`,
+  );
+  return buildAtlas({ claims, ticks, seen, progress, turnIns, quests });
 }

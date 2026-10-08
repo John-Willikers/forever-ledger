@@ -413,6 +413,96 @@ describe('atlas builder', () => {
   });
 });
 
+describe('atlas builder calibration', () => {
+  // A quest with Wowhead's XP and (optionally) a full-XP turn-in of ours.
+  const pair = (id: number, wowhead: number, ours?: number) => ({
+    claims: [claim(id, 'name', `Q${id}`), claim(id, 'level', 10), claim(id, 'xp_reward', wowhead)],
+    turnIns: ours === undefined ? [] : [{ questId: id, xp: ours, level: 10 }],
+  });
+  const build = (parts: ReturnType<typeof pair>[]) =>
+    buildAtlas(
+      rows({ claims: parts.flatMap((p) => p.claims), turnIns: parts.flatMap((p) => p.turnIns) }),
+    );
+
+  it("scales Wowhead-only XP by the median ratio of ours to Wowhead's, from 5 pairs on", () => {
+    const { atlas, gaps, calibration } = build([
+      pair(1, 100, 200),
+      pair(2, 100, 300),
+      pair(3, 100, 250),
+      pair(4, 100, 220),
+      pair(5, 100, 900),
+      pair(6, 1000),
+    ]);
+    expect(calibration).toEqual({ xpRatio: 2.5, pairs: 5 });
+    expect(atlas.quests.get(6)!.xp).toBe(2500);
+    // Ours stay ours.
+    expect(atlas.quests.get(5)!.xp).toBe(900);
+    expect(gaps).toContainEqual(
+      expect.stringMatching(/^quest XP: Wowhead's xp_reward × 2\.5.*5 quests.*1 quest/),
+    );
+  });
+
+  it("leaves Wowhead's XP alone under 5 pairs", () => {
+    const { atlas, gaps, calibration } = build([
+      pair(1, 100, 200),
+      pair(2, 100, 300),
+      pair(3, 100, 250),
+      pair(4, 100, 220),
+      pair(6, 1000),
+    ]);
+    expect(calibration).toEqual({ xpRatio: null, pairs: 4 });
+    expect(atlas.quests.get(6)!.xp).toBe(1000);
+    expect(gaps.some((g) => g.startsWith('quest XP'))).toBe(false);
+  });
+});
+
+describe('atlas builder objective timing', () => {
+  const t0 = 1_760_000_000;
+  const tick = (char: string, idx: number, have: number, at: number) => ({
+    questId: 364,
+    idx,
+    char,
+    at: t0 + at,
+    have,
+  });
+  const base = rows({
+    quests: [
+      {
+        questId: 364,
+        title: 'The Mindless Ones',
+        level: 2,
+        objectives: ['0/8 Mindless Zombie slain', '0/8 Wretched Zombie slain'],
+      },
+    ],
+  });
+
+  it('times an objective from 3 increments on: median seconds per unit, breaks and restarts left out', () => {
+    const { atlas } = buildAtlas({
+      ...base,
+      ticks: [
+        // Lee: 30 s, 40 s, then a 2-unit jump in 100 s (50 s each), then a 20-minute break.
+        tick('Lee', 1, 1, 0),
+        tick('Lee', 1, 2, 30),
+        tick('Lee', 1, 3, 70),
+        tick('Lee', 1, 5, 170),
+        tick('Lee', 1, 6, 1370),
+        // Sam abandoned and started over: the restart is not a step.
+        tick('Sam', 1, 1, 0),
+        tick('Sam', 1, 2, 60),
+        tick('Sam', 1, 1, 500),
+        tick('Sam', 1, 2, 540),
+        // Objective 2: only 2 increments.
+        tick('Lee', 2, 1, 0),
+        tick('Lee', 2, 2, 20),
+      ],
+    });
+    const [o1, o2] = atlas.quests.get(364)!.objectives;
+    // Steps: Lee 30, 40, 50, 50; Sam 60, 40 → median 45.
+    expect(o1!.secondsEach).toBe(45);
+    expect(o2).not.toHaveProperty('secondsEach');
+  });
+});
+
 describe('atlas builder names', () => {
   it('maps Wowhead zone names to client maps, ignoring case and punctuation', () => {
     expect(zoneMapId('Durotar')).toBe(1411);

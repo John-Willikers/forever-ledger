@@ -91,7 +91,7 @@ describe('atlas loader', () => {
     ] as const) {
       await q(
         `insert into quest_objective_progress (char, quest_id, idx, have, at, need, build, map_id, zone, x, y, uploader_id, account)
-         values ('Grunt-Bayou', 788, 1, $1, now(), 10, 70245, 1411, 'Durotar', $2, 61.2, 'pc-1', 'A')`,
+         values ('Grunt-Bayou', 788, 1, $1::int, now() + $1::int * interval '20 seconds', 10, 70245, 1411, 'Durotar', $2, 61.2, 'pc-1', 'A')`,
         [have, x],
       );
     }
@@ -117,6 +117,8 @@ describe('atlas loader', () => {
           kind: 'kill',
           text: 'Mottled Boar slain',
           count: 10,
+          // One increment every 20 seconds.
+          secondsEach: 20,
           // Whole-percent cells, the busiest first.
           spots: [
             { mapId: 1411, x: 47, y: 61 },
