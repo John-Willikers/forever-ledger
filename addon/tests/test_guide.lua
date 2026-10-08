@@ -458,6 +458,9 @@ return function(H)
     H.ok(near(A.compute(spot, inCity, { continent = 0, x = 1000, y = 1900 }).rotation, 3 * math.pi / 2), "east")
     H.eq(A.compute(spot, inCity, { continent = 1, x = 1100, y = 2000 }).state, "elsewhere", "other continent")
     H.eq(A.compute(spot, inCity).state, "elsewhere", "no world position for the step")
+    local noSize = { mapId = 1420, x = 0.5, y = 0.5, width = 0, height = 0, facing = 0, continent = 0,
+                     wx = 1000, wy = 2000 }
+    H.ok(near(A.compute(spot, noSize, { continent = 0, x = 1100, y = 2000 }).yards, 100), "same map, no size: world")
   end)
 
   H.test("guide arrow: shows yards to the step, 'Go to' on another map, and hides with the guide", function()
@@ -487,6 +490,7 @@ return function(H)
     f.scripts.OnUpdate(f, 0.1)
     H.eq(A.last.state, "none", "no map position")
     H.eq(f.dist.text, "")
+    H.eq(f.label.shown, false, "no label without an arrow")
     H.ok(f.shown, "stays shown so OnUpdate keeps running")
     H.eq(f.mouse, false, "but lets clicks through")
     c.slash("FOREVERLEDGER", "guide hide")

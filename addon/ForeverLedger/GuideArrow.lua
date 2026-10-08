@@ -34,18 +34,18 @@ function A.compute(target, me, targetWorld)
     return { state = "none" }
   end
   if not me or not me.mapId or not me.x then return { state = "none" } end
-  if me.mapId ~= target.mapId then
-    local tw = targetWorld
-    if not (tw and me.continent ~= nil and tw.continent == me.continent and me.wx and me.wy) then
-      return { state = "elsewhere" }
-    end
+  local sameMap = me.mapId == target.mapId
+  if sameMap and me.width and me.height and me.width > 0 and me.height > 0 then
+    if not me.facing then return { state = "none" } end
+    return aim((target.x / 100 - me.x) * me.width, (target.y / 100 - me.y) * me.height, me.facing)
+  end
+  -- Another map, or a map with no size in yards: world yards when both points are on one continent.
+  local tw = targetWorld
+  if tw and me.continent ~= nil and tw.continent == me.continent and me.wx and me.wy then
     if not me.facing then return { state = "none" } end
     return aim(-(tw.y - me.wy), -(tw.x - me.wx), me.facing)
   end
-  if not me.facing or not me.width or not me.height or me.width <= 0 or me.height <= 0 then
-    return { state = "none" }
-  end
-  return aim((target.x / 100 - me.x) * me.width, (target.y / 100 - me.y) * me.height, me.facing)
+  return { state = sameMap and "none" or "elsewhere" }
 end
 
 -- A map point (x/y 0..1) in world yards: { continent, x, y }, or nil when the client can't place it.
@@ -156,6 +156,7 @@ function A.tick()
   local r = A.compute(t, A.player(), A.targetWorld)
   A.last = r
   f:EnableMouse(r.state ~= "none") -- an empty arrow mustn't catch clicks
+  if r.state == "none" then f.label:Hide() else f.label:Show() end
   if r.state == "point" then
     f.icon:SetTexture(ARROW_TEXTURE)
     f.icon:SetRotation(r.rotation)
