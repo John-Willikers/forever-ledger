@@ -52,7 +52,7 @@ the step's spot.
     ✅ T5 tracker module (2026-10-08 00:32 CDT) · ✅ T6 wire-up + 0.7.0 (2026-10-08 00:43 CDT) ·
     ✅ T7 final review passed after fixes (login watch race, ADDON_ACTION_FORBIDDEN, layout and arrow errors
     contained) — draft PR #75 — 2026-10-08 00:52 CDT
-- 🟡 4 🎮 **Waiting on Harlan's in-game test** (pinged 2026-10-08 00:52 CDT): close the tray first (it would reinstall 0.6.1);
+- ✅ 4 🎮 Harlan's in-game test passed (2026-10-08 07:51 CDT): tracker section, header clicks, watch takeover, arrow, auto quest. Earlier (pinged 2026-10-08 00:52 CDT): close the tray first (it would reinstall 0.6.1);
   `/console taintLog 1`; Guide section + header menu; accept a quest (watch list changes), hide (yours come back),
   `/reload` mid-guide; arrow walking/turning + Undercity ↔ Tirisfal; use a quest item in and out of combat; send
   `Logs/taint.log` lines naming ForeverLedger (if any)
@@ -65,4 +65,4 @@ the step's spot.
   rewards fail closed (only exactly 0 choices turns in), Shift skips the whole conversation — 02:32 CDT. Quality review fixes: a block on an auto-quest call stops auto
   quest for the session (not the tracker), once-per-conversation selects, delayed re-check (chain follow-ups),
   auto-accept acknowledge — 02:55 CDT. In-game check joins step 4's re-test.
-- ⏳ 5 🚀 Addon 0.7.0 (`addon-v0.7.0` → `addon-cli publish 0.7.0`)
+- 🟡 5 🚀 Addon 0.7.0 releasing (2026-10-08 07:51 CDT): PR #75 → tag (`addon-v0.7.0` → `addon-cli publish 0.7.0`)
