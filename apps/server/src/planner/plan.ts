@@ -2,10 +2,12 @@
 // XP, quest log, hearthstone; plan-sim.ts) and repeatedly picks the hub that pays the most XP per minute, travel
 // included (plan-estimate.ts): turn in what ends there, accept everything takeable, run one objective loop through
 // every log quest done nearby (nearest first, smoothed), turn in, accept follow-ups, and stay while the hub has work
-// (steps: plan-emit.ts). Class quests for the character's class go first wherever they are; level-gated pickups left
-// behind earn a trip back only when it pays the run's XP per minute so far (then they compete in normal scoring),
-// else they are taken only if the plan is at their hub anyway (plan-gated.ts). Unreachable objectives or turn-ins are
-// never counted done: such quests are not taken, or abandoned. Deterministic (ties by hub id / quest id) and pure.
+// (steps: plan-emit.ts). Hubs on another continent are considered only when the current one has no work left. Class
+// quests for the character's class go first wherever they are (across the water only when their races are known to
+// fit); level-gated pickups left behind earn a trip back only when it pays the run's XP per minute so far (then they
+// compete in normal scoring), else they are taken only if the plan is at their hub anyway (plan-gated.ts).
+// Unreachable objectives or turn-ins are never counted done: such quests are not taken, or abandoned. Deterministic
+// (ties by hub id / quest id) and pure.
 import { toWorld } from './geo.js';
 import type { Hub } from './hubs.js';
 import { accept, HALT, runLoop, turnIn } from './plan-emit.js';
@@ -122,8 +124,12 @@ export function plan(
         .filter((h) => !sim.stuck.has(h.id))
         .map((h) => estimate(sim, h))
         .filter((e): e is Estimate => e !== null);
+      // Class quests first; then the continent the character is on while it has work, so a well-mapped hub across
+      // the water doesn't pull a character out of a start zone the atlas knows less about.
       const mine = options.filter((e) => e.classWork);
-      const pool = mine.length ? mine : options;
+      const continent = sim.here().continent;
+      const near = options.filter((e) => e.hub.pos.continent === continent);
+      const pool = mine.length ? mine : near.length ? near : options;
       if (!pool.length) break;
       // Best XP per second; ties by hub id (hubs are sorted by id, the sort is stable).
       const score = (e: Estimate) => e.xp / Math.max(1, e.seconds);

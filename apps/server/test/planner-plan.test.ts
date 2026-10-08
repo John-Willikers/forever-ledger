@@ -228,6 +228,7 @@ describe('planner loop', () => {
         level: 10,
         reqLevel: 10,
         classes: ['WARLOCK'],
+        races: ['Scourge'],
         giver: TRAINER,
         ender: TRAINER,
       }),
@@ -433,6 +434,86 @@ describe('planner loop', () => {
     );
     expect(brief(r.steps)).toEqual(['accept:1', 'turn_in:1']);
     expect(r.gaps).toContain('left in the log at the end: 1 quest (Quest 2)');
+  });
+
+  it('stays on the continent while it has work: a level-1 Orc in the Valley of Trials stays in Durotar', () => {
+    const VOT: MapSpot = { mapId: 1411, x: 43.3, y: 68.5 };
+    const DK: MapSpot = { mapId: 1420, x: 30.8, y: 66.2 };
+    const gornek = npc(1, 'Gornek', { mapId: 1411, x: 42.1, y: 68.3 });
+    const sarvis = npc(2, 'Shadow Priest Sarvis', DK);
+    const qs = [
+      // Poorly mapped at home: no objective spots (estimates doubled), little XP.
+      quest(200, {
+        level: 1,
+        xp: 40,
+        giver: gornek,
+        ender: gornek,
+        objectives: [kill([], 20, 'Mottled Boar slain')],
+      }),
+      // Well mapped across the zeppelin, worth far more per minute.
+      quest(201, {
+        level: 1,
+        xp: 5000,
+        side: 'both',
+        giver: sarvis,
+        ender: sarvis,
+        objectives: [kill([offset(DK, 40)], 2)],
+      }),
+      // The Undead warrior's class quest there: an Orc warrior can't take it.
+      quest(202, {
+        level: 1,
+        side: 'both',
+        classes: ['WARRIOR'],
+        races: ['Scourge'],
+        giver: sarvis,
+        ender: npc(3, 'Dannal Stern', offset(DK, 30)),
+      }),
+    ];
+    const travel: TravelData = {
+      flightNodes: [],
+      transports: TRANSPORTS.filter((t) => t.name === 'Tirisfal Glades ↔ Durotar'),
+    };
+    const ch = character({ level: 1, position: VOT, hearth: { spot: VOT, readyAt: 0 } });
+    const r = plan(atlas(qs), ch, travel, { toLevel: 30 });
+    const boat = r.steps.findIndex((s) => s.how === 'boat');
+    expect(indexOf(r.steps, 'accept', 200)).toBe(0);
+    expect(indexOf(r.steps, 'turn_in', 200)).toBeGreaterThan(0);
+    // Only once Durotar has nothing left does it cross.
+    if (boat >= 0) expect(boat).toBeGreaterThan(indexOf(r.steps, 'turn_in', 200));
+    expect(r.steps.some((s) => ids(s).includes(202))).toBe(false);
+  });
+
+  it('a class quest on another continent goes first only when the race is known to take it', () => {
+    const VOT: MapSpot = { mapId: 1411, x: 43.3, y: 68.5 };
+    const DK: MapSpot = { mapId: 1420, x: 30.8, y: 66.2 };
+    const gornek = npc(1, 'Gornek', { mapId: 1411, x: 42.1, y: 68.3 });
+    const trainer = npc(2, 'Trainer', DK);
+    const home = quest(210, {
+      level: 1,
+      giver: gornek,
+      ender: gornek,
+      objectives: [kill([offset(VOT, 60)], 3)],
+    });
+    const cls = (races: string[] | null) =>
+      quest(211, {
+        level: 1,
+        side: 'both',
+        classes: ['WARRIOR'],
+        races,
+        giver: trainer,
+        ender: trainer,
+      });
+    const travel: TravelData = {
+      flightNodes: [],
+      transports: TRANSPORTS.filter((t) => t.name === 'Tirisfal Glades ↔ Durotar'),
+    };
+    const ch = character({ level: 1, position: VOT });
+    const known = plan(atlas([home, cls(['Orc'])]), ch, travel, { toLevel: 30 });
+    expect(indexOf(known.steps, 'accept', 211)).toBeLessThan(indexOf(known.steps, 'accept', 210));
+    const unknown = plan(atlas([home, cls(null)]), ch, travel, { toLevel: 30 });
+    expect(indexOf(unknown.steps, 'turn_in', 210)).toBeLessThan(
+      indexOf(unknown.steps, 'accept', 211),
+    );
   });
 
   it('keeps the hearth and stays on the continent for a slightly better hub across the water', () => {
