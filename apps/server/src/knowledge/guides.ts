@@ -11,7 +11,7 @@ import { apiTokens, guides } from '../db/schema.js';
 import { iso, rows } from '../routes/adminData.js';
 import { chicagoIso } from '../time.js';
 import { clean, clip } from './guide-text.js';
-import { levelingRoute } from './leveling.js';
+import { levelingRoute, raceToken, START_ZONES } from './leveling.js';
 import { planGuide, plannedTitle } from './plan-guide.js';
 import { findCharacters } from './upgrades.js';
 
@@ -243,6 +243,18 @@ async function plannedFor(
       `no guide to build: the route planner found no quests for ${target.name}${p.gaps.length ? ` (${p.gaps[p.gaps.length - 1]})` : ''}`,
     );
   }
+  // The planner starts where the character is, at its level: say so when the request asked for something else.
+  const asked: string[] = [];
+  if (req.start && p.startZone) {
+    const race = raceToken(req.start);
+    const zones = (race ? (START_ZONES[race] ?? []) : [req.start]).map((z) =>
+      z.trim().toLowerCase(),
+    );
+    if (!zones.includes(p.startZone.toLowerCase()))
+      asked.push(`planned from where ${target.name} is: ${p.startZone}`);
+  }
+  if (req.fromLevel !== undefined && req.fromLevel > p.fromLevel)
+    asked.push(`planned from ${target.name}'s level ${p.fromLevel}, not ${req.fromLevel}`);
   return {
     steps: p.steps,
     from: p.fromLevel,
@@ -251,7 +263,7 @@ async function plannedFor(
     planned: true,
     reachedTarget: p.reachedTarget,
     minutes: Math.round(p.seconds / 60),
-    gaps: p.gaps,
+    gaps: [...asked, ...p.gaps],
   };
 }
 

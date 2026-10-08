@@ -157,6 +157,32 @@ describe('planned guides (real Postgres)', () => {
     ).rejects.toThrow(/no guide to build/);
   });
 
+  it('plans from where the character is and says so when the request asked otherwise', async () => {
+    const made = await createGuide(s.database.db, {
+      character: NAME,
+      start: 'Durotar',
+      fromLevel: 13,
+      toLevel: 14,
+      requestedBy: 'x',
+      preview: true,
+    });
+    expect(made).toMatchObject({ planned: true, title: 'Planned: Elwynn Forest 11–14' });
+    expect(made.gaps).toContain(`planned from where ${NAME} is: Elwynn Forest`);
+    expect(made.gaps).toContain(`planned from ${NAME}'s level 11, not 13`);
+    // Asked for where it is (zone or race), at or below its level: nothing to say.
+    for (const start of ['elwynn forest', 'human']) {
+      const same = await createGuide(s.database.db, {
+        character: NAME,
+        start,
+        fromLevel: 5,
+        toLevel: 12,
+        requestedBy: 'x',
+        preview: true,
+      });
+      expect(same.gaps.filter((g) => g.startsWith('planned from'))).toEqual([]);
+    }
+  });
+
   it('already at the level: says so', async () => {
     await expect(
       createGuide(s.database.db, { character: NAME, toLevel: 11, requestedBy: 'x', preview: true }),
