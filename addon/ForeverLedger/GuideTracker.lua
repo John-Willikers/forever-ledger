@@ -52,11 +52,15 @@ function T.layout(module)
   module:LayoutBlock(block)
 end
 
+-- A layout error would leave the guide nowhere (the module draws nothing, the window stays hidden): the window takes
+-- over for this session (not remembered), and the module leaves the tracker on the next out-of-combat sync.
 function T.layoutSafe(module)
   local ok, err = pcall(T.layout, module)
   if not ok and not T.errored then
     T.errored = true
-    say("guide tracker error: " .. tostring(err))
+    T.blocked = true
+    say("guide tracker error: " .. tostring(err) .. " (the guide moves to its own window)")
+    if G.showWindow then pcall(G.showWindow) end
   end
 end
 

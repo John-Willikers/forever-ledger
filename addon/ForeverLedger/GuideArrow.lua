@@ -127,15 +127,16 @@ function A.frame()
     since = since + (elapsed or 0)
     if since >= EVERY then
       since = 0
-      A.tick()
+      A.safeTick()
     end
   end)
   A.win = f
   return f
 end
 
--- Shows the arrow for a step with a spot; hides it for none.
+-- Shows the arrow for a step with a spot; hides it for none. After an error the arrow stays off for the session.
 function A.setTarget(step)
+  if A.broken then return end
   A.target = step and step.mapId and tonumber(step.x) and tonumber(step.y) and step or nil
   if not A.target then
     A.targetWorld, A.last = nil, nil
@@ -147,7 +148,17 @@ function A.setTarget(step)
   local f = A.frame()
   f.label:SetText(label(step))
   f:Show()
-  A.tick()
+  A.safeTick()
+end
+
+-- A.tick, protected: on the first error the arrow hides for the session and says so once.
+function A.safeTick()
+  if A.broken then return end
+  local ok, err = pcall(A.tick)
+  if ok then return end
+  A.broken = true
+  if A.win then A.win:Hide() end
+  print("|cff33ff99Forever Ledger:|r guide arrow error: " .. tostring(err) .. " (the arrow is off until a /reload)")
 end
 
 function A.tick()

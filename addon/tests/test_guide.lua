@@ -112,10 +112,16 @@ local function viewer(H, opts)
   c.env.ForeverLedgerGuidesData = { version = 1, written = 1, guides = opts.guides or { guide(7, ME) } }
   c.env.ForeverLedgerGuideState = opts.state
   if opts.tracker then c.tracker = installTracker(c, opts.trackerNotReady) end
+  if opts.beforeStart then
+    -- The client's C_Timer: the login timer (start, 3 s) hasn't run when this returns.
+    c.world.timers = {}
+    c.env.C_Timer = { After = function(secs, fn) c.world.timers[#c.world.timers + 1] = { at = c.world.clock + secs,
+                                                                                         fn = fn } end }
+  end
   c.load(ADDON)
   for _, f in ipairs(GUIDE_FILES) do c.load(f) end
   c.login("ForeverLedger")
-  c.advance(4)
+  if not opts.beforeStart then c.advance(4) end
   return c
 end
 
@@ -151,6 +157,7 @@ return function(H)
     H.ok(body(c):find("Accept from Undertaker Mordo", 1, true), body(c))
     H.ok(body(c):find("Deathknell, Tirisfal Glades (30.2, 71.6)", 1, true), body(c))
     H.ok(printed(c, "guide loaded: Undead 1%-4"), "login message")
+    H.ok(printed(c, "/fl guide hide to hide it"), "login message says how to hide it")
   end)
 
   H.test("guide: moves on as quests are accepted, finished and turned in", function()
@@ -389,6 +396,36 @@ return function(H)
     H.eq(c.env.ForeverLedgerGuideState.savedWatches, nil)
   end)
 
+  H.test("guide watches: a quest log update before the guide starts leaves the watches alone", function()
+    -- A /reload mid-guide: the tracker holds the guide's list, your list is saved, and 999 isn't in the log yet.
+    local c = viewer(H, atStep4({ beforeStart = true, watches = { MINDLESS },
+                                  onQuest = { [MINDLESS] = true, [DAMNED] = true },
+                                  state = { savedWatches = { DAMNED, 999 } } }))
+    local calls = #c.q.calls
+    c.fire("QUEST_LOG_UPDATE")
+    H.eq(#c.q.calls, calls, "no watch calls before the guide starts")
+    H.eq(table.concat(c.env.ForeverLedgerGuideState.savedWatches, ","), DAMNED .. ",999", "your list kept")
+    c.q.onQuest[999] = true
+    c.advance(4)
+    H.eq(sortedWatches(c), tostring(MINDLESS), "the guide runs")
+    c.slash("FOREVERLEDGER", "guide hide")
+    H.eq(sortedWatches(c), DAMNED .. ",999", "your whole list is back")
+  end)
+
+  H.test("guide watches: your list comes back at login when the guide was hidden", function()
+    local c = viewer(H, atStep4({ watches = { MINDLESS }, state = { hidden = true, savedWatches = { DAMNED, 999 } } }))
+    H.eq(sortedWatches(c), DAMNED .. ",999")
+    H.eq(c.env.ForeverLedgerGuideState.savedWatches, nil)
+    H.ok(printed(c, "/fl guide to show it"), "login message says how to show it")
+  end)
+
+  H.test("guide: an error in the login start prints a line instead of breaking", function()
+    local c = viewer(H, { beforeStart = true })
+    c.env.ForeverLedgerGuide.advance = function() error("boom") end
+    c.advance(4)
+    H.ok(printed(c, "guide viewer error"), "printed")
+  end)
+
   H.test("guide watches: progress auto-watches are undone (once per burst); your hand-added watch stays", function()
     local c = viewer(H, atStep4())
     -- The harness has C_Timer only with professionAPI: this test needs the delayed sync.
@@ -506,6 +543,24 @@ return function(H)
     H.eq(A.last, nil, "forgets the last reading")
   end)
 
+  H.test("guide arrow: an error hides the arrow for the session and prints one line", function()
+    local c = viewer(H)
+    local f = c.env.ForeverLedgerGuideArrow
+    c.env.C_Map.GetBestMapForUnit = function() return 1420 end
+    c.env.C_Map.GetPlayerMapPosition = function() return { GetXY = function() error("boom") end } end
+    f.scripts.OnUpdate(f, 0.1)
+    H.eq(f.shown, false, "hidden")
+    f.scripts.OnUpdate(f, 0.1)
+    local n = 0
+    for _, l in ipairs(c.world.printed) do
+      if l:find("guide arrow error", 1, true) then n = n + 1 end
+    end
+    H.eq(n, 1, "printed once")
+    c.slash("FOREVERLEDGER", "guide next")
+    H.eq(f.shown, false, "stays hidden")
+    H.ok(not printed(c, "guide viewer error"), "never breaks the guide")
+  end)
+
   H.test("guide arrow: from a city map, points through world yards to a step on the zone map", function()
     local c = viewer(H)
     -- Step 1 (1420, 30.2 71.6) sits 50 yd west of the player, who is on Undercity (1458).
@@ -598,6 +653,16 @@ return function(H)
     H.eq(d.env.ForeverLedgerGuideState.trackerBlocked, nil, "an unreadable build is never remembered")
   end)
 
+  H.test("guide tracker: a forbidden action (a quest item out of combat) moves the guide to its window", function()
+    local c = viewer(H, { tracker = true })
+    c.fire("ADDON_ACTION_FORBIDDEN", "SomeOtherAddon", "x")
+    H.eq(c.tracker.removed, nil, "another addon's: ignored")
+    c.fire("ADDON_ACTION_FORBIDDEN", "ForeverLedger", "UseQuestLogSpecialItem()")
+    H.ok(printed(c, "moves to its own window"), "says so")
+    H.eq(c.tracker.removed, c.tracker.module, "module taken out of the tracker")
+    H.ok(body(c):find("Accept from Undertaker Mordo", 1, true), "window shows the step")
+  end)
+
   H.test("guide tracker: a block is remembered for the build; a new build tries the tracker again", function()
     local c = viewer(H, { tracker = true, state = { trackerBlocked = "61582" } })
     H.eq(c.tracker.setCalls, 0, "never put in the tracker")
@@ -646,6 +711,11 @@ return function(H)
       if l:find("guide tracker error", 1, true) then n = n + 1 end
     end
     H.eq(n, 1, "printed once")
+    H.ok(d.env.ForeverLedgerGuideFrame and d.env.ForeverLedgerGuideFrame.shown, "the window takes over")
+    H.ok(body(d):find("Accept from Undertaker Mordo", 1, true), "window shows the step")
+    d.slash("FOREVERLEDGER", "guide next")
+    H.eq(d.tracker.removed, d.tracker.module, "module taken out on the next sync")
+    H.eq(d.env.ForeverLedgerGuideState.trackerBlocked, nil, "not remembered past this session")
   end)
 
   H.test("guide: in combat nothing touches watches or the tracker; one sync runs after combat", function()

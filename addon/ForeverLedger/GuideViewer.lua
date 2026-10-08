@@ -271,7 +271,7 @@ end
 local function trackerActive() return G.tracker ~= nil and G.tracker.active ~= nil and G.tracker.active() == true end
 
 -- The fallback window: shown and drawn while the tracker section isn't, hidden while it is.
-local function showWindow()
+function G.showWindow()
   if trackerActive() then
     if G.win then G.win:Hide() end
     return
@@ -283,7 +283,9 @@ end
 -- Brings the arrow, the fallback window, the watch list and the tracker section in line with the step. The arrow and
 -- the window are our own frames and follow at once; the tracker (attach and refresh) and the watches only change out
 -- of combat (taint guard): in combat that part is owed and PLAYER_REGEN_ENABLED runs it. `rewatch` re-applies the
--- watch list even when the step didn't change (after an accept, which the game auto-watches).
+-- watch list even when the step didn't change (after an accept, which the game auto-watches). The watches are left
+-- alone until the guide starts (G.shown nil before PLAYER_LOGIN's start): the quest log can still be half loaded then,
+-- and your saved list must not be given back early or lose quests the log doesn't show yet.
 function G.sync(rewatch)
   local g = G.shown and G.current() or nil
   local i = g and G.stepIndex()
@@ -292,13 +294,13 @@ function G.sync(rewatch)
   if inCombat() then
     G.owed = true
     G.owedRewatch = G.owedRewatch or rewatch
-    if not trackerActive() then showWindow() end
+    if not trackerActive() then G.showWindow() end
     return
   end
   local T = G.tracker
   if G.shown and T and T.attach then T.attach() end
   local W = G.watches
-  if W then
+  if W and G.shown ~= nil then
     -- No step (no guide, or the guide is finished): the player's own watches come back.
     if step then
       W.take()
@@ -310,7 +312,7 @@ function G.sync(rewatch)
   end
   if T and T.refresh then T.refresh() end
   G.owed, G.owedRewatch = false, nil
-  showWindow()
+  G.showWindow()
 end
 
 ---------------------------------------------------------------- window
@@ -492,16 +494,23 @@ local handlers = {}
 function handlers.PLAYER_LOGIN()
   -- The quest log is ready a moment after login.
   local function start()
+    -- Started: from here on G.sync looks after the watches.
+    G.shown = G.shown or false
     if #G.myGuides() == 0 then
       -- The tray removed the guide that was running: your own watches come back.
       if type(state().savedWatches) == "table" then G.sync() end
       return
     end
     G.advance(true)
-    if not state().hidden then G.show() end
-    say("guide loaded: " .. esc(G.current().title) .. ". /fl guide to show or hide it.")
+    if not state().hidden then
+      G.show()
+    elseif type(state().savedWatches) == "table" then
+      G.sync() -- hidden: your own watches come back
+    end
+    say("guide loaded: " .. esc(G.current().title) .. ". "
+      .. (state().hidden and "/fl guide to show it." or "/fl guide hide to hide it."))
   end
-  if C_Timer then C_Timer.After(3, start) else start() end
+  if C_Timer then C_Timer.After(3, safe(start)) else safe(start)() end
 end
 function handlers.QUEST_ACCEPTED()
   refresh(true, true)
@@ -531,12 +540,14 @@ function handlers.PLAYER_REGEN_ENABLED()
   if G.owed then G.sync(G.owedRewatch) end
 end
 -- The game blocked a protected action and blames us (taint from the tracker section): back to the window.
+-- FORBIDDEN is the out-of-combat one (a quest item used from the tracker); same handling.
 function handlers.ADDON_ACTION_BLOCKED(addon, func)
   if addon == "ForeverLedger" and G.tracker and G.tracker.onBlocked then
     G.tracker.onBlocked(func)
     G.sync()
   end
 end
+handlers.ADDON_ACTION_FORBIDDEN = handlers.ADDON_ACTION_BLOCKED
 function handlers.QUEST_LOG_UPDATE()
   if #G.myGuides() == 0 then return end
   local now = GetTime and GetTime() or time()
