@@ -29,12 +29,18 @@ the step's spot.
 ## 📋 Progress
 
 - ✅ 0 🔬 Probe 0.5.0: `tracker`, `tracker watch`, `arrow` + 5 harness tests; `pnpm check` green — 2026-10-07 23:31 CDT
-- 🟡 1 🎮 **Waiting on Harlan:** install probe 0.5.0, take a quest or two, run `/flprobe tracker`,
-  `/flprobe tracker watch`, `/flprobe arrow` (turn around, walk), `/reload`, send back `ForeverLedgerProbe.lua`
-- ⏳ 2 📝 Record the answers in `CLAUDE.md` (open questions table) and pick the design:
-  - Is it the retail module tracker (`ObjectiveTrackerManager`) or the 10.x / Classic one?
-  - Do `C_QuestLog.AddQuestWatch` / `RemoveQuestWatch` work from an addon, outside combat?
-  - Does `GetPlayerFacing` return a value in the open world (TomTom arrow), and is `C_Navigation` live (native
-    waypoint marker)?
+- ✅ 1 🎮 Harlan ran all three on build 70245 (Tirisfal, 2 quests, 2026-10-07 23:38 CDT); dump in
+  `fixtures/real/probe-70245-tracker.json`
+- ✅ 2 📝 Answers recorded in `CLAUDE.md` — 2026-10-07 23:45 CDT:
+  - **Tracker:** retail 11.x module tracker (`ObjectiveTrackerManager`, 11 modules); all 11.x templates build.
+  - **Watches:** `C_QuestLog.AddQuestWatch` / `RemoveQuestWatch` and `C_SuperTrack.SetSuperTrackedQuestID` work from
+    an addon out of combat. `autoQuestWatch` is on, so the game also watches every accepted quest.
+  - **Arrow:** `GetPlayerFacing`, `C_Map.GetMapWorldSize` (yards), `UnitPosition` all work in the open world: a
+    TomTom arrow is doable. The native waypoint marker (`SuperTrackedFrame`) also works.
+  - **No quest waypoints:** `C_QuestLog.GetNextWaypoint` is empty, so the arrow uses the guide's own coordinates.
+  - 🐞 Probe nit: `tracker watch` restores the super-tracked *quest* but not a super-tracked *user waypoint* (it
+    was on before the test, off after). Harmless; the viewer rework must restore it properly.
+- 🟡 2½ 🤔 Design questions for Harlan (next): guide watches vs. the player's own watches; our arrow vs. the native
+  marker vs. both
 - ⏳ 3 🛠️ Viewer rework: guide drives quest watches + arrow (design after step 2)
 - ⏳ 4 🚀 Release a new addon version (`addon-vX` → `addon-cli publish X`)
