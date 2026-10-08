@@ -73,6 +73,20 @@ describe('planner availability', () => {
     expect(canTake(b, ch({ completed: new Set([100, 99]) }), 5)).toBe(true);
   });
 
+  it("ignores a prerequisite that is the other faction's quest (a both-side step after a split step)", () => {
+    const alliance = quest({ id: 60, side: 'Alliance' });
+    const horde = quest({ id: 61, side: 'Horde' });
+    const next = quest({ id: 62, prereqs: [60, 61] });
+    const atlas = { quests: new Map([alliance, horde, next].map((q) => [q.id, q])) };
+    expect(canTake(next, ch(), 5, atlas)).toBe(false);
+    expect(canTake(next, ch({ completed: new Set([61]) }), 5, atlas)).toBe(true);
+    expect(canTake(next, ch({ faction: 'Alliance', completed: new Set([61]) }), 5, atlas)).toBe(
+      false,
+    );
+    // Without the atlas every prerequisite counts.
+    expect(canTake(next, ch({ completed: new Set([61]) }), 5)).toBe(false);
+  });
+
   it('needs the required level', () => {
     expect(canTake(quest({ reqLevel: 6 }), ch(), 5)).toBe(false);
     expect(canTake(quest({ reqLevel: 6 }), ch(), 6)).toBe(true);

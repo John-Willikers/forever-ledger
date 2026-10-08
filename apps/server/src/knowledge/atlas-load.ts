@@ -9,6 +9,7 @@ import type {
   ProgressRow,
   QuestRow,
   SeenRow,
+  TakerRow,
   TickRow,
   TurnInRow,
 } from '../planner/atlas-build.js';
@@ -93,5 +94,11 @@ export async function loadAtlas(db: Db): Promise<AtlasBuild> {
     sql`select quest_id as "questId", idx, char, extract(epoch from at)::float8 as at, have
           from quest_objective_progress`,
   );
-  return buildAtlas({ claims, ticks, seen, progress, turnIns, quests });
+  // The faction of each character that took or saw a quest, for quests Wowhead gives no side.
+  const takers = await rows<TakerRow>(
+    db,
+    sql`select distinct o.quest_id as "questId", c.faction
+          from quest_observations o left join characters c on c.key = o.char`,
+  );
+  return buildAtlas({ claims, ticks, takers, seen, progress, turnIns, quests });
 }

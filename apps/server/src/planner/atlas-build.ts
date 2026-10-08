@@ -73,10 +73,18 @@ export interface TickRow {
   have: number;
 }
 
+/** A quest one of our characters took or saw, and that character's faction. */
+export interface TakerRow {
+  questId: number;
+  faction: string | null;
+}
+
 export interface AtlasRows {
   claims: ClaimRow[];
   /** Objective increments, for seconds per unit; optional. */
   ticks?: TickRow[];
+  /** Our characters' factions per quest, for a side Wowhead does not give; optional. */
+  takers?: TakerRow[];
   seen: SeenRow[];
   progress: ProgressRow[];
   turnIns: TurnInRow[];
@@ -96,7 +104,7 @@ const MAX_SPOTS = 200;
 const FULL_XP_LEVELS = 5;
 /** Quests with both our full XP and Wowhead's needed before Wowhead-only XP is scaled. */
 export const XP_PAIRS_MIN = 5;
-/** Objective increments needed before an objective is timed. */
+/** Usable steps (consecutive increments, no break or restart between) needed before an objective is timed. */
 export const TICKS_MIN = 3;
 /** A pause longer than this between two increments is a break, not time spent on the objective. */
 export const TICK_BREAK_SECONDS = 600;
@@ -277,8 +285,8 @@ function wowheadPoint(questId: number, v: unknown, zoneGaps: ZoneGaps): QuestPoi
  * stays is a restart, a pause over TICK_BREAK_SECONDS a break), each counted once per unit gained; the median.
  */
 function secondsEach(ticks: TickRow[]): number | undefined {
-  if (ticks.length < TICKS_MIN) return undefined;
   const steps: number[] = [];
+  let usable = 0;
   const byChar = new Map<string, TickRow[]>();
   for (const t of ticks) byChar.set(t.char, [...(byChar.get(t.char) ?? []), t]);
   for (const list of byChar.values()) {
@@ -287,10 +295,11 @@ function secondsEach(ticks: TickRow[]): number | undefined {
       const units = list[i]!.have - list[i - 1]!.have;
       const dt = list[i]!.at - list[i - 1]!.at;
       if (units <= 0 || dt <= 0 || dt > TICK_BREAK_SECONDS) continue;
+      usable++;
       for (let u = 0; u < units; u++) steps.push(dt / units);
     }
   }
-  return steps.length > 0 ? Math.round(median(steps) * 10) / 10 : undefined;
+  return usable >= TICKS_MIN ? Math.round(median(steps) * 10) / 10 : undefined;
 }
 
 /** "0/8 Mindless Zombie slain" (Forever) or "Mindless Zombie slain: 0/8" (Classic) → name and count; null without one. */
@@ -373,7 +382,9 @@ function objectivesOf(
     const mine = ours(t.index);
     return {
       index: t.index,
-      kind: m?.kind ?? (/\b(slain|killed)\b/i.test(t.name) ? 'kill' : 'other'),
+      kind: /^(speak|talk)\b/i.test(t.name)
+        ? 'talk'
+        : (m?.kind ?? (/\b(slain|killed)\b/i.test(t.name) ? 'kill' : 'other')),
       text: t.name || m?.name || '',
       count: t.count,
       spots: mine.length > 0 ? mine : (m?.spots ?? []),
@@ -407,11 +418,36 @@ function prereqsOf(id: number, side: string, steps: SeriesEntry[][] | undefined)
     .filter((p) => p !== id);
 }
 
+const RACE_SIDE: Record<string, 'Alliance' | 'Horde'> = {
+  Human: 'Alliance',
+  Dwarf: 'Alliance',
+  NightElf: 'Alliance',
+  Gnome: 'Alliance',
+  Draenei: 'Alliance',
+  Skyborne: 'Alliance',
+  Orc: 'Horde',
+  Scourge: 'Horde',
+  Tauren: 'Horde',
+  Troll: 'Horde',
+  Goblin: 'Horde',
+  BloodElf: 'Horde',
+};
+/** The one faction every entry names; undefined when they are mixed, unknown or none. */
+function oneSide(list: (string | null | undefined)[]): 'Alliance' | 'Horde' | undefined {
+  const sides = new Set(list);
+  const [only] = sides;
+  return sides.size === 1 && (only === 'Alliance' || only === 'Horde') ? only : undefined;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 
 export function buildAtlas(rows: AtlasRows): AtlasBuild {
   const gaps: string[] = [];
   const zoneGaps: ZoneGaps = new Map();
+  /** Per-quest gaps, by reason. */
+  const lacking = new Map<string, number[]>();
+  const lack = (reason: string, id: number) =>
+    lacking.set(reason, [...(lacking.get(reason) ?? []), id]);
 
   // Best claim per quest and attribute.
   const ranked = rows.claims
@@ -422,24 +458,25 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
         a.c.tier - b.c.tier ||
         LABEL_RANK[a.c.label]! - LABEL_RANK[b.c.label]! ||
         (b.c.build ?? -1) - (a.c.build ?? -1) ||
-        a.i - b.i,
+        // Equal otherwise: the newest claim (rows come in claim order).
+        b.i - a.i,
     );
-  const best = new Map<number, Map<string, unknown>>();
+  const best = new Map<number, Map<string, { value: unknown; label: string }>>();
   for (const { c } of ranked) {
-    const m = best.get(c.questId) ?? new Map<string, unknown>();
-    if (!m.has(c.attribute)) m.set(c.attribute, c.value);
+    const m = best.get(c.questId) ?? new Map<string, { value: unknown; label: string }>();
+    if (!m.has(c.attribute)) m.set(c.attribute, { value: c.value, label: c.label });
     best.set(c.questId, m);
   }
 
   // Each quest's series: its own claim, else the first other quest's that names it.
   const series = new Map<number, SeriesEntry[][]>();
   for (const [, m] of best) {
-    const steps = seriesSteps(m.get('series'));
+    const steps = seriesSteps(m.get('series')?.value);
     if (!steps) continue;
     for (const e of steps.flat()) if (!series.has(e.id)) series.set(e.id, steps);
   }
   for (const [id, m] of best) {
-    const steps = seriesSteps(m.get('series'));
+    const steps = seriesSteps(m.get('series')?.value);
     if (steps?.some((s) => s.some((e) => e.id === id))) series.set(id, steps);
   }
 
@@ -453,36 +490,47 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
   const progress = group(rows.progress);
   const turnIns = group(rows.turnIns);
   const ticks = group(rows.ticks ?? []);
+  const takers = group(rows.takers ?? []);
   const xpPairs: number[] = [];
   const wowheadOnly: number[] = [];
 
   const quests = new Map<number, AtlasQuest>();
   const ids = [...new Set([...best.keys(), ...ours.keys()])].sort((a, b) => a - b);
   for (const id of ids) {
-    const c = best.get(id) ?? new Map<string, unknown>();
+    const claims = best.get(id);
+    const c = { get: (k: string) => claims?.get(k)?.value };
     const q = ours.get(id);
     const num = (k: string) => (isNum(c.get(k)) ? (c.get(k) as number) : undefined);
     const title = str(q?.title) ?? str(c.get('name'));
     const level = (isNum(q?.level) && q.level > 0 ? q.level : undefined) ?? num('level');
     if (!title || level === undefined) {
-      gaps.push(
-        `quest ${id}${title ? ` (${title})` : ''}: no ${title ? 'level' : 'title'}, left out`,
-      );
+      lack(`no ${title ? 'level' : 'title'}, left out`, id);
       continue;
     }
-    const lacks: string[] = [];
+    const lacks = { push: (reason: string) => lack(reason, id) };
     const reqLevel = num('req_level');
     if (reqLevel === undefined) lacks.push('no req_level (1 assumed)');
-    const sideClaim = c.get('side');
-    const side =
-      sideClaim === 'Alliance' || sideClaim === 'Horde' || sideClaim === 'both'
-        ? sideClaim
-        : 'both';
-    if (side !== sideClaim) lacks.push("no side ('both' assumed)");
     const names = (v: unknown) =>
       Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'string')
         ? (v as string[])
         : null;
+    const classes = names(c.get('classes'));
+    const races = names(c.get('races'))?.map(raceToken) ?? null;
+    // Side: Wowhead's, else this quest's own series entry, else races of one faction, else our players' faction.
+    const sideClaim = c.get('side');
+    const side =
+      sideClaim === 'Alliance' || sideClaim === 'Horde' || sideClaim === 'both'
+        ? sideClaim
+        : (oneSide([
+            series
+              .get(id)
+              ?.flat()
+              .find((e) => e.id === id)?.side,
+          ]) ??
+          (races ? oneSide(races.map((r) => RACE_SIDE[r])) : undefined) ??
+          oneSide((takers.get(id) ?? []).map((t) => t.faction)) ??
+          'both');
+    if (side === 'both' && sideClaim !== 'both') lacks.push("no side ('both' assumed)");
 
     const qSeen = seen.get(id) ?? [];
     const whGiver = wowheadPoint(id, c.get('starts_at'), zoneGaps);
@@ -506,8 +554,18 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
     }
 
     const qProgress = progress.get(id) ?? [];
-    const fromLog = (Array.isArray(q?.objectives) ? q.objectives : [])
-      .map((t, index) => ({ index, parsed: typeof t === 'string' ? parseObjective(t) : null }))
+    // A text with no count ("Speak to Shikrik") is one thing to do.
+    const fromLog = (Array.isArray(q?.objectives) ? (q.objectives as unknown[]) : [])
+      .map((t, index) => ({
+        index,
+        parsed:
+          typeof t !== 'string'
+            ? null
+            : (parseObjective(t) ??
+              (t.trim()
+                ? { name: t.replace(/\|c[0-9a-fA-F]{8}|\|r/g, '').trim(), count: 1 }
+                : null)),
+      }))
       .filter((t) => t.parsed)
       .map((t) => ({ index: t.index, ...t.parsed! }));
     const fromProgress = [...new Set(qProgress.map((p) => p.idx))]
@@ -532,16 +590,16 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
     const fullXp = (turnIns.get(id) ?? [])
       .filter((t) => isNum(t.xp) && t.xp > 0 && isNum(t.level) && t.level <= level + FULL_XP_LEVELS)
       .map((t) => t.xp!);
-    const ourXp = fullXp.length > 0 ? Math.max(...fullXp) : undefined;
+    const ourXp = fullXp.length > 0 ? median(fullXp) : undefined;
     const whXp = num('xp_reward');
-    if (ourXp !== undefined && whXp !== undefined && whXp > 0) xpPairs.push(ourXp / whXp);
-    else if (ourXp === undefined && whXp !== undefined) wowheadOnly.push(id);
+    // Only Classic-era (CLASSIC) Wowhead XP is calibrated: Forever's own (VERIFIED) is taken as it is.
+    const classicXp = claims?.get('xp_reward')?.label === 'CLASSIC';
+    if (classicXp && ourXp !== undefined && whXp !== undefined && whXp > 0)
+      xpPairs.push(ourXp / whXp);
+    else if (classicXp && ourXp === undefined && whXp !== undefined) wowheadOnly.push(id);
     const xp = ourXp ?? whXp;
     if (xp === undefined) lacks.push('no xp (0 assumed)');
 
-    if (lacks.length > 0) gaps.push(`quest ${id} (${title}): ${lacks.join(', ')}`);
-    const classes = names(c.get('classes'));
-    const races = names(c.get('races'));
     quests.set(id, {
       id,
       title,
@@ -549,13 +607,24 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
       reqLevel: reqLevel ?? 1,
       side,
       classes: classes ? classes.map(classToken) : null,
-      races: races ? races.map(raceToken) : null,
+      races,
       giver,
       ender,
       prereqs: prereqsOf(id, side, series.get(id)),
       objectives,
       xp: xp ?? 0,
     });
+  }
+
+  // Prereqs the atlas has, and on a split step not the other faction's.
+  for (const q of quests.values()) {
+    const kept = q.prereqs.filter((p) => {
+      const pre = quests.get(p);
+      if (!pre) return false;
+      return q.side === 'both' || pre.side === 'both' || pre.side === q.side;
+    });
+    if (q.prereqs.some((p) => !quests.has(p))) lack('prereq not in the atlas, dropped', q.id);
+    q.prereqs = kept;
   }
 
   // Forever's quest XP differs from Wowhead's (Classic-era) numbers: scale Wowhead-only XP by what our turn-ins show.
@@ -576,6 +645,10 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
     gaps.push(
       `Wowhead zone "${zone}" has no client map: ${g.dropped} spot${g.dropped === 1 ? '' : 's'} dropped (quest${qs.length === 1 ? '' : 's'} ${list})`,
     );
+  }
+  for (const [reason, ids] of lacking) {
+    const list = ids.slice(0, GAP_QUESTS).join(', ') + (ids.length > GAP_QUESTS ? ', …' : '');
+    gaps.push(`${reason}: ${ids.length} quest${ids.length === 1 ? '' : 's'} (${list})`);
   }
   return { atlas: { quests }, gaps, calibration: { xpRatio, pairs: xpPairs.length } };
 }

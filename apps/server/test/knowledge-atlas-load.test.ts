@@ -88,6 +88,7 @@ describe('atlas loader', () => {
       [1, 47.2],
       [2, 46.9],
       [3, 52],
+      [4, 47.1],
     ] as const) {
       await q(
         `insert into quest_objective_progress (char, quest_id, idx, have, at, need, build, map_id, zone, x, y, uploader_id, account)
@@ -127,6 +128,59 @@ describe('atlas loader', () => {
         },
       ],
       xp: 175,
+    });
+  });
+
+  // Claims and uploads are untrusted jsonb: a scalar where an array belongs, a location that is a string, a fractional
+  // map id or objectives that are not strings must read as nothing, never fail the build.
+  it('reads junk jsonb as nothing, and takes the side from the faction of our players', async () => {
+    await q(`insert into sources (key, kind, site, tier, game_version)
+             values ('wowhead:quest=900', 'web', 'wowhead', 3, 'forever')`);
+    const junk: [string, unknown][] = [
+      ['name', 'Junk Quest'],
+      ['level', 'high'],
+      ['starts_at', 5],
+      ['ends_at', { id: 1, name: 'Not a list' }],
+      ['objective_spots', 'everywhere'],
+      ['series', [[{ id: 'x' }], 7, [null]]],
+      ['races', 'Orc'],
+      ['classes', [1, 2]],
+      ['xp_reward', '1000'],
+    ];
+    for (const [i, [attribute, value]] of junk.entries()) {
+      await q(
+        `insert into claims (source_id, entity_type, entity_key, entity_id, attribute, value, value_hash, label, parser)
+         select id, 'quest', '900', 900, $1, $2, $3, 'VERIFIED', 'wowhead@5' from sources where key = 'wowhead:quest=900'`,
+        [attribute, JSON.stringify(value), `j${i}`],
+      );
+    }
+    await q(
+      `insert into quests (quest_id, title, level, objectives) values (900, 'Junk Quest', 4, $1)`,
+      [JSON.stringify([1, null, { text: 'x' }, '0/3 Boar'])],
+    );
+    await q(
+      `insert into characters (key, name, realm, faction) values ('Grunt-Bayou', 'Grunt', 'Bayou', 'Horde')`,
+    );
+    await q(
+      `insert into quest_observations (quest_id, build, stage, char, level, npc_id, npc_name, npc_loc) values
+       (900, 70245, 'detail', 'Grunt-Bayou', 4, 3143, 'Gornek', $1),
+       (900, 70245, 'complete', 'Grunt-Bayou', 4, 3143, 'Gornek', $2)`,
+      [JSON.stringify('Durotar 42,68'), JSON.stringify({ mapID: 1411.5, x: 42, y: 68 })],
+    );
+    const { atlas } = await loadAtlas(s.database.db);
+    expect(atlas.quests.get(900)).toEqual({
+      id: 900,
+      title: 'Junk Quest',
+      level: 4,
+      reqLevel: 1,
+      side: 'Horde',
+      classes: null,
+      races: null,
+      giver: null,
+      ender: null,
+      prereqs: [],
+      objectives: [{ index: 3, kind: 'other', text: 'Boar', count: 3, spots: [] }],
+      xp: 0,
     });
   });
 });

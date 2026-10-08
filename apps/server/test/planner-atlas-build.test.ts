@@ -280,9 +280,9 @@ describe('atlas builder', () => {
     ]);
     expect(gaps).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/^quest 364 .*no req_level/),
-        expect.stringMatching(/^quest 364 .*no side/),
-        expect.stringMatching(/^quest 364 .*no ender/),
+        'no req_level (1 assumed): 1 quest (364)',
+        "no side ('both' assumed): 1 quest (364)",
+        'no ender: 1 quest (364)',
       ]),
     );
   });
@@ -310,10 +310,15 @@ describe('atlas builder', () => {
           // Quest 3 has no series claim of its own: quest 2's page names it.
           claim(3, 'name', 'Q3'),
           claim(3, 'level', 5),
+          ...quest(10, split),
           ...quest(20, split),
           ...quest(21, split),
           ...quest(30, split),
           // A step with no faction marks keeps all its quests.
+          claim(41, 'name', 'A'),
+          claim(41, 'level', 5),
+          claim(42, 'name', 'B'),
+          claim(42, 'level', 5),
           ...quest(40, [
             [
               { id: 41, name: 'A' },
@@ -328,6 +333,108 @@ describe('atlas builder', () => {
     expect([pre(1), pre(2), pre(3)]).toEqual([[], [1], [2]]);
     expect([pre(20), pre(21), pre(30)]).toEqual([[], [10], [20]]);
     expect(pre(40)).toEqual([41, 42]);
+  });
+
+  it('drops prereqs the atlas does not have, and says so', () => {
+    const { atlas, gaps } = buildAtlas(
+      rows({
+        claims: [
+          claim(2, 'name', 'Two'),
+          claim(2, 'level', 5),
+          claim(2, 'series', [[{ id: 99, name: 'Unknown' }], [{ id: 2, name: 'Two' }]]),
+        ],
+      }),
+    );
+    expect(atlas.quests.get(2)!.prereqs).toEqual([]);
+    expect(gaps).toContain('prereq not in the atlas, dropped: 1 quest (2)');
+  });
+
+  it("keeps a step's other-faction quests out of a sided quest's prereqs (sides from the atlas)", () => {
+    const steps = [
+      [
+        { id: 60, name: 'Alliance one' },
+        { id: 61, name: 'Horde one' },
+      ],
+      [{ id: 62, name: 'Next' }],
+    ];
+    const q = (id: number, side?: string) => [
+      claim(id, 'name', `Q${id}`),
+      claim(id, 'level', 5),
+      claim(id, 'series', steps),
+      ...(side ? [claim(id, 'side', side)] : []),
+    ];
+    const one = buildAtlas(
+      rows({ claims: [...q(60, 'Alliance'), ...q(61, 'Horde'), ...q(62, 'Horde')] }),
+    );
+    expect(one.atlas.quests.get(62)!.prereqs).toEqual([61]);
+    // A quest of unknown side after a split step keeps both: availability ignores the other faction's.
+    const two = buildAtlas(rows({ claims: [...q(60, 'Alliance'), ...q(61, 'Horde'), ...q(62)] }));
+    expect(two.atlas.quests.get(62)!.prereqs).toEqual([60, 61]);
+  });
+
+  it('infers a missing side: series step, then races, then the faction of our players who took it', () => {
+    const named = (id: number) => [claim(id, 'name', `Q${id}`), claim(id, 'level', 5)];
+    const { atlas, gaps } = buildAtlas(
+      rows({
+        claims: [
+          ...named(20),
+          claim(20, 'series', [[{ id: 20, name: 'Q20', side: 'Alliance' }]]),
+          ...named(21),
+          claim(21, 'races', ['Dwarf', 'Night Elf', 'Gnome', 'High Order Skyborne']),
+          ...named(22),
+          claim(22, 'races', ['Orc', 'Undead']),
+          // Mixed races say nothing; our players do.
+          ...named(23),
+          claim(23, 'races', ['Orc', 'Human']),
+          ...named(24),
+          ...named(25),
+          // The claim itself wins over everything.
+          ...named(26),
+          claim(26, 'side', 'both'),
+          claim(26, 'races', ['Orc']),
+        ],
+        takers: [
+          { questId: 23, faction: 'Horde' },
+          { questId: 23, faction: 'Horde' },
+          { questId: 24, faction: 'Alliance' },
+          { questId: 24, faction: 'Horde' },
+          { questId: 25, faction: null },
+          { questId: 26, faction: 'Alliance' },
+        ],
+      }),
+    );
+    const side = (id: number) => atlas.quests.get(id)!.side;
+    expect([20, 21, 22, 23, 24, 25, 26].map(side)).toEqual([
+      'Alliance',
+      'Alliance',
+      'Horde',
+      'Horde',
+      'both',
+      'both',
+      'both',
+    ]);
+    expect(gaps).toContain("no side ('both' assumed): 2 quests (24, 25)");
+  });
+
+  it('keeps objectives with no count, as one thing to do', () => {
+    const { atlas } = buildAtlas(
+      rows({
+        quests: [
+          {
+            questId: 3084,
+            title: 'Rune-Inscribed Tablet',
+            level: 1,
+            objectives: ['Speak to Shikrik in the Valley of Trials.', '', '0/2 Boar'],
+          },
+        ],
+      }),
+    );
+    expect(
+      atlas.quests.get(3084)!.objectives.map((o) => [o.index, o.kind, o.text, o.count]),
+    ).toEqual([
+      [0, 'talk', 'Speak to Shikrik in the Valley of Trials.', 1],
+      [2, 'other', 'Boar', 2],
+    ]);
   });
 
   it('drops spots in zones the client has no map for, and says so in gaps', () => {
@@ -385,6 +492,29 @@ describe('atlas builder', () => {
     expect(atlas.quests.get(5)).toMatchObject({ title: 'Forever Name', level: 7, xp: 400 });
   });
 
+  it('takes the newest claim when tier and label are equal', () => {
+    const { atlas } = buildAtlas(
+      rows({
+        claims: [claim(5, 'name', 'Older'), claim(5, 'level', 3), claim(5, 'name', 'Newer')],
+      }),
+    );
+    expect(atlas.quests.get(5)!.title).toBe('Newer');
+  });
+
+  it('takes the middle of our full-XP turn-ins, not the most', () => {
+    const { atlas } = buildAtlas(
+      rows({
+        claims: [claim(5, 'name', 'Q5'), claim(5, 'level', 3)],
+        turnIns: [
+          { questId: 5, xp: 180, level: 3 },
+          { questId: 5, xp: 200, level: 4 },
+          { questId: 5, xp: 400, level: 3 },
+        ],
+      }),
+    );
+    expect(atlas.quests.get(5)!.xp).toBe(200);
+  });
+
   it('keeps an item starter as the giver, with its kind', () => {
     const { atlas } = buildAtlas(
       rows({
@@ -415,8 +545,12 @@ describe('atlas builder', () => {
 
 describe('atlas builder calibration', () => {
   // A quest with Wowhead's XP and (optionally) a full-XP turn-in of ours.
-  const pair = (id: number, wowhead: number, ours?: number) => ({
-    claims: [claim(id, 'name', `Q${id}`), claim(id, 'level', 10), claim(id, 'xp_reward', wowhead)],
+  const pair = (id: number, wowhead: number, ours?: number, label = 'CLASSIC') => ({
+    claims: [
+      claim(id, 'name', `Q${id}`),
+      claim(id, 'level', 10),
+      claim(id, 'xp_reward', wowhead, label),
+    ],
     turnIns: ours === undefined ? [] : [{ questId: id, xp: ours, level: 10 }],
   });
   const build = (parts: ReturnType<typeof pair>[]) =>
@@ -432,9 +566,13 @@ describe('atlas builder calibration', () => {
       pair(4, 100, 220),
       pair(5, 100, 900),
       pair(6, 1000),
+      // Forever's own (VERIFIED) XP is neither a pair nor scaled.
+      pair(7, 100, 100, 'VERIFIED'),
+      pair(8, 1000, undefined, 'VERIFIED'),
     ]);
     expect(calibration).toEqual({ xpRatio: 2.5, pairs: 5 });
     expect(atlas.quests.get(6)!.xp).toBe(2500);
+    expect(atlas.quests.get(8)!.xp).toBe(1000);
     // Ours stay ours.
     expect(atlas.quests.get(5)!.xp).toBe(900);
     expect(gaps).toContainEqual(
@@ -491,9 +629,11 @@ describe('atlas builder objective timing', () => {
         tick('Sam', 1, 2, 60),
         tick('Sam', 1, 1, 500),
         tick('Sam', 1, 2, 540),
-        // Objective 2: only 2 increments.
+        // Objective 2: four increments but two usable steps (one across a break).
         tick('Lee', 2, 1, 0),
         tick('Lee', 2, 2, 20),
+        tick('Lee', 2, 3, 40),
+        tick('Lee', 2, 4, 2000),
       ],
     });
     const [o1, o2] = atlas.quests.get(364)!.objectives;
