@@ -22,9 +22,9 @@ hub batches, few run-backs, real travel (flights, boats, hearth). Runs become ti
 ## 📋 Progress
 
 - ✅ 0 🤝 Design agreed section by section — 2026-10-08 04:34 CDT
-- ⏳ 1 🔬 Probe 0.6.0: `C_TaxiMap` nodes + learned state, `GetBindLocation`, hearthstone cooldown, mount state,
+- 🟡 1 🔬 Probe 0.6.0 built + reviewed (2026-10-08 04:49 CDT, `cb03f9b`), **waiting on Harlan**: `C_TaxiMap` nodes + learned state, `GetBindLocation`, hearthstone cooldown, mount state,
   transports, every uiMap's size in yards → Harlan runs it
-- ⏳ 2 📚 Atlas: parser `wowhead@5` (mapper start/end/objectives, series, restrictions) → list pages (9 class + ~40
+- 🟡 2 📚 Atlas (parser v5 building in parallel, 2026-10-08 04:36 CDT): parser `wowhead@5` (mapper start/end/objectives, series, restrictions) → list pages (9 class + ~40
   zone) → quest pages (starter zones first) → `atlas_quests` → boats list + flight network
 - ⏳ 3 🧍 Addon 0.8.0 / schema 10: completed quests, last position, flight paths, bind + hearth, mount, recorded trips,
   `travel` steps (after 0.7.0 merges)
