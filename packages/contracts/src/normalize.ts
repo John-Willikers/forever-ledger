@@ -143,15 +143,15 @@ function toSpots(v: unknown) {
   }));
 }
 
-/** A 0..100 map coordinate, or undefined (an off-map or non-finite value drops the coordinate, not the record). */
-const coord = (v: unknown) =>
-  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : undefined;
+/** Schema 10: a 0..1 map fraction, or undefined (anything else drops the coordinate, not the record). */
+const fraction = (v: unknown) =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : undefined;
 
 /** Schema 10 spot (SV `{ mapID, x, y, zone, subzone, at }`) → `{ mapId, ... }`; non-tables pass through to fail. */
 function toSpot(v: unknown) {
   if (!isObj(v)) return v;
   const { mapID, mapId, x, y, ...rest } = v;
-  return { ...rest, mapId: mapID ?? mapId, x: coord(x), y: coord(y) };
+  return { ...rest, mapId: mapID ?? mapId, x: fraction(x), y: fraction(y) };
 }
 
 /** A list of ids; a Lua set `{ [id] = true }` reads as its keys. */
@@ -199,8 +199,8 @@ const charStateSection: { [K in keyof typeof CharStateSections]?: (v: unknown) =
                 ? {
                     nodeId: n.id ?? n.nodeID ?? n.nodeId,
                     name: n.name,
-                    x: coord(n.x),
-                    y: coord(n.y),
+                    x: fraction(n.x),
+                    y: fraction(n.y),
                     state: n.state,
                   }
                 : n,
@@ -558,6 +558,16 @@ export function normalize(db: unknown): Normalized {
       continue;
     }
     const state: Obj = { char, build: cs.build ?? meta.build };
+    // SV `at`: when the addon last wrote the state. A bad one is dropped and reported, not the state.
+    if (cs.at !== undefined) {
+      if (CharState.shape.observedAt.safeParse(cs.at).success) state.observedAt = cs.at;
+      else
+        problems.push({
+          kind: 'charState',
+          path: `charState.${char}.at`,
+          issues: ['at: invalid epoch'],
+        });
+    }
     for (const k of Object.keys(CharStateSections) as (keyof typeof CharStateSections)[]) {
       if (cs[k] === undefined) continue;
       const raw = charStateSection[k] ? charStateSection[k](cs[k]) : cs[k];

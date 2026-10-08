@@ -480,11 +480,17 @@ export type ObjectiveProgress = z.infer<typeof ObjectiveProgress>;
 // Schema 10: character state for the route planner, the XP curve and timed trips (addon 0.8.0 plan).
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Schema 10 coordinates are 0..1 (C_Map position); up to 100 is tolerated. Off-map values are dropped by normalize. */
-const spotCoord = z.number().min(0).max(100);
+/**
+ * Schema 10 coordinates are a 0..1 map fraction (C_Map position, 4 places), not the 0..100 of older records. Anything
+ * else is dropped by normalize (that coordinate only).
+ */
+const spotCoord = z.number().min(0).max(1);
 const placeName = z.string().max(128);
 
-/** Where a character stood: `pos`, a trip's ends. Every field optional; an off-map coordinate is dropped alone. */
+/**
+ * Where a character stood: `pos`, a trip's ends. x/y are a 0..1 map fraction. Every field optional; an off-map
+ * coordinate is dropped alone.
+ */
 export const StateSpot = z.object({
   mapId: nonNegInt.optional(),
   x: spotCoord.optional(),
@@ -520,7 +526,10 @@ export const StateBind = z.object({
 });
 export type StateBind = z.infer<typeof StateBind>;
 
-/** A flight master node on a taxi map. `state`: 0 current, 1 learned (reachable), 2 not learned. x/y on the taxi map. */
+/**
+ * A flight master node on a taxi map. `state`: 0 current, 1 learned (reachable), 2 not learned. x/y: 0..1 fraction of
+ * the taxi map.
+ */
 export const StateTaxiNode = z.object({
   nodeId: nonNegInt,
   name: z.string().max(200).optional(),
@@ -564,11 +573,13 @@ export const CharStateSections = {
 
 /**
  * Schema 10: where a character stands, for the route planner. One record per character and build; the addon replaces
- * fields, never appends, so the newest upload wins. Everything but the character is optional.
+ * fields, never appends, so the newest `observedAt` wins. Everything but the character is optional.
  */
 export const CharState = z.object({
   char: charKey,
   build,
+  /** When the addon last wrote this state (SV `at`): an older batch never overwrites newer state. */
+  observedAt: epochSecs.optional(),
   level: CharStateSections.level.optional(),
   xp: CharStateSections.xp.optional(),
   xpMax: CharStateSections.xpMax.optional(),

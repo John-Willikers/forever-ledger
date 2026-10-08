@@ -30,6 +30,7 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
     ['session-v7.lua', 7],
     ['session-v8.lua', 8],
     ['session-v9.lua', 9],
+    ['session-v10.lua', 10],
   ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
@@ -1063,6 +1064,8 @@ describe('normalize — schema 10 character state, xp curve and trips (hand-made
     meta: { schemaVersion: 10, addonVersion: '0.8.0', build: 70245, session: '1791000000-ab12' },
     charState: {
       [char]: {
+        build: 70245,
+        at: 1791000210,
         level: 12,
         xp: 3400,
         xpMax: 8800,
@@ -1138,6 +1141,7 @@ describe('normalize — schema 10 character state, xp curve and trips (hand-made
     expect(s).toEqual({
       char,
       build: 70245,
+      observedAt: 1791000210,
       level: 12,
       xp: 3400,
       xpMax: 8800,
@@ -1231,7 +1235,7 @@ describe('normalize — schema 10 character state, xp curve and trips (hand-made
   it('off-map coordinates drop the coordinate, not the record', () => {
     const db = v10();
     const s = db.charState[char] as { pos: Record<string, unknown> };
-    s.pos.x = 140;
+    s.pos.x = 43.58;
     s.pos.y = Number.NaN;
     db.trips[0]!.to!.x = -3;
     const { records, problems } = normalize(db);
@@ -1302,5 +1306,58 @@ describe('normalize — schema 10 character state, xp curve and trips (hand-made
       `charState.${char}.completed`,
       `charState.${char}.log`,
     ]);
+  });
+});
+
+describe('normalize — schema 10 (session-v10.lua, addon 0.8.0)', () => {
+  const { meta, records, problems } = normalize(load('session-v10.lua'));
+  const char = 'Thibodeaux Willikers-Bayou';
+
+  it('validates as schema 10 with no problems', () => {
+    expect(problems).toEqual([]);
+    expect(meta).toMatchObject({ schemaVersion: 10, addonVersion: '0.8.0' });
+  });
+
+  it('one character state with its build, observedAt and 0..1 coordinates', () => {
+    expect(records.charState).toHaveLength(1);
+    const s = records.charState[0]!;
+    expect(s).toMatchObject({ char, build: 61582, level: 11, xp: 4350, xpMax: 8740 });
+    expect(s.observedAt).toBeTypeOf('number');
+    expect(s.completed).toEqual([7, 15, 33, 783, 5261]);
+    expect(s.log).toContainEqual({ questId: 364, done: [2] });
+    expect(s.pos).toMatchObject({ mapId: 1429, x: 0.4358, y: 0.6578, zone: 'Elwynn Forest' });
+    expect(s.bind).toMatchObject({ zone: 'Goldshire', spot: { mapId: 1429, x: 0.5, y: 0.7 } });
+    expect(s.taxi![0]!.taxiMapId).toBe(1415);
+    expect(s.taxi![0]!.nodes.map((n) => [n.nodeId, n.state])).toEqual([
+      [2, 1],
+      [4, 0],
+      [6, 2],
+    ]);
+    expect(s.mount).toEqual({ owned: 1, mounted: false });
+  });
+
+  it('xp curve entries and a flight and a hearth trip', () => {
+    expect(records.xpCurve).toEqual(
+      expect.arrayContaining([
+        { build: 61582, level: 10, xpMax: 7600 },
+        { build: 61582, level: 11, xpMax: 8740 },
+      ]),
+    );
+    expect(records.trips.map((t) => t.kind).sort()).toEqual(['flight', 'hearth']);
+    const flight = records.trips.find((t) => t.kind === 'flight')!;
+    expect(flight).toMatchObject({
+      char,
+      seconds: 72.4,
+      fromNode: { nodeId: 4 },
+      toNode: { nodeId: 2, name: 'Stormwind, Elwynn' },
+      to: { mapId: 1453, x: 0.6624 },
+    });
+  });
+
+  it('yields unique natural keys', () => {
+    for (const kind of RECORD_KINDS) {
+      const keys = (records[kind] as never[]).map((r) => recordKey(kind, r));
+      expect(new Set(keys).size).toBe(keys.length);
+    }
   });
 });
