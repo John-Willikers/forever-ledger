@@ -53,6 +53,11 @@ for (const row of rows) {
     skipped++;
     continue;
   }
+  // Corners on two continents (947 Azeroth spans Kalimdor and the Eastern Kingdoms): no single world frame, skip.
+  if (row[6] !== row[9]) {
+    skipped++;
+    continue;
+  }
   kept.push(row as Row);
 }
 kept.sort((a, b) => a[0] - b[0]);
@@ -79,4 +84,6 @@ ${kept.map((r) => `  ${JSON.stringify(r).replace(/,/g, ', ')},`).join('\n')}
 // Formatted like the rest of the repo, so `prettier --check` passes on the generated file as written.
 const options = (await resolveConfig(target)) ?? {};
 writeFileSync(target, await format(out, { ...options, filepath: target }));
-console.log(`wrote ${kept.length} maps (${skipped} without corners skipped) to ${target}`);
+console.log(
+  `wrote ${kept.length} maps (${skipped} without corners or across continents skipped) to ${target}`,
+);

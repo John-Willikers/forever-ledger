@@ -1,6 +1,6 @@
 // Planner geometry (planner/geo.ts): the client map catalog turns map percent into world yards.
 import { describe, expect, it } from 'vitest';
-import { distance, mapInfo, toWorld } from '../src/planner/geo.js';
+import { distance, fromWorld, mapInfo, toWorld } from '../src/planner/geo.js';
 
 describe('planner geometry', () => {
   it('knows the client maps', () => {
@@ -31,5 +31,22 @@ describe('planner geometry', () => {
     expect(distance(brill, uc)).toBeLessThan(1000);
     const org = toWorld({ mapId: 1454, x: 50, y: 50 })!;
     expect(distance(brill, org)).toBe(Infinity);
+  });
+
+  it('gives no world position for a map whose corners lie on two continents', () => {
+    // Map 947 (Azeroth) spans Kalimdor and the Eastern Kingdoms: its corners carry different continents.
+    expect(toWorld({ mapId: 947, x: 50, y: 50 })).toBeNull();
+  });
+
+  it('carries a spot from a city map onto its zone map', () => {
+    // The Orgrimmar gate on the city map sits at Durotar 45.5, 11.7.
+    const gate = toWorld({ mapId: 1454, x: 49, y: 94 })!;
+    const onDurotar = fromWorld(1411, gate)!;
+    expect(onDurotar.mapId).toBe(1411);
+    expect(Math.abs(onDurotar.x - 45.5)).toBeLessThan(1);
+    expect(Math.abs(onDurotar.y - 11.7)).toBeLessThan(1);
+    // Another continent: no spot.
+    expect(fromWorld(1420, gate)).toBeNull();
+    expect(fromWorld(99999, gate)).toBeNull();
   });
 });
