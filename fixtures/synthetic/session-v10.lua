@@ -275,7 +275,7 @@ ForeverLedgerDB = {
 	},
 	["charState"] = {
 		["Thibodeaux Willikers-Bayou"] = {
-			["at"] = 1790001714,
+			["at"] = 1790001827,
 			["bind"] = {
 				["at"] = 1790001709,
 				["spot"] = {
@@ -293,8 +293,8 @@ ForeverLedgerDB = {
 				783, -- [4]
 				5261, -- [5]
 			},
-			["completedAt"] = 1790001714,
-			["hearthReadyAt"] = 1790004714,
+			["completedAt"] = 1790001827,
+			["hearthReadyAt"] = 1790004827,
 			["level"] = 11,
 			["log"] = {
 				{
@@ -315,11 +315,11 @@ ForeverLedgerDB = {
 				["owned"] = 1,
 			},
 			["pos"] = {
-				["at"] = 1790001714,
+				["at"] = 1790001827,
 				["mapID"] = 1429,
 				["subzone"] = "Goldshire",
-				["x"] = 0.5,
-				["y"] = 0.7,
+				["x"] = 0.4358,
+				["y"] = 0.6578,
 				["zone"] = "Elwynn Forest",
 			},
 			["taxi"] = {
@@ -1553,6 +1553,56 @@ ForeverLedgerDB = {
 		},
 	},
 	["trips"] = {
+		{
+			["build"] = 61582,
+			["char"] = "Thibodeaux Willikers-Bayou",
+			["from"] = {
+				["mapID"] = 1429,
+				["subzone"] = "Goldshire",
+				["x"] = 0.5,
+				["y"] = 0.7,
+				["zone"] = "Elwynn Forest",
+			},
+			["fromNode"] = {
+				["id"] = 4,
+				["name"] = "Sentinel Hill, Westfall",
+			},
+			["kind"] = "flight",
+			["seconds"] = 72.4,
+			["startedAt"] = 1790001709,
+			["to"] = {
+				["mapID"] = 1453,
+				["subzone"] = "Trade District",
+				["x"] = 0.6624,
+				["y"] = 0.6215,
+				["zone"] = "Stormwind City",
+			},
+			["toNode"] = {
+				["id"] = 2,
+				["name"] = "Stormwind, Elwynn",
+			},
+		}, -- [1]
+		{
+			["build"] = 61582,
+			["char"] = "Thibodeaux Willikers-Bayou",
+			["from"] = {
+				["mapID"] = 1453,
+				["subzone"] = "Trade District",
+				["x"] = 0.6624,
+				["y"] = 0.6215,
+				["zone"] = "Stormwind City",
+			},
+			["kind"] = "hearth",
+			["seconds"] = 8,
+			["startedAt"] = 1790001811,
+			["to"] = {
+				["mapID"] = 1429,
+				["subzone"] = "Goldshire",
+				["x"] = 0.4358,
+				["y"] = 0.6578,
+				["zone"] = "Elwynn Forest",
+			},
+		}, -- [2]
 	},
 	["turnIns"] = {
 		{

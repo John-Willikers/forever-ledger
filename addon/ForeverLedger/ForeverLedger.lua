@@ -2575,9 +2575,9 @@ end
 -- the flight map is open; nodes carry nodeID, name, position (a vector), state and slotIndex (TakeTaxiNode's slot);
 -- the hearthstone (item 6948) cooldown is (start, duration) on the GetTime clock; GetMountInfoByID's 11th value is
 -- isCollected.
-local HEARTHSTONE_ITEM = 6948
 local cs = { completedPending = false } -- key: the character key the state was last written under
 do
+  local HEARTHSTONE_ITEM = 6948
   local LOG_CAP, COMPLETED_CAP, TAXI_MAPS, TAXI_NODES = 35, 5000, 4, 80
   local COMPLETED_GAP = 10 -- seconds between completed-quest reads after turn-ins
 
@@ -2856,6 +2856,198 @@ do
   end
 end
 
+---------------------------------------------------------------- trips (schema 10)
+-- Real travel times for the route planner, one record per trip in db.trips (cap 300, oldest dropped):
+-- { kind = "flight" | "transport" | "hearth", build, char, from, to, startedAt, seconds, fromNode, toNode }, where
+-- from / to are { mapID, x, y, zone, subzone } (x, y 0..1) and fromNode / toNode = { id, name } are a flight's taxi
+-- nodes. Only observed: nothing here acts.
+-- Flight: a post-hook on TakeTaxiNode(slot) notes the picked node (and the one you stand at, from the open flight
+-- map); PLAYER_CONTROL_LOST starts the clock, PLAYER_CONTROL_GAINED stops it. Probe 0.6.0 (build 70245): control
+-- comes back on landing while UnitOnTaxi is still true, Orgrimmar -> Splintertree Post took 89.7 s.
+-- Hearth: UNIT_SPELLCAST_SUCCEEDED of spell 8690 starts it where you stand; the next PLAYER_ENTERING_WORLD (after a
+-- loading screen; the position is read 2 s later, once the client has the new zone) or a sample more than 200 yd away
+-- ends it.
+-- Transport (boats, zeppelins): a sample every 2 s while not on a taxi. Moving more than 3 yd per sample at
+-- GetUnitSpeed 0 is being carried; the ride ends after 3 samples that aren't (stopped, or walking off once it has
+-- crossed a loading screen), at the first of them. Samples are skipped during loading screens (nothing moves then).
+-- Rides under 10 s (knock-backs, elevators) are not kept. One position read per sample keeps it cheap.
+local trips = {}
+do
+  -- (one table: the addon's main chunk is near Lua's 200-local limit)
+  local K = {
+    HEARTH_SPELL = 8690,
+    CAP = 300,
+    TICK = 2,           -- seconds between samples
+    MOVE_YD = 3,        -- yd per sample that counts as being carried
+    JUMP_YD = 200,      -- yd per sample beyond which it is a teleport, not a ride; also a hearth's arrival
+    STOP_TICKS = 3,     -- samples not carried that end a ride
+    MIN_RIDE = 10,      -- seconds: shorter rides are not kept
+    TAXI_WAIT = 15,     -- seconds from TakeTaxiNode to PLAYER_CONTROL_LOST
+    HEARTH_WAIT = 120,  -- seconds after the cast a hearth may still arrive
+    ARRIVE_READ = 2,    -- seconds after PLAYER_ENTERING_WORLD the arrival is read
+    LOADING_MAX = 60,   -- seconds: a loading screen whose end never came no longer pauses the sampler
+    FLIGHT_MAX = 1800,  -- seconds: a flight whose landing never came (a disconnect) is dropped
+  }
+
+  local function clock() return GetTime and GetTime() or now() end
+
+  -- Yards between two positions; math.huge on different maps; nil when they can't be compared.
+  local function yards(a, b)
+    if not (a and b and a.mapID and b.mapID and a.x and b.x) then return nil end
+    if a.mapID ~= b.mapID then return math.huge end
+    if not (C_Map and C_Map.GetMapWorldSize) then return nil end
+    local ok, w, h = pcall(C_Map.GetMapWorldSize, a.mapID)
+    w, h = ok and tonumber(w), ok and tonumber(h)
+    if not w or not h or w <= 0 or h <= 0 then return nil end
+    local dx, dy = (a.x - b.x) * w, (a.y - b.y) * h
+    return math.sqrt(dx * dx + dy * dy)
+  end
+
+  local function record(kind, t, to, seconds)
+    local entry = { kind = kind, build = build, char = charKey(), from = t.from, to = to, startedAt = t.startedAt,
+                    seconds = floor(math.max(0, seconds or (clock() - t.t0)) * 10 + 0.5) / 10, fromNode = t.fromNode,
+                    toNode = t.toNode }
+    db.trips[#db.trips + 1] = entry
+    trim(db.trips, K.CAP)
+    added()
+    return entry
+  end
+
+  function trips.onTaxi()
+    if not UnitOnTaxi then return false end
+    local ok, v = pcall(UnitOnTaxi, "player")
+    return ok and v and true or false
+  end
+
+  function trips.speed()
+    if not GetUnitSpeed then return nil end
+    local ok, v = pcall(GetUnitSpeed, "player")
+    return ok and tonumber(v) or nil
+  end
+
+  -- flights
+  function trips.takeTaxi(slot)
+    local w = cs.taxiWindow
+    local node = w and w.slots[tonumber(slot) or -1]
+    local name
+    if TaxiNodeName then
+      local ok, n = pcall(TaxiNodeName, slot)
+      if ok and type(n) == "string" and n ~= "INVALID" then name = n end
+    end
+    local cur = w and w.current
+    trips.pendingFlight = { at = clock(), from = cs.pos(),
+                            fromNode = cur and { id = cur.id, name = cur.name } or nil,
+                            toNode = (node or name) and { id = node and node.id, name = name or node.name } or nil }
+  end
+
+  function trips.controlLost()
+    local p = trips.pendingFlight
+    trips.pendingFlight = nil
+    if not p or clock() - p.at > K.TAXI_WAIT then return end
+    trips.flight = { t0 = clock(), startedAt = now(), from = p.from, fromNode = p.fromNode, toNode = p.toNode }
+    trips.ride, trips.last = nil, nil
+  end
+
+  function trips.controlGained()
+    local fl = trips.flight
+    if not fl then return end
+    trips.flight = nil
+    record("flight", fl, cs.pos())
+  end
+
+  -- hearths
+  function trips.spellSucceeded(spellID)
+    if tonumber(spellID) ~= K.HEARTH_SPELL then return end
+    trips.hearth = { t0 = clock(), startedAt = now(), from = cs.pos() }
+    trips.ride = nil
+  end
+
+  function trips.hearthAlive()
+    local h = trips.hearth
+    if h and clock() - h.t0 > K.HEARTH_WAIT then trips.hearth = nil end
+    return trips.hearth
+  end
+
+  function trips.enteredWorld()
+    if not trips.hearthAlive() then return end
+    local entry = record("hearth", trips.hearth, nil)
+    trips.hearth, trips.last = nil, nil
+    if C_Timer then
+      C_Timer.After(K.ARRIVE_READ, function() safely("trips", function() entry.to = cs.pos() end) end)
+    else
+      entry.to = cs.pos()
+    end
+  end
+
+  function trips.loading(on)
+    trips.isLoading = on and clock() or nil
+    if trips.ride and not on then trips.ride.crossed = true end
+  end
+
+  -- One sample: hearth arrival without a loading screen, and boats / zeppelins.
+  function trips.tick()
+    local t = clock()
+    if trips.isLoading and t - trips.isLoading > K.LOADING_MAX then trips.isLoading = nil end
+    if trips.isLoading then return end
+    if trips.pendingFlight and t - trips.pendingFlight.at > K.TAXI_WAIT then trips.pendingFlight = nil end
+    if trips.flight and t - trips.flight.t0 > K.FLIGHT_MAX then trips.flight = nil end
+    if trips.flight or trips.pendingFlight or trips.onTaxi() then
+      trips.ride, trips.last = nil, nil
+      return
+    end
+    local here = cs.pos()
+    if not here then return end
+    local prev = trips.last
+    trips.last = { pos = here, t = t, at = now() }
+    if trips.hearthAlive() then
+      local d = yards(trips.hearth.from, here)
+      if d and d > K.JUMP_YD then
+        record("hearth", trips.hearth, here)
+        trips.hearth = nil
+      end
+      return
+    end
+    if not prev then return end
+    local d, v = yards(prev.pos, here), trips.speed()
+    local carried = v == 0 and d ~= nil and d > K.MOVE_YD
+    local ride = trips.ride
+    if not ride then
+      if carried and d < K.JUMP_YD then
+        trips.ride = { t0 = prev.t, startedAt = prev.at, from = prev.pos, still = 0 }
+      end
+      return
+    end
+    if carried then
+      ride.still, ride.stop = 0, nil
+      return
+    end
+    if v and v > 0 and not ride.crossed then return end -- walking on deck
+    ride.still = ride.still + 1
+    ride.stop = ride.stop or { pos = here, t = t }
+    if ride.still < K.STOP_TICKS then return end
+    trips.ride = nil
+    local seconds = ride.stop.t - ride.t0
+    if seconds >= K.MIN_RIDE then record("transport", ride, ride.stop.pos, seconds) end
+  end
+
+  -- The sampler runs for the session when the client can measure distances (C_Map.GetMapWorldSize).
+  function trips.start()
+    if trips.running or not (C_Timer and C_Map and C_Map.GetMapWorldSize) then return end
+    trips.running = true
+    local function loop()
+      safely("trips", trips.tick)
+      C_Timer.After(K.TICK, loop)
+    end
+    safely("trips", trips.tick)
+    C_Timer.After(K.TICK, loop)
+  end
+end
+
+-- Observe only: the post-hook runs after the client's TakeTaxiNode and just notes which node was picked.
+if hooksecurefunc and type(TakeTaxiNode) == "function" then
+  pcall(hooksecurefunc, "TakeTaxiNode", function(slot) safely("trips", trips.takeTaxi, slot) end)
+end
+
 ---------------------------------------------------------------- events
 local handlers = {}
 
@@ -2874,6 +3066,7 @@ function handlers.PLAYER_LOGIN()
   safely("scanSkills", scanSkills)
   gear.changed()
   cs.login()
+  trips.start()
   say("v" .. VERSION .. " recording. /fl for commands.")
 end
 
@@ -2887,11 +3080,16 @@ end
 function handlers.PLAYER_LOGOUT() cs.logout() end
 function handlers.HEARTHSTONE_BOUND() safely("charState", cs.bound) end
 function handlers.TAXIMAP_OPENED() safely("charState", cs.taxiOpened) end
+function handlers.PLAYER_CONTROL_LOST() safely("trips", trips.controlLost) end
+function handlers.PLAYER_CONTROL_GAINED() safely("trips", trips.controlGained) end
+function handlers.LOADING_SCREEN_ENABLED() trips.loading(true) end
+function handlers.LOADING_SCREEN_DISABLED() trips.loading(false) end
 
 function handlers.PLAYER_ENTERING_WORLD()
   if C_Timer then C_Timer.After(3, function() safely("objectives", objProg.baseline) end) end
   checkInstance()
   safely("noteChar", fishLog.noteChar)
+  safely("trips", trips.enteredWorld)
 end
 function handlers.ZONE_CHANGED_NEW_AREA() checkInstance() end
 function handlers.QUEST_DETAIL() captureQuestFrame("detail") end
@@ -3035,6 +3233,7 @@ function handlers.UNIT_SPELLCAST_SUCCEEDED(unit, castGUID, spellID)
   if unit ~= "player" then return end
   safely("onPlayerSpellForRecipeItem", onPlayerSpellForRecipeItem, spellID)
   safely("onPlayerCastSucceeded", onPlayerCastSucceeded, castGUID, spellID)
+  safely("trips", trips.spellSucceeded, spellID)
 end
 function handlers.TRADE_SKILL_CRAFT_BEGIN(recipeSpellID) safely("onCraftBegin", onCraftBegin, recipeSpellID) end
 function handlers.TRADE_SKILL_ITEM_CRAFTED_RESULT(data) safely("onCraftedResult", onCraftedResult, data) end

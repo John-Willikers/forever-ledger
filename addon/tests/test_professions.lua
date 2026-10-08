@@ -52,7 +52,8 @@ local FIXTURE_V10 = "../../fixtures/synthetic/session-v10.lua"
 -- a lured catch, one that got away and one that timed out. `v8` (the schema 8 fixture) dresses the character
 -- (boots, a vest, an axe) and takes the boots off at the end, so gear holds what is worn last. `v9` (the schema 9
 -- fixture) moves a quest objective twice. `v10` (the schema 10 fixture) has the travel APIs: the character sets the
--- hearth in Goldshire, opens the Stormwind flight map, levels up and logs out (character state, XP curve).
+-- hearth in Goldshire, opens the flight map at Sentinel Hill, flies to Stormwind, hearths back, levels up and
+-- logs out (character state, XP curve, trips).
 local function profSession(H, addon, v5, v6, v7, v8, v9, v10)
   local c = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true, skillLines = P.gatherLines(),
                     bags = { [0] = { [1] = 2598, [2] = 5523 } },
@@ -208,6 +209,23 @@ local function profSession(H, addon, v5, v6, v7, v8, v9, v10)
       { nodeID = 6, name = "Ironforge, Dun Morogh", x = 0.4718, y = 0.5248, state = 2, slotIndex = 3 },
     }
     c.fire("TAXIMAP_OPENED", 1)
+    -- Trips: a flight to Stormwind, then the hearth back to Goldshire through a loading screen.
+    c.env.TakeTaxiNode(1)
+    c.fire("PLAYER_CONTROL_LOST")
+    c.world.travel.onTaxi = true
+    c.advance(60)
+    c.world.zone = { zone = "Stormwind City", subzone = "Trade District", mapID = 1453, x = 0.6624, y = 0.6215 }
+    c.advance(12.4)
+    c.fire("PLAYER_CONTROL_GAINED")
+    c.world.travel.onTaxi = false
+    c.advance(30)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-4618-0-1-8690-0000A1B2C3", 8690)
+    c.fire("LOADING_SCREEN_ENABLED")
+    c.world.zone = { zone = "Elwynn Forest", subzone = "Goldshire", mapID = 1429, x = 0.4358, y = 0.6578 }
+    c.advance(8)
+    c.fire("PLAYER_ENTERING_WORLD", false, false)
+    c.fire("LOADING_SCREEN_DISABLED")
+    c.advance(3)
     c.gainXP(7600)
     c.fire("PLAYER_LEVEL_UP", 11)
     c.advance(5)
@@ -1942,5 +1960,14 @@ return function(H)
     H.ok(#s.log > 0, "the quest log")
     H.eq(d.xpCurve[B][10], 7600)
     H.ok(d.xpCurve[B][11], "the next level")
+    H.eq(#d.trips, 2)
+    H.eq(d.trips[1].kind, "flight")
+    H.eq(d.trips[1].seconds, 72.4)
+    H.eq(d.trips[1].fromNode.id, 4)
+    H.eq(d.trips[1].toNode.id, 2)
+    H.eq(d.trips[1].to.mapID, 1453)
+    H.eq(d.trips[2].kind, "hearth")
+    H.eq(d.trips[2].seconds, 8)
+    H.eq(d.trips[2].to.subzone, "Goldshire")
   end)
 end
