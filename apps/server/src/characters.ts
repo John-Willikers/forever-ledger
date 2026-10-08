@@ -21,6 +21,7 @@ export const CHAR_TABLES: readonly { table: string; pk: readonly string[]; newer
   { table: 'turn_ins', pk: ['id'] },
   { table: 'fishing_casts', pk: ['id'] },
   { table: 'character_gear', pk: ['char', 'build'], newer: 'seen_at' },
+  { table: 'quest_objective_progress', pk: ['char', 'quest_id', 'idx', 'have', 'at'] },
   { table: 'skills', pk: ['char', 'skill_line_id'], newer: 'last_seen' },
   { table: 'skill_ups', pk: ['char', 'skill_line_id', 'observed_at', 'to_rank'] },
   { table: 'recipe_status', pk: ['recipe_id', 'build', 'char'], newer: 'seen_at' },
@@ -97,6 +98,7 @@ export function canonicalize(r: Records, aliases: Map<string, string>): Records 
     recipesLearned: withChar(r.recipesLearned),
     fishingCasts: withChar(r.fishingCasts),
     gear: withChar(r.gear),
+    objectiveProgress: withChar(r.objectiveProgress),
     runs: withChar(r.runs),
   };
 }

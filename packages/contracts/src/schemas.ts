@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** SavedVariables / upload schema major. Bump together with `SCHEMA_VERSION` in the addon. */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
  * Schema majors this code reads. Each one is additive, so older files and queued older batches stay valid:
@@ -12,9 +12,10 @@ export const SCHEMA_VERSION = 8;
  * what opened items (clams, lockboxes, a Message in a Bottle) held, per session (addon 0.3.4); 7 adds fishing casts
  * (one per cast: zone, spot, skill, lure, outcome, catch) and the character's `firstName` / `guid`, with characters
  * keyed by full name, first name + Forever surname (addon 0.4.0); 8 adds gear: what each character wears, per slot
- * (item, link with enchant and suffix, stats) (addon 0.5.0).
+ * (item, link with enchant and suffix, stats) (addon 0.5.0); 9 adds objective progress: where each quest objective's
+ * count went up (addon 0.6.0).
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
 /** The newest schema this code reads: what the tray sends as `?schema=` when it asks for an addon manifest. */
 export const MAX_SUPPORTED_SCHEMA: SchemaVersion = Math.max(
@@ -33,6 +34,7 @@ const schemaVersion = z.union([
   z.literal(6),
   z.literal(7),
   z.literal(8),
+  z.literal(9),
 ]);
 
 /** Schema 3 `meta.session`: `<epoch>-<4 hex>`, one per SavedVariables table. '' for older files. */
@@ -449,6 +451,28 @@ export const CharacterGear = z.object({
 });
 export type CharacterGear = z.infer<typeof CharacterGear>;
 
+/**
+ * Schema 9: one quest objective's count going up (a kill, an item looted, an event), with where the player stood, so
+ * guides can say where an objective gets done.
+ */
+export const ObjectiveProgress = z.object({
+  char: charKey,
+  build,
+  questId: nonNegInt,
+  /** The objective's place in the quest's list, from 1. */
+  index: z.number().int().min(1).max(32),
+  text: z.string().max(256).optional(),
+  have: nonNegInt,
+  need: nonNegInt.optional(),
+  time: epochSecs,
+  mapId: nonNegInt.optional(),
+  zone: z.string().max(128).optional(),
+  subzone: z.string().max(128).optional(),
+  x: z.number().min(0).max(100).optional(),
+  y: z.number().min(0).max(100).optional(),
+});
+export type ObjectiveProgress = z.infer<typeof ObjectiveProgress>;
+
 export const TrainerService = z.object({
   name: z.string(),
   /** GetTrainerServiceInfo type, e.g. 'available', 'unavailable', 'used'. */
@@ -638,6 +662,7 @@ export const Records = z.object({
   containerLoot: z.array(ContainerLoot).default([]),
   fishingCasts: z.array(FishingCast).default([]),
   gear: z.array(CharacterGear).default([]),
+  objectiveProgress: z.array(ObjectiveProgress).default([]),
   trainers: z.array(Trainer).default([]),
   vendors: z.array(Vendor).default([]),
   apiSamples: z.array(ApiSample).default([]),

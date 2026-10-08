@@ -132,6 +132,20 @@ describe('leveling routes (real Postgres)', () => {
         at(20),
       ],
     );
+    // Where The Mindless Ones' zombies died (schema 9): Fast Rot three times at the graveyard, someone else once far
+    // away; the step goes where the route's own character did it.
+    for (const [char, have, x, y, subzone] of [
+      ['Fast Rot-Bayou', 1, 33.0, 62.0, 'Deathknell'],
+      ['Fast Rot-Bayou', 2, 34.0, 61.0, 'Deathknell'],
+      ['Fast Rot-Bayou', 3, 36.0, 64.0, 'Deathknell'],
+      ['Slow Rot-Bayou', 1, 60.0, 50.0, 'Brill'],
+    ] as const) {
+      await q(
+        `insert into quest_objective_progress (char, quest_id, idx, have, at, need, build, map_id, zone, subzone, x, y, uploader_id, account)
+         values ($1, 364, 1, $2, $3, 8, 70245, 1420, 'Tirisfal Glades', $4, $5, $6, 'pc-1', 'A')`,
+        [char, have, at(10 + have), subzone, x, y],
+      );
+    }
     await q(`update quests set objectives = $1 where quest_id = 364`, [
       JSON.stringify(['0/8 Mindless Zombie slain']),
     ]);
@@ -193,6 +207,25 @@ describe('leveling routes (real Postgres)', () => {
     );
     expect(doIt).toMatchObject({ zone: 'Tirisfal Glades' });
     expect(doIt!.quests[0]!.objectives).toEqual(['Mindless Zombie slain: 8']);
+    // Placed where Fast Rot did it (the middle of three increments), with a map pin.
+    expect(doIt).toMatchObject({
+      subzone: 'Deathknell',
+      coords: '34.0, 62.0',
+      mapId: 1420,
+      x: 34,
+      y: 62,
+    });
+    expect(doIt!.quests[0]!.spots).toEqual([
+      {
+        index: 1,
+        zone: 'Tirisfal Glades',
+        subzone: 'Deathknell',
+        mapId: 1420,
+        x: 34,
+        y: 62,
+        seen: 3,
+      },
+    ]);
     expect(r.route!.levelUps.at(-1)).toMatchObject({ level: 13, minutesIn: 60 });
     expect(r.otherCharacters.map((c) => [c.character, c.reachedTarget])).toEqual([
       ['Slow Rot', true],

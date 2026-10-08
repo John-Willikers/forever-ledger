@@ -145,6 +145,20 @@ interface Where {
   subzone?: string;
   x?: number;
   y?: number;
+  /** The addon's UiMapID (what a map pin needs). */
+  mapID?: number;
+}
+
+/** Where one of a quest's objectives went up (schema 9): the middle of the most used spot. */
+export interface ObjectiveSpot {
+  index: number;
+  zone: string | null;
+  subzone: string | null;
+  mapId: number | null;
+  x: number;
+  y: number;
+  /** Increments the spot is made of. */
+  seen: number;
 }
 
 /** One pickup or turn-in from a character's run, as the guide is built from them. */
@@ -161,6 +175,8 @@ export interface GuideEvent {
   /** Turn-ins: the character's level and the XP the quest paid. */
   level?: number | null;
   xp?: number | null;
+  /** Turn-ins: where its objectives were done, per objective (schema 9). */
+  spots?: ObjectiveSpot[];
 }
 
 /**
@@ -173,6 +189,8 @@ export function objectiveText(o: string): string {
   if (lead) return `${lead[2]!.trim()}: ${lead[1]}`;
   return s.replace(/:?\s*\d+\s*\/\s*(\d+)\s*$/, ': $1').trim();
 }
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
 const coords = (w: Where | null) =>
   w && typeof w.x === 'number' && typeof w.y === 'number' && (w.x > 0 || w.y > 0)
@@ -197,17 +215,27 @@ export function buildGuide(events: GuideEvent[], skip: Set<number> = new Set()) 
     zone: string | null;
     subzone: string | null;
     coords: string | null;
+    /** For a map pin: the map and the position (0-100) of the step. */
+    mapId: number | null;
+    x: number | null;
+    y: number | null;
     quests: {
       questId: number;
       title: string | null;
       questLevel?: number | null;
       objectives?: string[];
+      /** Where each objective was done, when the addon recorded it. */
+      spots?: ObjectiveSpot[];
       xp?: number | null;
     }[];
     levelAfter?: number | null;
   };
   const steps: Step[] = [];
   const at = (e: GuideEvent) => e.npc ?? e.where?.subzone ?? null;
+  const pin = (w: Where | null) =>
+    w && typeof w.x === 'number' && typeof w.y === 'number' && (w.x > 0 || w.y > 0)
+      ? { mapId: typeof w.mapID === 'number' ? w.mapID : null, x: round1(w.x), y: round1(w.y) }
+      : { mapId: null, x: null, y: null };
   for (const e of kept) {
     const last = steps.at(-1);
     if (e.kind === 'accept') {
@@ -222,33 +250,43 @@ export function buildGuide(events: GuideEvent[], skip: Set<number> = new Set()) 
         zone: e.where?.zone ?? e.zone,
         subzone: e.where?.subzone ?? null,
         coords: coords(e.where),
+        ...pin(e.where),
         quests: [{ questId: e.questId, title: e.title, questLevel: e.questLevel }],
       });
       continue;
     }
     const quest = { questId: e.questId, title: e.title, xp: e.xp };
     const objectives = (e.objectives ?? []).map(objectiveText).filter(Boolean);
+    const spots = e.spots ?? [];
+    const doing = {
+      questId: e.questId,
+      title: e.title,
+      objectives,
+      ...(spots.length > 0 ? { spots } : {}),
+    };
     if (last?.action === 'turn_in' && last.npc === at(e)) {
       // Same NPC: its objectives join the "complete" step before it.
       last.quests.push(quest);
       last.levelAfter = e.level ?? last.levelAfter;
       const done = steps.at(-2);
-      if (objectives.length > 0 && done?.action === 'complete')
-        done.quests.push({ questId: e.questId, title: e.title, objectives });
+      if (objectives.length > 0 && done?.action === 'complete') done.quests.push(doing);
       continue;
     }
-    if (objectives.length > 0)
+    if (objectives.length > 0) {
+      // Where the objectives were done (schema 9) places the step; without it, the turn-in's zone is the best hint
+      // (a quest's log header can be a class or a profession, "Warlock", not a place).
+      const spot = spots[0];
       steps.push({
         step: 0,
         action: 'complete',
         npc: null,
-        // Where objectives are done isn't recorded: the turn-in's zone is the best hint (a quest's log header can be
-        // a class or a profession, "Warlock", not a place).
-        zone: e.where?.zone ?? e.zone,
-        subzone: null,
-        coords: null,
-        quests: [{ questId: e.questId, title: e.title, objectives }],
+        zone: spot?.zone ?? e.where?.zone ?? e.zone,
+        subzone: spot?.subzone ?? null,
+        coords: spot ? `${spot.x.toFixed(1)}, ${spot.y.toFixed(1)}` : null,
+        ...(spot ? { mapId: spot.mapId, x: spot.x, y: spot.y } : pin(null)),
+        quests: [doing],
       });
+    }
     steps.push({
       step: 0,
       action: 'turn_in',
@@ -256,6 +294,7 @@ export function buildGuide(events: GuideEvent[], skip: Set<number> = new Set()) 
       zone: e.where?.zone ?? e.zone,
       subzone: e.where?.subzone ?? null,
       coords: coords(e.where),
+      ...pin(e.where),
       quests: [quest],
       levelAfter: e.level ?? null,
     });
@@ -327,6 +366,7 @@ async function guideEvents(
           )})`,
         );
   const byId = new Map(quests.map((x) => [x.quest_id, x]));
+  const spots = await objectiveSpots(db, key, ids);
   return found.map((f) => {
     const qq = byId.get(f.quest_id);
     return {
@@ -341,8 +381,68 @@ async function guideEvents(
       where: f.loc && typeof f.loc === 'object' ? f.loc : null,
       level: f.level,
       xp: f.xp,
+      ...(f.kind === 'turn_in' ? { spots: spots.get(f.quest_id) ?? [] } : {}),
     };
   });
+}
+
+/**
+ * Where each objective of these quests was done (schema 9): per objective, the spot (map and subzone) most of its
+ * increments happened in, preferring the route character's own, and the middle of those increments.
+ */
+export async function objectiveSpots(
+  db: Db,
+  key: string,
+  questIds: number[],
+): Promise<Map<number, ObjectiveSpot[]>> {
+  const out = new Map<number, ObjectiveSpot[]>();
+  if (questIds.length === 0) return out;
+  const found = await rows<{
+    quest_id: number;
+    idx: number;
+    zone: string | null;
+    subzone: string | null;
+    map_id: number | null;
+    x: number;
+    y: number;
+    seen: number;
+  }>(
+    db,
+    sql`with p as (
+          select quest_id, idx, zone, subzone, map_id, x, y, char = ${key} as mine
+            from quest_objective_progress
+           where quest_id in (${sql.join(
+             questIds.map((i) => sql`${i}`),
+             sql`, `,
+           )}) and x is not null and y is not null
+        ), best as (
+          select distinct on (quest_id, idx) quest_id, idx, zone, subzone, map_id
+            from p group by quest_id, idx, zone, subzone, map_id
+           order by quest_id, idx, bool_or(mine) desc, count(*) desc
+        )
+        select b.quest_id, b.idx, b.zone, b.subzone, b.map_id,
+               percentile_cont(0.5) within group (order by p.x) as x,
+               percentile_cont(0.5) within group (order by p.y) as y,
+               count(*)::int as seen
+          from best b join p on p.quest_id = b.quest_id and p.idx = b.idx
+                            and p.map_id is not distinct from b.map_id and p.subzone is not distinct from b.subzone
+         group by b.quest_id, b.idx, b.zone, b.subzone, b.map_id
+         order by b.quest_id, b.idx`,
+  );
+  for (const f of found) {
+    const list = out.get(f.quest_id) ?? [];
+    list.push({
+      index: f.idx,
+      zone: f.zone,
+      subzone: f.subzone,
+      mapId: f.map_id,
+      x: round1(Number(f.x)),
+      y: round1(Number(f.y)),
+      seen: f.seen,
+    });
+    out.set(f.quest_id, list);
+  }
+  return out;
 }
 
 /** Quests our players turned in whose quest-log zone header is one of these zones. */
@@ -492,7 +592,11 @@ export async function levelingRoute(db: Db, q: LevelingQuery) {
     };
   }
   const zoneList = zones.length > 0 ? await zoneQuests(db, zones) : [];
-  gaps.push("where objectives are done isn't recorded (only pickups and turn-ins have positions)");
+  if (route && !route.guide.some((x) => x.action === 'complete' && x.coords)) {
+    gaps.push(
+      "where objectives are done isn't recorded for this route yet (addon 0.6.0 records it as players quest)",
+    );
+  }
   gaps.push(
     'routes are what our players did, from their quest turn-ins: kill XP is not recorded, and play time includes the grinding between quests (an estimate: only quest events are timed, and pauses over an hour between them are left out)',
   );

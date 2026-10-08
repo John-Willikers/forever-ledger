@@ -141,6 +141,13 @@
       "when": 1791365514764,
       "tag": "0019_character_gear",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791428393752,
+      "tag": "0020_objective_progress",
+      "breakpoints": true
     }
   ]
 }

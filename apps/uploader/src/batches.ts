@@ -36,6 +36,7 @@ export const emptyRecords = (): Records => ({
   containerLoot: [],
   fishingCasts: [],
   gear: [],
+  objectiveProgress: [],
   trainers: [],
   vendors: [],
   apiSamples: [],

@@ -275,6 +275,36 @@ export const characterGear = pgTable(
   (t) => [primaryKey({ columns: [t.char, t.build] })],
 );
 
+/**
+ * Schema 9: one quest objective's count going up, with where the player stood: what guides use to say where an
+ * objective gets done. One row per increment; a re-upload changes nothing.
+ */
+export const questObjectiveProgress = pgTable(
+  'quest_objective_progress',
+  {
+    char: text('char').notNull(),
+    questId: integer('quest_id').notNull(),
+    idx: integer('idx').notNull(),
+    have: integer('have').notNull(),
+    at: tz('at').notNull(),
+    need: integer('need'),
+    build: integer('build').notNull(),
+    text: text('text'),
+    mapId: integer('map_id'),
+    zone: text('zone'),
+    subzone: text('subzone'),
+    x: real('x'),
+    y: real('y'),
+    uploaderId: text('uploader_id').notNull(),
+    account: text('account').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.char, t.questId, t.idx, t.have, t.at] }),
+    index('quest_objective_progress_quest_idx').on(t.questId, t.idx),
+  ],
+);
+
 export const items = pgTable('items', {
   itemId: integer('item_id').primaryKey(),
   name: text('name').notNull(),

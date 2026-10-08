@@ -1,17 +1,16 @@
--- Forever Ledger v0.6.0 (SavedVariables schema 9)
+-- Forever Ledger v0.5.0 (SavedVariables schema 8)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.6.0"
+local VERSION = "0.5.0"
 -- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
 -- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
 -- items[].classID/subclassID and apiSamples; 5 adds vendors[].title, vendors[].items[].costs (extended costs paid in
 -- items or currencies) and trainers[].title; 6 adds containers, containerLoot and containerQty (what opened items
 -- held); 7 adds fishingCasts (one record per cast: zone, spot, skill, lure, outcome, catch) and chars[].firstName /
 -- guid, and keys characters by full name (first name + Forever surname); 8 adds gear (what each character wears:
--- item, link with enchant and suffix, stats per slot); 9 adds objectiveProgress (where each quest objective's count
--- went up). Each is additive: older data is valid as it is.
-local SCHEMA_VERSION = 9
+-- item, link with enchant and suffix, stats per slot). Each is additive: older data is valid as it is.
+local SCHEMA_VERSION = 8
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local LIST_CAP = 500     -- bossLoot and groupLoot entries kept per run
 local f = CreateFrame("Frame")
@@ -2279,11 +2278,10 @@ local function newSessionID()
   return format("%d-%04x", now(), rnd(0, 65535))
 end
 
--- Schema 4 (professions), 6 (containers), 7 (fishing casts), 8 (gear) and 9 (objective progress) tables; /fl reset
--- confirm wipes them too.
+-- Schema 4 (professions), 6 (containers), 7 (fishing casts) and 8 (gear) tables; /fl reset confirm wipes them too.
 local PROFESSION_TABLES = { "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
                             "trainers", "vendors", "apiSamples", "containers", "containerLoot", "containerQty",
-                            "fishingCasts", "gear", "objectiveProgress" }
+                            "fishingCasts", "gear" }
 
 local function initDB()
   ForeverLedgerDB = ForeverLedgerDB or {}
@@ -2491,68 +2489,6 @@ end
 
 fishLog.onNewKey = function() gear.changed() end
 
----------------------------------------------------------------- objective progress (schema 9)
--- Where quest objectives get done, for guides: each time an objective's count goes up, one record in
--- db.objectiveProgress = { build, char, questID, index, text, have, need, time, mapID, zone, subzone, x, y }.
--- QUEST_WATCH_UPDATE(questID) comes before the log has the new count, so the quest is read on the next
--- QUEST_LOG_UPDATE (or half a second later) and compared with the last count seen. A quest's first read only sets its
--- counts (nothing to compare with): quests in the log are read at login, and a new quest when it is accepted.
-local objProg = { last = {}, dirty = {}, pending = false }
-do
-  local CAP = 4000   -- records kept on disk; the uploader already has older ones
-  local SETTLE = 0.5 -- seconds after QUEST_WATCH_UPDATE when no QUEST_LOG_UPDATE came
-
-  function objProg.read(questID)
-    if not db or not QuestLog.GetQuestObjectives or not questID then return end
-    local ok, list = pcall(QuestLog.GetQuestObjectives, questID)
-    if not ok or type(list) ~= "table" then return end
-    local prev, cur, here = objProg.last[questID], {}, nil
-    for i, o in ipairs(list) do
-      local have = type(o) == "table" and tonumber(o.numFulfilled) or nil
-      cur[i] = have
-      if prev and have and prev[i] and have > prev[i] then
-        here = here or where()
-        db.objectiveProgress[#db.objectiveProgress + 1] = {
-          build = build, char = charKey(), questID = questID, index = i,
-          text = type(o.text) == "string" and o.text or nil, have = have, need = tonumber(o.numRequired),
-          time = now(), mapID = here.mapID, zone = here.zone, subzone = here.subzone, x = here.x, y = here.y }
-        added()
-      end
-    end
-    objProg.last[questID] = cur
-    trim(db.objectiveProgress, CAP)
-  end
-
-  function objProg.readDirty()
-    for questID in pairs(objProg.dirty) do
-      objProg.dirty[questID] = nil
-      objProg.read(questID)
-    end
-  end
-
-  function objProg.changed(questID)
-    if not questID then return end
-    objProg.dirty[questID] = true
-    if objProg.pending or not C_Timer then return end
-    objProg.pending = true
-    C_Timer.After(SETTLE, function()
-      objProg.pending = false
-      safely("objectives", objProg.readDirty)
-    end)
-  end
-
-  -- Every quest in the log, so the next increment has something to compare with.
-  function objProg.baseline()
-    if not NumLogEntries then return end
-    for i = 1, NumLogEntries() or 0 do
-      local _, _, _, isHeader, qid = logEntry(i)
-      if not isHeader and qid and not objProg.last[qid] then objProg.read(qid) end
-    end
-  end
-
-  function objProg.forget(questID) objProg.last[questID], objProg.dirty[questID] = nil, nil end
-end
-
 ---------------------------------------------------------------- events
 local handlers = {}
 
@@ -2580,7 +2516,6 @@ function handlers.PLAYER_LEVEL_UP(level)
 end
 
 function handlers.PLAYER_ENTERING_WORLD()
-  if C_Timer then C_Timer.After(3, function() safely("objectives", objProg.baseline) end) end
   checkInstance()
   safely("noteChar", fishLog.noteChar)
 end
@@ -2617,13 +2552,11 @@ function handlers.GROUP_ROSTER_UPDATE() refreshLootMethod() end
 function handlers.QUEST_ACCEPTED(a, b)
   local questID = b or a -- Classic sends (logIndex, questID); newer clients send (questID)
   captureFromLog(questID)
-  safely("objectives", objProg.read, questID)
   local o = questObs(questID, "accept")
   o.loc = where()
 end
 
 function handlers.QUEST_TURNED_IN(questID, xp, money)
-  objProg.forget(questID)
   local t = now()
   local entry = { id = charKey() .. "-" .. questID .. "-" .. t, questID = questID, build = build,
                   char = charKey(), xp = xp, money = money, level = UnitLevel("player"), time = t,
@@ -2660,14 +2593,9 @@ function handlers.GET_ITEM_INFO_RECEIVED(itemID)
 end
 
 function handlers.QUEST_DATA_LOAD_RESULT(questID) refreshBlankObjectives(questID) end
-function handlers.QUEST_WATCH_UPDATE(questID)
-  refreshBlankObjectives(questID)
-  objProg.changed(questID)
-end
-function handlers.QUEST_REMOVED(questID) objProg.forget(questID) end
+function handlers.QUEST_WATCH_UPDATE(questID) refreshBlankObjectives(questID) end
 
 function handlers.QUEST_LOG_UPDATE()
-  if next(objProg.dirty) then safely("objectives", objProg.readDirty) end
   if next(blankObjectives) and now() - lastObjRefresh >= OBJ_REFRESH_GAP then refreshBlankObjectives() end
 end
 

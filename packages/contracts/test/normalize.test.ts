@@ -29,12 +29,13 @@ describe('normalize — synthetic fixtures from the Lua harness', () => {
     ['session-v6.lua', 6],
     ['session-v7.lua', 7],
     ['session-v8.lua', 8],
+    ['session-v9.lua', 9],
   ] as const) {
     it(`${name}: every record validates`, () => {
       const { meta, records, problems } = normalize(load(name));
       expect(problems).toEqual([]);
       expect(meta.schemaVersion).toBe(schemaVersion);
-      expect(records.quests).toHaveLength(1);
+      expect(records.quests.length).toBeGreaterThanOrEqual(1);
       expect(records.questObservations.length).toBeGreaterThanOrEqual(3);
       expect(records.turnIns).toHaveLength(1);
       expect(records.items.length).toBeGreaterThanOrEqual(3);
@@ -107,8 +108,8 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 9, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 9 is not supported \(expected 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8\)/,
+    expect(() => normalize({ meta: { schemaVersion: 10, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 10 is not supported \(expected 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9\)/,
     );
   });
 
@@ -201,7 +202,7 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(t2).toEqual(v1.records.turnIns[0]);
   });
 
-  it('accepts schema 1 and 2 upload batches, not 9', () => {
+  it('accepts schema 1 and 2 upload batches, not 10', () => {
     const batch = { uploaderId: 'pc-1', account: 'A', meta: v2.meta, records: v2.records };
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 2 }).success).toBe(true);
     expect(
@@ -211,7 +212,8 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 5 }).success).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 6 }).success).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 8 }).success).toBe(true);
-    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 9 }).success).toBe(false);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 9 }).success).toBe(true);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 10 }).success).toBe(false);
   });
 });
 
@@ -985,12 +987,10 @@ describe('normalize — schema 7 fishing casts and full names (session-v7.lua)',
 describe('normalize — schema 8 gear (session-v8.lua)', () => {
   const { meta, records, problems } = normalize(load('session-v8.lua'));
 
-  it('validates as schema 8, the current major', () => {
+  it('validates as schema 8, still a supported major', () => {
     expect(problems).toEqual([]);
     expect(meta).toMatchObject({ schemaVersion: 8, addonVersion: '0.5.0' });
-    expect(SCHEMA_VERSION).toBe(8);
     expect(isSupportedSchemaVersion(8)).toBe(true);
-    expect(isSupportedSchemaVersion(9)).toBe(false);
     expect(
       UploadBatch.safeParse({ schemaVersion: 8, uploaderId: 'pc-1', account: 'A', meta, records })
         .success,
@@ -1016,5 +1016,40 @@ describe('normalize — schema 8 gear (session-v8.lua)', () => {
     expect(r.problems.map((p) => p.path)).toEqual(['gear.Thibodeaux Willikers-Bayou.slots.42']);
     const g = r.records.gear.find((x) => x.char === 'Thibodeaux Willikers-Bayou');
     expect(g!.slots.map((x) => x.itemId)).toEqual(expect.arrayContaining([2568, 872]));
+  });
+});
+
+describe('normalize — schema 9 objective progress (session-v9.lua)', () => {
+  const { meta, records, problems } = normalize(load('session-v9.lua'));
+
+  it('validates as schema 9, the current major', () => {
+    expect(problems).toEqual([]);
+    expect(meta).toMatchObject({ schemaVersion: 9, addonVersion: '0.6.0' });
+    expect(SCHEMA_VERSION).toBe(9);
+    expect(isSupportedSchemaVersion(10)).toBe(false);
+  });
+
+  it('objective progress: questId, index, counts and where', () => {
+    expect(records.objectiveProgress).toHaveLength(2);
+    const p = records.objectiveProgress[1]!;
+    expect(p).toMatchObject({
+      char: 'Thibodeaux Willikers-Bayou',
+      questId: 364,
+      index: 1,
+      have: 2,
+      need: 8,
+    });
+    expect(p.mapId).toBeTypeOf('number');
+    expect(recordKey('objectiveProgress', p)).toBe(
+      `objp:Thibodeaux Willikers-Bayou:364:1:2:${p.time}`,
+    );
+  });
+
+  it('an off-map spot drops the coordinates, not the record', () => {
+    const db = load('session-v9.lua') as { objectiveProgress: Record<string, unknown>[] };
+    db.objectiveProgress[0]!.x = 140;
+    const r = normalize(db);
+    expect(r.problems).toEqual([]);
+    expect(r.records.objectiveProgress[0]!.x).toBeUndefined();
   });
 });
