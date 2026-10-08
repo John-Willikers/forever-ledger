@@ -406,8 +406,9 @@ Loop until `level >= toLevel` or no work or `maxSteps` (default 300):
 
 1. **Candidate hubs:** hubs with takeable quests (Task 5 at the current level) or turn-ins of finished log quests. For
    each: travel (Task 3) + accept all takeable there + their objectives' time (objective loop, Task 4) + return + turn
-   in → expected XP (quest XP Task 2 + kill XP) per minute. Pick the best. Class quests for the character's class get a
-   ×2 score bonus (Harlan: always do them; they must not lose to normal quests).
+   in → expected XP (quest XP Task 2 + kill XP) per minute. Pick the best. **Class quests go first** (built): hubs with
+   a class quest of the character's class to take or hand in are chosen before any other hub, best score among them
+   (Harlan: always do them; a ×2 score bonus could still lose to a near hub).
 2. **Emit** travel steps (one per leg, `how` from the leg: 'walk' legs only when they cross maps or exceed 200 yd, else
    folded into the next step), `accept` (all quests from one NPC in one step), `complete` (one step per objective stop,
    listing the quests done there), `turn_in` (all turn-ins at one NPC in one step), with `at` and `level` filled.
@@ -418,7 +419,8 @@ Loop until `level >= toLevel` or no work or `maxSteps` (default 300):
 5. **Level-gated pickups:** a quest whose only reason not to be taken was `reqLevel` / too-high level is remembered with
    its hub. When the level allows it and the character is elsewhere, schedule the trip only if `(its XP + XP of every
 other turn-in / pickup at that hub) / (round-trip travel + its objective time) ≥ the run's XP per minute so far`;
-   else drop it (gap line "skipped Quest X: not worth the trip").
+   then the hub competes in normal scoring. Else no special trip: it is still taken if the plan is at that hub for
+   another reason, and the gap line "skipped Quest X: not worth the trip" is written only if the plan ends without it.
 6. **Class quests:** when a class quest becomes takeable anywhere, it is taken in the next decision even if far (travel
    uses flights / boats / hearth); write `note: 'class quest'` on its steps.
 7. **Set hearth:** when leaving a hub the plan returns to later (any remembered pickup or turn-in there) and an innkeeper
@@ -441,6 +443,18 @@ other turn-in / pickup at that hub) / (round-trip travel + its objective time) �
 8. Stops at `toLevel`; `maxSteps` respected; an empty atlas → no steps and a gap line.
 
 Commit `feat(planner): route loop — hub batches, objective loops, class quests, level-gated pickups that pay`.
+
+**Built as** `plan.ts` (decision loop, hub visits) + `plan-sim.ts` (state and queries), `plan-estimate.ts` (hub
+score), `plan-emit.ts` (steps, travel), `plan-gated.ts` (level-gated pickups). Unreachable objective stops or turn-ins
+are never counted done: such quests are not taken, or abandoned with a gap line.
+
+**Phase 5 checklist** (wiring plan steps into guides, `packages/contracts/src/guides.ts`):
+
+- `GUIDE_ACTIONS` is `accept | complete | turn_in`: add `travel`, and `how` / `note` fields on `GuideStep`.
+- Travel steps have `quests: []`; `GuideStep.quests` requires at least 1 (relax it for `travel`).
+- `PlanStep.spot` (`{ mapId, x, y }`) vs the contract's flat `mapId` / `x` / `y`.
+- `PlanStep.level` (level at the end of every step) vs `levelAfter` (turn-ins only).
+- Fill `GuideQuest.minLevel` from the atlas `reqLevel` (`minLevelFrom: 'wowhead'`).
 
 ---
 
