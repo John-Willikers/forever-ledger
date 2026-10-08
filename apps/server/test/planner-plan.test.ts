@@ -497,6 +497,7 @@ describe('planner loop', () => {
     const cls = (races: string[] | null) =>
       quest(211, {
         level: 1,
+        xp: 5000,
         side: 'both',
         classes: ['WARRIOR'],
         races,
@@ -510,6 +511,17 @@ describe('planner loop', () => {
     const ch = character({ level: 1, position: VOT });
     const known = plan(atlas([home, cls(['Orc'])]), ch, travel, { toLevel: 30 });
     expect(indexOf(known.steps, 'accept', 211)).toBeLessThan(indexOf(known.steps, 'accept', 210));
+    // Class work on this continent comes before class work across the water.
+    const parchment = quest(212, {
+      level: 1,
+      xp: 10,
+      classes: ['WARRIOR'],
+      races: ['Orc'],
+      giver: gornek,
+      ender: gornek,
+    });
+    const both = plan(atlas([home, cls(['Orc']), parchment]), ch, travel, { toLevel: 30 });
+    expect(indexOf(both.steps, 'turn_in', 212)).toBeLessThan(indexOf(both.steps, 'accept', 211));
     const unknown = plan(atlas([home, cls(null)]), ch, travel, { toLevel: 30 });
     expect(indexOf(unknown.steps, 'turn_in', 210)).toBeLessThan(
       indexOf(unknown.steps, 'accept', 211),

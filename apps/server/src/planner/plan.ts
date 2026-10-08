@@ -124,12 +124,13 @@ export function plan(
         .filter((h) => !sim.stuck.has(h.id))
         .map((h) => estimate(sim, h))
         .filter((e): e is Estimate => e !== null);
-      // Class quests first; then the continent the character is on while it has work, so a well-mapped hub across
+      // Class quests first (this continent's before those across the water); then the continent the character is on while it has work, so a well-mapped hub across
       // the water doesn't pull a character out of a start zone the atlas knows less about.
-      const mine = options.filter((e) => e.classWork);
       const continent = sim.here().continent;
       const near = options.filter((e) => e.hub.pos.continent === continent);
-      const pool = mine.length ? mine : near.length ? near : options;
+      const mine = options.filter((e) => e.classWork);
+      const mineNear = mine.filter((e) => e.hub.pos.continent === continent);
+      const pool = mineNear.length ? mineNear : mine.length ? mine : near.length ? near : options;
       if (!pool.length) break;
       // Best XP per second; ties by hub id (hubs are sorted by id, the sort is stable).
       const score = (e: Estimate) => e.xp / Math.max(1, e.seconds);
