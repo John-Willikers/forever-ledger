@@ -1,7 +1,9 @@
--- Forever Ledger guide viewer: shows the leveling guides the tray app wrote into the ForeverLedger_Guides addon
--- (ForeverLedgerGuidesData), one step at a time, like Zygor. It only reads the quest log and shows text; the arrow
--- points to the step's spot; `/fl guide pin` still sets a map pin. Your place in each guide is kept per character in
--- ForeverLedgerGuideState.
+-- Forever Ledger guide viewer: the step logic for the leveling guides the tray app wrote into the ForeverLedger_Guides
+-- addon (ForeverLedgerGuidesData), one step at a time, like Zygor. The step shows in a "Guide" section of Blizzard's
+-- quest tracker (GuideTracker.lua), which watches only the step's quests (GuideWatches.lua), and an arrow points to
+-- its spot (GuideArrow.lua); this file's own window is the fallback when the tracker can't be used. G.sync brings
+-- them in line with the step. It only reads the quest log and shows text; `/fl guide pin` still sets a map pin.
+-- Your place in each guide is kept per character in ForeverLedgerGuideState.
 -- /fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off
 
 local G = {}

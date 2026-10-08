@@ -50,7 +50,7 @@ the step's spot.
   it runs.
   - ✅ T1 test helpers (2026-10-08 00:08 CDT) · ✅ T2 `G.sync` + combat guard (2026-10-08 00:09 CDT) ·
     ✅ T3 watches (2026-10-08 00:16 CDT) · ✅ T4 arrow (2026-10-08 00:25 CDT) ·
-    ✅ T5 tracker module (2026-10-08 00:32 CDT) · ⏳ T6 wire-up + 0.7.0 · ⏳ T7 review / PR
+    ✅ T5 tracker module (2026-10-08 00:32 CDT) · ✅ T6 wire-up + 0.7.0 (2026-10-08 00:43 CDT) · ⏳ T7 review / PR
 - ⏳ 4 🎮 Harlan tests in-game: section, Next/Back, watch takeover + restore, arrow walking/turning, a fight with a
   quest item
 - ⏳ 5 🚀 Addon 0.7.0 (`addon-v0.7.0` → `addon-cli publish 0.7.0`)

@@ -148,11 +148,13 @@ end
 
 -- ADDON_ACTION_BLOCKED naming us: the window takes over at once (it is our own frame); the module leaves the
 -- tracker on the next out-of-combat sync. Our AddModule left the tracker's tables tainted, so quest items can stay
--- blocked until a /reload; the block is remembered for this build so the next session doesn't try again.
+-- blocked until a /reload; the block is remembered for this build so the next session doesn't try again (not when
+-- the build can't be read: a bad read must never block every build).
 function T.onBlocked(func)
   if not T.module or T.blocked then return end
   T.blocked = true
-  G.state().trackerBlocked = build()
+  local b = build()
+  if b ~= "?" then G.state().trackerBlocked = b end
   local later = InCombatLockdown and InCombatLockdown() and " (it leaves the quest tracker after combat)" or ""
   say("the game blocked an action (" .. tostring(func) .. ") while the guide was in the quest tracker: the guide "
     .. "moves to its own window" .. later .. ". Quest items may stay blocked until you /reload. "
