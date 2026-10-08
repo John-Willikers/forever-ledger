@@ -72,19 +72,46 @@ local function readyToTurnIn(id)
   return call(QuestLog.ReadyForTurnIn, id) == true or (onQuest(id) and call(QuestLog.IsComplete, id) == true)
 end
 
--- Whether a step is behind the player: picked up (or done), objectives finished, or turned in.
-function G.stepDone(step)
+local function myLevel() return G.level or (UnitLevel and UnitLevel("player")) or 1 end
+
+-- A pickup the player is too low for (the guide's run took it at a higher level): it waits as a "Later" note.
+local function tooLow(q) return q.minLevel ~= nil and q.minLevel > myLevel() end
+
+local function deferredOf(g)
+  local s = state()
+  s.later = s.later or {}
+  s.later[g.id] = s.later[g.id] or {}
+  return s.later[g.id]
+end
+
+-- Whether a step is behind the player: picked up (or done), objectives finished, or turned in. A pickup they are too
+-- low for counts as behind them for now (it is kept as a "Later" note), and so do its objectives and turn-in while
+-- they still can't have it.
+function G.stepDone(step, later)
   for _, q in ipairs(step.quests or {}) do
     local id = q.questId
+    local waiting = later and later[id] and not onQuest(id) and not completed(id)
     if step.action == "accept" then
-      if not (onQuest(id) or completed(id)) then return false end
+      if not (onQuest(id) or completed(id) or tooLow(q)) then return false end
     elseif step.action == "complete" then
-      if not (completed(id) or readyToTurnIn(id)) then return false end
-    elseif not completed(id) then
+      if not (completed(id) or readyToTurnIn(id) or (waiting and myLevel() < later[id].minLevel)) then return false end
+    elseif not (completed(id) or (waiting and myLevel() < later[id].minLevel)) then
       return false
     end
   end
   return true
+end
+
+-- Remembers the pickups of a step passed over for level, with where to get them.
+local function deferTooLow(g, step)
+  if step.action ~= "accept" then return end
+  local later = deferredOf(g)
+  for _, q in ipairs(step.quests or {}) do
+    if tooLow(q) and not onQuest(q.questId) and not completed(q.questId) then
+      later[q.questId] = { minLevel = q.minLevel, title = q.title, npc = step.npc, subzone = step.subzone,
+                           zone = step.zone, x = step.x, y = step.y }
+    end
+  end
 end
 
 -- Moves past every finished step from the current one; returns whether the step changed. A step the player went back
@@ -97,7 +124,11 @@ function G.advance(force)
   if force then s.hold = nil end
   local i = s.steps[g.id] or 1
   local start = i
-  while i <= #g.steps and G.stepDone(g.steps[i]) do i = i + 1 end
+  local later = deferredOf(g)
+  while i <= #g.steps and G.stepDone(g.steps[i], later) do
+    deferTooLow(g, g.steps[i])
+    i = i + 1
+  end
   s.steps[g.id], s.guide = i, g.id
   return i ~= start
 end
@@ -147,6 +178,27 @@ local function objectiveLines(q)
   return lines
 end
 
+-- "Later" notes: pickups passed over for level. Gold once the player is high enough, grey until then; gone once
+-- picked up or done.
+function G.laterLines(g)
+  local lines = {}
+  for id, l in pairs(deferredOf(g)) do
+    if onQuest(id) or completed(id) then
+      deferredOf(g)[id] = nil
+    elseif #lines < 3 then
+      local from = l.npc and (" from " .. esc(l.npc)) or ""
+      if myLevel() >= l.minLevel then
+        lines[#lines + 1] = GOLD .. "Ready: pick up " .. esc(l.title) .. from .. "  " .. GREY
+          .. place(l) .. "|r"
+      else
+        lines[#lines + 1] = GREY .. "Later: " .. esc(l.title) .. " at level " .. l.minLevel .. from .. "|r"
+      end
+    end
+  end
+  table.sort(lines)
+  return lines
+end
+
 -- The step as text: what to do, where, and its quests (with live objective counts while on them).
 function G.stepText(step)
   local lines = {}
@@ -158,7 +210,11 @@ function G.stepText(step)
   local missing = false
   for _, q in ipairs(step.quests or {}) do
     local mark = completed(q.questId) and (GREEN .. "done: ") or "- "
-    lines[#lines + 1] = mark .. esc(q.title or ("Quest " .. tostring(q.questId))) .. "|r"
+    local need = ""
+    if step.action == "accept" and q.minLevel then
+      need = (tooLow(q) and " |cffff6060" or " " .. GREY) .. "(level " .. q.minLevel .. ")|r"
+    end
+    lines[#lines + 1] = mark .. esc(q.title or ("Quest " .. tostring(q.questId))) .. "|r" .. need
     if step.action == "complete" then
       for _, o in ipairs(objectiveLines(q)) do lines[#lines + 1] = "    " .. o end
     end
@@ -278,9 +334,12 @@ function G.view()
              body = GREEN .. "Guide finished. " .. (g.toLevel and ("You should be level " .. g.toLevel .. ".") or "")
                     .. "|r" }
   end
+  local later = G.laterLines(g)
+  local body = G.stepText(g.steps[i])
+  if #later > 0 then body = table.concat(later, "\n") .. "\n\n" .. body end
   return { title = esc(g.title),
            counter = string.format("Step %d of %d  ·  %s's run", i, #g.steps, esc(g.basedOn or "?")),
-           body = G.stepText(g.steps[i]) }
+           body = body }
 end
 
 function G.render()
@@ -360,6 +419,12 @@ function handlers.PLAYER_LOGIN()
   if C_Timer then C_Timer.After(3, start) else start() end
 end
 function handlers.QUEST_ACCEPTED() refresh(true) end
+function handlers.PLAYER_LEVEL_UP(level)
+  -- UnitLevel can still say the old level while this event runs.
+  G.level = tonumber(level)
+  refresh(false)
+  if C_Timer then C_Timer.After(1, function() G.level = nil end) else G.level = nil end
+end
 function handlers.QUEST_TURNED_IN(questID)
   if questID then turnedIn[questID] = true end
   refresh(true)

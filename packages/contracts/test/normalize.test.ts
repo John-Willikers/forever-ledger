@@ -1024,7 +1024,7 @@ describe('normalize — schema 9 objective progress (session-v9.lua)', () => {
 
   it('validates as schema 9, the current major', () => {
     expect(problems).toEqual([]);
-    expect(meta).toMatchObject({ schemaVersion: 9, addonVersion: '0.6.0' });
+    expect(meta).toMatchObject({ schemaVersion: 9, addonVersion: '0.6.1' });
     expect(SCHEMA_VERSION).toBe(9);
     expect(isSupportedSchemaVersion(10)).toBe(false);
   });

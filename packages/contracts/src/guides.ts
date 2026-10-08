@@ -17,6 +17,12 @@ export const GuideQuest = z.object({
   title: text(200).nullable(),
   /** What to do, e.g. "Mindless Zombie slain: 8". */
   objectives: z.array(text(200)).max(12).optional(),
+  /**
+   * Pickups: the level the quest can be taken at, from Wowhead's required level when the ledger has it, else the lowest
+   * level one of our characters took it at (`minLevelFrom`).
+   */
+  minLevel: z.number().int().min(1).max(80).optional(),
+  minLevelFrom: z.enum(['wowhead', 'seen']).optional(),
 });
 export type GuideQuest = z.infer<typeof GuideQuest>;
 

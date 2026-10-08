@@ -90,6 +90,38 @@ async function rehome(db: Db) {
   }
 }
 
+/**
+ * The level each quest can be picked up at: Wowhead's required level (a `req_level` claim) when the ledger has one,
+ * else the lowest level one of our characters accepted it at (an upper bound: the real minimum can be lower).
+ */
+export async function questMinLevels(
+  db: Db,
+  questIds: number[],
+): Promise<Map<number, { level: number; from: 'wowhead' | 'seen' }>> {
+  const out = new Map<number, { level: number; from: 'wowhead' | 'seen' }>();
+  const ids = [...new Set(questIds)];
+  if (ids.length === 0) return out;
+  const list = sql.join(
+    ids.map((i) => sql`${i}`),
+    sql`, `,
+  );
+  const found = await rows<{ quest_id: number; level: number; src: 'wowhead' | 'seen' }>(
+    db,
+    sql`select distinct on (quest_id) quest_id, level, src from (
+          select c.entity_id as quest_id, (c.value #>> '{}')::int as level, 'wowhead' as src, 0 as pri
+            from claims c
+           where c.entity_type = 'quest' and c.attribute = 'req_level' and c.label <> 'FALSE'
+             and c.entity_id in (${list}) and jsonb_typeof(c.value) = 'number' and (c.value #>> '{}')::int between 1 and 80
+          union all
+          select o.quest_id, min(o.level), 'seen', 1 from quest_observations o
+           where o.quest_id in (${list}) and o.stage in ('accept', 'detail') and o.level between 1 and 80
+           group by o.quest_id
+        ) x order by quest_id, pri, level`,
+  );
+  for (const f of found) out.set(f.quest_id, { level: f.level, from: f.src });
+  return out;
+}
+
 /** Builds a guide from a run and stores it for the character's tray. Throws GuideError when it can't. */
 export async function createGuide(db: Db, req: GuideRequest) {
   const found = await findCharacters(db, req.character);
@@ -150,6 +182,12 @@ export async function createGuide(db: Db, req: GuideRequest) {
       `no guide to build: ${r.gaps.find((g) => !g.startsWith('routes are what') && !g.startsWith('where objectives')) ?? 'none of our players has a run like that'}`,
     );
   }
+  const minLevels = await questMinLevels(
+    db,
+    r.route.guide
+      .filter((s) => s.action === 'accept')
+      .flatMap((s) => s.quests.map((q) => q.questId)),
+  );
   const steps: GuideStep[] = r.route.guide.map((s) => ({
     action: s.action,
     npc: clip(s.npc, 120),
@@ -163,6 +201,12 @@ export async function createGuide(db: Db, req: GuideRequest) {
       title: clip(q.title, 200),
       ...(q.objectives?.length
         ? { objectives: q.objectives.slice(0, 12).map((o) => clip(o, 200) ?? '') }
+        : {}),
+      ...(s.action === 'accept' && minLevels.has(q.questId)
+        ? {
+            minLevel: minLevels.get(q.questId)!.level,
+            minLevelFrom: minLevels.get(q.questId)!.from,
+          }
         : {}),
     })),
     ...(s.action === 'turn_in' ? { levelAfter: s.levelAfter ?? null } : {}),

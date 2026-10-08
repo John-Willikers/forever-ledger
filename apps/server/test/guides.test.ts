@@ -3,7 +3,13 @@
 import { GuideDoc } from '@forever-ledger/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashToken, mintToken } from '../src/index.js';
-import { createGuide, GuideError, GUIDES_PER_HOUR, trayFor } from '../src/knowledge/guides.js';
+import {
+  createGuide,
+  GuideError,
+  GUIDES_PER_HOUR,
+  questMinLevels,
+  trayFor,
+} from '../src/knowledge/guides.js';
 import { createSession, csrfToken } from '../src/sessions.js';
 import { batchFromFixture, startServer } from './helpers.js';
 
@@ -100,11 +106,29 @@ describe('in-game guides (real Postgres)', () => {
     const doIt = g.steps.find((x: { action: string }) => x.action === 'complete');
     // WoW's "|" escapes are stripped from anything a player uploaded.
     expect(doIt.quests[0].objectives).toEqual(['Scavenger cffff0000Paw: 6']);
+    // Pickups carry the level they can be taken at (here: the lowest level one of our characters took them at).
+    expect(g.steps[0].quests[0]).toMatchObject({ questId: 363, minLevel: 1, minLevelFrom: 'seen' });
     // Thibodeaux is a Hunter: Rot's Warlock quest is left out.
     const titles = g.steps.flatMap((x: { quests: { title: string }[] }) =>
       x.quests.map((q) => q.title),
     );
     expect(titles).not.toContain('Tainted Scroll');
+  });
+
+  it("a quest's minimum level comes from Wowhead when the ledger has it", async () => {
+    const [src] = await q(
+      `insert into sources (key, kind, url, site, tier, game_version)
+       values ('snapshot:minlvl', 'web', 'https://www.wowhead.com/forever/quest=376', 'wowhead.com', 3, 'forever') returning id`,
+    );
+    await q(
+      `insert into claims (source_id, entity_type, entity_key, entity_id, attribute, value, value_hash, label, parser)
+       values ($1, 'quest', '376', 376, 'req_level', '2', 'rl', 'VERIFIED', 'wowhead@4')`,
+      [src.id],
+    );
+    const levels = await questMinLevels(s.database.db, [363, 376, 99999]);
+    expect(levels.get(376)).toEqual({ level: 2, from: 'wowhead' });
+    expect(levels.get(363)).toEqual({ level: 1, from: 'seen' });
+    expect(levels.has(99999)).toBe(false);
   });
 
   it('another account uploading a file that claims the character never gets its guides', async () => {
