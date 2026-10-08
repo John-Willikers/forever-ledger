@@ -155,7 +155,7 @@ describe('atlas loader', () => {
       );
     }
     await q(
-      `insert into quests (quest_id, title, level, objectives) values (900, 'Junk Quest', 4, $1)`,
+      `insert into quests (quest_id, title, level, objectives, category) values (900, 'Junk Quest', 4, $1, 'Warrior')`,
       [JSON.stringify([1, null, { text: 'x' }, '0/3 Boar'])],
     );
     await q(
@@ -174,7 +174,8 @@ describe('atlas loader', () => {
       level: 4,
       reqLevel: 1,
       side: 'Horde',
-      classes: null,
+      // A junk classes claim says nothing: the quest log header does.
+      classes: ['WARRIOR'],
       races: null,
       giver: null,
       ender: null,

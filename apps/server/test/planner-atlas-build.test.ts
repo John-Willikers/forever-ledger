@@ -135,7 +135,7 @@ describe('atlas builder', () => {
       [0, 'kill', 'Mottled Boar slain', 10, 2],
       [1, 'collect', 'Boar Tusk', 4, 1],
       [2, 'object', 'Lost Journal', 1, 1],
-      [3, 'other', '', 1, 0],
+      [3, 'other', 'Objective 4', 1, 0],
     ]);
   });
 
@@ -414,6 +414,67 @@ describe('atlas builder', () => {
       'both',
     ]);
     expect(gaps).toContain("no side ('both' assumed): 2 quests (24, 25)");
+  });
+
+  it('names a blank objective after its Wowhead target, else by its number', () => {
+    const weapon = {
+      id: 300001,
+      kind: 'object',
+      name: 'Wayward Weapon',
+      role: 'target',
+      coords: [[40, 60]],
+      zoneName: 'Durotar',
+      wowheadZone: 14,
+    };
+    const { atlas } = buildAtlas(
+      rows({
+        claims: [
+          claim(97279, 'name', 'Wayward Weapons'),
+          claim(97279, 'objective_spots', [weapon]),
+        ],
+        quests: [
+          { questId: 97279, title: 'Wayward Weapons', level: 2, objectives: ['0/6  ', '0/2  '] },
+        ],
+      }),
+    );
+    expect(atlas.quests.get(97279)!.objectives.map((o) => [o.kind, o.text, o.count])).toEqual([
+      ['object', '6 × Wayward Weapon', 6],
+      ['other', 'Objective 2', 2],
+    ]);
+  });
+
+  it("takes a class quest's class from our quest log header; Wowhead's classes win", () => {
+    const { atlas, gaps } = buildAtlas(
+      rows({
+        claims: [claim(1470, 'name', 'Piercing the Veil'), claim(1470, 'classes', ['Shaman'])],
+        quests: [
+          {
+            questId: 1470,
+            title: 'Piercing the Veil',
+            level: 4,
+            objectives: null,
+            category: 'Warlock',
+          },
+          {
+            questId: 1598,
+            title: 'The Stolen Tome',
+            level: 4,
+            objectives: null,
+            category: 'Warlock',
+          },
+          {
+            questId: 383,
+            title: 'Vital Intelligence',
+            level: 5,
+            objectives: null,
+            category: 'Brill',
+          },
+        ],
+      }),
+    );
+    const classes = (id: number) => atlas.quests.get(id)!.classes;
+    expect([classes(1470), classes(1598), classes(383)]).toEqual([['SHAMAN'], ['WARLOCK'], null]);
+    expect(gaps).toContain('restrictions unknown (no Wowhead data): 2 quests (383, 1598)');
   });
 
   it('keeps objectives with no count, as one thing to do', () => {

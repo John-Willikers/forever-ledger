@@ -87,7 +87,7 @@ export async function loadAtlas(db: Db): Promise<AtlasBuild> {
   );
   const quests = await rows<QuestRow>(
     db,
-    sql`select quest_id as "questId", title, level, objectives from quests`,
+    sql`select quest_id as "questId", title, level, objectives, category from quests`,
   );
   const ticks = await rows<TickRow>(
     db,

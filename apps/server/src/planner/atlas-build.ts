@@ -61,6 +61,8 @@ export interface QuestRow {
   title: string | null;
   level: number | null;
   objectives: string[] | null;
+  /** The quest log header the quest sits under: a class name for class quests. */
+  category?: string | null;
 }
 
 /** One objective increment: the count a character had after it, and when (epoch seconds). */
@@ -288,7 +290,11 @@ function secondsEach(ticks: TickRow[]): number | undefined {
   const steps: number[] = [];
   let usable = 0;
   const byChar = new Map<string, TickRow[]>();
-  for (const t of ticks) byChar.set(t.char, [...(byChar.get(t.char) ?? []), t]);
+  for (const t of ticks) {
+    const list = byChar.get(t.char);
+    if (list) list.push(t);
+    else byChar.set(t.char, [t]);
+  }
   for (const list of byChar.values()) {
     list.sort((a, b) => a.at - b.at);
     for (let i = 1; i < list.length; i++) {
@@ -385,7 +391,8 @@ function objectivesOf(
       kind: /^(speak|talk)\b/i.test(t.name)
         ? 'talk'
         : (m?.kind ?? (/\b(slain|killed)\b/i.test(t.name) ? 'kill' : 'other')),
-      text: t.name || m?.name || '',
+      // Forever leaves some objective texts blank: name it after its Wowhead target, else by number.
+      text: t.name || (m ? `${t.count} × ${m.name}` : `Objective ${t.index + 1}`),
       count: t.count,
       spots: mine.length > 0 ? mine : (m?.spots ?? []),
     };
@@ -418,6 +425,19 @@ function prereqsOf(id: number, side: string, steps: SeriesEntry[][] | undefined)
     .filter((p) => p !== id);
 }
 
+/** Forever's nine classes, as quest log headers (normalised). */
+const CLASS_NAMES = new Set([
+  'warrior',
+  'paladin',
+  'hunter',
+  'rogue',
+  'priest',
+  'shaman',
+  'mage',
+  'warlock',
+  'druid',
+]);
+
 const RACE_SIDE: Record<string, 'Alliance' | 'Horde'> = {
   Human: 'Alliance',
   Dwarf: 'Alliance',
@@ -446,8 +466,11 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
   const zoneGaps: ZoneGaps = new Map();
   /** Per-quest gaps, by reason. */
   const lacking = new Map<string, number[]>();
-  const lack = (reason: string, id: number) =>
-    lacking.set(reason, [...(lacking.get(reason) ?? []), id]);
+  const lack = (reason: string, id: number) => {
+    const list = lacking.get(reason);
+    if (list) list.push(id);
+    else lacking.set(reason, [id]);
+  };
 
   // Best claim per quest and attribute.
   const ranked = rows.claims
@@ -482,7 +505,11 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
 
   const group = <T extends { questId: number }>(list: T[]) => {
     const out = new Map<number, T[]>();
-    for (const r of list) out.set(r.questId, [...(out.get(r.questId) ?? []), r]);
+    for (const r of list) {
+      const rs = out.get(r.questId);
+      if (rs) rs.push(r);
+      else out.set(r.questId, [r]);
+    }
     return out;
   };
   const ours = new Map(rows.quests.map((q) => [q.questId, q]));
@@ -514,7 +541,10 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
       Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'string')
         ? (v as string[])
         : null;
-    const classes = names(c.get('classes'));
+    // Classes: Wowhead's, else the class our quest log files the quest under (its header is the class name).
+    const header = str(q?.category) ? norm(q!.category!) : '';
+    const classes = names(c.get('classes')) ?? (CLASS_NAMES.has(header) ? [header] : null);
+    if (!claims) lacks.push('restrictions unknown (no Wowhead data)');
     const races = names(c.get('races'))?.map(raceToken) ?? null;
     // Side: Wowhead's, else this quest's own series entry, else races of one faction, else our players' faction.
     const sideClaim = c.get('side');
