@@ -27,12 +27,17 @@ end
 
 local function watched(id) return call(ql().GetQuestWatchType, id) ~= nil end
 
--- Makes the watch list exactly `ids`; added watches get `watchType` (AddQuestWatch(questID[, watchType])).
-local function setWatches(ids, watchType)
+local function manual() return Enum and Enum.QuestWatchType and Enum.QuestWatchType.Manual or 1 end
+
+-- Makes the watch list `ids`: exactly, or with `keepManual` keeping the watches you added by hand. Added watches get
+-- `watchType` (AddQuestWatch(questID[, watchType])).
+local function setWatches(ids, watchType, keepManual)
   local want = {}
   for _, id in ipairs(ids) do want[id] = true end
   for _, id in ipairs(W.current()) do
-    if not want[id] then call(ql().RemoveQuestWatch, id) end
+    if not want[id] and not (keepManual and call(ql().GetQuestWatchType, id) == manual()) then
+      call(ql().RemoveQuestWatch, id)
+    end
   end
   for _, id in ipairs(ids) do
     if not watched(id) then call(ql().AddQuestWatch, id, watchType) end
@@ -49,16 +54,19 @@ function W.take()
   end
 end
 
--- The step's quests only, the first super-tracked. `key` names the step and its quests: the same key is not applied
--- again (so a watch you add by hand stays until the step changes) unless `rewatch`.
+-- The step's quests only, the first super-tracked. `key` names the step and its quests: a new key sets the list
+-- exactly; the same key is not applied again unless `rewatch` (after an accept or quest progress, which the game
+-- auto-watches), and then only the game's watches go: a watch you add by hand (Manual) stays until the step changes.
 function W.apply(ids, key, rewatch)
-  if key == W.lastKey and not rewatch then return end
+  local same = key == W.lastKey
+  if same and not rewatch then return end
   W.lastKey = key
-  setWatches(ids)
+  setWatches(ids, nil, same)
   if ids[1] and C_SuperTrack then call(C_SuperTrack.SetSuperTrackedQuestID, ids[1]) end
 end
 
--- Gives your watch list back as manual watches, minus quests no longer in the log, and your super-tracked quest.
+-- Gives your watch list back as manual watches, minus quests no longer in the log, and your super-tracked quest if
+-- you still have it.
 function W.restore()
   W.lastKey = nil
   local s = G.state()
@@ -67,12 +75,13 @@ function W.restore()
     s.savedWatches = nil
     return
   end
-  local superID = s.savedSuperTrack
+  local superID = tonumber(s.savedSuperTrack)
+  if not (superID and G.onQuest(superID)) then superID = 0 end
   s.savedWatches, s.savedSuperTrack = nil, nil
   local keep = {}
   for _, id in ipairs(saved) do
     if G.onQuest(id) then keep[#keep + 1] = id end
   end
   setWatches(keep, Enum and Enum.QuestWatchType and Enum.QuestWatchType.Manual)
-  if C_SuperTrack then call(C_SuperTrack.SetSuperTrackedQuestID, tonumber(superID) or 0) end
+  if C_SuperTrack then call(C_SuperTrack.SetSuperTrackedQuestID, superID) end
 end

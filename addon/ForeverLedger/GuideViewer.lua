@@ -493,10 +493,13 @@ function handlers.QUEST_ACCEPTED()
   -- Again a moment later: this sync undoes the game's auto-watch of the accepted quest if it lands after ours.
   if C_Timer then C_Timer.After(0.5, safe(function() G.sync(true) end)) end
 end
--- The game also auto-watches a quest when it progresses: undo it a moment later, as after an accept.
+-- The game also auto-watches a quest when it progresses: undo it a moment later, as after an accept. A burst of
+-- progress (every kill fires one) gets one sync.
+local watchPending = false
 function handlers.QUEST_WATCH_UPDATE()
-  if #G.myGuides() == 0 then return end
-  if C_Timer then C_Timer.After(0.5, safe(function() G.sync(true) end)) end
+  if watchPending or not C_Timer or #G.myGuides() == 0 then return end
+  watchPending = true
+  C_Timer.After(0.5, safe(function() watchPending = false; G.sync(true) end))
 end
 function handlers.PLAYER_LEVEL_UP(level)
   -- UnitLevel can still say the old level while this event runs.

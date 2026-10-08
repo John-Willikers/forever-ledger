@@ -77,7 +77,8 @@ local function viewer(H, opts)
     GetQuestObjectives = function(id) return q.objectives[id] or {} end,
     GetNumQuestWatches = function() return #q.watches end,
     GetQuestIDForQuestWatchIndex = function(i) return q.watches[i] end,
-    GetQuestWatchType = function(id) return watchIndex(id) and 1 or nil end,
+    -- The type AddQuestWatch got (yours: Manual 1, the default); tests mark the game's auto-watches 0 (Automatic).
+    GetQuestWatchType = function(id) return watchIndex(id) and (q.types[id] or 1) or nil end,
     AddQuestWatch = function(id, watchType)
       q.calls[#q.calls + 1] = "add " .. id
       q.types[id] = watchType
@@ -88,6 +89,7 @@ local function viewer(H, opts)
       q.calls[#q.calls + 1] = "remove " .. id
       local i = watchIndex(id)
       if i then table.remove(q.watches, i) end
+      q.types[id] = nil
       return true
     end,
   }
@@ -107,6 +109,12 @@ local function viewer(H, opts)
   c.login("ForeverLedger")
   c.advance(4)
   return c
+end
+
+-- The game's auto-watch (on accept or progress): an Automatic watch.
+local function autoWatch(c, id)
+  c.q.watches[#c.q.watches + 1] = id
+  c.q.types[id] = 0
 end
 
 local function sortedWatches(c)
@@ -313,17 +321,19 @@ return function(H)
       H.eq(sortedWatches(again), tostring(DAMNED))
     end)
 
-  H.test("guide watches: a hand-added watch stays until the step changes; an accept re-applies the list", function()
+  H.test("guide watches: a hand-added watch stays until the step changes; an accept undoes the auto-watch", function()
     local c = viewer(H, atStep4())
-    c.q.watches[#c.q.watches + 1] = 999
+    c.q.watches[#c.q.watches + 1] = 999 -- by hand (Manual)
     c.advance(1)
     c.fire("QUEST_LOG_UPDATE")
     H.eq(sortedWatches(c), MINDLESS .. ",999", "hand-added watch kept")
     c.q.onQuest[555] = true
-    c.q.watches[#c.q.watches + 1] = 555 -- the game's auto-watch
+    autoWatch(c, 555)
     c.fire("QUEST_ACCEPTED", 555)
     c.advance(1)
-    H.eq(sortedWatches(c), tostring(MINDLESS), "auto-watch and hand-added watch undone")
+    H.eq(sortedWatches(c), MINDLESS .. ",999", "auto-watch undone, hand-added watch kept")
+    c.slash("FOREVERLEDGER", "guide next")
+    H.eq(sortedWatches(c), tostring(MINDLESS), "the step changed: hand-added watch undone")
   end)
 
   H.test("guide watches: finishing the guide gives your watches back", function()
@@ -343,7 +353,7 @@ return function(H)
     c.world.inCombat = true
     local calls = #c.q.calls
     c.q.onQuest[555] = true
-    c.q.watches[#c.q.watches + 1] = 555 -- the game's auto-watch
+    autoWatch(c, 555)
     c.fire("QUEST_ACCEPTED", 555)
     c.advance(1)
     H.eq(sortedWatches(c), MINDLESS .. ",555", "nothing touched in combat")
@@ -371,17 +381,30 @@ return function(H)
     H.eq(c.env.ForeverLedgerGuideState.savedWatches, nil)
   end)
 
-  H.test("guide watches: the game's auto-watch on quest progress is undone", function()
+  H.test("guide watches: progress auto-watches are undone (once per burst); your hand-added watch stays", function()
     local c = viewer(H, atStep4())
     -- The harness has C_Timer only with professionAPI: this test needs the delayed sync.
     local w = c.world
     w.timers = {}
     c.env.C_Timer = { After = function(secs, fn) w.timers[#w.timers + 1] = { at = w.clock + secs, fn = fn } end }
-    c.q.watches[#c.q.watches + 1] = 999
-    c.fire("QUEST_WATCH_UPDATE", 999)
-    H.eq(sortedWatches(c), MINDLESS .. ",999", "not at once")
+    local syncs, st = 0, c.env.C_SuperTrack -- each guide sync with a rewatch super-tracks the step's quest
+    local set = st.SetSuperTrackedQuestID
+    st.SetSuperTrackedQuestID = function(id) syncs = syncs + 1; set(id) end
+    c.q.watches[#c.q.watches + 1] = 999 -- by hand (Manual)
+    c.q.onQuest[555] = true
+    autoWatch(c, 555)
+    c.fire("QUEST_WATCH_UPDATE", 555)
+    c.fire("QUEST_WATCH_UPDATE", 555)
+    c.fire("QUEST_WATCH_UPDATE", MINDLESS)
+    H.eq(sortedWatches(c), MINDLESS .. ",555,999", "not at once")
     c.advance(1)
-    H.eq(sortedWatches(c), tostring(MINDLESS))
+    H.eq(syncs, 1, "one sync for the burst")
+    H.eq(sortedWatches(c), MINDLESS .. ",999", "auto-watch undone, hand-added watch kept")
+    c.fire("QUEST_WATCH_UPDATE", MINDLESS)
+    c.advance(1)
+    H.eq(syncs, 2, "the next burst gets its own sync")
+    c.slash("FOREVERLEDGER", "guide next")
+    H.eq(sortedWatches(c), tostring(MINDLESS), "the step changed: hand-added watch undone")
   end)
 
   H.test("guide watches: your list comes back as manual watches, your super-tracked quest too", function()
@@ -394,5 +417,12 @@ return function(H)
     H.eq(c.q.types[999], 1, "manual")
     H.eq(c.q.super, DAMNED, "super-track back")
     H.eq(c.env.ForeverLedgerGuideState.savedSuperTrack, nil)
+  end)
+
+  H.test("guide watches: a super-tracked quest you no longer have isn't super-tracked again", function()
+    local c = viewer(H, atStep4({ super = 999 }))
+    c.q.onQuest[999] = nil
+    c.slash("FOREVERLEDGER", "guide hide")
+    H.eq(c.q.super, 0)
   end)
 end
