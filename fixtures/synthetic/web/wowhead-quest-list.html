@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- Synthetic Wowhead Forever quest LIST page (hand-written). No real list page had been fetched when this was written
+     (2026-10-08), so the shape is Wowhead's documented list-page Listview (`template: 'quest', id: 'quests'`, data in a
+     variable) with rows shaped like the real `see-also` quest rows on stored /forever/quest= pages (category,
+     category2, id, level, name, race, reqlevel, reqrace, side, xp), plus `reqclass` as Classic class quests carry it.
+     Check it against the first real fetch of /forever/quests/eastern-kingdoms/elwynn-forest. -->
+<html>
+<head>
+<title>Forever Elwynn Forest Quests - World of Warcraft Forever</title>
+</head>
+<body>
+<h1>Elwynn Forest Quests</h1>
+<script>
+WH.Gatherer.addData(5, 16, {"91743":{"name_enus":"Rascally Rodents"},"91724":{"name_enus":"Delicate Instruments"}});
+var listviewquests = [{"category":12,"category2":0,"id":91743,"level":2,"name":"Rascally Rodents","race":4294967372,"reqlevel":1,"reqrace":4294967372,"side":1,"xp":170},
+  {"category":12,"category2":0,"id":91724,"level":10,"money":350,"name":"Delicate Instruments","reqlevel":7,"side":1,"xp":840},
+  {"category":-81,"category2":4,"id":1638,"level":10,"name":"A Warrior's Training","reqclass":1,"reqlevel":10,"side":3,"xp":400},
+  {"category":12,"category2":0,"id":3000000000,"name":"id out of int4 range: skipped"}];
+new Listview({template: 'quest', id: 'quests', name: WH.TERMS.quests, extraCols: [Listview.extraCols.date], data: listviewquests});
+</script>
+</body>
+</html>
