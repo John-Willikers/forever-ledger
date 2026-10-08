@@ -7,7 +7,8 @@ import { mintToken } from '../src/index.js';
 import { findDisputes } from '../src/knowledge/disputes.js';
 import { addManualClaim, ManualClaimError, relabelClaim } from '../src/knowledge/manual.js';
 import { importSeed } from '../src/knowledge/seed.js';
-import { enqueueSeen, itemCoverage } from '../src/knowledge/enqueue.js';
+import { ATLAS_LIST_PRIORITY, ATLAS_STARTER_QUEST_PRIORITY } from '../src/knowledge/atlas.js';
+import { enqueueAtlas, enqueueSeen, itemCoverage } from '../src/knowledge/enqueue.js';
 import {
   enqueueUrl,
   leaseTargets,
@@ -251,7 +252,7 @@ describe('knowledge pipeline', () => {
     expect(await reparseAll(s.database.db)).toMatchObject({ pages: 2, added: 0 });
     expect(await s.count('claims')).toBe(before);
     // A parser fix: claims an older parser version read off the page are swapped, hand-entered ones stay.
-    await q(`update claims set parser = 'wowhead@0' where parser = 'wowhead@4'`);
+    await q(`update claims set parser = 'wowhead@0' where parser = 'wowhead@5'`);
     expect(await reparseAll(s.database.db, 'wowhead.com', { replace: true })).toMatchObject({
       pages: 1,
       added: 7,
@@ -445,5 +446,50 @@ describe('knowledge pipeline', () => {
         )
       )[0],
     ).toEqual({ priority: 5 });
+  });
+
+  it('enqueue-atlas queues the list pages on top; a fetched list queues its quests below them', async () => {
+    const { db } = s.database;
+    const LIST = 'https://www.wowhead.com/forever/quests/eastern-kingdoms/elwynn-forest';
+    // Already known with a low priority: raised, not duplicated.
+    await enqueueUrl(db, {
+      url: 'https://www.wowhead.com/forever/quests/classes/mage',
+      addedBy: 'cli',
+    });
+    const r = await enqueueAtlas(db);
+    expect(r.queued).toBe(r.urls.length - 1);
+    const lists = await q(
+      `select count(*)::int as n, min(priority) as lo from fetch_targets where url like '%/forever/quests/%'`,
+    );
+    expect(lists[0]).toEqual({ n: r.urls.length, lo: ATLAS_LIST_PRIORITY });
+    // Fetch the Elwynn list: its quests are queued with the parser as their origin.
+    await q(`update fetch_targets set priority = 1000 where url = $1`, [LIST]);
+    const [lease] = (await post('/v1/fetch/lease', { worker: 'cruiser', max: 1 })).json().leases;
+    expect(lease.url).toBe(LIST);
+    const stored = await post(
+      '/v1/fetch/snapshots',
+      report(LIST, webFixture('wowhead-quest-list.html')),
+    );
+    expect(stored.json().result).toBe('stored');
+    const quests = await q(
+      `select url, entity_type, entity_id, priority, added_by from fetch_targets
+        where added_by = 'parser' order by entity_id`,
+    );
+    expect(quests).toEqual(
+      [1638, 91724, 91743].map((id) => ({
+        url: `https://www.wowhead.com/forever/quest=${id}`,
+        entity_type: 'quest',
+        entity_id: id,
+        priority: ATLAS_STARTER_QUEST_PRIORITY,
+        added_by: 'parser',
+      })),
+    );
+    expect(
+      await q(
+        `select attribute, value from claims where entity_type = 'quest' and entity_key = '1638' order by attribute`,
+      ),
+    ).toContainEqual({ attribute: 'classes', value: ['Warrior'] });
+    // Reparse queues nothing new.
+    expect((await reparseAll(db, 'wowhead.com')).queued).toBe(0);
   });
 });

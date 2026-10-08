@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- Synthetic Wowhead Forever quest page (hand-written, not a real fetch). It keeps the structure of the real
+     /forever/quest= pages stored on 2026-10-08 (quests 91743, 97242, 97288): the g_quests record, the infobox markup,
+     `var myMapper = new Mapper({...})` with start / end / requirement / sourcerequirement points, and the series table
+     with the current quest bold and a faction-split step. Ids, names and coordinates are made up. -->
+<html>
+<head>
+<title>Rascally Rodents - Quest - World of Warcraft Forever</title>
+</head>
+<body>
+<h1 class="heading-size-1">Rascally Rodents</h1>
+<script>
+WH.Gatherer.addData(5, 16, {"91743":{"name_enus":"Rascally Rodents","side":1,"reqlevel":1}});
+$.extend(g_quests[91743], {"category":12,"category2":0,"id":91743,"level":2,"name":"Rascally Rodents","race":4294967372,"reprewards":[[72,100]],"reqclass":1040,"reqlevel":1,"reqrace":4294967372,"side":1,"xp":170,"envChange":{"status":"new","labels":[],"lines":[]}});
+</script>
+<script>
+WH.markup.printHtml("[ul][li]Level: 2[\/li][li]Requires level 1[\/li][li]Side: [span class=icon-alliance]Alliance[\/span][\/li][li]Races: [race=3], [race=4], [br][race=7], [race=95][\/li][li][icon name=quest-start]Start: [url=\/forever\/object=900001\/wanted-poster]Wanted Poster[\/url][\/icon][\/li][li][icon name=quest-end]End: [url=\/forever\/npc=951\/brother-paxton]Brother Paxton[\/url][\/icon][\/li][li]Sharable[\/li][\/ul]", "infobox-contents-0", { allow: Markup.CLASS_STAFF, dbpage: true });
+</script>
+<table class="series"><tbody><tr><th>1.</th><td><div><a href="/forever/quest=91741/nibbled-on-book">Nibbled-On Book</a></div></td></tr><tr><th>2.</th><td><div><b>Rascally Rodents</b></div></td></tr><tr><th>3.</th><td><div><span class="icon-alliance-padded"><a href="/forever/quest=91745/mining-consultant">Mining Consultant</a></span><br><span class="icon-horde"><a href="/forever/quest=97246/meal-appeal">Meal Appeal</a></span></div></td></tr></tbody></table>
+<script>
+var myMapper = new Mapper({"parent":"fweiuasf","objectives":{"12":{"zone":"Elwynn Forest","mappable":1,"levels":[[{"type":2,"point":"start","name":"Wanted Poster","coord":[49.6,41],"coords":[[49.6,41]],"id":900001},{"type":1,"point":"end","name":"Brother Paxton","coord":[49.4,40.4],"coords":[[49.4,40.4],[49.6,40.4]],"id":951,"reactalliance":1,"reacthorde":0},{"type":1,"point":"sourcerequirement","name":"Kobold Vermin","coord":[47.4,36.2],"coords":[[47.4,35],[47.4,36.2]],"objective":1,"id":6,"reactalliance":-1,"reacthorde":0,"item":"Stolen Book"},{"type":1,"point":"requirement","name":"Kobold Geomancer","coord":[60.6,50.8],"coords":[[60.6,50.8]],"objective":476,"id":476,"reactalliance":-1,"reacthorde":0},{"type":2,"point":"requirement","name":"Kobold Tracks","coord":[45.4,50.7],"coords":[[45.4,50.7]],"objective":0,"id":563442}]]},"16611":{"zone":"Ruins of Lordaeron","mappable":0,"levels":[[{"type":1,"point":"requirement","name":"Rath'mael","coord":[""],"coords":[],"objective":250657,"id":250657,"reactalliance":0,"reacthorde":0}]]}},"zoneparent":"lksjdowlha","zones":[[12,4],[16611,1]],"missing":0});
+</script>
+<script>
+new Listview({template: 'quest', id: 'see-also', name: WH.TERMS.seealso_stc, tabs: tabsRelated, parent: 'lkljbjkb574', data: [{"category":12,"category2":0,"id":91724,"level":10,"name":"Delicate Instruments","reqlevel":7,"side":1,"xp":840}]});
+</script>
+</body>
+</html>

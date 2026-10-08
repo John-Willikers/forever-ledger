@@ -182,7 +182,8 @@ async function snapshotSource(
 }
 
 /**
- * Parses a stored page into its source, claims and comments. Safe to repeat. With `replace`, claims an older parser
+ * Parses a stored page into its source, claims and comments, and queues the pages it says to follow (a quest list's
+ * quests; a URL already on the queue is left as it is). Safe to repeat. With `replace`, claims an older parser
  * read off this same page are dropped first (a parser fix, not new information); hand-entered claims stay.
  */
 export async function applySnapshot(
@@ -206,7 +207,11 @@ export async function applySnapshot(
   }
   const added = await insertClaims(conn, source, parsed.claims, parsed.parser);
   await insertComments(conn, classifySource(snap.finalUrl).site, snap.id, parsed.comments);
-  return { sourceId: source.id, claims: added, problems: parsed.problems };
+  let queued = 0;
+  for (const f of parsed.follow ?? []) {
+    if (await enqueueUrl(conn, { ...f, addedBy: 'parser' })) queued++;
+  }
+  return { sourceId: source.id, claims: added, queued, problems: parsed.problems };
 }
 
 /** The page's raw bytes (at most MAX_HTML_BYTES; larger throws). */
@@ -216,7 +221,8 @@ export const inflate = (gz: Buffer) => inflateBytes(gz).toString('utf8');
 
 export interface EnqueueOptions {
   url: string;
-  addedBy: 'seed' | 'cli' | 'admin' | 'ingest';
+  /** `parser`: a stored page named it (`ParseResult.follow`). */
+  addedBy: 'seed' | 'cli' | 'admin' | 'ingest' | 'parser';
   priority?: number;
   entityType?: EntityType | null;
   entityId?: number | null;
@@ -557,6 +563,7 @@ export async function reparseAll(db: Db, site?: string, opts: { replace?: boolea
     .orderBy(webSnapshots.id);
   let pages = 0;
   let added = 0;
+  let queued = 0;
   const problems: string[] = [];
   for (const s of snaps) {
     if (site && classifySource(s.url).site !== site) continue;
@@ -568,10 +575,11 @@ export async function reparseAll(db: Db, site?: string, opts: { replace?: boolea
       const r = await db.transaction((tx) => applySnapshot(tx, s, inflate(row!.htmlGz), opts));
       pages++;
       added += r.claims;
+      queued += r.queued;
       problems.push(...r.problems.map((p) => `#${s.id} ${s.url}: ${p}`));
     } catch (err) {
       problems.push(`#${s.id} ${s.url}: parse failed: ${(err as Error).message}`);
     }
   }
-  return { pages, added, problems };
+  return { pages, added, queued, problems };
 }

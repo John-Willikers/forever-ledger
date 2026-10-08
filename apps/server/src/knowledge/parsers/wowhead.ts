@@ -1,7 +1,9 @@
 import type { EntityType, GameVersion } from '@forever-ledger/contracts';
 import type { HTMLElement } from 'node-html-parser';
+import { isWowheadQuestList, questPagePriority, WOWHEAD_FOREVER } from '../atlas.js';
 import { bracketedAfter, codeMarkers, topLevel, tryJson } from './scan.js';
-import type { ClaimDraft, CommentDraft, ParseResult } from './types.js';
+import type { ClaimDraft, CommentDraft, FollowDraft, ParseResult } from './types.js';
+import { classesOf, infoboxEnds, mapperFacts, racesOf, seriesOf } from './wowhead-quest.js';
 
 /**
  * Wowhead entity pages (item=, npc=, quest=, object=, spell=, zone=). The facts are in inline scripts:
@@ -10,7 +12,7 @@ import type { ClaimDraft, CommentDraft, ParseResult } from './types.js';
  * is evaluated. Written before the first real Forever page was fetched: check it against `fixtures/real/web/` and bump
  * the version when the output changes.
  */
-export const WOWHEAD_PARSER = 'wowhead@4';
+export const WOWHEAD_PARSER = 'wowhead@5';
 
 /**
  * Loot and fishing lists (who drops it, where it is fished, what a container holds) are not client data: Wowhead
@@ -20,6 +22,10 @@ export const WOWHEAD_PARSER = 'wowhead@4';
  * NPC facts from `$.extend(g_quests[id], {...})` / `g_npcs`, an NPC's drops also claimed on each item (`dropped_by`,
  * so NPC pages stand in for item pages), media tabs (screenshots, videos) skipped. v4: a spell row's profession
  * (`skill: [197]`, an array, so it used to be dropped) is kept as `skills`: `created_by_spell` names the profession.
+ * v5 (quest atlas): a quest page's `new Mapper` gives `starts_at` / `ends_at` / `objective_spots` (infobox Start/End
+ * links stand in when the mapper has no point), `<table class="series">` gives `series`, `reqclass` / `reqrace` masks
+ * give `classes` / `races`; quest list pages (`/forever/quests/…`) give each row's quest facts plus `zone_category`, and
+ * queue every quest's page (`follow`).
  */
 /** Listviews that are page media, not facts. */
 const MEDIA_LISTS = new Set(['screenshots', 'videos', 'videos-english', 'see-also']);
@@ -37,6 +43,10 @@ function questFacts(f: Record<string, unknown>) {
       'side',
       ({ 1: 'Alliance', 2: 'Horde', 3: 'both' } as Record<number, string>)[n('side')!] ?? n('side'),
     ]);
+  const classes = classesOf(f.reqclass);
+  if (classes) out.push(['classes', classes]);
+  const races = racesOf(f.reqrace);
+  if (races) out.push(['races', races]);
   if (Array.isArray(f.reprewards) && f.reprewards.length > 0) {
     out.push([
       'rep_rewards',
@@ -217,6 +227,7 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
   const claims: ClaimDraft[] = [];
   const comments: CommentDraft[] = [];
   const problems: string[] = [];
+  const follow: FollowDraft[] = [];
   const script = root
     .querySelectorAll('script')
     .filter((el) => !el.getAttribute('src'))
@@ -257,6 +268,7 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
         }
       }
     }
+    if (entity.type === 'quest') claims.push(...questPageClaims(root, script, entity.id, problems));
     const npcName =
       entity.type === 'npc'
         ? ((claims.find(
@@ -345,6 +357,10 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
           value: name,
         });
     }
+  } else if (isWowheadQuestList(url)) {
+    const list = questListClaims(script, problems);
+    claims.push(...list.claims);
+    follow.push(...list.follow);
   } else {
     problems.push('not a Wowhead entity page; only names were read');
   }
@@ -357,5 +373,83 @@ export function parseWowhead(root: HTMLElement, url: string, title: string | nul
     claims,
     comments,
     problems,
+    ...(follow.length > 0 ? { follow } : {}),
   };
+}
+
+/** v5 quest-page facts: mapper points, infobox ends as a fallback, the series. */
+function questPageClaims(
+  root: HTMLElement,
+  script: string,
+  questId: number,
+  problems: string[],
+): ClaimDraft[] {
+  const out: ClaimDraft[] = [];
+  const claim = (attribute: string, value: unknown) =>
+    out.push({ entityType: 'quest', entityId: questId, attribute, value });
+  const { facts, problem } = mapperFacts(script);
+  if (problem) problems.push(problem);
+  const infobox = infoboxEnds(script);
+  const starts = facts?.startsAt.length ? facts.startsAt : infobox.start;
+  const ends = facts?.endsAt.length ? facts.endsAt : infobox.end;
+  if (starts.length > 0) claim('starts_at', starts);
+  if (ends.length > 0) claim('ends_at', ends);
+  if (facts && facts.objectiveSpots.length > 0) claim('objective_spots', facts.objectiveSpots);
+  const series = seriesOf(root, questId);
+  if (series) claim('series', series);
+  return out;
+}
+
+/** Most rows one list page may give (Wowhead caps its own lists at 1000). */
+export const MAX_QUEST_LIST_ROWS = 2000;
+
+/**
+ * A quest list page (`/forever/quests/eastern-kingdoms/elwynn-forest`, `/forever/quests/classes/warrior`): its
+ * `new Listview({template: 'quest', id: 'quests', data: …})` rows, each claimed on its own quest, and each quest's page
+ * to follow. Rows have the shape of the `see-also` quest rows on real quest pages (`category`, `category2`, `id`,
+ * `level`, `name`, `race`, `reqlevel`, `reqrace`, `side`, `xp`, …) plus `reqclass` on class quests. No real list page
+ * had been fetched when this was written (2026-10-08): check it against the first one.
+ */
+function questListClaims(script: string, problems: string[]) {
+  const claims: ClaimDraft[] = [];
+  const follow: FollowDraft[] = [];
+  let lists = 0;
+  for (const at of codeMarkers(script, 'new Listview(')) {
+    const obj = bracketedAfter(script, at);
+    if (!obj) continue;
+    const head = topLevel(obj);
+    if (stringKey(head, 'template') !== 'quest') continue;
+    const id = stringKey(head, 'id') ?? '?';
+    const rows = listData(script, obj, head, at);
+    if (!rows) {
+      problems.push(`listview ${id}: data is not JSON`);
+      continue;
+    }
+    lists++;
+    if (rows.length > MAX_QUEST_LIST_ROWS)
+      problems.push(`listview ${id}: kept ${MAX_QUEST_LIST_ROWS} of ${rows.length}`);
+    for (const raw of rows.slice(0, MAX_QUEST_LIST_ROWS)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const row = raw as Record<string, unknown>;
+      const questId = int(row.id);
+      if (questId === undefined || questId <= 0) continue;
+      const claim = (attribute: string, value: unknown) =>
+        claims.push({ entityType: 'quest', entityId: questId, attribute, value });
+      const name = str(row.name) ?? str(row.name_enus);
+      if (name) claim('name', name);
+      for (const [attribute, value] of questFacts(row)) claim(attribute, value);
+      const category = int(row.category);
+      const category2 = int(row.category2);
+      if (category !== undefined || category2 !== undefined)
+        claim('zone_category', { category: category ?? null, category2: category2 ?? null });
+      follow.push({
+        url: `${WOWHEAD_FOREVER}/quest=${questId}`,
+        entityType: 'quest',
+        entityId: questId,
+        priority: questPagePriority(int(row.level)),
+      });
+    }
+  }
+  if (lists === 0) problems.push('quest list page without a quest Listview');
+  return { claims, follow };
 }

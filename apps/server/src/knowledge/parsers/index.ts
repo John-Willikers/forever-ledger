@@ -5,7 +5,7 @@ import { parseTables, TABLE_PARSER } from './tables.js';
 import type { ParseResult } from './types.js';
 import { parseWowhead } from './wowhead.js';
 
-export type { ClaimDraft, CommentDraft, ParseResult } from './types.js';
+export type { ClaimDraft, CommentDraft, FollowDraft, ParseResult } from './types.js';
 
 /** A build number the page states (`build 70009`, `Build: 69913`), when exactly one is stated. */
 export function statedBuild(text: string): number | null {
