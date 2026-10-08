@@ -59,4 +59,7 @@ the step's spot.
   - 🐞 2026-10-08 02:11 CDT: clicking the Guide header **crashed the client** (Harlan, 01:48 CDT). Crash log: Blizzard's
     `MenuUtil.CreateContextMenu` → `Menu.lua:2212 AcquireMenu` → C assertion in `ldebug.c(747)`; our menu code never
     ran. Fix: no menu. Left-click Next, right-click Back, shift-click Hide. Recorded in `CLAUDE.md`. Re-test needed.
+- ✅ 4½ 🤝 T8 auto quest (Harlan, 2026-10-08): `GuideAutoQuest.lua` accepts and turns in the current step's quests at
+  the NPC, never picks a reward (prints "pick your reward" and waits); Shift skips, `/fl guide auto off` keeps it off;
+  hard rule reworded in `CLAUDE.md`; 8 harness tests — 2026-10-08 02:28 CDT. In-game check joins step 4's re-test.
 - ⏳ 5 🚀 Addon 0.7.0 (`addon-v0.7.0` → `addon-cli publish 0.7.0`)

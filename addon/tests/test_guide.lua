@@ -23,7 +23,8 @@ end
 
 local ADDON = "../ForeverLedger/ForeverLedger.lua"
 local GUIDE_FILES = { "../ForeverLedger/GuideViewer.lua", "../ForeverLedger/GuideWatches.lua",
-                      "../ForeverLedger/GuideArrow.lua", "../ForeverLedger/GuideTracker.lua" }
+                      "../ForeverLedger/GuideArrow.lua", "../ForeverLedger/GuideTracker.lua",
+                      "../ForeverLedger/GuideAutoQuest.lua" }
 
 -- A fake retail 11.x tracker, shaped like Blizzard_ObjectiveTracker (probe 0.5.0 on build 70245).
 -- `notReady`: the manager hasn't run Init yet (before PLAYER_ENTERING_WORLD), so SetModuleContainer does nothing.
@@ -146,6 +147,42 @@ local function printed(c, pattern)
   end
   return false
 end
+
+-- The NPC windows (GuideAutoQuest.lua): gossip, the old greeting window and the quest frame. `c.npc` holds what the
+-- NPC offers ({ questID=, title=, isComplete= }); the quest frame is the harness's world.questFrame; `c.did` lists
+-- every select/accept/complete call made.
+local function npcWindows(c)
+  local n = { available = {}, active = {}, autoAccept = false, completable = true }
+  c.npc, c.did = n, {}
+  local function did(s) c.did[#c.did + 1] = s end
+  c.env.C_GossipInfo = {
+    GetAvailableQuests = function() return n.available end,
+    GetActiveQuests = function() return n.active end,
+    SelectAvailableQuest = function(id) did("gossip accept " .. id) end,
+    SelectActiveQuest = function(id) did("gossip turn in " .. id) end,
+  }
+  c.env.GetNumAvailableQuests = function() return #n.available end
+  c.env.GetAvailableQuestInfo = function(i) return false, 0, false, false, n.available[i].questID end
+  c.env.SelectAvailableQuest = function(i) did("greeting accept " .. i) end
+  c.env.GetNumActiveQuests = function() return #n.active end
+  c.env.GetActiveQuestID = function(i) return n.active[i].questID end
+  c.env.GetActiveTitle = function(i) return n.active[i].title, n.active[i].isComplete end
+  c.env.SelectActiveQuest = function(i) did("greeting turn in " .. i) end
+  c.env.QuestGetAutoAccept = function() return n.autoAccept end
+  c.env.AcceptQuest = function() did("accept " .. c.env.GetQuestID()) end
+  c.env.AcknowledgeAutoAcceptQuest = function() did("acknowledge " .. c.env.GetQuestID()) end
+  c.env.IsQuestCompletable = function() return n.completable end
+  c.env.CompleteQuest = function() did("complete " .. c.env.GetQuestID()) end
+  c.env.IsShiftKeyDown = function() return n.shift == true end
+end
+
+-- Opens the quest frame on questID at `event` (QUEST_DETAIL / QUEST_PROGRESS / QUEST_COMPLETE).
+local function questWindow(c, event, questID, choices)
+  c.world.questFrame = { questID = questID, title = "Quest " .. questID, xp = 100, money = 10, choices = choices }
+  c.fire(event)
+end
+
+local function did(c) return table.concat(c.did, "; ") end
 
 return function(H)
   H.test("guide: shows this character's newest guide at login, from step 1", function()
@@ -726,5 +763,162 @@ return function(H)
     c.fire("PLAYER_REGEN_ENABLED")
     H.ok(c.tracker.dirty > dirty, "redrawn after combat")
     H.ok(#c.q.calls > calls, "watches synced after combat")
+  end)
+
+  ---------------------------------------------------------------- auto quest (GuideAutoQuest.lua)
+  H.test("auto quest: gossip selects the accept step's quest and nothing else", function()
+    local c = viewer(H)
+    npcWindows(c)
+    c.npc.available = { { questID = 999, title = "Someone Else's Quest" },
+                        { questID = RUDE, title = "Rude Awakening" } }
+    c.fire("GOSSIP_SHOW")
+    H.eq(did(c), "gossip accept " .. RUDE)
+    -- A quest already in the log isn't picked up again.
+    c.did = {}
+    c.q.onQuest[RUDE] = true
+    c.fire("GOSSIP_SHOW")
+    H.eq(did(c), "")
+  end)
+
+  H.test("auto quest: QUEST_DETAIL accepts the step's quest (auto-accept ones are acknowledged), others not", function()
+    local c = viewer(H)
+    npcWindows(c)
+    questWindow(c, "QUEST_DETAIL", 999)
+    H.eq(did(c), "", "not the guide's quest")
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    H.eq(did(c), "accept " .. RUDE)
+    c.did = {}
+    c.npc.autoAccept = true
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    H.eq(did(c), "acknowledge " .. RUDE)
+    -- The turn-in step's quest isn't accepted from a detail window either: only the accept step's are.
+    local d = viewer(H, { onQuest = { [RUDE] = true } })
+    npcWindows(d)
+    questWindow(d, "QUEST_DETAIL", MINDLESS)
+    H.eq(did(d), "", "the next step's quest waits for its step")
+  end)
+
+  H.test("auto quest: turn-in step: gossip, progress and a reward window without choices", function()
+    local c = viewer(H, { onQuest = { [RUDE] = true } })
+    npcWindows(c)
+    c.npc.active = { { questID = 999, title = "Other", isComplete = true },
+                     { questID = RUDE, title = "Rude Awakening", isComplete = false } }
+    c.fire("GOSSIP_SHOW")
+    H.eq(did(c), "", "not complete yet")
+    c.npc.active[2].isComplete = true
+    c.fire("GOSSIP_SHOW")
+    H.eq(did(c), "gossip turn in " .. RUDE)
+    c.did = {}
+    c.npc.completable = false
+    questWindow(c, "QUEST_PROGRESS", RUDE)
+    H.eq(did(c), "", "not completable")
+    c.npc.completable = true
+    questWindow(c, "QUEST_PROGRESS", 999)
+    H.eq(did(c), "", "not the guide's quest")
+    questWindow(c, "QUEST_PROGRESS", RUDE)
+    H.eq(did(c), "complete " .. RUDE)
+    questWindow(c, "QUEST_COMPLETE", 999)
+    H.eq(#c.world.questRewardCalls, 0, "not the guide's quest")
+    questWindow(c, "QUEST_COMPLETE", RUDE)
+    H.eq(table.concat(c.world.questRewardCalls, ","), "0", "turned in with no reward picked")
+  end)
+
+  H.test("auto quest: never picks a reward; says so once per window", function()
+    local c = viewer(H, { onQuest = { [RUDE] = true } })
+    npcWindows(c)
+    local two = { { id = 5555, count = 1 }, { id = 5556, count = 1 } }
+    c.world.questFrame = { questID = RUDE, title = "Rude Awakening", choices = two }
+    c.fire("QUEST_COMPLETE")
+    c.fire("QUEST_COMPLETE")
+    H.eq(#c.world.questRewardCalls, 0, "GetQuestReward never called")
+    local n = 0
+    for _, l in ipairs(c.world.printed) do
+      if l:find("pick your reward for Rude Awakening.", 1, true) then n = n + 1 end
+    end
+    H.eq(n, 1, "printed once")
+    -- A single choice is still the player's.
+    c.fire("QUEST_FINISHED")
+    c.world.questFrame.choices = { two[1] }
+    c.fire("QUEST_COMPLETE")
+    H.eq(#c.world.questRewardCalls, 0, "one choice is still a choice")
+  end)
+
+  H.test("auto quest: the greeting window selects by index", function()
+    local c = viewer(H)
+    npcWindows(c)
+    c.npc.available = { { questID = 999 }, { questID = RUDE } }
+    c.fire("QUEST_GREETING")
+    H.eq(did(c), "greeting accept 2")
+    local d = viewer(H, { onQuest = { [RUDE] = true } })
+    npcWindows(d)
+    d.npc.active = { { questID = 999, title = "Other", isComplete = true },
+                     { questID = RUDE, title = "Rude Awakening", isComplete = true } }
+    d.fire("QUEST_GREETING")
+    H.eq(did(d), "greeting turn in 2")
+  end)
+
+  H.test("auto quest: /fl guide auto off stops it (kept per character); Shift or a hidden guide skips it", function()
+    local c = viewer(H)
+    npcWindows(c)
+    c.slash("FOREVERLEDGER", "guide auto off")
+    H.eq(c.env.ForeverLedgerGuideState.autoQuest, false, "persisted")
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    H.eq(did(c), "", "off")
+    c.slash("FOREVERLEDGER", "guide auto on")
+    H.eq(c.env.ForeverLedgerGuideState.autoQuest, nil, "on is the default")
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    H.eq(did(c), "accept " .. RUDE, "back on")
+    c.did = {}
+    c.npc.shift = true
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    H.eq(did(c), "", "Shift held")
+    c.npc.shift = false
+    c.slash("FOREVERLEDGER", "guide hide")
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    H.eq(did(c), "", "guide hidden")
+    local d = viewer(H, { state = { autoQuest = false } })
+    npcWindows(d)
+    questWindow(d, "QUEST_DETAIL", RUDE)
+    H.eq(did(d), "", "off after a reload")
+  end)
+
+  H.test("auto quest: acts a beat later, only if the same window is still open", function()
+    local c = viewer(H)
+    npcWindows(c)
+    c.world.timers = {}
+    c.env.C_Timer = { After = function(secs, fn) c.world.timers[#c.world.timers + 1] = { at = c.world.clock + secs,
+                                                                                         fn = fn } end }
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    H.eq(did(c), "", "not at once")
+    c.advance(0.2)
+    H.eq(did(c), "accept " .. RUDE)
+    c.did = {}
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    c.world.questFrame = nil -- closed before the beat
+    c.advance(0.2)
+    H.eq(did(c), "", "window gone")
+  end)
+
+  H.test("auto quest: the ledger still records the auto turn-in", function()
+    local c = viewer(H, { onQuest = { [RUDE] = true } })
+    npcWindows(c)
+    c.world.timers = {}
+    c.env.C_Timer = { After = function(secs, fn) c.world.timers[#c.world.timers + 1] = { at = c.world.clock + secs,
+                                                                                         fn = fn } end }
+    local db = c.env.ForeverLedgerDB
+    local turnIns = #db.turnIns
+    questWindow(c, "QUEST_COMPLETE", RUDE)
+    c.advance(0.2)
+    H.eq(table.concat(c.world.questRewardCalls, ","), "0", "the hooked GetQuestReward ran")
+    local seen = false
+    for key in pairs(db.quests[RUDE].obs) do
+      if key:find(":complete:", 1, true) then seen = true end
+    end
+    H.ok(seen, "the reward window was recorded")
+    c.world.questFrame = nil
+    c.q.onQuest[RUDE], c.q.done[RUDE] = nil, true
+    c.fire("QUEST_TURNED_IN", RUDE, 40, 0)
+    H.eq(#db.turnIns, turnIns + 1, "turn-in recorded")
+    H.eq(db.turnIns[#db.turnIns].questID, RUDE)
   end)
 end

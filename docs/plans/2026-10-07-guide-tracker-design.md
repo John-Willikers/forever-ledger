@@ -59,7 +59,18 @@ and mixin, and watch / super-track APIs over a fake watch list. Covers watch sav
 no calls in combat + one sync after, arrow math table (four directions × facings, yards, other map, no facing,
 arrival), fallbacks (no manager, `LayoutContents` error). Existing guide tests keep passing.
 
+## Auto quest
+
+Harlan's call (2026-10-08): accepting and turning in quests is quality of life (like Leatrix Plus / Zygor), not
+gameplay automation. `GuideAutoQuest.lua` acts only on the **current step's** quests, when the player opens the NPC's
+window: an accept step accepts its quests not yet in the log or done, a turn-in step turns its quests in (gossip and
+greeting windows select them, `QUEST_DETAIL` accepts, `QUEST_PROGRESS` completes, `QUEST_COMPLETE` with no choices
+calls `GetQuestReward(0)`). **A reward choice is always the player's**: one or more choices prints "pick your reward"
+once and waits. It acts 0.1 s later (the ledger's `QUEST_COMPLETE` capture runs first; its `GetQuestReward` hook still
+sees the turn-in) and only if the same window is still open. On while the guide is shown; Shift while the window opens
+skips it; `/fl guide auto off` keeps it off (`ForeverLedgerGuideState.autoQuest = false`).
+
 ## Release
 
 Addon 0.6.1 → **0.7.0**; `ForeverLedgerDB` shape unchanged (no schema bump), `ForeverLedgerGuideState` gains
-`savedWatches`, `arrowPoint`, `trackerBlocked` and `trackerOff`. In-game check by Harlan before `addon-cli publish 0.7.0`.
+`savedWatches`, `arrowPoint`, `trackerBlocked`, `trackerOff` and `autoQuest`. In-game check by Harlan before `addon-cli publish 0.7.0`.

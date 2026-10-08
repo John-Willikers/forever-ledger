@@ -40,6 +40,10 @@ read_globals = {
   "GetQuestItemLink", "GetQuestItemInfo", "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogSelection",
   "SelectQuestLogEntry", "GetNumQuestLogChoices", "GetQuestLogItemLink", "GetQuestLogRewardMoney",
   "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard", "GetQuestReward",
+  -- NPC quest windows (GuideAutoQuest.lua)
+  "C_GossipInfo", "GetNumAvailableQuests", "GetAvailableQuestInfo", "SelectAvailableQuest", "GetNumActiveQuests",
+  "GetActiveQuestID", "GetActiveTitle", "SelectActiveQuest", "QuestGetAutoAccept", "AcceptQuest",
+  "AcknowledgeAutoAcceptQuest", "IsQuestCompletable", "CompleteQuest",
   -- items / loot
   "GetItemInfo", "GetItemStats", "GetInventoryItemLink", "GetNumLootItems", "GetLootSlotLink", "GetLootSourceInfo", "GetLootSlotType",
   "GetLootSlotInfo", "GetMoney", "LOOT_SLOT_MONEY", "random",

@@ -7,7 +7,9 @@ Plan and live progress: `project-plans/forever-ledger-m0-m5.md`.
 
 - **Never execute Lua.** SavedVariables are parsed as an AST by `packages/lua-sv-parser`; anything that is not a
   table/literal is rejected.
-- The addon and uploader are **read-only observers**: no memory reading, no input automation, no gameplay automation.
+- The addon and uploader are **read-only observers** of game data: no memory reading, no input automation (movement,
+  combat, targeting), no botting. Quality-of-life UI is fine: the guide may accept and turn in the current step's quests
+  when the player opens the quest window (`/fl guide auto off` turns it off). **Reward choices are always the player's.**
 - `packages/contracts` is the single source of truth for record shapes. Uploader and server both validate with it.
 - Any change to the SavedVariables shape bumps `db.meta.schemaVersion` in the addon **and** `SCHEMA_VERSION` in
   contracts. The server rejects unknown schema majors.

@@ -2831,6 +2831,7 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     say("/fl nudge off|on  -  reminders to /reload after bosses, runs and turn-ins")
     say("/fl guide  -  the leveling guide sent to this character, in the quest tracker with an arrow (list, use N, "
       .. "next, back, pin, hide, tracker on|off)")
+    say("/fl guide auto off|on  -  the guide accepts and turns in its step's quests (never picks a reward)")
     say("/fl reset confirm  -  wipe everything")
     say("Type /reload after each dungeon so the data hits disk.")
   end

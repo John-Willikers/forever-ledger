@@ -4,7 +4,8 @@
 -- its spot (GuideArrow.lua); this file's own window is the fallback when the tracker can't be used. G.sync brings
 -- them in line with the step. It only reads the quest log and shows text; `/fl guide pin` still sets a map pin.
 -- Your place in each guide is kept per character in ForeverLedgerGuideState.
--- /fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off
+-- GuideAutoQuest.lua accepts and turns in the step's quests at the NPC (never picks a reward).
+-- /fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off | auto on|off
 
 local G = {}
 ForeverLedgerGuide = G
@@ -76,7 +77,7 @@ local function onQuest(id) return call(QuestLog.IsOnQuest, id) == true end
 local function readyToTurnIn(id)
   return call(QuestLog.ReadyForTurnIn, id) == true or (onQuest(id) and call(QuestLog.IsComplete, id) == true)
 end
-G.onQuest = onQuest
+G.onQuest, G.completed = onQuest, completed
 
 local function myLevel() return G.level or (UnitLevel and UnitLevel("player")) or 1 end
 
@@ -451,6 +452,19 @@ function G.slash(rest)
     end
     return say("/fl guide tracker on | off")
   end
+  if cmd == "auto" then
+    local s = state()
+    if arg == "off" then
+      s.autoQuest = false
+      return say("the guide no longer accepts or turns in quests. /fl guide auto on turns it back on.")
+    end
+    if arg == "on" then
+      s.autoQuest = nil
+      return say("the guide accepts and turns in the step's quests when you talk to the NPC (hold Shift to skip). "
+        .. "Reward choices are always yours.")
+    end
+    return say("auto quest is " .. (s.autoQuest == false and "off" or "on") .. ". /fl guide auto on | off")
+  end
   local mine = G.myGuides()
   if cmd == "list" then
     if #mine == 0 then return say("no guides for this character yet.") end
@@ -473,7 +487,7 @@ function G.slash(rest)
     G.advance(true)
     return G.show()
   end
-  say("/fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off")
+  say("/fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off | auto on|off")
 end
 
 ---------------------------------------------------------------- events

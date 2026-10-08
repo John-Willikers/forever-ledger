@@ -10,3 +10,4 @@ GuideViewer.lua
 GuideWatches.lua
 GuideArrow.lua
 GuideTracker.lua
+GuideAutoQuest.lua
