@@ -6,7 +6,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { GuidesResponse } from '@forever-ledger/contracts';
+import { GUIDE_FORMAT, GuidesResponse } from '@forever-ledger/contracts';
 import type { GuideDoc } from '@forever-ledger/contracts';
 import { addonsDirFor, hasAddonFolder } from './addonInstall.js';
 import type { FetchLike } from './client.js';
@@ -72,12 +72,12 @@ export function toLua(value: unknown, indent = ''): string {
   throw new GuidesSyncError(`can't write ${typeof value} as Lua data`);
 }
 
-/** The generated data file: one global table the viewer reads. */
+/** The generated data file: one global table the viewer reads (guide format GUIDE_FORMAT: travel steps). */
 export function guidesLua(guides: GuideDoc[], writtenAt: number): string {
   return [
     '-- Forever Ledger guides, written by the Forever Ledger tray app. Replaced each time a guide arrives:',
     "-- don't edit it. /reload in game to load new guides; /fl guide shows them.",
-    `ForeverLedgerGuidesData = ${toLua({ version: 1, written: writtenAt, guides })}`,
+    `ForeverLedgerGuidesData = ${toLua({ version: GUIDE_FORMAT, written: writtenAt, guides })}`,
     '',
   ].join('\n');
 }
@@ -180,7 +180,8 @@ export async function syncGuides(opts: GuidesSyncOptions): Promise<GuidesSyncRes
   const logger = opts.logger ?? silentLogger();
   const { config } = opts;
   if (!config.wowPath) throw new GuidesSyncError('wowPath is not set');
-  const parsed = GuidesResponse.safeParse(await call(opts, '/v1/guides'));
+  // Format 2: planned guides' travel steps too (without `format` the server leaves them out for old trays).
+  const parsed = GuidesResponse.safeParse(await call(opts, `/v1/guides?format=${GUIDE_FORMAT}`));
   if (!parsed.success) throw new GuidesSyncError('the server sent guides this tray cannot read');
   const guides = parsed.data.guides;
 
