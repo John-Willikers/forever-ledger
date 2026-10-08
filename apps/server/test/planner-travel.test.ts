@@ -1,0 +1,122 @@
+// Planner travel network (planner/travel.ts): walk, learned flights, boats / zeppelins and the hearthstone, Dijkstra on
+// seconds.
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { distance, toWorld } from '../src/planner/geo.js';
+import { route, type TravelData } from '../src/planner/travel.js';
+import { TRANSPORTS } from '../src/planner/transports.js';
+import type { CharacterState, MapSpot } from '../src/planner/types.js';
+
+type Ch = Pick<CharacterState, 'faction' | 'flightPaths' | 'hearth' | 'mounted'>;
+const horde = (over: Partial<Ch> = {}): Ch => ({
+  faction: 'Horde',
+  flightPaths: new Set(),
+  hearth: null,
+  mounted: false,
+  ...over,
+});
+
+// Kalimdor flight nodes on the continent map (map 1414 coords 0..1 in the probe → percent here).
+const ORG: MapSpot = { mapId: 1414, x: 58.1, y: 45.34 };
+const GADGETZAN: MapSpot = { mapId: 1414, x: 56.65, y: 80.91 };
+const DATA: TravelData = {
+  flightNodes: [
+    { id: 23, name: 'Orgrimmar', faction: 'Horde', spot: ORG },
+    { id: 40, name: 'Gadgetzan', faction: 'Horde', spot: GADGETZAN },
+  ],
+  transports: TRANSPORTS.filter((t) => t.name === 'Tirisfal Glades ↔ Durotar'),
+};
+const yards = (a: MapSpot, b: MapSpot) => distance(toWorld(a)!, toWorld(b)!);
+
+describe('planner travel', () => {
+  it('walks on one map when nothing faster exists', () => {
+    const a = { mapId: 1420, x: 61, y: 52 };
+    const b = { mapId: 1420, x: 40, y: 50 };
+    const r = route(a, b, horde(), DATA, 0)!;
+    expect(r.legs.map((l) => l.how)).toEqual(['walk']);
+    expect(r.seconds).toBeCloseTo(yards(a, b) / 7, 3);
+    // Mounted: twice as fast.
+    expect(route(a, b, horde({ mounted: true }), DATA, 0)!.seconds).toBeCloseTo(
+      yards(a, b) / 14,
+      3,
+    );
+  });
+
+  it('flies between two learned nodes far apart', () => {
+    const a = { mapId: 1411, x: 45, y: 10 }; // Orgrimmar gates, Durotar
+    const b = { mapId: 1446, x: 51, y: 28 }; // Gadgetzan, Tanaris
+    const r = route(a, b, horde({ flightPaths: new Set([23, 40]) }), DATA, 0)!;
+    expect(r.legs.map((l) => l.how)).toEqual(['walk', 'fly', 'walk']);
+    expect(r.seconds).toBeLessThan(yards(a, b) / 7);
+    expect(r.seconds).toBeCloseTo(
+      r.legs.reduce((s, l) => s + l.seconds, 0),
+      6,
+    );
+  });
+
+  it('never uses an unlearned node', () => {
+    const a = { mapId: 1411, x: 45, y: 10 };
+    const b = { mapId: 1446, x: 51, y: 28 };
+    const r = route(a, b, horde({ flightPaths: new Set([23]) }), DATA, 0)!;
+    expect(r.legs.map((l) => l.how)).toEqual(['walk']);
+  });
+
+  it('crosses continents by zeppelin, Horde only', () => {
+    const brill = { mapId: 1420, x: 61, y: 52 };
+    const razor = { mapId: 1411, x: 52, y: 44 }; // Razor Hill, Durotar
+    const r = route(brill, razor, horde(), DATA, 0)!;
+    expect(r.legs.map((l) => l.how)).toEqual(['walk', 'boat', 'walk']);
+    expect(r.legs[1]!.seconds).toBe(70 + 150);
+    expect(route(brill, razor, { ...horde(), faction: 'Alliance' }, DATA, 0)).toBeNull();
+  });
+
+  it('hearths only when the stone is ready by the clock', () => {
+    const a = { mapId: 1420, x: 40, y: 50 };
+    const target = { mapId: 1411, x: 52, y: 44 };
+    const bind = { mapId: 1411, x: 51.5, y: 41.5 };
+    const ready = route(a, target, horde({ hearth: { spot: bind, readyIn: 0 } }), DATA, 0)!;
+    expect(ready.legs.map((l) => l.how)).toEqual(['hearth', 'walk']);
+    expect(ready.legs[0]!.seconds).toBe(20);
+
+    const cooling = horde({ hearth: { spot: bind, readyIn: 1800 } });
+    expect(route(a, target, cooling, DATA, 0)!.legs.map((l) => l.how)).not.toContain('hearth');
+    expect(route(a, target, cooling, DATA, 1800)!.legs.map((l) => l.how)).toEqual([
+      'hearth',
+      'walk',
+    ]);
+  });
+
+  it('estimates the Orgrimmar → Splintertree Post flight within 40 % of the probe trip', () => {
+    // Probe 0.6.0 trip 1 (build 70245, 2026-10-08 04:53 CDT): 89.7 s from TakeTaxiNode to PLAYER_CONTROL_GAINED.
+    const fx = JSON.parse(
+      readFileSync(
+        new URL('../../../fixtures/real/probe-70245-travel.json', import.meta.url),
+        'utf8',
+      ),
+    ) as {
+      snapshot: {
+        taxi: Record<
+          string,
+          { forMap: { nodes: { nodeID: number; position: [number, number] }[] } }
+        >;
+      };
+    };
+    const at = (id: number): MapSpot => {
+      const n = fx.snapshot.taxi['1414']!.forMap.nodes.find((x) => x.nodeID === id)!;
+      return { mapId: 1414, x: 100 * n.position[0], y: 100 * n.position[1] };
+    };
+    const org = at(23);
+    const splinter = at(61);
+    const data: TravelData = {
+      flightNodes: [
+        { id: 23, name: 'Orgrimmar', faction: 'Horde', spot: org },
+        { id: 61, name: 'Splintertree Post', faction: 'Horde', spot: splinter },
+      ],
+      transports: [],
+    };
+    const r = route(org, splinter, horde({ flightPaths: new Set([23, 61]) }), data, 0)!;
+    expect(r.legs.map((l) => l.how)).toEqual(['fly']);
+    expect(r.seconds).toBeGreaterThan(89.7 * 0.6);
+    expect(r.seconds).toBeLessThan(89.7 * 1.4);
+  });
+});
