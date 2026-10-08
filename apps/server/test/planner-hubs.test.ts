@@ -4,7 +4,7 @@ import { distance, toWorld } from '../src/planner/geo.js';
 import { buildHubs } from '../src/planner/hubs.js';
 import type { Atlas, AtlasQuest, MapSpot } from '../src/planner/types.js';
 
-type Npc = { id: number; name: string; spots: MapSpot[] };
+type Npc = NonNullable<AtlasQuest['giver']>;
 const npc = (id: number, name: string, spot: MapSpot): Npc => ({ id, name, spots: [spot] });
 const quest = (id: number, giver: Npc | null, ender: Npc | null): AtlasQuest => ({
   id,
@@ -92,6 +92,42 @@ describe('planner hubs', () => {
     expect(hubs[0]!.enders).toEqual([]);
     expect(hubs[1]!.givers).toEqual([]);
     expect(hubs[1]!.enders).toEqual([10]);
+  });
+
+  it('keeps an object giver apart from an NPC with the same id', () => {
+    const poster: Npc = { kind: 'object', id: 1, name: 'Wanted Poster', spots: FARMER.spots };
+    const hubs = buildHubs(atlas([quest(10, SIMMER, SIMMER), quest(11, poster, SIMMER)]));
+    expect(hubs.map((h) => h.name)).toEqual(['near Deathguard Simmer', 'near Wanted Poster']);
+    expect(hubs[0]!.givers).toEqual([10]);
+    expect(hubs[0]!.enders).toEqual([10, 11]);
+    expect(hubs[1]!.givers).toEqual([11]);
+  });
+
+  it('keeps hub ids when an unrelated quest comes first', () => {
+    const before = buildHubs(atlas([quest(10, SIMMER, null), quest(11, FARMER, null)]));
+    const after = buildHubs(
+      atlas([quest(9, ORC, null), quest(10, SIMMER, null), quest(11, FARMER, null)]),
+    );
+    const idOf = (hs: typeof before, name: string) => hs.find((h) => h.name === name)!.id;
+    expect(idOf(after, 'near Far Farmer')).toBe(idOf(before, 'near Far Farmer'));
+    expect(idOf(after, 'near Deathguard Simmer')).toBe(idOf(before, 'near Deathguard Simmer'));
+    expect(new Set(after.map((h) => h.id)).size).toBe(3);
+    expect(after.every((h) => Number.isInteger(h.id))).toBe(true);
+  });
+
+  it('places the hub spot on the zone map that contains it, not the city map', () => {
+    // A guard inside the Orgrimmar gate (city map 1454) and a peon just outside it on Durotar (1411).
+    const guard = npc(8, 'Gate Guard', { mapId: 1454, x: 49, y: 94 });
+    const peon = npc(9, 'Peon', { mapId: 1411, x: 45.5, y: 13 });
+    expect(yards(guard.spots[0]!, peon.spots[0]!)).toBeLessThan(150);
+    const hubs = buildHubs(atlas([quest(10, guard, peon)]));
+    expect(hubs).toHaveLength(1);
+    const spot = hubs[0]!.spot;
+    expect(spot.mapId).toBe(1411);
+    expect(spot.x).toBeGreaterThan(0);
+    expect(spot.x).toBeLessThan(100);
+    expect(spot.y).toBeGreaterThan(0);
+    expect(spot.y).toBeLessThan(100);
   });
 
   it('skips NPCs with no spot or an unknown map', () => {

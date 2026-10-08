@@ -60,4 +60,14 @@ describe('planner stop order', () => {
     const stops = [stop('k2', 1, 1, 1), stop('b', 20, 0), stop('k1', 0, 0, 1), stop('a', 10, 0)];
     expect(names(orderStops(p(0, 0), stops, null))).toEqual(['a', 'b', 'k2', 'k1']);
   });
+
+  it('groups far stops by continent, in input order within each', () => {
+    const stops = [
+      stop('k1', 0, 0, 1),
+      stop('o1', 0, 0, 530),
+      stop('k2', 1, 1, 1),
+      stop('a', 1, 0),
+    ];
+    expect(names(orderStops(p(0, 0), stops, null))).toEqual(['a', 'k1', 'k2', 'o1']);
+  });
 });

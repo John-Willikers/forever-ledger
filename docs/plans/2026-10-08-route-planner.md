@@ -372,6 +372,9 @@ q.classes.length < 9`. Tests: one per rule, plus a class quest for the right cla
 chain (B needs A), a quest 4 levels up (not yet), a grey quest (skipped). Commit
 `feat(planner): which quests a character can take`.
 
+Class quests (`isClassQuest`) skip the grey and +3 rules but still need `reqLevel` (Harlan: class quests always). Order:
+`reqLevel` → class quest → grey → +3.
+
 ---
 
 ### Task 6: Hubs

@@ -90,6 +90,16 @@ describe('planner availability', () => {
     expect(canTake(quest({ level: 6, reqLevel: 1 }), ch(), 12)).toBe(true);
   });
 
+  it('takes class quests at any level from their required level (never grey, never too high)', () => {
+    // Harlan: class quests always.
+    const q = quest({ classes: ['WARLOCK'], level: 10, reqLevel: 10 });
+    expect(canTake(q, ch(), 20)).toBe(true);
+    expect(canTake(q, ch(), 9)).toBe(false);
+    expect(canTake(quest({ classes: ['WARLOCK'], level: 14, reqLevel: 10 }), ch(), 10)).toBe(true);
+    // A quest for all nine classes is no class quest: grey still applies.
+    expect(canTake(quest({ classes: ALL_CLASSES, level: 10, reqLevel: 10 }), ch(), 20)).toBe(false);
+  });
+
   it('tells class quests apart', () => {
     expect(isClassQuest(quest())).toBe(false);
     expect(isClassQuest(quest({ classes: ['WARLOCK'] }))).toBe(true);

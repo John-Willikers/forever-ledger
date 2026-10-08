@@ -22,6 +22,8 @@ export function canTake(q: AtlasQuest, ch: Taker, level: number): boolean {
   if (ch.completed.has(q.id) || ch.log.has(q.id)) return false;
   if (!q.prereqs.every((id) => ch.completed.has(id))) return false;
   if (level < q.reqLevel) return false;
+  // Harlan: class quests always (they pay in spells and gear): never too grey, never too high once allowed.
+  if (isClassQuest(q)) return true;
   if (isGrey(q.level, level)) return false;
   return q.level <= level + MAX_LEVELS_UP;
 }

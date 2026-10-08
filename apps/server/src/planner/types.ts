@@ -29,6 +29,14 @@ export interface AtlasObjective {
   secondsEach?: number;
 }
 
+export interface QuestPoint {
+  /** Absent = 'npc'. NPC, object and item ids are separate number spaces. */
+  kind?: 'npc' | 'object' | 'item';
+  id: number;
+  name: string;
+  spots: MapSpot[];
+}
+
 export interface AtlasQuest {
   id: number;
   title: string;
@@ -38,8 +46,9 @@ export interface AtlasQuest {
   /** null = any class / race. Class and race names as the client's English tokens ('WARLOCK', 'Scourge'). */
   classes: string[] | null;
   races: string[] | null;
-  giver: { id: number; name: string; spots: MapSpot[] } | null;
-  ender: { id: number; name: string; spots: MapSpot[] } | null;
+  /** Who starts / ends the quest: an NPC (default), a game object (a wanted poster) or an item that starts it. */
+  giver: QuestPoint | null;
+  ender: QuestPoint | null;
   /** Quests that must be turned in first (from the Wowhead series). */
   prereqs: number[];
   objectives: AtlasObjective[];

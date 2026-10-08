@@ -1,7 +1,7 @@
 // Planner stop order: the objective loop through a set of stops (mob camps, objects, NPCs). Nearest neighbour from the
 // start, then 2-opt until no segment reversal shortens the path. The path is open: it ends at `end` when one is given
-// (on the start's continent), else at its last stop. Stops on another continent keep their relative order at the end;
-// the travel network gets the character there. Pure.
+// (on the start's continent), else at its last stop. Stops on another continent go at the end, grouped by continent
+// (input order within each); the travel network gets the character there. Pure.
 import { distance } from './geo.js';
 import type { WorldPos } from './types.js';
 
@@ -27,8 +27,14 @@ export function nearestNeighbour<T extends { pos: WorldPos }>(start: WorldPos, s
   let at = start;
   while (left.length) {
     let best = 0;
-    for (let i = 1; i < left.length; i++)
-      if (distance(at, left[i]!.pos) < distance(at, left[best]!.pos)) best = i;
+    let bestD = distance(at, left[0]!.pos);
+    for (let i = 1; i < left.length; i++) {
+      const d = distance(at, left[i]!.pos);
+      if (d < bestD) {
+        best = i;
+        bestD = d;
+      }
+    }
     const [next] = left.splice(best, 1);
     out.push(next!);
     at = next!.pos;
@@ -67,7 +73,15 @@ export function orderStops<T extends { pos: WorldPos }>(
   end: WorldPos | null,
 ): T[] {
   const here = stops.filter((s) => s.pos.continent === start.continent);
-  const away = stops.filter((s) => s.pos.continent !== start.continent);
+  // Far stops grouped by continent (continents in order of first appearance), input order kept within each.
+  const far = new Map<number, T[]>();
+  for (const s of stops)
+    if (s.pos.continent !== start.continent) {
+      const g = far.get(s.pos.continent);
+      if (g) g.push(s);
+      else far.set(s.pos.continent, [s]);
+    }
+  const away = [...far.values()].flat();
   const finish = end && end.continent === start.continent && away.length === 0 ? end : null;
   return [...twoOpt(start, nearestNeighbour(start, here), finish), ...away];
 }
