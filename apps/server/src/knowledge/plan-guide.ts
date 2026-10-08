@@ -106,7 +106,7 @@ export function guideSteps(steps: PlanStep[], ctx: StepContext): GuideStep[] {
       // "Mottled Boar slain" → "Mottled Boar slain: 10", as run-based guides say it.
       const what = (o: string) => {
         const n = aq?.objectives.find((x) => x.text === o)?.count;
-        return n && n > 0 && !/:\s*\d+$/.test(o) ? `${o}: ${n}` : o;
+        return n && n > 0 && !/:\s*\d+$|^\d+ × /.test(o) ? `${o}: ${n}` : o;
       };
       return {
         questId: q.questId,

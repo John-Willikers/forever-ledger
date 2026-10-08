@@ -24,6 +24,16 @@ const atlas: Atlas = {
   quests: new Map([
     [840, quest(840, 10)],
     [841, quest(841, 0)],
+    [
+      842,
+      {
+        ...quest(842, 1),
+        objectives: [
+          { index: 0, kind: 'kill' as const, text: 'Mottled Boar slain', count: 10, spots: [] },
+          { index: 1, kind: 'object' as const, text: '6 × Wayward Weapon', count: 6, spots: [] },
+        ],
+      },
+    ],
   ]),
 };
 const crossroads = { mapId: 1414, x: 51.123456, y: 30.3 };
@@ -156,6 +166,25 @@ describe('guideSteps', () => {
     expect(steps[6]!.quests[0]!.objectives).toEqual(['Mottled Boar slain: 10']);
     expect(steps[7]).toMatchObject({ action: 'turn_in', levelAfter: 11 });
     expect(steps[6]).not.toHaveProperty('levelAfter');
+  });
+
+  it('objective texts get their count once', () => {
+    const [c] = guideSteps(
+      [
+        step({
+          action: 'complete',
+          quests: [
+            {
+              questId: 842,
+              title: 'Q',
+              objectives: ['Mottled Boar slain', '6 × Wayward Weapon'],
+            },
+          ],
+        }),
+      ],
+      { atlas, travel, bindName: null },
+    );
+    expect(c!.quests[0]!.objectives).toEqual(['Mottled Boar slain: 10', '6 × Wayward Weapon']);
   });
 
   it('a hearth without a known bind location names the zone', () => {
