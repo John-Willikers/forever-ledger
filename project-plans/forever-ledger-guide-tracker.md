@@ -65,4 +65,4 @@ the step's spot.
   rewards fail closed (only exactly 0 choices turns in), Shift skips the whole conversation — 02:32 CDT. Quality review fixes: a block on an auto-quest call stops auto
   quest for the session (not the tracker), once-per-conversation selects, delayed re-check (chain follow-ups),
   auto-accept acknowledge — 02:55 CDT. In-game check joins step 4's re-test.
-- 🟡 5 🚀 Addon 0.7.0 releasing (2026-10-08 07:51 CDT): PR #75 → tag (`addon-v0.7.0` → `addon-cli publish 0.7.0`)
+- ✅ 5 🚀 Addon 0.7.0 released 2026-10-08 07:59 CDT: PR #75 merged, tag (`addon-v0.7.0` → `addon-cli publish 0.7.0`)
