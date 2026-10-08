@@ -18,10 +18,10 @@ Plan and live progress: [`project-plans/forever-ledger-m0-m5.md`](project-plans/
 
 Copy both folders from `addon/` into the Forever client's `Interface/AddOns/` folder:
 
-| Addon                | What it does                                                                                                                       | Commands                                                                                                                        |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, loot and drop rates, dungeon runs and professions. | `/fl` status · `/fl scanlog` · `/fl done` · `/fl nudge off` / `on` · `/fl reset confirm`                                        |
-| `ForeverLedgerProbe` | Development only: dumps what the client supports (same API docs as `/api`, globals, events) and can sniff event payloads.          | `/flprobe` dump · `/flprobe names` · `/flprobe fish on`/`off` · `/flprobe sniff on`/`off` · `/flprobe io …` · `/flprobe status` |
+| Addon                | What it does                                                                                                                       | Commands                                                                                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, loot and drop rates, dungeon runs and professions. | `/fl` status · `/fl scanlog` · `/fl done` · `/fl nudge off` / `on` · `/fl reset confirm`                                                                                        |
+| `ForeverLedgerProbe` | Development only: dumps what the client supports (same API docs as `/api`, globals, events) and can sniff event payloads.          | `/flprobe` dump · `/flprobe names` · `/flprobe tracker [watch]` · `/flprobe arrow` · `/flprobe fish on`/`off` · `/flprobe sniff on`/`off` · `/flprobe io …` · `/flprobe status` |
 
 Data reaches disk only on `/reload`, logout or a clean exit, so `/reload` after each dungeon. Upgrading from
 v0.1.0 migrates your existing data the first time you log in.

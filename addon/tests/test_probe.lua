@@ -116,7 +116,7 @@ return function(H)
     H.eq(pdb.loadCheck.arrivedEmpty, true)
     H.eq(pdb.loadCheck.arrivedKeys, 0)
     H.eq(pdb.loadCheck.arrivedType, "nil")
-    H.eq(pdb.loadCheck.probeVersion, "0.4.0")
+    H.eq(pdb.loadCheck.probeVersion, "0.5.0")
     H.eq(#pdb.loadHistory, 1)
   end)
 
@@ -396,7 +396,7 @@ return function(H)
 
   H.test("probe specs: the catalog lists every class's specs with role and primary stat", function()
     H.ok(specs, "specs for build 61582")
-    H.eq(specs.probeVersion, "0.4.0")
+    H.eq(specs.probeVersion, "0.5.0")
     H.eq(specs.at, sc.world.clock)
     local warrior = specs.catalog[1]
     H.eq(warrior.info.values[2], "WARRIOR")
@@ -603,6 +603,123 @@ return function(H)
     c.slash("FOREVERLEDGERPROBE", "fish off")
     c.fire("UNIT_SPELLCAST_SENT", "player", "", "Cast-3", 7620)
     H.eq(#c.env.ForeverLedgerProbeDB.fish[61582], 1, "off stops recording")
+  end)
+
+  ---------------------------------------------------------------- /flprobe tracker, tracker watch, arrow
+  -- A retail-style client: a quest tracker frame with modules, quest watches and super-tracking.
+  local function trackerClient(overrides)
+    local c = freshProbe(overrides or { professionAPI = true })
+    local q = { watched = { [101] = 0 }, order = { 101 }, super = 101, calls = {} }
+    local function rebuild()
+      q.order = {}
+      for id in pairs(q.watched) do q.order[#q.order + 1] = id end
+      table.sort(q.order)
+    end
+    c.env.Enum.QuestWatchType = { Automatic = 0, Manual = 1 }
+    c.env.C_QuestLog = {
+      GetNumQuestLogEntries = function() return 3 end,
+      GetInfo = function(i)
+        return ({ { title = "Tirisfal Glades", isHeader = true },
+                  { title = "The Mindless Ones", questID = 101, isOnMap = true },
+                  { title = "Rattling the Rattlecages", questID = 102 } })[i]
+      end,
+      GetQuestWatchType = function(id) return q.watched[id] end,
+      GetNumQuestWatches = function() return #q.order end,
+      GetQuestIDForQuestWatchIndex = function(i) return q.order[i] end,
+      AddQuestWatch = function(id) q.calls[#q.calls + 1] = "add " .. id; q.watched[id] = 1; rebuild() end,
+      RemoveQuestWatch = function(id) q.calls[#q.calls + 1] = "remove " .. id; q.watched[id] = nil; rebuild() end,
+      GetNextWaypoint = function(id) if id == 101 then return 2049, 0.31, 0.62 end end,
+    }
+    c.env.C_SuperTrack = { GetSuperTrackedQuestID = function() return q.super end,
+                           SetSuperTrackedQuestID = function(id) q.super = id end }
+    c.env.C_Map.GetWorldPosFromMapPos = function() return 0, { x = 1840.5, y = 1520.25 } end
+    c.env.GetPlayerFacing = function() return c.world.facing or 1.5708 end
+    c.env.ObjectiveTrackerFrame = { GetObjectType = function() return "Frame" end, IsShown = function() return true end,
+      modules = { { GetName = function() return "QuestObjectiveTracker" end, headerText = "Quests", uiOrder = 3 } },
+      AddModule = function() end }
+    c.env.ObjectiveTrackerModuleMixin = { AddBlock = function() end, LayoutContents = function() end }
+    return c, q
+  end
+
+  H.test("probe tracker: records the tracker frame, its modules, templates, watches and waypoints", function()
+    local c = trackerClient({ professionAPI = true, rejectTemplates = { ObjectiveTrackerHeaderTemplate = true } })
+    c.slash("FOREVERLEDGERPROBE", "tracker")
+    local t = c.env.ForeverLedgerProbeDB.tracker[61582]
+    H.ok(t, "tracker for the build")
+    H.eq(t.globals.ObjectiveTrackerFrame, "table")
+    H.eq(t.globals.ObjectiveTrackerModuleMixin, "table")
+    local tf = t.objects.ObjectiveTrackerFrame
+    H.eq(tf.objectType.values[1], "Frame")
+    H.eq(tf.modules[1].name, "QuestObjectiveTracker")
+    H.eq(tf.modules[1].header, "Quests")
+    H.eq(t.objects.ObjectiveTrackerModuleMixin.methods[1], "AddBlock")
+    H.eq(t.objects.QuestWatchFrame, nil, "a missing frame is nil")
+    H.eq(t.templates.ObjectiveTrackerModuleTemplate.ok, true)
+    H.eq(t.templates.ObjectiveTrackerHeaderTemplate.ok, false, "a missing template is an error, not a throw")
+    H.eq(t.apis["C_QuestLog.AddQuestWatch"], "function")
+    H.eq(t.apis["C_Navigation.GetDistance"], "nil")
+    H.eq(t.watchTypes.Manual, 1)
+    H.eq(#t.quests, 2, "headers are skipped")
+    H.eq(t.quests[1].watchType.values[1], 0)
+    H.eq(t.quests[1].waypoint.values[2], 0.31)
+    H.eq(t.watches.ids[1], 101)
+    H.eq(t.superTrackedQuest.values[1], 101)
+    H.eq(t.nav.facing, 1.5708)
+    H.eq(t.nav.mapID, 1429)
+    H.eq(t.nav.world.values[2].x, 1840.5)
+    H.ok(printedHas(c, "tracker Frame"), "summary line")
+  end)
+
+  H.test("probe tracker: a client with none of it records gaps and doesn't throw", function()
+    local c = freshProbe({})
+    c.slash("FOREVERLEDGERPROBE", "tracker")
+    local t = c.env.ForeverLedgerProbeDB.tracker[61582]
+    H.eq(t.objects.ObjectiveTrackerFrame, nil)
+    H.eq(t.apis.GetPlayerFacing, "nil")
+    H.eq(t.nav.facing.missing, true)
+    H.eq(#t.quests, 0)
+    c.slash("FOREVERLEDGERPROBE", "tracker watch")
+    H.ok(printedHas(c, "no quests in your log"), "watch test needs a quest")
+    c.slash("FOREVERLEDGERPROBE", "arrow")
+    H.ok(printedHas(c, "C_Timer.After is missing"), "arrow needs timers")
+  end)
+
+  H.test("probe tracker watch: watches and super-tracks an unwatched quest, then puts both back", function()
+    local c, q = trackerClient()
+    c.slash("FOREVERLEDGERPROBE", "tracker watch")
+    local w = c.env.ForeverLedgerProbeDB.tracker.watchTest[61582]
+    H.eq(w.questID, 102, "the first unwatched quest")
+    local byName = {}
+    for _, s in ipairs(w.steps) do byName[s.name] = s end
+    H.eq(byName.AddQuestWatch.watchType.values[1], 1)
+    H.eq(byName.AddQuestWatch.watches.values[1], 2)
+    H.eq(byName.SetSuperTrackedQuestID.superTracked.values[1], 102)
+    H.eq(table.concat(q.calls, ","), "add 102,remove 102")
+    H.eq(q.watched[102], nil, "unwatched again")
+    H.eq(q.watched[101], 0, "the other watch untouched")
+    H.eq(q.super, 101, "super-tracking restored")
+    H.ok(printedHas(c, "restored"), "says it put things back")
+  end)
+
+  H.test("probe tracker watch: refuses in combat", function()
+    local c, q = trackerClient({ professionAPI = true, inCombat = true })
+    c.slash("FOREVERLEDGERPROBE", "tracker watch")
+    H.eq(#q.calls, 0)
+    H.ok(printedHas(c, "out of combat only"), "says why")
+  end)
+
+  H.test("probe arrow: samples facing and position once a second, 20 times", function()
+    local c = trackerClient()
+    c.slash("FOREVERLEDGERPROBE", "arrow")
+    for i = 1, 25 do
+      c.world.facing = i / 10
+      c.advance(1)
+    end
+    local a = c.env.ForeverLedgerProbeDB.tracker.arrow[61582]
+    H.eq(#a, 20)
+    H.eq(a[2].facing, 0.1)
+    H.eq(a[20].facing, 1.9)
+    H.ok(printedHas(c, "arrow: 20 sample(s)"), "summary when done")
   end)
 
   H.writeFile(FIXTURES .. "probe-dump.lua", H.serialize("ForeverLedgerProbeDB", db))
