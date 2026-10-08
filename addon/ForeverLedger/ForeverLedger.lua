@@ -2652,7 +2652,9 @@ do
     cs.curve(level, xpMax)
   end
 
-  function cs.completed()
+  -- An empty answer (quest data not loaded yet, e.g. right after login) never replaces a recorded list: the old one is
+  -- kept and the read is tried once more 5 s later (`retry` is that second read, which doesn't try again).
+  function cs.completed(retry)
     if not QuestLog.GetAllCompletedQuestIDs then return end
     local ok, ids = pcall(QuestLog.GetAllCompletedQuestIDs)
     if not ok or type(ids) ~= "table" then return end
@@ -2664,6 +2666,12 @@ do
     table.sort(list)
     for i = #list, COMPLETED_CAP + 1, -1 do list[i] = nil end
     local s = cs.rec()
+    if #list == 0 and type(s.completed) == "table" and #s.completed > 0 then
+      if not retry and C_Timer then
+        C_Timer.After(5, function() safely("charState", cs.completed, true) end)
+      end
+      return
+    end
     s.completed, s.completedAt = list, now()
     cs.completedReadAt = now()
   end

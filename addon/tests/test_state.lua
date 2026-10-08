@@ -100,6 +100,30 @@ return function(H)
     H.eq(c.world.calls.GetAllCompletedQuestIDs, 3)
   end)
 
+  H.test("state: an empty completed list never replaces a recorded one; it is read again 5 s later", function()
+    local c = login(H)
+    local saved = c.env.ForeverLedgerDB
+    local t = travel()
+    t.completed = {} -- quest data not loaded yet right after login
+    local again = P.session(H, { api = "forever", travelAPI = true, travel = t, questLog = questLog(), zone = BRILL },
+                            H.copy(saved))
+    H.eq(table.concat(stateOf(again).completed, ","), "364,790,805,4641", "the old list is kept")
+    H.eq(again.world.calls.GetAllCompletedQuestIDs, 1)
+    again.world.travel.completed = { 790, 4641, 364, 805, 9000 }
+    again.advance(4)
+    H.eq(again.world.calls.GetAllCompletedQuestIDs, 1, "not before 5 s")
+    again.advance(1)
+    H.eq(again.world.calls.GetAllCompletedQuestIDs, 2, "one retry")
+    H.eq(table.concat(stateOf(again).completed, ","), "364,790,805,4641,9000")
+    -- empty again (the read and its one retry): kept, and the retry doesn't try again
+    again.world.travel.completed = {}
+    again.fire("PLAYER_LOGOUT")
+    H.eq(#stateOf(again).completed, 5)
+    for _ = 1, 15 do again.advance(2) end
+    H.eq(again.world.calls.GetAllCompletedQuestIDs, 4, "one retry, no more")
+    H.eq(#stateOf(again).completed, 5)
+  end)
+
   H.test("state: logout records position, quest log, hearth cooldown and mount", function()
     local c = login(H)
     c.world.zone = UNDERCITY
