@@ -1,5 +1,6 @@
 // The route planner's shared vocabulary: an atlas of quests, one character's state, and the plan it gets. Pure data,
 // no database rows: the planner (src/planner) never does I/O.
+import type { Leg } from './travel.js';
 
 /** A point in the world: continent instance (0 Eastern Kingdoms, 1 Kalimdor, …) and world yards (x north, y west). */
 export interface WorldPos {
@@ -36,6 +37,9 @@ export interface QuestPoint {
   name: string;
   spots: MapSpot[];
 }
+
+/** A giver / ender's key: NPC, object and item ids are separate number spaces. */
+export const pointKey = (p: QuestPoint): string => `${p.kind ?? 'npc'}:${p.id}`;
 
 export interface AtlasQuest {
   id: number;
@@ -81,8 +85,8 @@ export type PlanAction = 'travel' | 'accept' | 'complete' | 'turn_in';
 
 export interface PlanStep {
   action: PlanAction;
-  /** travel: how ('walk' | 'fly' | 'boat' | 'hearth' | 'learn_flight' | 'set_hearth'). */
-  how?: string;
+  /** travel: how the leg goes. */
+  how?: Leg['how'];
   npc: string | null;
   zone: string | null;
   spot: MapSpot | null;

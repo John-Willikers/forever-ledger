@@ -135,4 +135,13 @@ describe('planner hubs', () => {
     const nowhere: Npc = { id: 7, name: 'Nowhere', spots: [] };
     expect(buildHubs(atlas([quest(10, lost, nowhere), quest(11, null, null)]))).toEqual([]);
   });
+
+  it("adds a quest to an NPC's point only when its own copy of the NPC has a spot", () => {
+    // Quest 21's copy of Simmer has no spots: the planner could not walk to it for that quest.
+    const bare: Npc = { id: 1, name: 'Deathguard Simmer', spots: [] };
+    const hubs = buildHubs(atlas([quest(20, SIMMER, SIMMER), quest(21, bare, SIMMER)]));
+    expect(hubs).toHaveLength(1);
+    expect(hubs[0]!.givers).toEqual([20]);
+    expect(hubs[0]!.enders).toEqual([20, 21]);
+  });
 });

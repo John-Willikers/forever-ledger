@@ -52,13 +52,16 @@ export interface Stop {
   spot: MapSpot;
   parts: Part[];
 }
+interface Trip {
+  seconds: number;
+  hearth: boolean;
+}
 interface Placed {
   spot: MapSpot;
   pos: WorldPos;
 }
 
 export const byId = (a: { id: number }, b: { id: number }) => a.id - b.id;
-export const pointKey = (p: QuestPoint) => `${p.kind ?? 'npc'}:${p.id}`;
 export const zoneOf = (s: MapSpot) => mapInfo(s.mapId)?.name ?? null;
 const spotKey = (s: MapSpot) => `${s.mapId}:${s.x.toFixed(2)}:${s.y.toFixed(2)}`;
 
@@ -93,7 +96,11 @@ export class Sim {
   readonly stuck = new Set<number>();
 
   private readonly placed = new Map<string, Placed | null>();
-  private readonly routes = new Map<string, number | null>();
+  private readonly routes = new Map<string, Trip | null>();
+  /** For the grouped gap lines: quests done near the giver for want of spots, quests the plan took, hubs to bind at. */
+  readonly noSpots = new Set<number>();
+  readonly taken = new Set<number>();
+  readonly hearthHubs = new Set<Hub>();
   private readonly reach = new Map<number, boolean>();
 
   constructor(
@@ -110,9 +117,13 @@ export class Sim {
     this.xp = ch.xp;
     this.completed = new Set(ch.completed);
     this.hearth = ch.hearth ? { spot: ch.hearth.spot, readyAt: ch.hearth.readyAt } : null;
+    if (!toWorld(ch.position))
+      this.gap(`start position is on an unknown map (${ch.position.mapId})`);
     for (const [id, counts] of [...ch.log].sort((a, b) => a[0] - b[0])) {
-      if (atlas.quests.has(id)) this.log.set(id, [...counts]);
-      else this.gap(`quest ${id} in the log is not in the atlas: left out`);
+      if (atlas.quests.has(id)) {
+        this.log.set(id, [...counts]);
+        this.taken.add(id);
+      } else this.gap(`quest ${id} in the log is not in the atlas: left out`);
     }
 
     this.hubs = buildHubs(atlas).sort(byId);
@@ -191,7 +202,7 @@ export class Sim {
       }
     }
     if (!best) {
-      this.gap(`no objective spots for ${q.title}: done near the giver`);
+      this.noSpots.add(q.id);
       const spot = (q.giver ?? q.ender)?.spots[0];
       const pos = spot ? toWorld(spot) : null;
       best = spot && pos ? { spot, pos } : null;
@@ -212,8 +223,18 @@ export class Sim {
   finished(q: AtlasQuest): boolean {
     return this.log.has(q.id) && this.open(q).length === 0;
   }
+  /** Seconds per unit: measured, else the default — doubled when the objective has no known spot (a guess). */
+  unitSeconds(o: AtlasObjective): number {
+    if (o.secondsEach !== undefined) return o.secondsEach;
+    const known = o.spots.some((s) => toWorld(s) !== null);
+    return DEFAULT_SECONDS[o.kind] * (known ? 1 : 2);
+  }
   objSeconds(q: AtlasQuest, o: AtlasObjective): number {
-    return this.left(q, o) * (o.secondsEach ?? DEFAULT_SECONDS[o.kind]);
+    return this.left(q, o) * this.unitSeconds(o);
+  }
+  /** No objectives, or an objective without a known spot: the plan's estimate for it is a guess. */
+  dataPoor(q: AtlasQuest): boolean {
+    return !q.objectives.length || q.objectives.some((o) => !o.spots.some((s) => toWorld(s)));
   }
   killXp(q: AtlasQuest, o: AtlasObjective): number {
     return o.kind === 'kill' && !isGrey(q.level, this.level) ? this.left(q, o) * mobXp(q.level) : 0;
@@ -298,17 +319,29 @@ export class Sim {
     return stops;
   }
 
-  /** Route seconds for scoring, cached per (from, to, hearth readiness bucket of 5 min). */
+  /** Route seconds for scoring; null when unreachable. */
   travelSeconds(from: MapSpot, to: MapSpot): number | null {
+    return this.trip(from, to)?.seconds ?? null;
+  }
+
+  /**
+   * A route for scoring (its seconds and whether it burns the hearthstone), cached per (from, to, hearth bucket).
+   * The bucket is the hearth's wait rounded up to 5 minutes: a route's time depends on that wait only through the
+   * hearth leg, so within one bucket the cached time is off by under 5 min, and only when the hearth is the way.
+   * Steps themselves always use a fresh route (plan-emit.ts).
+   */
+  trip(from: MapSpot, to: MapSpot): Trip | null {
     const h = this.hearth;
     const wait = h ? Math.max(0, h.readyAt - this.clock) : -1;
     const bucket = wait < 0 ? 'n' : wait === 0 ? 'r' : `w${Math.ceil(wait / 300)}`;
     const key = `${spotKey(from)}>${spotKey(to)}|${bucket}`;
-    if (!this.routes.has(key))
+    if (!this.routes.has(key)) {
+      const r = route(from, to, this.traveller(), this.travel, this.clock);
       this.routes.set(
         key,
-        route(from, to, this.traveller(), this.travel, this.clock)?.seconds ?? null,
+        r ? { seconds: r.seconds, hearth: r.legs.some((l) => l.how === 'hearth') } : null,
       );
+    }
     return this.routes.get(key)!;
   }
 }

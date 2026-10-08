@@ -3,7 +3,7 @@
 // each connected group is a hub at the centroid of its NPCs. Givers and enders are NPCs, objects or items: each kind has
 // its own id space, so a point is keyed by kind and id. Pure.
 import { distance, fromWorld, mapInfo, toWorld } from './geo.js';
-import type { Atlas, MapSpot, QuestPoint, WorldPos } from './types.js';
+import { pointKey, type Atlas, type MapSpot, type QuestPoint, type WorldPos } from './types.js';
 
 export interface Hub {
   /** Stable: a hash of the hub's smallest member key, so unrelated quests never renumber it. */
@@ -37,13 +37,13 @@ export function buildHubs(atlas: Atlas): Hub[] {
   // One point per NPC, in the order the atlas first names it.
   const points = new Map<string, Point>();
   const add = (who: QuestPoint | null, questId: number, role: 'givers' | 'enders') => {
-    if (!who) return;
-    const key = `${who.kind ?? 'npc'}:${who.id}`;
+    // Each quest's own copy of the NPC must have a spot on a known map: the planner walks to that spot for the quest.
+    const spot = who?.spots[0];
+    const pos = spot ? toWorld(spot) : null;
+    if (!who || !spot || !pos) return;
+    const key = pointKey(who);
     let p = points.get(key);
     if (!p) {
-      const spot = who.spots[0];
-      const pos = spot ? toWorld(spot) : null;
-      if (!spot || !pos) return;
       p = { key, name: who.name, spot, pos, givers: new Set(), enders: new Set() };
       points.set(key, p);
     }

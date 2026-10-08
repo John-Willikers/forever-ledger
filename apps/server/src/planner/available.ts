@@ -15,16 +15,16 @@ export const MAX_LEVELS_UP = 3;
 export const isClassQuest = (q: AtlasQuest): boolean => q.classes !== null && q.classes.length < 9;
 
 /**
- * Whether `ch` can take `q` at `level` (the planner's projected level, not necessarily `ch.level`). With the atlas, a
- * prerequisite that is the other faction's quest (a faction-split series step) is not needed.
+ * Whether `ch` can take `q` at `level` (the planner's projected level, not necessarily `ch.level`). A
+ * prerequisite the atlas knows as the other faction's quest (a faction-split series step) is not needed.
  */
-export function canTake(q: AtlasQuest, ch: Taker, level: number, atlas?: Atlas): boolean {
+export function canTake(q: AtlasQuest, ch: Taker, level: number, atlas: Atlas): boolean {
   if (q.side !== 'both' && q.side !== ch.faction) return false;
   if (q.classes !== null && !q.classes.includes(ch.className)) return false;
   if (q.races !== null && !q.races.includes(ch.race)) return false;
   if (ch.completed.has(q.id) || ch.log.has(q.id)) return false;
   const otherSide = (id: number) => {
-    const side = atlas?.quests.get(id)?.side;
+    const side = atlas.quests.get(id)?.side;
     return side !== undefined && side !== 'both' && side !== ch.faction;
   };
   if (!q.prereqs.every((id) => ch.completed.has(id) || otherSide(id))) return false;

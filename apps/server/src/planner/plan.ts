@@ -31,6 +31,41 @@ export interface PlanResult {
   xp: number;
 }
 
+/** Up to five examples, then how many more. */
+function examples(names: string[]): string {
+  const more = names.length - 5;
+  return names.slice(0, 5).join(', ') + (more > 0 ? `, +${more} more` : '');
+}
+const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const titles = (sim: Sim, ids: Iterable<number>) =>
+  [...ids].sort((a, b) => a - b).map((id) => sim.quest(id).title);
+
+/** One grouped line per kind of shortcoming, then each quest still in the log. */
+function closingGaps(sim: Sim): void {
+  const spotless = titles(sim, sim.noSpots);
+  if (spotless.length)
+    sim.gap(
+      `no objective spots for ${count(spotless.length, 'quest')}, done near the giver: ${examples(spotless)}`,
+    );
+  const poor = titles(
+    sim,
+    [...sim.taken].filter((id) => sim.dataPoor(sim.quest(id))),
+  );
+  if (poor.length)
+    sim.gap(
+      `estimates are optimistic for ${count(poor.length, 'quest')} with missing objective data: ${examples(poor)}`,
+    );
+  const binds = [...sim.hearthHubs].map((h) => h.name);
+  if (binds.length)
+    sim.gap(
+      `set hearth: no innkeeper in the atlas yet; the plan comes back to ${count(binds.length, 'hub')}: ${examples(binds)}`,
+    );
+  for (const id of [...sim.noTrip].sort((a, b) => a - b))
+    if (!sim.completed.has(id) && !sim.log.has(id))
+      sim.gap(`skipped ${sim.quest(id).title}: not worth the trip`);
+  for (const q of sim.logQuests()) sim.gap(`left in the log: ${q.title} (not turned in)`);
+}
+
 /** Work `hub` until it has nothing left: turn in, accept, loop, repeat (follow-ups). True when anything happened. */
 function visit(sim: Sim, hub: Hub): boolean {
   let progress = false;
@@ -73,8 +108,10 @@ export function plan(
     return result();
   }
 
+  const cap = sim.maxSteps * 4 + 10;
   try {
-    for (let decision = 0; decision < sim.maxSteps * 4 + 10; decision++) {
+    let decision = 0;
+    for (; decision < cap; decision++) {
       reviewGated(sim);
       const options = sim.hubs
         .filter((h) => !sim.stuck.has(h.id))
@@ -93,13 +130,12 @@ export function plan(
       }
       leave(sim, best.hub);
     }
-    sim.gap(`no more quests to plan at level ${sim.level} (target ${sim.toLevel})`);
+    if (decision >= cap) sim.gap(`plan stopped after ${cap} hub choices (decision cap)`);
+    else sim.gap(`no more quests to plan at level ${sim.level} (target ${sim.toLevel})`);
   } catch (e) {
     if (e !== HALT) throw e;
     if (sim.level < sim.toLevel) sim.gap(`plan cut at maxSteps (${sim.maxSteps} steps)`);
   }
-  for (const id of [...sim.noTrip].sort((a, b) => a - b))
-    if (!sim.completed.has(id) && !sim.log.has(id))
-      sim.gap(`skipped ${sim.quest(id).title}: not worth the trip`);
+  closingGaps(sim);
   return result();
 }

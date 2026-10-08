@@ -2,10 +2,17 @@
 // simulation (clock, position, XP, log) and writes its step; `push` throws HALT when the plan is full or the level is
 // reached, which plan.ts catches.
 import { distance, mapInfo, toWorld } from './geo.js';
-import { byId, FOLD_WALK, pointKey, zoneOf, type Sim } from './plan-sim.js';
+import { byId, FOLD_WALK, zoneOf, type Sim } from './plan-sim.js';
 import { orderStops } from './tour.js';
 import { HEARTH_COOLDOWN, HEARTH_SECONDS, route, type Leg } from './travel.js';
-import type { AtlasQuest, MapSpot, PlanStep, QuestPoint, WorldPos } from './types.js';
+import {
+  pointKey,
+  type AtlasQuest,
+  type MapSpot,
+  type PlanStep,
+  type QuestPoint,
+  type WorldPos,
+} from './types.js';
 import { questXp } from './xp.js';
 
 export const HALT = Symbol('halt');
@@ -60,20 +67,33 @@ export function goTo(sim: Sim, spot: MapSpot): boolean {
 const classNote = (sim: Sim, qs: AtlasQuest[]) =>
   qs.some((q) => sim.isMine(q)) ? { note: 'class quest' } : {};
 
-/** Visit the NPCs of `who(q)` nearest first, one call of `act` per NPC. */
+/**
+ * Visit the NPCs of `who(q)` nearest first, one call of `act` per NPC (with its spot). A quest whose NPC is unknown or
+ * has no spot on a known map goes to `missing` instead.
+ */
 function atNpcs(
   sim: Sim,
   qs: AtlasQuest[],
-  who: (q: AtlasQuest) => QuestPoint,
-  act: (group: AtlasQuest[], npc: QuestPoint) => void,
+  who: (q: AtlasQuest) => QuestPoint | null,
+  act: (group: AtlasQuest[], npc: QuestPoint, spot: MapSpot) => void,
+  missing: (q: AtlasQuest) => void,
 ): void {
-  const groups = new Map<string, { npc: QuestPoint; pos: WorldPos; qs: AtlasQuest[] }>();
+  const groups = new Map<
+    string,
+    { npc: QuestPoint; spot: MapSpot; pos: WorldPos; qs: AtlasQuest[] }
+  >();
   for (const q of [...qs].sort(byId)) {
     const npc = who(q);
+    const spot = npc?.spots[0];
+    const pos = spot ? toWorld(spot) : null;
+    if (!npc || !spot || !pos) {
+      missing(q);
+      continue;
+    }
     const key = pointKey(npc);
     const g = groups.get(key);
     if (g) g.qs.push(q);
-    else groups.set(key, { npc, pos: toWorld(npc.spots[0]!)!, qs: [q] });
+    else groups.set(key, { npc, spot, pos, qs: [q] });
   }
   const left = [...groups.values()];
   while (left.length) {
@@ -82,7 +102,7 @@ function atNpcs(
     for (let i = 1; i < left.length; i++)
       if (distance(at, left[i]!.pos) < distance(at, left[best]!.pos)) best = i;
     const [g] = left.splice(best, 1);
-    act(g!.qs, g!.npc);
+    act(g!.qs, g!.npc, g!.spot);
   }
 }
 
@@ -90,23 +110,26 @@ export function accept(sim: Sim, qs: AtlasQuest[]): void {
   atNpcs(
     sim,
     qs,
-    (q) => q.giver!,
-    (group, npc) => {
-      if (!goTo(sim, npc.spots[0]!)) return;
-      for (const q of group)
+    (q) => q.giver,
+    (group, npc, spot) => {
+      if (!goTo(sim, spot)) return;
+      for (const q of group) {
         sim.log.set(
           q.id,
           q.objectives.map(() => 0),
         );
+        sim.taken.add(q.id);
+      }
       push(sim, {
         action: 'accept',
         npc: npc.name,
-        zone: zoneOf(npc.spots[0]!),
-        spot: npc.spots[0]!,
+        zone: zoneOf(spot),
+        spot,
         quests: group.map((q) => ({ questId: q.id, title: q.title })),
         ...classNote(sim, group),
       });
     },
+    (q) => sim.abandon(q, 'the giver'),
   );
 }
 
@@ -114,9 +137,9 @@ export function turnIn(sim: Sim, qs: AtlasQuest[]): void {
   atNpcs(
     sim,
     qs,
-    (q) => sim.enderOf(q)!,
-    (group, npc) => {
-      if (!goTo(sim, npc.spots[0]!)) {
+    (q) => sim.enderOf(q),
+    (group, npc, spot) => {
+      if (!goTo(sim, spot)) {
         for (const q of group) sim.abandon(q, 'the turn-in');
         return;
       }
@@ -128,12 +151,13 @@ export function turnIn(sim: Sim, qs: AtlasQuest[]): void {
       push(sim, {
         action: 'turn_in',
         npc: npc.name,
-        zone: zoneOf(npc.spots[0]!),
-        spot: npc.spots[0]!,
+        zone: zoneOf(spot),
+        spot,
         quests: group.map((q) => ({ questId: q.id, title: q.title })),
         ...classNote(sim, group),
       });
     },
+    (q) => sim.abandon(q, 'the turn-in'),
   );
 }
 

@@ -346,6 +346,8 @@ describe('planner loop', () => {
       });
       expect(r.steps).toHaveLength(4);
       expect(r.gaps.some((g) => g.includes('maxSteps'))).toBe(true);
+      // Cut after accepting 81: it is still in the log.
+      expect(r.gaps).toContain('left in the log: Quest 81 (not turned in)');
     });
 
     it('plans nothing from an empty atlas, with a gap line', () => {
@@ -366,7 +368,92 @@ describe('planner loop', () => {
       { toLevel: 30 },
     );
     expect(brief(r.steps)).toEqual(['accept:90', 'complete:90', 'turn_in:90']);
-    expect(r.gaps).toContain('no objective spots for Quest 90: done near the giver');
+    expect(r.gaps).toContain('no objective spots for 1 quest, done near the giver: Quest 90');
+    expect(r.gaps).toContain(
+      'estimates are optimistic for 1 quest with missing objective data: Quest 90',
+    );
+  });
+
+  it('groups data-poor quests into one gap line each', () => {
+    const A = npc(1, 'Gruk', BASE);
+    const qs = [91, 92, 93].map((id) =>
+      quest(id, { giver: A, ender: A, objectives: id === 93 ? [] : [kill([], 3)] }),
+    );
+    const r = plan(atlas(qs), character(), NO_TRAVEL, { toLevel: 30 });
+    expect(r.gaps).toContain(
+      'no objective spots for 2 quests, done near the giver: Quest 91, Quest 92',
+    );
+    expect(r.gaps).toContain(
+      'estimates are optimistic for 3 quests with missing objective data: Quest 91, Quest 92, Quest 93',
+    );
+  });
+
+  it('does not crash on a quest whose own giver copy has no spots', () => {
+    const S = BASE;
+    const r = plan(
+      atlas([
+        quest(3, { giver: npc(7, 'Bob', S), ender: npc(7, 'Bob', S) }),
+        quest(2, { giver: { id: 7, name: 'Bob', spots: [] }, ender: npc(7, 'Bob', S) }),
+      ]),
+      character(),
+      NO_TRAVEL,
+      { toLevel: 10 },
+    );
+    expect(brief(r.steps)).toEqual(['accept:3', 'turn_in:3']);
+  });
+
+  it('does not crash on a log quest whose ender has no spots and no giver', () => {
+    const r = plan(
+      atlas([
+        quest(1, { giver: npc(7, 'Bob', BASE), ender: npc(7, 'Bob', BASE) }),
+        quest(2, { giver: null, ender: { id: 7, name: 'Bob', spots: [] } }),
+      ]),
+      character({ log: new Map([[2, []]]) }),
+      NO_TRAVEL,
+      { toLevel: 10 },
+    );
+    expect(brief(r.steps)).toEqual(['accept:1', 'turn_in:1']);
+    expect(r.gaps).toContain('left in the log: Quest 2 (not turned in)');
+  });
+
+  it('keeps the hearth and stays on the continent for a slightly better hub across the water', () => {
+    const BRILL: MapSpot = { mapId: 1420, x: 61, y: 52 };
+    const FAR: MapSpot = { mapId: 1411, x: 52, y: 40 };
+    const qs = [
+      quest(150, {
+        level: 1,
+        giver: npc(1, 'Home', BRILL),
+        ender: npc(1, 'Home', BRILL),
+        objectives: [kill([offset(BRILL, 50)], 1)],
+      }),
+      quest(151, {
+        level: 1,
+        xp: 500,
+        giver: npc(2, 'Away', FAR),
+        ender: npc(2, 'Away', FAR),
+        objectives: [kill([offset(FAR, 50)], 1)],
+      }),
+    ];
+    const travel: TravelData = {
+      flightNodes: [],
+      transports: TRANSPORTS.filter((t) => t.name === 'Tirisfal Glades ↔ Durotar'),
+    };
+    const ch = character({
+      level: 1,
+      race: 'Scourge',
+      position: BRILL,
+      hearth: { spot: FAR, readyAt: 0 },
+    });
+    const r = plan(atlas(qs), ch, travel, { toLevel: 30 });
+    expect(work(r.steps)[0]!.quests[0]!.questId).toBe(150);
+    expect(indexOf(r.steps, 'turn_in', 150)).toBeLessThan(indexOf(r.steps, 'accept', 151));
+  });
+
+  it('says so when the start position is on an unknown map', () => {
+    const r = plan(atlas([]), character({ position: { mapId: 999999, x: 50, y: 50 } }), NO_TRAVEL, {
+      toLevel: 30,
+    });
+    expect(r.gaps).toContain('start position is on an unknown map (999999)');
   });
 
   it('keeps objective progress already in the log', () => {
@@ -442,7 +529,7 @@ describe('planner loop', () => {
     ];
     const r = plan(atlas(qs), character({ level: 2 }), NO_TRAVEL, { toLevel: 30 });
     expect(r.gaps).toContain(
-      'set hearth near Gruk: no innkeeper in the atlas yet (the plan comes back)',
+      'set hearth: no innkeeper in the atlas yet; the plan comes back to 1 hub: near Gruk',
     );
   });
 

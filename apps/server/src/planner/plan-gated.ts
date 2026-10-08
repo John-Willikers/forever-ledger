@@ -22,7 +22,7 @@ export function leave(sim: Sim, hub: Hub): void {
   const back =
     [...sim.gated.values()].includes(hub) ||
     sim.logQuests().some((q) => sim.enderHub.get(q.id) === hub);
-  if (back) sim.gap(`set hearth ${hub.name}: no innkeeper in the atlas yet (the plan comes back)`);
+  if (back) sim.hearthHubs.add(hub);
 }
 
 /** Level-gated pickups now takeable elsewhere: those whose trip doesn't pay the run's XP per minute get no trip. */

@@ -6,6 +6,11 @@ import { DEFAULT_SECONDS, type Sim } from './plan-sim.js';
 import { orderStops, pathLength } from './tour.js';
 import { isGrey, mobXp, questXp } from './xp.js';
 
+/** Virtual seconds added to a hub's score when getting there burns the hearthstone. */
+export const HEARTH_PENALTY = 900;
+/** Virtual seconds added when the hub is on another continent. */
+export const CONTINENT_PENALTY = 300;
+
 export interface Estimate {
   hub: Hub;
   seconds: number;
@@ -19,8 +24,13 @@ export function estimate(sim: Sim, hub: Hub): Estimate | null {
   const take = sim.takeable(hub, true);
   const endsHere = sim.logQuests().filter((q) => sim.enderHub.get(q.id) === hub);
   if (!take.length && !endsHere.length) return null;
-  const trip = sim.travelSeconds(sim.pos, hub.spot);
-  if (trip === null) return null;
+  const route = sim.trip(sim.pos, hub.spot);
+  if (route === null) return null;
+  // Opportunity costs: a hearth spent now is not there for a long trip later, and a continent change is a commitment.
+  const trip =
+    route.seconds +
+    (route.hearth ? HEARTH_PENALTY : 0) +
+    (sim.here().continent !== hub.pos.continent ? CONTINENT_PENALTY : 0);
   const fresh = new Set(take.map((q) => q.id));
   const loop = sim.loopQuests(hub, take);
   const stops = sim.stopsOf(loop, fresh);
@@ -32,7 +42,7 @@ export function estimate(sim: Sim, hub: Hub): Estimate | null {
   for (const q of doable)
     for (const o of fresh.has(q.id) ? q.objectives : sim.open(q)) {
       const n = fresh.has(q.id) ? sim.need(o) : sim.left(q, o);
-      seconds += n * (o.secondsEach ?? DEFAULT_SECONDS[o.kind]);
+      seconds += n * sim.unitSeconds(o);
       if (o.kind === 'kill' && !isGrey(q.level, sim.level)) xp += n * mobXp(q.level);
     }
   // Quests this visit finishes: the loop's, fresh ones with nothing to do, finished ones ending here. Those ending at
@@ -42,6 +52,8 @@ export function estimate(sim: Sim, hub: Hub): Estimate | null {
     ...take.filter((q) => !q.objectives.length),
     ...endsHere.filter((q) => sim.finished(q) && sim.reachable(q)),
   ]);
+  // Quests without objectives: some time all the same (a guess, doubled like spotless objectives).
+  seconds += take.filter((q) => !q.objectives.length).length * 2 * DEFAULT_SECONDS.other;
   const onward = new Map<Hub, number | null>();
   for (const q of done) {
     const end = sim.enderHub.get(q.id);

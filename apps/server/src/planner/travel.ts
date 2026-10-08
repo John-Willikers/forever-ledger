@@ -59,7 +59,8 @@ export const DOCK_RADIUS = 150;
 /**
  * Fastest way from one spot to another, starting at planner clock `now`. The hearthstone is used from the start
  * spot, waiting for `hearth.readyAt` if it is not ready yet (a 'hearth' leg noted 'wait N s'). After a route with a
- * 'hearth' leg the caller sets `hearth.readyAt = clock + HEARTH_COOLDOWN`. Null when unreachable.
+ * 'hearth' leg the caller restarts the cooldown from the cast: `hearth.readyAt = clock at the end of the leg -
+ * HEARTH_SECONDS + HEARTH_COOLDOWN`. Null when unreachable.
  */
 export function route(
   from: MapSpot,
