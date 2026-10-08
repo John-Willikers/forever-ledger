@@ -32,7 +32,7 @@ read_globals = {
   "UnitExists", "GetRealmName", "IsInRaid", "UnitFullName", "UnitPVPName", "GetUnitName", "GetPlayerInfoByGUID", "C_PlayerInfo",
   "PlayerLocation", "IsSwimming", "GetWeaponEnchantInfo", "ERR_FISH_ESCAPED", "ERR_FISH_NOT_HOOKED", "UnitAffectingCombat", "IsInGroup", "GetNumGroupMembers", "GetLootMethod",
   -- zone / instance
-  "GetRealZoneText", "GetSubZoneText", "IsInInstance", "GetInstanceInfo",
+  "GetRealZoneText", "GetSubZoneText", "IsInInstance", "GetInstanceInfo", "GetPlayerFacing",
   -- quests
   "GetQuestID", "GetTitleText", "GetRewardXP", "GetRewardMoney", "GetNumQuestChoices", "GetNumQuestRewards",
   "GetQuestItemLink", "GetQuestItemInfo", "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogSelection",

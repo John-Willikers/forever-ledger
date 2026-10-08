@@ -425,4 +425,46 @@ return function(H)
     c.slash("FOREVERLEDGER", "guide hide")
     H.eq(c.q.super, 0)
   end)
+
+  local function near(a, b) return type(a) == "number" and math.abs(a - b) < 1e-6 end
+
+  H.test("guide arrow: points at the spot from the map position and facing, counter-clockwise from north", function()
+    local A = viewer(H).env.ForeverLedgerGuide.arrow
+    local me = { mapId = 1420, x = 0.5, y = 0.5, width = 1000, height = 1000, facing = 0 }
+    local function at(x, y) return { mapId = 1420, x = x, y = y } end
+    local north = A.compute(at(50, 40), me)
+    H.eq(north.state, "point")
+    H.ok(near(north.rotation, 0), "north: straight up, got " .. tostring(north.rotation))
+    H.ok(near(north.yards, 100), "100 yd")
+    H.ok(near(A.compute(at(40, 50), me).rotation, math.pi / 2), "west: left")
+    H.ok(near(A.compute(at(50, 60), me).rotation, math.pi), "south: down")
+    H.ok(near(A.compute(at(60, 50), me).rotation, 3 * math.pi / 2), "east: right")
+    me.facing = math.pi / 2 -- facing west, north is on your right
+    H.ok(near(A.compute(at(50, 40), me).rotation, 3 * math.pi / 2), "turns with you")
+    H.eq(A.compute(at(50.5, 50), me).state, "arrived", "5 yd away")
+    H.eq(A.compute({ mapId = 1421, x = 50, y = 40 }, me).state, "elsewhere")
+    me.facing = nil
+    H.eq(A.compute(at(50, 40), me).state, "none", "no facing (an instance)")
+    H.eq(A.compute({ mapId = 1420 }, me).state, "none", "a step with no spot")
+  end)
+
+  H.test("guide arrow: shows yards to the step, 'Go to' on another map, and hides with the guide", function()
+    local c = viewer(H)
+    local map, facing = 1420, 0
+    c.env.C_Map.GetBestMapForUnit = function() return map end
+    c.env.C_Map.GetPlayerMapPosition = function() return { GetXY = function() return 0.302, 0.75 end } end
+    c.env.C_Map.GetMapWorldSize = function() return 4518.75, 3012.5 end
+    c.env.GetPlayerFacing = function() return facing end
+    local f = c.env.ForeverLedgerGuideArrow
+    H.ok(f and f.shown, "arrow shown for step 1 (Undertaker Mordo, 30.2 71.6)")
+    f.scripts.OnUpdate(f, 0.1)
+    H.eq(f.dist.text, "102 yd") -- (0.716 - 0.75) * 3012.5 = 102.4 yd north
+    H.eq(f.label.text, "Undertaker Mordo")
+    H.ok(near(c.env.ForeverLedgerGuide.arrow.last.rotation, 0), "north")
+    map = 1421
+    f.scripts.OnUpdate(f, 0.1)
+    H.eq(f.dist.text, "Go to Tirisfal Glades")
+    c.slash("FOREVERLEDGER", "guide hide")
+    H.eq(f.shown, false)
+  end)
 end
