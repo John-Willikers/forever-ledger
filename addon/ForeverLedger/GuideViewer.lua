@@ -266,28 +266,39 @@ function G.stepQuests(step)
   return ids
 end
 
+local function trackerActive() return G.tracker ~= nil and G.tracker.active ~= nil and G.tracker.active() == true end
+
+-- The fallback window: shown and drawn while the tracker section isn't, hidden while it is.
+local function showWindow()
+  if trackerActive() then
+    if G.win then G.win:Hide() end
+    return
+  end
+  if G.shown then G.frame():Show() end
+  G.render()
+end
+
 -- Brings the arrow, the fallback window, the watch list and the tracker section in line with the step. The arrow and
--- the window are our own frames and follow at once; watches and the tracker only change out of combat (taint guard):
--- in combat that part is owed and PLAYER_REGEN_ENABLED runs it. `rewatch` re-applies the watch list even when the step
--- didn't change (after an accept, which the game auto-watches).
+-- the window are our own frames and follow at once; the tracker (attach and refresh) and the watches only change out
+-- of combat (taint guard): in combat that part is owed and PLAYER_REGEN_ENABLED runs it. `rewatch` re-applies the
+-- watch list even when the step didn't change (after an accept, which the game auto-watches).
 function G.sync(rewatch)
   local g = G.shown and G.current() or nil
   local i = g and G.stepIndex()
   local step = g and g.steps[i] or nil
   if G.arrow then G.arrow.setTarget(step) end
-  local T = G.tracker
-  if not (T and T.active()) then
-    if G.shown then G.frame():Show() end
-    G.render()
-  end
   if inCombat() then
     G.owed = true
+    G.owedRewatch = G.owedRewatch or rewatch
+    if not trackerActive() then showWindow() end
     return
   end
-  G.owed = false
+  local T = G.tracker
+  if G.shown and T and T.attach then T.attach() end
   local W = G.watches
   if W then
-    if g then
+    -- No step (no guide, or the guide is finished): the player's own watches come back.
+    if step then
       W.take()
       local ids = G.stepQuests(step)
       W.apply(ids, g.id .. ":" .. i .. ":" .. table.concat(ids, ","), rewatch)
@@ -295,7 +306,9 @@ function G.sync(rewatch)
       W.restore()
     end
   end
-  if T then T.refresh() end
+  if T and T.refresh then T.refresh() end
+  G.owed, G.owedRewatch = false, nil
+  showWindow()
 end
 
 ---------------------------------------------------------------- window
@@ -403,7 +416,6 @@ function G.show()
   G.shown = true
   state().hidden = nil
   G.advance(false)
-  if G.tracker then G.tracker.attach() end
   G.sync()
 end
 
@@ -449,6 +461,13 @@ end
 
 ---------------------------------------------------------------- events
 local events = CreateFrame("Frame")
+-- Runs fn protected: an error prints a line instead of breaking the caller (events and timers).
+local function safe(fn)
+  return function(...)
+    local ok, err = pcall(fn, ...)
+    if not ok then print("|cff33ff99Forever Ledger:|r guide viewer error: " .. tostring(err)) end
+  end
+end
 local lastRead, pending = -math.huge, false
 local function refresh(force, rewatch)
   G.advance(force)
@@ -467,7 +486,8 @@ function handlers.PLAYER_LOGIN()
 end
 function handlers.QUEST_ACCEPTED()
   refresh(true, true)
-  if C_Timer then C_Timer.After(0.5, function() G.sync(true) end) end
+  -- Again a moment later: this sync undoes the game's auto-watch of the accepted quest if it lands after ours.
+  if C_Timer then C_Timer.After(0.5, safe(function() G.sync(true) end)) end
 end
 function handlers.PLAYER_LEVEL_UP(level)
   -- UnitLevel can still say the old level while this event runs.
@@ -481,7 +501,7 @@ function handlers.QUEST_TURNED_IN(questID)
 end
 function handlers.QUEST_REMOVED() refresh(false) end
 function handlers.PLAYER_REGEN_ENABLED()
-  if G.owed then G.sync() end
+  if G.owed then G.sync(G.owedRewatch) end
 end
 function handlers.QUEST_LOG_UPDATE()
   if #G.myGuides() == 0 then return end
@@ -491,11 +511,8 @@ function handlers.QUEST_LOG_UPDATE()
     refresh(false)
   elseif not pending and C_Timer then
     pending = true
-    C_Timer.After(READ_GAP, function() pending = false; refresh(false) end)
+    C_Timer.After(READ_GAP, safe(function() pending = false; refresh(false) end))
   end
 end
 for event in pairs(handlers) do pcall(events.RegisterEvent, events, event) end
-events:SetScript("OnEvent", function(_, event, ...)
-  local ok, err = pcall(handlers[event], ...)
-  if not ok then print("|cff33ff99Forever Ledger:|r guide viewer error: " .. tostring(err)) end
-end)
+events:SetScript("OnEvent", function(_, event, ...) safe(handlers[event])(...) end)
