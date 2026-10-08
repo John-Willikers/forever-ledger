@@ -14,6 +14,7 @@ import {
   crafts,
   fishingCasts,
   characterGear,
+  questObjectiveProgress,
   drops,
   items,
   itemSnapshots,
@@ -208,6 +209,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       'containerLoot',
       'fishingCasts',
       'gear',
+      'objectiveProgress',
       'trainers',
       'vendors',
       'apiSamples',
@@ -500,6 +502,26 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       })),
       [characterGear.char, characterGear.build],
       { setWhere: sql`excluded.seen_at >= ${characterGear.seenAt}` },
+    );
+
+    // Schema 9: where quest objectives went up; one row per increment.
+    await upsert(
+      tx,
+      questObjectiveProgress,
+      w.objectiveProgress.map(({ time, index, ...p }) => ({
+        ...p,
+        idx: index,
+        at: fromEpoch(time)!,
+        uploaderId: batch.uploaderId,
+        account: batch.account,
+      })),
+      [
+        questObjectiveProgress.char,
+        questObjectiveProgress.questId,
+        questObjectiveProgress.idx,
+        questObjectiveProgress.have,
+        questObjectiveProgress.at,
+      ],
     );
 
     // Trainer and vendor lists: a newer scan wins, an older SavedVariables session uploaded late changes nothing. A

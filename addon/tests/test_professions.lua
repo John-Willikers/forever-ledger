@@ -37,6 +37,8 @@ local ADDON_0_3_4 = "legacy/ForeverLedger-0.3.4.lua" -- last schema 6 release, w
 local ADDON_0_4_0 = "legacy/ForeverLedger-0.4.0.lua" -- last schema 7 release, writes session-v7
 local FIXTURE_V7 = "../../fixtures/synthetic/session-v7.lua"
 local FIXTURE_V8 = "../../fixtures/synthetic/session-v8.lua"
+local ADDON_0_5_0 = "legacy/ForeverLedger-0.5.0.lua" -- last schema 8 release, writes session-v8
+local FIXTURE_V9 = "../../fixtures/synthetic/session-v9.lua"
 
 -- The schema 4 fixture: the shared play session (quests, loot, a dungeon run), then a profession session that
 -- touches every appendix table: skills and a skill-up, a trainer (a recipe learned there), a vendor, the profession
@@ -47,11 +49,12 @@ local FIXTURE_V8 = "../../fixtures/synthetic/session-v8.lua"
 -- `v7` (the schema 7 fixture) gives the character a Forever surname and fishes three casts at 0.4.0's cast log:
 -- a lured catch, one that got away and one that timed out. `v8` (the schema 8 fixture) dresses the character
 -- (boots, a vest, an axe) and takes the boots off at the end, so gear holds what is worn last.
-local function profSession(H, addon, v5, v6, v7, v8)
+local function profSession(H, addon, v5, v6, v7, v8, v9)
   local c = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true, skillLines = P.gatherLines(),
                     bags = { [0] = { [1] = 2598, [2] = 5523 } },
                     itemGUIDs = v6 and { [P.BOTTLE_GUID] = 6307 } or nil,
-                    equipped = v8 and { [8] = 5555, [5] = 2568, [16] = 872 } or nil })
+                    equipped = v8 and { [8] = 5555, [5] = 2568, [16] = 872 } or nil,
+                    api = v9 and "forever" or nil })
   if v7 then c.world.player.guid = "Player-4618-00A9A08A" end -- one GUID for the whole session, as in the client
   c.load(addon)
   S.play(c, "ForeverLedger")
@@ -170,6 +173,18 @@ local function profSession(H, addon, v5, v6, v7, v8)
     c.world.equipped[8] = nil
     c.fire("PLAYER_EQUIPMENT_CHANGED", 8, true)
     c.advance(3)
+  end
+  if v9 then
+    -- A quest objective goes up twice (schema 9 records where).
+    table.insert(c.world.questLog, { title = "The Mindless Ones", level = 2, questID = 364,
+                                     objectives = { "0/8 Mindless Zombie slain" } })
+    c.fire("QUEST_ACCEPTED", 364)
+    for n = 1, 2 do
+      c.world.questLog[#c.world.questLog].objectives[1] = n .. "/8 Mindless Zombie slain"
+      c.fire("QUEST_WATCH_UPDATE", 364)
+      c.fire("QUEST_LOG_UPDATE")
+      c.advance(20)
+    end
   end
   return c.env.ForeverLedgerDB
 end
@@ -1851,8 +1866,8 @@ return function(H)
     H.eq(casts[3].char, "Thibodeaux Willikers-Bayou")
   end)
 
-  H.test("professions: session-v8 fixture adds what the character wears", function()
-    local d = profSession(H, ADDON, true, true, true, true)
+  H.test("professions: session-v8 fixture (0.5.0) adds what the character wears", function()
+    local d = profSession(H, ADDON_0_5_0, true, true, true, true)
     H.writeFile(FIXTURE_V8, H.serialize("ForeverLedgerDB", d))
     H.eq(d.meta.schemaVersion, 8)
     H.eq(d.meta.addonVersion, "0.5.0")
@@ -1866,5 +1881,17 @@ return function(H)
     H.ok(g.slots[16].link:find("item:872", 1, true), "the link is kept")
     H.eq(g.slots[16].stats.ITEM_MOD_STRENGTH_SHORT, 7)
     H.ok(d.items[872].byBuild[B], "worn items are scanned like any item")
+  end)
+
+  H.test("professions: session-v9 fixture adds where quest objectives went up", function()
+    local d = profSession(H, ADDON, true, true, true, true, true)
+    H.writeFile(FIXTURE_V9, H.serialize("ForeverLedgerDB", d))
+    H.eq(d.meta.schemaVersion, 9)
+    H.eq(d.meta.addonVersion, "0.6.0")
+    H.ok(d.gear["Thibodeaux Willikers-Bayou"], "schema 8 data as before")
+    H.eq(#d.objectiveProgress, 2)
+    H.eq(d.objectiveProgress[2].questID, 364)
+    H.eq(d.objectiveProgress[2].have, 2)
+    H.eq(d.objectiveProgress[2].char, "Thibodeaux Willikers-Bayou")
   end)
 end

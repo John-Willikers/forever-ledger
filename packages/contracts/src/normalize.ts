@@ -15,6 +15,7 @@ import {
   ItemBuildSnapshot,
   Meta,
   NodeLoot,
+  ObjectiveProgress,
   Quest,
   QuestObservation,
   Recipe,
@@ -178,6 +179,7 @@ export function normalize(db: unknown): Normalized {
     containerLoot: [],
     fishingCasts: [],
     gear: [],
+    objectiveProgress: [],
     trainers: [],
     vendors: [],
     apiSamples: [],
@@ -455,6 +457,20 @@ export function normalize(db: unknown): Normalized {
     });
     add('gear', CharacterGear, `gear.${char}`, { char, build: g.build, at: g.at, slots });
   }
+
+  // Schema 9: where quest objectives went up (SV spells `questID` / `mapID`); an off-map spot drops that field only.
+  list(db.objectiveProgress).forEach((p, i) => {
+    if (!isObj(p)) return;
+    const { questID, mapID, x, y, ...rest } = p;
+    const coord = (v: unknown) => (typeof v === 'number' && v >= 0 && v <= 100 ? v : undefined);
+    add('objectiveProgress', ObjectiveProgress, `objectiveProgress.${i + 1}`, {
+      ...rest,
+      questId: questID,
+      mapId: mapID,
+      x: coord(x),
+      y: coord(y),
+    });
+  });
 
   for (const [b, byNpc] of entries(db.trainers)) {
     for (const [npc, t] of entries(byNpc)) {
