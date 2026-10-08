@@ -66,8 +66,18 @@ export interface StepContext {
   bindName: string | null;
 }
 
-/** Where a travel step lands, as a name: the flight master, the transport's end, the inn's town, else the zone. */
-function destination(s: PlanStep, ctx: StepContext): string | null {
+/**
+ * Arrows the game font may not draw become ASCII: "→" (and its kin) "->", "↔" "to". Accented letters stay (the font has
+ * them).
+ */
+export const asciiArrows = (t: string | null): string | null =>
+  t === null ? null : t.replace(/\s*[↔⇔⟷]\s*/g, ' to ').replace(/[→⇒➔⟶]/g, '->');
+
+/**
+ * Where a travel step lands, as a name: the flight master, the transport's end, the inn's town, the NPC the next step
+ * is at (a walk), else the zone.
+ */
+function destination(s: PlanStep, next: PlanStep | undefined, ctx: StepContext): string | null {
   const zone = s.zone ?? (s.spot ? (mapInfo(s.spot.mapId)?.name ?? null) : null);
   if (s.how === 'fly' && s.spot) {
     const node = ctx.travel.flightNodes.find((n) => sameSpot(n.spot, s.spot!));
@@ -82,20 +92,41 @@ function destination(s: PlanStep, ctx: StepContext): string | null {
     if (t && b && sameSpot(t.b, s.spot)) return b;
   }
   if (s.how === 'hearth' && ctx.bindName) return ctx.bindName;
+  if (
+    next &&
+    next.action !== 'travel' &&
+    next.npc &&
+    next.spot &&
+    s.spot &&
+    sameSpot(next.spot, s.spot)
+  )
+    return next.npc;
   return zone;
+}
+
+/** A transport step's note: "<kind>: <route>", e.g. "zeppelin: Tirisfal Glades to Durotar". */
+function transportNote(s: PlanStep, ctx: StepContext): string | undefined {
+  const t = s.how === 'boat' ? ctx.travel.transports.find((x) => x.name === s.note) : undefined;
+  return t ? `${t.kind}: ${t.name}` : s.note;
 }
 
 /** The planner's steps as guide steps (format 2). Everything shown in the game goes through `clip`. */
 export function guideSteps(steps: PlanStep[], ctx: StepContext): GuideStep[] {
   const out: GuideStep[] = [];
-  for (const s of steps) {
-    const zone = clip(s.zone ?? (s.spot ? (mapInfo(s.spot.mapId)?.name ?? null) : null), 120);
-    const note = clip(s.note, 120);
+  for (const [i, s] of steps.entries()) {
+    const zone = clip(
+      asciiArrows(s.zone ?? (s.spot ? (mapInfo(s.spot.mapId)?.name ?? null) : null)),
+      120,
+    );
+    const note = clip(asciiArrows(transportNote(s, ctx) ?? null), 120);
     const base = {
       action: s.action,
       ...(s.action === 'travel' && s.how ? { how: s.how } : {}),
       ...(note ? { note } : {}),
-      npc: clip(s.action === 'travel' ? destination(s, ctx) : s.npc, 120),
+      npc: clip(
+        asciiArrows(s.action === 'travel' ? destination(s, steps[i + 1], ctx) : s.npc),
+        120,
+      ),
       zone,
       subzone: null,
       ...pin(s.spot),
@@ -193,7 +224,11 @@ export const plannedTitle = (g: Pick<PlannedGuide, 'startZone' | 'fromLevel' | '
 export async function levelingAnswer(db: Db, q: LevelingQuery) {
   const route = await levelingRoute(db, q);
   if (!q.forCharacter || q.character) return route;
-  const [me] = await findCharacters(db, q.forCharacter);
+  // An exact name or key match first (as createGuide), else the best loose match.
+  const found = await findCharacters(db, q.forCharacter);
+  const ref = q.forCharacter.trim().toLowerCase();
+  const exact = found.filter((c) => c.name.toLowerCase() === ref || c.key.toLowerCase() === ref);
+  const me = exact.length === 1 ? exact[0] : found[0];
   const p = me ? await planGuide(db, me.key, q.toLevel) : null;
   if (!me || !p) return route;
   const quests = p.steps.filter((s) => s.action !== 'travel');

@@ -102,7 +102,8 @@ describe('planned guides (real Postgres)', () => {
     expect(doc.steps[0]).toMatchObject({
       action: 'travel',
       how: 'walk',
-      npc: 'Elwynn Forest',
+      // Walks name where they end: the quest giver there.
+      npc: 'Marshal cffTest',
       zone: 'Elwynn Forest',
       mapId: 1429,
       x: 80,
@@ -207,5 +208,16 @@ describe('planned guides (real Postgres)', () => {
     expect(
       await levelingAnswer(s.database.db, { forCharacter: NAME, character: 'Rot', toLevel: 12 }),
     ).not.toHaveProperty('planned');
+  });
+
+  it('leveling_route plans for an exact name or key match first', async () => {
+    // A newer character whose name merely contains the asker's key sorts first in a loose search.
+    await q(`insert into characters (key, name, realm, last_seen)
+             values ('Thibodeaux Willikers-Bayou Jr-Other', 'Thibodeaux Willikers-Bayou Jr', 'Other', now())`);
+    const a = await levelingAnswer(s.database.db, {
+      forCharacter: 'Thibodeaux Willikers-Bayou',
+      toLevel: 12,
+    });
+    expect('planned' in a && a.planned).toMatchObject({ character: NAME });
   });
 });

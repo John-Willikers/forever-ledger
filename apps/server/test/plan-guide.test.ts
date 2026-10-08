@@ -144,7 +144,7 @@ describe('guideSteps', () => {
     expect(steps[1]).toEqual({
       action: 'travel',
       how: 'fly',
-      note: 'Orgrimmar, Durotar → Crossroads, The Barrens',
+      note: 'Orgrimmar, Durotar -> Crossroads, The Barrens',
       npc: 'Crossroads, The Barrens',
       zone: 'Kalimdor',
       subzone: null,
@@ -156,8 +156,10 @@ describe('guideSteps', () => {
   });
 
   it('a boat names the end it lands at; the hearth the bind location; a walk the zone', () => {
-    expect(steps[2]).toMatchObject({ how: 'boat', npc: 'Tirisfal Glades', note: zep.name });
-    expect(steps[3]).toMatchObject({ how: 'boat', npc: 'Durotar', note: zep.name });
+    // "<kind>: <route>": the addon says "Take the zeppelin to Durotar".
+    const note = 'zeppelin: Tirisfal Glades to Durotar';
+    expect(steps[2]).toMatchObject({ how: 'boat', npc: 'Tirisfal Glades', note });
+    expect(steps[3]).toMatchObject({ how: 'boat', npc: 'Durotar', note });
     expect(steps[4]).toMatchObject({ how: 'hearth', npc: 'Razor Hill', note: 'Hearthstone' });
     expect(steps[5]).toMatchObject({ how: 'walk', npc: 'Durotar', note: 'Ghost Wolf' });
   });
@@ -185,6 +187,42 @@ describe('guideSteps', () => {
       { atlas, travel, bindName: null },
     );
     expect(c!.quests[0]!.objectives).toEqual(['Mottled Boar slain: 10', '6 × Wayward Weapon']);
+  });
+
+  it('a walk names the NPC it ends at', () => {
+    const at = { mapId: 1429, x: 80, y: 60 };
+    const [walk] = guideSteps(
+      [
+        step({ action: 'travel', how: 'walk', zone: 'Elwynn Forest', spot: at }),
+        step({
+          action: 'accept',
+          npc: 'Marshal Haggard',
+          zone: 'Elwynn Forest',
+          spot: at,
+          quests: [{ questId: 840, title: 'Q' }],
+        }),
+      ],
+      { atlas, travel, bindName: null },
+    );
+    expect(walk).toMatchObject({ how: 'walk', npc: 'Marshal Haggard' });
+  });
+
+  it('game text is ASCII-safe: arrows become words, accented letters stay', () => {
+    const [s] = guideSteps(
+      [
+        step({
+          action: 'accept',
+          npc: 'Zul’Jin ⇒ Café',
+          zone: 'A ↔ B',
+          spot: null,
+          quests: [{ questId: 840, title: 'Q' }],
+          note: 'x → y',
+        }),
+      ],
+      { atlas, travel, bindName: null },
+    );
+    expect(s).toMatchObject({ npc: 'Zul’Jin -> Café', zone: 'A to B', note: 'x -> y' });
+    expect(JSON.stringify(steps)).not.toMatch(/[→↔⇒⇔]/);
   });
 
   it('a hearth without a known bind location names the zone', () => {

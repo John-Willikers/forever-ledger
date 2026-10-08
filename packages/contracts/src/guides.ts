@@ -38,7 +38,11 @@ export const GuideStep = z
     action: z.enum(GUIDE_ACTIONS),
     /** Travel steps only. */
     how: z.enum(GUIDE_TRAVEL).optional(),
-    /** "Travel Form", "Ghost Wolf", "class quest", "Orgrimmar → Crossroads", the transport's name, "wait 300 s". */
+    /**
+     * Arrows are ASCII. "Travel Form", "Ghost Wolf", "class quest", "Hearthstone", "wait 300 s", a flight
+     * "Orgrimmar, Durotar -> Crossroads, The Barrens", a transport "<kind>: <route>" ("zeppelin: Tirisfal Glades to
+     * Durotar", kind zeppelin or boat).
+     */
     note: text(120).optional(),
     npc: text(120).nullable(),
     zone: text(120).nullable(),

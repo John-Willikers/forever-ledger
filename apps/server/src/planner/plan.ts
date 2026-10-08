@@ -124,8 +124,9 @@ export function plan(
         .filter((h) => !sim.stuck.has(h.id))
         .map((h) => estimate(sim, h))
         .filter((e): e is Estimate => e !== null);
-      // Class quests first (this continent's before those across the water); then the continent the character is on while it has work, so a well-mapped hub across
-      // the water doesn't pull a character out of a start zone the atlas knows less about.
+      // Class quests first (this continent's before those across the water); then the continent the character is on
+      // while it has work, so a well-mapped hub across the water doesn't pull a character out of a start zone the
+      // atlas knows less about.
       const continent = sim.here().continent;
       const near = options.filter((e) => e.hub.pos.continent === continent);
       const mine = options.filter((e) => e.classWork);

@@ -114,8 +114,8 @@ function BuildCard() {
           </p>
           {made.planned && made.gaps.length > 0 && (
             <ul className="muted guide-gaps">
-              {made.gaps.map((g) => (
-                <li key={g}>{g}</li>
+              {made.gaps.map((g, i) => (
+                <li key={i}>{g}</li>
               ))}
             </ul>
           )}
