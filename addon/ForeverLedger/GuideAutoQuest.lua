@@ -2,15 +2,29 @@
 -- like Leatrix Plus or Zygor). Only the step's quests: an accept step accepts the ones not in your log or done yet, a
 -- turn-in step turns its quests in. Nothing else is selected, accepted or completed. A reward choice is always yours:
 -- when the quest offers one (even a single item) it only says so and waits.
--- Off with /fl guide auto off (kept per character); hold Shift while the window opens to skip it that once.
+-- Off with /fl guide auto off (kept per character); Shift held as any of the NPC's windows opens skips the whole
+-- conversation.
 
 local G = ForeverLedgerGuide
 if not G then return end
 
 local told -- the quest whose "pick your reward" line was printed in this window
+local NEW_TALK = 1 -- seconds with no NPC window open: the next window is a new conversation
 
 local function shift() return IsShiftKeyDown ~= nil and IsShiftKeyDown() == true end
-local function enabled() return G.shown == true and G.state().autoQuest ~= false and not shift() end
+local function clock() return GetTime and GetTime() or time() end
+
+-- Shift skips the conversation: gossip → quest windows → gossip again, until no window has been open for a moment.
+-- GOSSIP_CLOSED fires as gossip hands over to the quest frame, so a close alone doesn't end it.
+local skipping, closedAt = false, nil
+local function opened()
+  if skipping and closedAt and clock() - closedAt >= NEW_TALK then skipping = false end
+  closedAt = nil
+  if shift() then skipping = true end
+end
+local function closed() closedAt = clock() end
+
+local function enabled() return G.shown == true and G.state().autoQuest ~= false and not skipping and not shift() end
 
 -- The step's quests this window may act on, by questID, for `action` ("accept" or "turn_in").
 local function wanted(action)
@@ -100,8 +114,9 @@ function handlers.QUEST_COMPLETE()
   local id = questID()
   if not want("turn_in", id) then return end
   later(function() return questID() == id and want("turn_in", id) end, function()
-    -- The reward choice is always the player's.
-    if (GetNumQuestChoices() or 0) >= 1 then
+    -- The reward choice is always the player's: only exactly 0 choices turns it in (nil or an error means a choice).
+    local ok, n = pcall(GetNumQuestChoices)
+    if not ok or n ~= 0 then
       if told ~= id then
         told = id
         local title = GetTitleText and GetTitleText() or wanted("turn_in")[id].title
@@ -113,8 +128,14 @@ function handlers.QUEST_COMPLETE()
   end)
 end
 
-function handlers.QUEST_FINISHED() told = nil end
+function handlers.QUEST_FINISHED() told = nil; closed() end
+handlers.GOSSIP_CLOSED = closed
 
+local OPENS = { GOSSIP_SHOW = true, QUEST_GREETING = true, QUEST_DETAIL = true, QUEST_PROGRESS = true,
+                QUEST_COMPLETE = true }
 local events = CreateFrame("Frame")
 for event in pairs(handlers) do pcall(events.RegisterEvent, events, event) end
-events:SetScript("OnEvent", function(_, event, ...) pcall(handlers[event], ...) end)
+events:SetScript("OnEvent", function(_, event, ...)
+  if OPENS[event] then pcall(opened) end
+  pcall(handlers[event], ...)
+end)

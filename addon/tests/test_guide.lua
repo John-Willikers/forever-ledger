@@ -843,6 +843,45 @@ return function(H)
     H.eq(#c.world.questRewardCalls, 0, "one choice is still a choice")
   end)
 
+  H.test("auto quest: fails closed when the choice count can't be read", function()
+    local c = viewer(H, { onQuest = { [RUDE] = true } })
+    npcWindows(c)
+    c.env.GetNumQuestChoices = function() return nil end
+    c.world.questFrame = { questID = RUDE, title = "Rude Awakening" }
+    c.fire("QUEST_COMPLETE")
+    H.eq(#c.world.questRewardCalls, 0, "GetQuestReward never called")
+    H.ok(printed(c, "pick your reward for Rude Awakening"), "the player picks")
+    -- It breaks by the time the beat runs (the ledger's own capture reads it first).
+    c.fire("QUEST_FINISHED")
+    c.world.timers = {}
+    c.env.C_Timer = { After = function(secs, fn) c.world.timers[#c.world.timers + 1] = { at = c.world.clock + secs,
+                                                                                         fn = fn } end }
+    c.env.GetNumQuestChoices = function() return 0 end
+    c.fire("QUEST_COMPLETE")
+    c.env.GetNumQuestChoices = function() error("no choices API") end
+    c.advance(0.2)
+    H.eq(#c.world.questRewardCalls, 0, "an error is not 0 choices")
+  end)
+
+  H.test("auto quest: Shift skips the whole conversation; the next one is handled again", function()
+    local c = viewer(H)
+    npcWindows(c)
+    c.npc.available = { { questID = RUDE, title = "Rude Awakening" } }
+    c.npc.shift = true
+    c.fire("GOSSIP_SHOW")
+    c.npc.shift = false
+    -- The player picks the quest by hand: the game closes gossip and opens the detail window.
+    c.fire("GOSSIP_CLOSED")
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    H.eq(did(c), "", "same conversation: not accepted")
+    c.fire("QUEST_FINISHED")
+    c.advance(5)
+    c.fire("GOSSIP_SHOW")
+    H.eq(did(c), "gossip accept " .. RUDE, "a new conversation")
+    questWindow(c, "QUEST_DETAIL", RUDE)
+    H.eq(did(c), "gossip accept " .. RUDE .. "; accept " .. RUDE)
+  end)
+
   H.test("auto quest: the greeting window selects by index", function()
     local c = viewer(H)
     npcWindows(c)
