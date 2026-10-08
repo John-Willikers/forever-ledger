@@ -69,8 +69,23 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   ForeverLedger isn't installed) and acks; tray checks 1 min after start, then every 5 min, and toasts new guides.
   Fixed the uploader's flaky `renameDirWithRetry` test (its in-place delete raced the rename). `pnpm check` 1115
   tests — 22:14 CDT
-- ⬜ 3 🖥️ Viewer: `GuideViewer.lua` (state machine tested in the harness), UI frame, slash commands
-- ⬜ 4 🔍 Review → PRs → merge → deploy (backup first: migrations)
+- ✅ 3 🖥️ Viewer: `GuideViewer.lua` in ForeverLedger (toc: `## SavedVariablesPerCharacter: ForeverLedgerGuideState`):
+  this character's newest guide (full-name key, else first name), steps already behind the player skipped
+  (`IsOnQuest` / `IsQuestFlaggedCompleted` / `ReadyForTurnIn`), advances on `QUEST_ACCEPTED` / `QUEST_TURNED_IN` and
+  throttled `QUEST_LOG_UPDATE`; Back holds the step until Next or real progress; live objective counts; Pin sets
+  `C_Map.SetUserWaypoint` + super-track (falls back to "go to …"); plain frames when BackdropTemplate /
+  UIPanelButtonTemplate are missing; `/fl guide show|hide|list|use N|next|back|pin|reset`. `test_guide.lua` (7 tests,
+  harness gains UI objects for parented frames); a 0.6.0 zip passes the release check; the uploader never reads the
+  per-character file — 22:20 CDT
+- 🟡 4 🔍 Review of delivery + viewer (0 Critical; 210 hostile strings fuzzed through the Lua escaping: no injection).
+  Fixed: uploaded text loses WoW "|" codes and line breaks on the server and the viewer escapes "|" again (no fake
+  GM whispers or links); a character's guides go to the account that first uploaded it (a second account claiming
+  it gets nothing; aliases count; guides on a revoked token move to the new one); per-requester limit (12/hour) and
+  the Discord user recorded as `discord:<id> via <bot>`; per-character advisory lock; another class's quests left
+  out; the first guide says "restart WoW" (a new addon folder isn't seen by /reload); a turn-in counts at once;
+  skip hints on steps that can't be done; Back holds per guide; the tray announces a guide once even if the ack
+  fails, keeps going when one WoW folder can't be written, and rewrites a missing .toc; Lua keywords refused as
+  field names. 1118 tests + 245 Lua harness tests — 22:30 CDT
 - ⬜ 5 🚀 Tray v0.3.0, addon 0.6.0; Harlan sends Sam a guide, `/reload`s, and follows a few steps in game
 
 ## ⚠️ Risks

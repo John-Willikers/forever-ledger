@@ -698,7 +698,12 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       for (const g of result.arrived) {
         const who = g.char.replace(/-[^-]*$/, '');
         this.log.info({ guide: g.id, char: g.char }, `guide ready for ${who}: ${g.title}`);
-        this.toast(`Guide ready for ${who}: ${g.title}. Type /reload in game, then /fl guide.`);
+        // WoW only finds a new addon folder at start: the first guide needs a restart, later ones a /reload.
+        this.toast(
+          result.newFolder
+            ? `Guide ready for ${who}: ${g.title}. Restart WoW (first guide only), then /fl guide.`
+            : `Guide ready for ${who}: ${g.title}. Type /reload in game, then /fl guide.`,
+        );
       }
       if (result.status === 'no-addon' && result.guides.length > 0)
         this.log.warn('guides are waiting, but ForeverLedger is not installed in any WoW folder');

@@ -334,6 +334,13 @@ export function buildServer(deps: ToolDeps): McpServer {
         basedOn: ref.optional().describe("Follow this character's run"),
         toLevel: z.number().int().min(2).max(60),
         fromLevel: z.number().int().min(1).max(60).optional(),
+        requestedBy: z
+          .string()
+          .regex(/^discord:\d{1,32}$/)
+          .optional()
+          .describe(
+            'Who asked, when relayed for someone (the Discord bot passes "discord:<user id>")',
+          ),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
@@ -346,11 +353,14 @@ export function buildServer(deps: ToolDeps): McpServer {
         basedOn?: string;
         toLevel: number;
         fromLevel?: number;
+        requestedBy?: string;
       }) => {
         try {
+          // The token is who answers for it; a relayed asker is recorded with it (and limited on its own).
+          const { requestedBy, ...rest } = args;
           const { doc: _doc, ...made } = await createGuide(db, {
-            ...args,
-            requestedBy: `mcp:${deps.caller}`,
+            ...rest,
+            requestedBy: requestedBy ? `${requestedBy} via ${deps.caller}` : `mcp:${deps.caller}`,
           });
           return reply({
             ...made,

@@ -5,7 +5,9 @@ codes = true
 
 globals = {
   -- SavedVariables
-  "ForeverLedgerDB", "ForeverLedgerProbeDB",
+  "ForeverLedgerDB", "ForeverLedgerProbeDB", "ForeverLedgerGuideState",
+  -- the guide viewer's table (GuideViewer.lua; /fl guide calls it)
+  "ForeverLedgerGuide",
   -- slash commands
   "SlashCmdList", "SLASH_FOREVERLEDGER1", "SLASH_FOREVERLEDGER2", "SLASH_FOREVERLEDGERPROBE1",
 }
@@ -19,7 +21,9 @@ read_globals = {
   -- namespaces
   "C_Item", "C_Map", "C_QuestLog", "C_AddOns", "C_Container", "C_Timer", "APIDocumentation",
   "C_ChatInfo", "C_CombatLog", "C_UI", "C_LootHistory", "C_PartyInfo", "Enum",
-  "C_SkillInfo", "C_TradeSkillUI", "C_MerchantFrame", "C_Spell",
+  "C_SkillInfo", "C_TradeSkillUI", "C_MerchantFrame", "C_Spell", "C_SuperTrack", "UiMapPoint",
+  -- written by the tray app into the generated ForeverLedger_Guides addon
+  "ForeverLedgerGuidesData",
   -- client / addon
   "GetBuildInfo", "LoadAddOn", "IsAddOnLoaded", "GetLocale", "GetCVar", "ReloadUI", "InCombatLockdown",
   "LoggingChat", "LoggingCombat",

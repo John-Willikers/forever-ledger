@@ -16,8 +16,9 @@ export class GuideError extends Error {}
 
 /** Steps an in-game guide carries at most (a long route is cut, and the title says so). */
 export const GUIDE_STEPS_MAX = 300;
-/** Guides one character can be sent per hour. */
+/** Guides one character can be sent per hour, and one requester can send per hour. */
 export const GUIDES_PER_HOUR = 6;
+export const GUIDES_PER_REQUESTER_HOUR = 12;
 /** Guides kept for a character; sending another retires the oldest. */
 export const GUIDES_KEPT = 5;
 
@@ -36,19 +37,57 @@ export interface GuideRequest {
   preview?: boolean;
 }
 
-const clip = (s: string | null | undefined, max: number) =>
-  s === null || s === undefined ? null : s.length > max ? s.slice(0, max) : s;
+/**
+ * Text shown in the game: control characters (newlines included) become spaces and WoW's "|" escape character is
+ * dropped, so an uploaded name can't color text, add links or textures, or fake a chat line. The viewer escapes "|"
+ * again before showing anything.
+ */
+const clean = (s: string) =>
+  s
+    // eslint-disable-next-line no-control-regex -- stripping control characters is the point
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\|/g, '')
+    .trim();
+const clip = (s: string | null | undefined, max: number) => {
+  if (s === null || s === undefined) return null;
+  const c = clean(s);
+  return c.length > max ? c.slice(0, max) : c;
+};
 
-/** The tray token whose uploads carry this character most recently (null when no tray uploads it). */
-async function trayFor(db: Db, key: string): Promise<number | null> {
+/**
+ * The tray that uploads this character: the account that first uploaded it (or one of its old keys, before a merge)
+ * owns it, and that account's newest live token gets the guides. Someone else uploading a file that claims the same
+ * character never takes its guides over.
+ */
+export async function trayFor(db: Db, key: string): Promise<number | null> {
   const [row] = await rows<{ token_id: number }>(
     db,
-    sql`select r.token_id from raw_uploads r join api_tokens t on t.id = r.token_id
-         where t.revoked_at is null and not t.can_fetch
-           and r.payload->'records'->'characters' @> ${JSON.stringify([{ key }])}::jsonb
-         order by r.id desc limit 1`,
+    sql`with keys as (
+          select ${key}::text as k
+          union select alias_key from character_aliases where canonical_key = ${key}
+        ), hits as (
+          select r.id, r.account, r.token_id from raw_uploads r
+           where exists (select 1 from keys
+                          where r.payload->'records'->'characters' @> jsonb_build_array(jsonb_build_object('key', keys.k)))
+        ), owner as (select account from hits order by id limit 1)
+        select h.token_id from hits h join api_tokens t on t.id = h.token_id
+         where h.account = (select account from owner) and t.revoked_at is null and not t.can_fetch
+         order by h.id desc limit 1`,
   );
   return row?.token_id ?? null;
+}
+
+/** Guides waiting on a revoked token (a reinstalled tray) move to the character's current tray. */
+async function rehome(db: Db) {
+  const stranded = await rows<{ id: number; char: string }>(
+    db,
+    sql`select g.id, g.char from guides g join api_tokens t on t.id = g.token_id
+         where g.deleted_at is null and t.revoked_at is not null`,
+  );
+  for (const g of stranded) {
+    const tokenId = await trayFor(db, g.char);
+    if (tokenId !== null) await db.update(guides).set({ tokenId }).where(eq(guides.id, g.id));
+  }
 }
 
 /** Builds a guide from a run and stores it for the character's tray. Throws GuideError when it can't. */
@@ -73,15 +112,23 @@ export async function createGuide(db: Db, req: GuideRequest) {
       `no Forever Ledger tray uploads ${target.name}, so there is nowhere to send a guide`,
     );
   }
-  const [recent] = await rows<{ n: number }>(
-    db,
-    sql`select count(*)::int as n from guides where char = ${target.key} and created_at > now() - interval '1 hour'`,
-  );
-  if ((recent?.n ?? 0) >= GUIDES_PER_HOUR && !req.preview) {
-    throw new GuideError(
-      `${target.name} has been sent ${GUIDES_PER_HOUR} guides this hour; try again later`,
+  const limits = async (conn: Db) => {
+    const [recent] = await rows<{ forChar: number; byRequester: number }>(
+      conn,
+      sql`select count(*) filter (where char = ${target.key})::int as "forChar",
+                 count(*) filter (where requested_by = ${req.requestedBy})::int as "byRequester"
+            from guides where created_at > now() - interval '1 hour'`,
     );
-  }
+    if ((recent?.forChar ?? 0) >= GUIDES_PER_HOUR)
+      throw new GuideError(
+        `${target.name} has been sent ${GUIDES_PER_HOUR} guides this hour; try again later`,
+      );
+    if ((recent?.byRequester ?? 0) >= GUIDES_PER_REQUESTER_HOUR)
+      throw new GuideError(
+        `you've sent ${GUIDES_PER_REQUESTER_HOUR} guides this hour; try again later`,
+      );
+  };
+  if (!req.preview) await limits(db);
   if (!req.start && !req.basedOn)
     throw new GuideError('say where the guide starts (a race or a zone) or whose run to follow');
 
@@ -115,15 +162,16 @@ export async function createGuide(db: Db, req: GuideRequest) {
       questId: q.questId,
       title: clip(q.title, 200),
       ...(q.objectives?.length
-        ? { objectives: q.objectives.slice(0, 12).map((o) => o.slice(0, 200)) }
+        ? { objectives: q.objectives.slice(0, 12).map((o) => clip(o, 200) ?? '') }
         : {}),
     })),
     ...(s.action === 'turn_in' ? { levelAfter: s.levelAfter ?? null } : {}),
   }));
   const from = r.fromLevel;
-  const where = r.race ? (req.start ?? '') : (req.start ?? r.route.character);
+  const where = clean(r.race ? (req.start ?? '') : (req.start ?? r.route.character));
   const label = where ? `${where.charAt(0).toUpperCase()}${where.slice(1)} ` : '';
-  const title = clip(`${label}${from}-${req.toLevel} (${r.route.character}'s run)`, 120)!;
+  const basedOn = clip(r.route.character, 128) ?? '?';
+  const title = clip(`${label}${from}-${req.toLevel} (${basedOn}'s run)`, 120)!;
 
   if (req.preview) {
     return {
@@ -131,7 +179,7 @@ export async function createGuide(db: Db, req: GuideRequest) {
       character: target.name,
       title,
       steps: steps.length,
-      basedOn: r.route.character,
+      basedOn,
       reachedTarget: r.route.reachedTarget,
       gaps: r.gaps,
       doc: {
@@ -139,13 +187,16 @@ export async function createGuide(db: Db, req: GuideRequest) {
         title,
         fromLevel: from,
         toLevel: req.toLevel,
-        basedOn: r.route.character,
+        basedOn,
         steps,
       },
       tray: tokenId !== null,
     };
   }
   return db.transaction(async (tx) => {
+    // One guide at a time per character: the limits are checked again under the lock.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`guide:${target.key}`}))`);
+    await limits(tx as unknown as Db);
     const [row] = await tx
       .insert(guides)
       .values({
@@ -169,7 +220,7 @@ export async function createGuide(db: Db, req: GuideRequest) {
       createdAt: chicagoIso(row!.createdAt),
       fromLevel: from,
       toLevel: req.toLevel,
-      basedOn: r.route!.character,
+      basedOn,
       steps,
     });
     await tx.update(guides).set({ doc }).where(eq(guides.id, row!.id));
@@ -183,7 +234,7 @@ export async function createGuide(db: Db, req: GuideRequest) {
       character: target.name,
       title,
       steps: steps.length,
-      basedOn: r.route!.character,
+      basedOn,
       reachedTarget: r.route!.reachedTarget,
       gaps: r.gaps,
       doc,
@@ -194,6 +245,7 @@ export async function createGuide(db: Db, req: GuideRequest) {
 
 /** The guides a tray should have written: active ones for the characters it uploads, newest first. */
 export async function guidesForTray(db: Db, tokenId: number): Promise<GuideDoc[]> {
+  await rehome(db);
   const found = await db
     .select({ doc: guides.doc })
     .from(guides)

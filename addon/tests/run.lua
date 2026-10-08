@@ -3,8 +3,8 @@
 package.path = "./?.lua;" .. package.path
 local H = require("harness")
 
-local suites = { "test_ledger", "test_migration", "test_probe", "test_nudge", "test_rewards_objectives",
-                 "test_loot", "test_professions", "test_containers", "test_fishing", "test_gear", "test_objectives" }
+local suites = { "test_ledger", "test_migration", "test_probe", "test_nudge", "test_rewards_objectives", "test_loot",
+                 "test_professions", "test_containers", "test_fishing", "test_gear", "test_objectives", "test_guide" }
 for _, name in ipairs(suites) do require(name)(H) end
 
 local r = H.results

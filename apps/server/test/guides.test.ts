@@ -2,8 +2,8 @@
 // (project-plans/forever-ledger-guides.md), on real Postgres.
 import { GuideDoc } from '@forever-ledger/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { hashToken } from '../src/index.js';
-import { createGuide, GuideError, GUIDES_PER_HOUR } from '../src/knowledge/guides.js';
+import { hashToken, mintToken } from '../src/index.js';
+import { createGuide, GuideError, GUIDES_PER_HOUR, trayFor } from '../src/knowledge/guides.js';
 import { createSession, csrfToken } from '../src/sessions.js';
 import { batchFromFixture, startServer } from './helpers.js';
 
@@ -36,7 +36,8 @@ describe('in-game guides (real Postgres)', () => {
              values ('Rot-Bayou', 'Rot', 'Bayou', 'WARLOCK', 'Scourge', 4)`);
     await q(`insert into quests (quest_id, title, level, category, objectives) values
       (363, 'Rude Awakening', 1, 'Deathknell', null),
-      (376, 'The Damned', 3, 'Deathknell', '["0/6 Scavenger Paw"]')`);
+      (376, 'The Damned', 3, 'Deathknell', '["0/6 Scavenger |cffff0000Paw"]'),
+      (365, 'Tainted Scroll', 1, 'Warlock', null)`);
     await q(
       `insert into quest_observations (quest_id, build, stage, char, level, observed_at, npc_name, npc_loc) values
        (363, 70245, 'accept', 'Rot-Bayou', 1, $1, 'Undertaker Mordo', $3),
@@ -65,6 +66,7 @@ describe('in-game guides (real Postgres)', () => {
     );
     for (const [id, quest, level, min] of [
       ['r1', 363, 1, 4],
+      ['r3', 365, 2, 10],
       ['r2', 376, 4, 20],
     ] as const) {
       await q(
@@ -96,7 +98,26 @@ describe('in-game guides (real Postgres)', () => {
       y: 71.6,
     });
     const doIt = g.steps.find((x: { action: string }) => x.action === 'complete');
-    expect(doIt.quests[0].objectives).toEqual(['Scavenger Paw: 6']);
+    // WoW's "|" escapes are stripped from anything a player uploaded.
+    expect(doIt.quests[0].objectives).toEqual(['Scavenger cffff0000Paw: 6']);
+    // Thibodeaux is a Hunter: Rot's Warlock quest is left out.
+    const titles = g.steps.flatMap((x: { quests: { title: string }[] }) =>
+      x.quests.map((q) => q.title),
+    );
+    expect(titles).not.toContain('Tainted Scroll');
+  });
+
+  it('another account uploading a file that claims the character never gets its guides', async () => {
+    const { token: evil } = await mintToken(s.database.db, 'evil');
+    const claim = await s.app.inject({
+      method: 'POST',
+      url: '/v1/ingest',
+      headers: { authorization: `Bearer ${evil}` },
+      payload: batchFromFixture('session-v9.lua', 'ACCOUNT2', 'pc-evil'),
+    });
+    expect(claim.statusCode, claim.body).toBe(200);
+    const [owner] = await q(`select id from api_tokens where label = 'test'`);
+    expect(await trayFor(s.database.db, ME)).toBe(owner.id);
   });
 
   it('the tray acks what it wrote; another token sees nothing', async () => {

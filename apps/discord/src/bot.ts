@@ -162,6 +162,7 @@ export function startBot(
         messages: turns.map((t) => t.message),
         opus: question.opus,
         admin,
+        askerId: message.author.id,
       });
       const text = question.truncated
         ? `${answer.text}\n_(your question was long, so I only read the first part)_`

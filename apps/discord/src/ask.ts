@@ -58,6 +58,8 @@ const READER_NOTE = `This asker can't add to the ledger. If they ask you to reco
 export interface AskInput {
   /** The conversation so far, oldest first, ending with the question. */
   messages: Anthropic.Beta.BetaMessageParam[];
+  /** The asker's Discord user id: guides they send are recorded (and limited) as theirs. */
+  askerId?: string;
   opus: boolean;
   /**
    * The admin-owned ledger token (write tools) may be used: the asker has the admin role and the conversation holds
@@ -105,6 +107,14 @@ export function ledgerAsker(config: AskConfig, create: CreateFn) {
         system: [
           { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
           { type: 'text', text: canWrite ? ADMIN_NOTE : READER_NOTE },
+          ...(input.askerId && /^\d{1,32}$/.test(input.askerId)
+            ? [
+                {
+                  type: 'text' as const,
+                  text: `When you call send_guide for this asker, pass requestedBy "discord:${input.askerId}".`,
+                },
+              ]
+            : []),
         ],
         // Sonnet 5: adaptive thinking. Opus 5.5 thinks adaptively by default (it can't be turned off); its default
         // effort is medium, so the asked-for "best answer" sets high.
