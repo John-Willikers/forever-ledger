@@ -45,14 +45,15 @@ the step's spot.
 - ✅ 2½ 🤔 Design agreed with Harlan, section by section — 2026-10-07 23:58 CDT: guide **takes over** the watch list
   (yours saved and restored), a real **"Guide" tracker module** above Quests (fallback: lookalike frame), **our own
   TomTom arrow** (Pin and the old window go). Design: `docs/plans/2026-10-07-guide-tracker-design.md`
-- 🟡 3 🛠️ Viewer rework on `feat/guide-tracker`: implementation plan written (7 tasks, built on Blizzard's real 11.x
-  tracker source) — `docs/plans/2026-10-08-guide-tracker.md` — 2026-10-08 00:05 CDT. Waiting on Harlan to pick how
-  it runs.
+- ✅ 3 🛠️ Viewer rework on `feat/guide-tracker`: implementation plan written (7 tasks, built on Blizzard's real 11.x
+  tracker source) — `docs/plans/2026-10-08-guide-tracker.md` — 2026-10-08 00:05 CDT. Run here, task by task.
   - ✅ T1 test helpers (2026-10-08 00:08 CDT) · ✅ T2 `G.sync` + combat guard (2026-10-08 00:09 CDT) ·
     ✅ T3 watches (2026-10-08 00:16 CDT) · ✅ T4 arrow (2026-10-08 00:25 CDT) ·
     ✅ T5 tracker module (2026-10-08 00:32 CDT) · ✅ T6 wire-up + 0.7.0 (2026-10-08 00:43 CDT) ·
-    🟡 T7 review: findings fixed (2026-10-08 00:50 CDT) — login watch race, ADDON_ACTION_FORBIDDEN, layout and
-    arrow errors contained; PR next
-- ⏳ 4 🎮 Harlan tests in-game: section, Next/Back, watch takeover + restore, arrow walking/turning, a fight with a
-  quest item
+    ✅ T7 final review passed after fixes (login watch race, ADDON_ACTION_FORBIDDEN, layout and arrow errors
+    contained) — draft PR #75 — 2026-10-08 00:52 CDT
+- 🟡 4 🎮 **Waiting on Harlan's in-game test** (pinged 2026-10-08 00:52 CDT): close the tray first (it would reinstall 0.6.1);
+  `/console taintLog 1`; Guide section + header menu; accept a quest (watch list changes), hide (yours come back),
+  `/reload` mid-guide; arrow walking/turning + Undercity ↔ Tirisfal; use a quest item in and out of combat; send
+  `Logs/taint.log` lines naming ForeverLedger (if any)
 - ⏳ 5 🚀 Addon 0.7.0 (`addon-v0.7.0` → `addon-cli publish 0.7.0`)
