@@ -22,7 +22,7 @@ hub batches, few run-backs, real travel (flights, boats, hearth). Runs become ti
 ## 📋 Progress
 
 - ✅ 0 🤝 Design agreed section by section — 2026-10-08 04:34 CDT
-- 🟡 1 🔬 Probe 0.6.0 built + reviewed (2026-10-08 04:49 CDT, `cb03f9b`), **waiting on Harlan**: `C_TaxiMap` nodes + learned state, `GetBindLocation`, hearthstone cooldown, mount state,
+- ✅ 1 🔬 Probe 0.6.0 run by Harlan (2026-10-08 09:53 CDT), answers below + `CLAUDE.md`; boats still to ride: `C_TaxiMap` nodes + learned state, `GetBindLocation`, hearthstone cooldown, mount state,
   transports, every uiMap's size in yards → Harlan runs it
 - 🟡 2 📚 Atlas (parser v5 building in parallel, 2026-10-08 04:36 CDT): parser `wowhead@5` (mapper start/end/objectives, series, restrictions) → list pages (9 class + ~40
   zone) → quest pages (starter zones first) → `atlas_quests` → boats list + flight network
@@ -34,11 +34,11 @@ hub batches, few run-backs, real travel (flights, boats, hearth). Runs become ti
 
 ## 🔬 Probe 0.6.0 questions
 
-| Question                                   | Answer |
-| ------------------------------------------ | ------ |
-| `C_TaxiMap.GetAllTaxiNodes` shape / learned |        |
-| Flight time observable (start / end)       |        |
-| `GetBindLocation`, hearth item + cooldown  |        |
-| Mounted / mount owned                      |        |
-| Boat / zeppelin: how a trip shows          |        |
-| Map sizes (yards) for all uiMaps           |        |
+| Question                                    | Answer (build 70245, 2026-10-08 09:53 CDT)                                                                  |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `C_TaxiMap.GetAllTaxiNodes` shape / learned | Only with a flight master's map open: `state` 0 current, 1 learned, 2 not learned. `GetTaxiNodesForMap` anywhere, no learned flag |
+| Flight time observable (start / end)        | Yes: `TakeTaxiNode` hook + `PLAYER_CONTROL_LOST` → `_GAINED` (Org → Splintertree 89.7 s, 30.52 yd/s)          |
+| `GetBindLocation`, hearth item + cooldown   | "Undercity"; `C_Item.GetItemCount`, `C_Container/C_Item.GetItemCooldown(6948)`, `C_Spell.GetSpellCooldown(8690)` work; cooldown length not yet measured |
+| Mounted / mount owned                       | `IsMounted`, `GetUnitSpeed`; `C_MountJournal` (136 mounts, isCollected = 11th return)                        |
+| Boat / zeppelin: how a trip shows           | Not ridden yet (a loading screen marks the hearth)                                                          |
+| Map sizes (yards) for all uiMaps            | 60 maps with world size + world corners; Forever-only maps: Zephras Isle, Darkspear Islands, Riverglades, Shen'dralas, Mount Hyjal |
