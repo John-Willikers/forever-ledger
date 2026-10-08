@@ -416,6 +416,25 @@ describe('atlas builder', () => {
     expect(gaps).toContain("no side ('both' assumed): 2 quests (24, 25)");
   });
 
+  // Both of our Skyborne characters are Horde, while Wowhead lists Skyborne among Elwynn's Alliance races
+  // (build 70245, 2026-10-08): the race is on both sides, so it tells nothing about a quest's side.
+  it('treats Skyborne as either faction when inferring a side from races', () => {
+    const named = (id: number) => [claim(id, 'name', `Q${id}`), claim(id, 'level', 5)];
+    const { atlas } = buildAtlas(
+      rows({
+        claims: [
+          ...named(30),
+          claim(30, 'races', ['High Order Skyborne']),
+          ...named(31),
+          claim(31, 'races', ['Orc', 'High Order Skyborne']),
+        ],
+        takers: [],
+      }),
+    );
+    expect(atlas.quests.get(30)!.side).toBe('both');
+    expect(atlas.quests.get(31)!.side).toBe('Horde');
+  });
+
   it('names a blank objective after its Wowhead target, else by its number', () => {
     const weapon = {
       id: 300001,
