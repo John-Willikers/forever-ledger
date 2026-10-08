@@ -18,23 +18,59 @@ local function call(fn, ...)
   if ok then return a, b end
 end
 
+-- The arrow for an offset in yards east (dx) and south (dy) of the player.
+local function aim(dx, dy, facing)
+  local yards = math.sqrt(dx * dx + dy * dy)
+  if yards <= ARRIVED then return { state = "arrived", yards = yards } end
+  return { state = "point", yards = yards, rotation = (math.atan2(-dx, -dy) - facing) % TWO_PI }
+end
+
 -- Where the arrow points and how far. Map x/y are 0..1 and grow east and south; target x/y are the guide's 0..100.
--- Facing is radians counter-clockwise from north (GetPlayerFacing), and so is the returned rotation.
-function A.compute(target, me)
+-- Facing is radians counter-clockwise from north (GetPlayerFacing), and so is the returned rotation. On another map
+-- (a city inside its zone) it uses world yards when both points are on one continent: `targetWorld` is the step's
+-- { continent, x, y } and me.continent / wx / wy the player's (probe walk, build 70245: world X grows north, Y west).
+function A.compute(target, me, targetWorld)
   if not target or not target.mapId or not tonumber(target.x) or not tonumber(target.y) then
     return { state = "none" }
   end
   if not me or not me.mapId or not me.x then return { state = "none" } end
-  if me.mapId ~= target.mapId then return { state = "elsewhere" } end
-  if not me.width or not me.height or not me.facing then return { state = "none" } end
-  local dx = (target.x / 100 - me.x) * me.width
-  local dy = (target.y / 100 - me.y) * me.height
-  local yards = math.sqrt(dx * dx + dy * dy)
-  if yards <= ARRIVED then return { state = "arrived", yards = yards } end
-  return { state = "point", yards = yards, rotation = (math.atan2(-dx, -dy) - me.facing) % TWO_PI }
+  if me.mapId ~= target.mapId then
+    local tw = targetWorld
+    if not (tw and me.continent ~= nil and tw.continent == me.continent and me.wx and me.wy) then
+      return { state = "elsewhere" }
+    end
+    if not me.facing then return { state = "none" } end
+    return aim(-(tw.y - me.wy), -(tw.x - me.wx), me.facing)
+  end
+  if not me.facing or not me.width or not me.height or me.width <= 0 or me.height <= 0 then
+    return { state = "none" }
+  end
+  return aim((target.x / 100 - me.x) * me.width, (target.y / 100 - me.y) * me.height, me.facing)
 end
 
--- The player's map, position, the map's size in yards and facing (nil in an instance, where it is restricted).
+-- A map point (x/y 0..1) in world yards: { continent, x, y }, or nil when the client can't place it.
+local function worldPos(mapId, x, y)
+  local map = C_Map
+  if not map or type(CreateVector2D) ~= "function" then return nil end
+  local ok, continent, pos = pcall(function()
+    return map.GetWorldPosFromMapPos(mapId, CreateVector2D(x, y))
+  end)
+  if not ok or continent == nil or pos == nil then return nil end
+  local wx, wy
+  if type(pos) == "table" and pos.x then
+    wx, wy = pos.x, pos.y
+  else
+    local got
+    got, wx, wy = pcall(function() return pos:GetXY() end)
+    if not got then return nil end
+  end
+  wx, wy = tonumber(wx), tonumber(wy)
+  if not wx or not wy then return nil end
+  return { continent = continent, x = wx, y = wy }
+end
+
+-- The player's map, position, the map's size in yards, world position and facing (nil in an instance, where it is
+-- restricted).
 function A.player()
   local map = C_Map
   if not map then return nil end
@@ -46,13 +82,15 @@ function A.player()
   if not x or not y then return nil end
   local w, h = call(map.GetMapWorldSize, mapId)
   local inInstance = IsInInstance and IsInInstance()
+  local world = worldPos(mapId, x, y) or {}
   return { mapId = mapId, x = x, y = y, width = tonumber(w), height = tonumber(h),
+           continent = world.continent, wx = world.x, wy = world.y,
            facing = not inInstance and tonumber(call(GetPlayerFacing)) or nil }
 end
 
 local function label(step)
   local q = step.quests and step.quests[1]
-  return G.esc(step.npc or (q and q.title) or "")
+  return G.esc(step.npc or (q and q.title) or step.subzone or step.zone or "")
 end
 
 function A.frame()
@@ -65,6 +103,7 @@ function A.frame()
   else
     f:SetPoint("TOP", UIParent, "TOP", 0, -120)
   end
+  if f.SetDontSavePosition then f:SetDontSavePosition(true) end -- arrowPoint is the one saved position
   f:SetClampedToScreen(true)
   f:SetMovable(true)
   f:EnableMouse(true)
@@ -99,19 +138,24 @@ end
 function A.setTarget(step)
   A.target = step and step.mapId and tonumber(step.x) and tonumber(step.y) and step or nil
   if not A.target then
+    A.targetWorld, A.last = nil, nil
     if A.win then A.win:Hide() end
     return
   end
-  A.frame():Show()
+  -- The step doesn't move: place it in world yards once, for the arrow across maps.
+  A.targetWorld = worldPos(step.mapId, tonumber(step.x) / 100, tonumber(step.y) / 100)
+  local f = A.frame()
+  f.label:SetText(label(step))
+  f:Show()
   A.tick()
 end
 
 function A.tick()
   local f, t = A.win, A.target
   if not f or not t then return end
-  local r = A.compute(t, A.player())
+  local r = A.compute(t, A.player(), A.targetWorld)
   A.last = r
-  f.label:SetText(label(t))
+  f:EnableMouse(r.state ~= "none") -- an empty arrow mustn't catch clicks
   if r.state == "point" then
     f.icon:SetTexture(ARROW_TEXTURE)
     f.icon:SetRotation(r.rotation)
@@ -128,6 +172,5 @@ function A.tick()
   else
     f.icon:Hide()
     f.dist:SetText("")
-    f.label:SetText("")
   end
 end

@@ -446,6 +446,18 @@ return function(H)
     me.facing = nil
     H.eq(A.compute(at(50, 40), me).state, "none", "no facing (an instance)")
     H.eq(A.compute({ mapId = 1420 }, me).state, "none", "a step with no spot")
+    me.facing, me.width = 0, 0
+    H.eq(A.compute(at(50, 50.5), me).state, "none", "a map with no size in yards is not 'arrived'")
+    -- Another map on the same continent (a city inside its zone): world yards, X grows north and Y grows west.
+    local inCity = { mapId = 1458, x = 0.5, y = 0.5, facing = 0, continent = 0, wx = 1000, wy = 2000 }
+    local spot = at(50, 40)
+    local across = A.compute(spot, inCity, { continent = 0, x = 1100, y = 2000 })
+    H.eq(across.state, "point")
+    H.ok(near(across.rotation, 0), "north across maps, got " .. tostring(across.rotation))
+    H.ok(near(across.yards, 100), "100 yd across maps")
+    H.ok(near(A.compute(spot, inCity, { continent = 0, x = 1000, y = 1900 }).rotation, 3 * math.pi / 2), "east")
+    H.eq(A.compute(spot, inCity, { continent = 1, x = 1100, y = 2000 }).state, "elsewhere", "other continent")
+    H.eq(A.compute(spot, inCity).state, "elsewhere", "no world position for the step")
   end)
 
   H.test("guide arrow: shows yards to the step, 'Go to' on another map, and hides with the guide", function()
@@ -456,15 +468,55 @@ return function(H)
     c.env.C_Map.GetMapWorldSize = function() return 4518.75, 3012.5 end
     c.env.GetPlayerFacing = function() return facing end
     local f = c.env.ForeverLedgerGuideArrow
+    local A = c.env.ForeverLedgerGuide.arrow
     H.ok(f and f.shown, "arrow shown for step 1 (Undertaker Mordo, 30.2 71.6)")
+    function f:EnableMouse(on) self.mouse = on end
     f.scripts.OnUpdate(f, 0.1)
     H.eq(f.dist.text, "102 yd") -- (0.716 - 0.75) * 3012.5 = 102.4 yd north
     H.eq(f.label.text, "Undertaker Mordo")
-    H.ok(near(c.env.ForeverLedgerGuide.arrow.last.rotation, 0), "north")
+    H.ok(near(A.last.rotation, 0), "north")
+    H.eq(f.mouse, true, "draggable while it points")
     map = 1421
     f.scripts.OnUpdate(f, 0.1)
     H.eq(f.dist.text, "Go to Tirisfal Glades")
+    map = 1420
+    c.env.C_Map.GetPlayerMapPosition = function() return { GetXY = function() return 0.302, 0.716 end } end
+    f.scripts.OnUpdate(f, 0.1)
+    H.eq(f.dist.text, "Arrived")
+    c.env.C_Map.GetPlayerMapPosition = function() return nil end
+    f.scripts.OnUpdate(f, 0.1)
+    H.eq(A.last.state, "none", "no map position")
+    H.eq(f.dist.text, "")
+    H.ok(f.shown, "stays shown so OnUpdate keeps running")
+    H.eq(f.mouse, false, "but lets clicks through")
     c.slash("FOREVERLEDGER", "guide hide")
     H.eq(f.shown, false)
+    H.eq(A.last, nil, "forgets the last reading")
+  end)
+
+  H.test("guide arrow: from a city map, points through world yards to a step on the zone map", function()
+    local c = viewer(H)
+    -- Step 1 (1420, 30.2 71.6) sits 50 yd west of the player, who is on Undercity (1458).
+    c.env.CreateVector2D = function(x, y) return { x = x, y = y } end
+    c.env.C_Map.GetWorldPosFromMapPos = function(mapId, v)
+      if mapId == 1420 then return 0, { GetXY = function() return v.x * 1000, v.y * 1000 + 50 end } end
+      return 0, { x = 0.302 * 1000, y = 0.716 * 1000 }
+    end
+    c.env.C_Map.GetBestMapForUnit = function() return 1458 end
+    c.env.C_Map.GetPlayerMapPosition = function() return { GetXY = function() return 0.5, 0.5 end } end
+    c.env.GetPlayerFacing = function() return 0 end
+    c.slash("FOREVERLEDGER", "guide hide")
+    c.slash("FOREVERLEDGER", "guide show")
+    local f, A = c.env.ForeverLedgerGuideArrow, c.env.ForeverLedgerGuide.arrow
+    f.scripts.OnUpdate(f, 0.1)
+    H.eq(f.dist.text, "50 yd")
+    H.ok(near(A.last.rotation, math.pi / 2), "west, got " .. tostring(A.last.rotation))
+  end)
+
+  H.test("guide arrow: a step with no npc or quest title is labelled with its subzone or zone", function()
+    local g = guide(7, ME)
+    g.steps[1].npc, g.steps[1].quests[1].title = nil, nil
+    local c = viewer(H, { guides = { g } })
+    H.eq(c.env.ForeverLedgerGuideArrow.label.text, "Deathknell")
   end)
 end

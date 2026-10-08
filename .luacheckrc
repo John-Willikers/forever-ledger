@@ -21,7 +21,7 @@ read_globals = {
   -- namespaces
   "C_Item", "C_Map", "C_QuestLog", "C_AddOns", "C_Container", "C_Timer", "APIDocumentation",
   "C_ChatInfo", "C_CombatLog", "C_UI", "C_LootHistory", "C_PartyInfo", "Enum",
-  "C_SkillInfo", "C_TradeSkillUI", "C_MerchantFrame", "C_Spell", "C_SuperTrack", "UiMapPoint",
+  "C_SkillInfo", "C_TradeSkillUI", "C_MerchantFrame", "C_Spell", "C_SuperTrack", "UiMapPoint", "CreateVector2D",
   -- written by the tray app into the generated ForeverLedger_Guides addon
   "ForeverLedgerGuidesData",
   -- client / addon
