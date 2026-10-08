@@ -1,6 +1,7 @@
 -- Forever Ledger guide viewer: shows the leveling guides the tray app wrote into the ForeverLedger_Guides addon
--- (ForeverLedgerGuidesData), one step at a time, like Zygor. It only reads the quest log and shows text; the map pin
--- is set when you click Pin. Your place in each guide is kept per character in ForeverLedgerGuideState.
+-- (ForeverLedgerGuidesData), one step at a time, like Zygor. It only reads the quest log and shows text; the arrow
+-- points to the step's spot; `/fl guide pin` still sets a map pin. Your place in each guide is kept per character in
+-- ForeverLedgerGuideState.
 -- /fl guide  show | hide | list | use N | next | back | pin | reset
 
 local G = {}
@@ -50,6 +51,8 @@ local function state()
   s.steps = s.steps or {} -- [guideID] = step index
   return s
 end
+G.state = state
+G.esc = esc
 
 function G.current()
   local s, mine = state(), G.myGuides()
@@ -71,6 +74,7 @@ local function onQuest(id) return call(QuestLog.IsOnQuest, id) == true end
 local function readyToTurnIn(id)
   return call(QuestLog.ReadyForTurnIn, id) == true or (onQuest(id) and call(QuestLog.IsComplete, id) == true)
 end
+G.onQuest = onQuest
 
 local function myLevel() return G.level or (UnitLevel and UnitLevel("player")) or 1 end
 
@@ -250,6 +254,49 @@ function G.pin()
   say(string.format("go to %s.", place(step)))
 end
 
+---------------------------------------------------------------- sync (watches, tracker section, arrow)
+local function inCombat() return InCombatLockdown ~= nil and InCombatLockdown() == true end
+
+-- The step's quests that are in the log now: what the tracker watches.
+function G.stepQuests(step)
+  local ids = {}
+  for _, q in ipairs(step and step.quests or {}) do
+    if onQuest(q.questId) then ids[#ids + 1] = q.questId end
+  end
+  return ids
+end
+
+-- Brings the arrow, the watch list and the tracker section in line with the step. Watches and the tracker only change
+-- out of combat (taint guard): in combat the sync is owed and PLAYER_REGEN_ENABLED runs it. `rewatch` re-applies the
+-- watch list even when the step didn't change (after an accept, which the game auto-watches).
+function G.sync(rewatch)
+  local g = G.shown and G.current() or nil
+  local i = g and G.stepIndex()
+  local step = g and g.steps[i] or nil
+  if G.arrow then G.arrow.setTarget(step) end
+  if inCombat() then
+    G.owed = true
+    return
+  end
+  G.owed = false
+  local W = G.watches
+  if W then
+    if g then
+      W.take()
+      local ids = G.stepQuests(step)
+      W.apply(ids, g.id .. ":" .. i .. ":" .. table.concat(ids, ","), rewatch)
+    else
+      W.restore()
+    end
+  end
+  local T = G.tracker
+  if T then T.refresh() end
+  if not (T and T.active()) then
+    if G.shown then G.frame():Show() end
+    G.render()
+  end
+end
+
 ---------------------------------------------------------------- window
 local function button(parent, label, width, onClick)
   local ok, b = pcall(CreateFrame, "Button", nil, parent, "UIPanelButtonTemplate")
@@ -308,12 +355,10 @@ function G.frame()
   f.body:SetWidth(WIDTH - 20)
   f.body:SetJustifyH("LEFT")
   f.body:SetJustifyV("TOP")
-  f.back = button(f, "Back", 56, function() G.go(-1); G.render() end)
+  f.back = button(f, "Back", 56, function() G.go(-1); G.sync() end)
   f.back:SetPoint("BOTTOMLEFT", 8, 8)
-  f.nextB = button(f, "Next", 56, function() G.go(1); G.render() end)
+  f.nextB = button(f, "Next", 56, function() G.go(1); G.sync() end)
   f.nextB:SetPoint("LEFT", f.back, "RIGHT", 4, 0)
-  f.pinB = button(f, "Pin", 46, function() G.pin() end)
-  f.pinB:SetPoint("LEFT", f.nextB, "RIGHT", 4, 0)
   f.close = button(f, "Hide", 50, function() G.hide() end)
   f.close:SetPoint("BOTTOMRIGHT", -8, 8)
   G.win = f
@@ -357,14 +402,15 @@ function G.show()
   G.shown = true
   state().hidden = nil
   G.advance(false)
-  G.frame():Show()
-  G.render()
+  if G.tracker then G.tracker.attach() end
+  G.sync()
 end
 
 function G.hide()
   G.shown = false
   state().hidden = true
   if G.win then G.win:Hide() end
+  G.sync()
 end
 
 ---------------------------------------------------------------- slash (/fl guide ...)
@@ -403,9 +449,9 @@ end
 ---------------------------------------------------------------- events
 local events = CreateFrame("Frame")
 local lastRead, pending = -math.huge, false
-local function refresh(force)
+local function refresh(force, rewatch)
   G.advance(force)
-  G.render()
+  G.sync(rewatch)
 end
 local handlers = {}
 function handlers.PLAYER_LOGIN()
@@ -418,7 +464,10 @@ function handlers.PLAYER_LOGIN()
   end
   if C_Timer then C_Timer.After(3, start) else start() end
 end
-function handlers.QUEST_ACCEPTED() refresh(true) end
+function handlers.QUEST_ACCEPTED()
+  refresh(true, true)
+  if C_Timer then C_Timer.After(0.5, function() G.sync(true) end) end
+end
 function handlers.PLAYER_LEVEL_UP(level)
   -- UnitLevel can still say the old level while this event runs.
   G.level = tonumber(level)
@@ -430,6 +479,9 @@ function handlers.QUEST_TURNED_IN(questID)
   refresh(true)
 end
 function handlers.QUEST_REMOVED() refresh(false) end
+function handlers.PLAYER_REGEN_ENABLED()
+  if G.owed then G.sync() end
+end
 function handlers.QUEST_LOG_UPDATE()
   if #G.myGuides() == 0 then return end
   local now = GetTime and GetTime() or time()
