@@ -4,7 +4,7 @@ import { loadCharacter } from '../src/knowledge/character-state.js';
 import { distance, toWorld } from '../src/planner/geo.js';
 import { plan } from '../src/planner/plan.js';
 import { TRANSPORTS } from '../src/planner/transports.js';
-import { FLIGHT_OVERHEAD, FLIGHT_SPEED } from '../src/planner/travel.js';
+import { FLIGHT_OVERHEAD, FLIGHT_SPEED, groundTravel } from '../src/planner/travel.js';
 import { batchFromFixture, startServer } from './helpers.js';
 
 const CHAR = 'Thibodeaux Willikers-Bayou';
@@ -279,5 +279,117 @@ describe('loadCharacter after two sessions (real Postgres)', () => {
     const p = plan(atlas, r.ch, r.travel, { toLevel: 10 });
     expect(p.steps).toEqual([]);
     expect(p.seconds).toBe(0);
+  });
+});
+
+// Harlan's real Ratchet → Booty Bay boat (addon 0.8.0, build 70245, 2026-10-08): walking on deck broke the ride into
+// two transport trips. And his real Orgrimmar → Ratchet flight, 161.2 s.
+describe('loadCharacter: split rides and travel forms (real Postgres)', () => {
+  let s: Awaited<ReturnType<typeof startServer>>;
+  const q = async (text: string, values: unknown[] = []) =>
+    (await s.database.pool.query(text, values)).rows;
+  const SAM = 'Sam Willikers-Bayou';
+  const trip = (startedAt: number, seconds: number, from: object, to: object, char = SAM) =>
+    q(
+      `insert into trips (char, kind, build, started_at, seconds, "from", "to")
+       values ($1, 'transport', 70245, to_timestamp($2), $3, $4::jsonb, $5::jsonb)`,
+      [char, startedAt, seconds, JSON.stringify(from), JSON.stringify(to)],
+    );
+  const boat = (travel: { transports: typeof TRANSPORTS }) =>
+    travel.transports.find((t) => t.name === 'Booty Bay ↔ Ratchet')!;
+
+  beforeAll(async () => {
+    s = await startServer();
+    await q(
+      `insert into characters (key, name, realm, class, race, faction, level) values
+         ($1, 'Sam Willikers', 'Bayou', 'WARRIOR', 'Orc', 'Horde', 30),
+         ('Cormier Willikers-Bayou', 'Cormier Willikers', 'Bayou', 'DRUID', 'Tauren', 'Horde', 30),
+         ('Guidry Willikers-Bayou', 'Guidry Willikers', 'Bayou', 'SHAMAN', 'Orc', 'Horde', 19)`,
+      [SAM],
+    );
+  });
+  afterAll(() => s?.stop());
+
+  it('merges two back-to-back transport trips into one Booty Bay ↔ Ratchet ride', async () => {
+    // Trip A alone ends mid-sea (about 250 yd off the Booty Bay dock): no transport matches it.
+    await trip(
+      1791468085,
+      82,
+      { mapId: 1413, x: 0.6374, y: 0.3888, zone: 'The Barrens' },
+      { mapId: 1434, x: 0.2212, y: 0.7501, zone: 'Stranglethorn Vale' },
+    );
+    expect(boat((await loadCharacter(s.database.db, SAM, NOW))!.travel)).toEqual(
+      TRANSPORTS.find((t) => t.name === 'Booty Bay ↔ Ratchet'),
+    );
+    // Trip B starts 2 s after A ends, 57 yd from where A ended: one ride, 1791468193 − 1791468085 = 108 s.
+    await trip(
+      1791468169,
+      24,
+      { mapId: 1434, x: 0.2299, y: 0.7474, zone: 'Stranglethorn Vale' },
+      { mapId: 1434, x: 0.2611, y: 0.7327, zone: 'Booty Bay' },
+    );
+    const t = boat((await loadCharacter(s.database.db, SAM, NOW))!.travel);
+    expect(t.crossing).toBe(108);
+    expect(t.confidence).toBe('measured');
+    // The guessed docks are within 25 yd of Harlan's ends: they stay guesses.
+    expect([t.confidenceA, t.confidenceB]).toEqual(['guess', 'guess']);
+  });
+
+  it('does not merge trips too far apart in time or space, or of two characters', async () => {
+    const ratchet = { mapId: 1413, x: 0.6374, y: 0.3888 };
+    const midSea = { mapId: 1434, x: 0.2212, y: 0.7501 };
+    const bootyBay = { mapId: 1434, x: 0.2611, y: 0.7327 };
+    const farOff = { mapId: 1434, x: 0.5, y: 0.5 };
+    await q(`delete from trips`);
+    // 61 s gap; another character's tail; a tail that starts 300+ yd away.
+    await trip(1000, 82, ratchet, midSea);
+    await trip(1000 + 82 + 61, 24, midSea, bootyBay);
+    await trip(5000, 82, ratchet, midSea);
+    await trip(5000 + 84, 24, midSea, bootyBay, 'Cormier Willikers-Bayou');
+    await trip(9000, 82, ratchet, midSea);
+    await trip(9000 + 84, 24, farOff, bootyBay);
+    expect(boat((await loadCharacter(s.database.db, SAM, NOW))!.travel)).toEqual(
+      TRANSPORTS.find((t) => t.name === 'Booty Bay ↔ Ratchet'),
+    );
+  });
+
+  it('fits the flight detour from the Orgrimmar → Ratchet flight', async () => {
+    await q(
+      `insert into character_state (char, build, level, observed_at, taxi) values
+         ($1, 70245, 30, to_timestamp($2), $3::jsonb)`,
+      [
+        SAM,
+        NOW,
+        JSON.stringify([
+          {
+            taxiMapId: 1414,
+            at: NOW,
+            nodes: [
+              { nodeId: 23, name: 'Orgrimmar, Durotar', x: 0.581, y: 0.4534, state: 1 },
+              { nodeId: 80, name: 'Ratchet, The Barrens', x: 0.5663, y: 0.5582, state: 1 },
+            ],
+          },
+        ]),
+      ],
+    );
+    await q(
+      `insert into trips (char, kind, build, started_at, seconds, from_node, to_node)
+       values ($1, 'flight', 70245, to_timestamp($2), 161.2, $3::jsonb, $4::jsonb)`,
+      [
+        SAM,
+        1791467800,
+        JSON.stringify({ nodeId: 23, name: 'Orgrimmar, Durotar' }),
+        JSON.stringify({ nodeId: 80, name: 'Ratchet, The Barrens' }),
+      ],
+    );
+    const { travel } = (await loadCharacter(s.database.db, SAM, NOW))!;
+    expect(travel.flightDetour).toBeCloseTo(1.7, 2);
+  });
+
+  it('a druid or shaman loads with its class and level, which route() turns into a travel form', async () => {
+    const druid = (await loadCharacter(s.database.db, 'Cormier Willikers-Bayou', NOW))!.ch;
+    expect(groundTravel(druid)).toEqual({ speed: 9.8, form: 'Travel Form' });
+    const shaman = (await loadCharacter(s.database.db, 'Guidry Willikers-Bayou', NOW))!.ch;
+    expect(groundTravel(shaman)).toEqual({ speed: 7 });
   });
 });

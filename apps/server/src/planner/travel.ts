@@ -24,6 +24,29 @@ export interface Leg {
 /** Yards per second on foot (probe 0.6.0, build 70245) and on a Classic riding-40 mount (+60 %). */
 export const RUN_SPEED = 7;
 export const MOUNT_SPEED = 11.2;
+/**
+ * Classic 1.12 travel forms, +40 %: Druid Travel Form (trained at 30) and Shaman Ghost Wolf (trained at 20). Forever
+ * may differ (levels, speed); a speed measured in game can replace this later.
+ */
+export const FORM_SPEED = 9.8;
+const FORMS: Record<string, { level: number; form: string }> = {
+  DRUID: { level: 30, form: 'Travel Form' },
+  SHAMAN: { level: 20, form: 'Ghost Wolf' },
+};
+
+/**
+ * The best ground speed a character has: a mount (riding 40) beats a travel form, which beats running. `form` names
+ * the travel form when it is the one used, for the guide to say.
+ */
+export function groundTravel(ch: Pick<CharacterState, 'mounted' | 'className' | 'level'>): {
+  speed: number;
+  form?: string;
+} {
+  if (ch.mounted) return { speed: MOUNT_SPEED };
+  const f = FORMS[ch.className.toUpperCase()];
+  if (f && ch.level >= f.level) return { speed: FORM_SPEED, form: f.form };
+  return { speed: RUN_SPEED };
+}
 /** Taxi speed (probe 0.6.0, build 70245). */
 export const FLIGHT_SPEED = 30.52;
 /** Flight paths bend: straight distance × this, unless recorded flights say otherwise (TravelData.flightDetour). */
@@ -67,7 +90,10 @@ export const DOCK_RADIUS = 150;
 export function route(
   from: MapSpot,
   to: MapSpot,
-  ch: Pick<CharacterState, 'faction' | 'flightPaths' | 'hearth' | 'mounted'>,
+  ch: Pick<
+    CharacterState,
+    'faction' | 'flightPaths' | 'hearth' | 'mounted' | 'className' | 'level'
+  >,
   data: TravelData,
   now: number,
 ): { seconds: number; legs: Leg[] } | null {
@@ -118,7 +144,8 @@ export function route(
   const acrossWater = (p: WorldPos, q: WorldPos) =>
     docks.some(([a, b]) => (near(p, a) && near(q, b)) || (near(p, b) && near(q, a)));
 
-  const speed = ch.mounted ? MOUNT_SPEED : RUN_SPEED;
+  const { speed, form } = groundTravel(ch);
+  const walk = form ? { how: 'walk' as const, note: form } : { how: 'walk' as const };
   for (let i = 0; i < nodes.length; i++) {
     for (let j = 0; j < nodes.length; j++) {
       if (i === j) continue;
@@ -126,7 +153,7 @@ export function route(
       const b = nodes[j]!;
       const d = distance(a.pos, b.pos);
       if (!Number.isFinite(d) || acrossWater(a.pos, b.pos)) continue;
-      link(i, j, { seconds: d / speed, how: 'walk' });
+      link(i, j, { seconds: d / speed, ...walk });
       if (a.flightId !== undefined && b.flightId !== undefined) {
         link(i, j, {
           seconds: flightSeconds(d, data.flightDetour),

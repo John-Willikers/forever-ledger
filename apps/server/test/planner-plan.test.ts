@@ -110,6 +110,25 @@ describe('planner loop', () => {
     expect(r.steps.slice(lastAtA + 1, firstAtC).some((s) => s.action === 'travel')).toBe(true);
   });
 
+  it('says Travel Form on a druid’s travel steps and gets there 40 % faster', () => {
+    const A = npc(1, 'Gruk', BASE);
+    const H2 = offset(BASE, -1500);
+    const C = npc(3, 'Far Orc', H2);
+    const qs = [
+      quest(23, { level: 30, giver: A, ender: C, objectives: [collect([offset(BASE, 50)], 1)] }),
+    ];
+    const run = (over: Parameters<typeof character>[0]) =>
+      plan(atlas(qs), character({ level: 30, ...over }), NO_TRAVEL, { toLevel: 40 });
+    const walks = (steps: PlanStep[]) =>
+      steps.filter((s) => s.action === 'travel' && s.how === 'walk');
+    const druid = run({ className: 'DRUID' });
+    expect(walks(druid.steps).length).toBeGreaterThan(0);
+    for (const s of walks(druid.steps)) expect(s.note).toBe('Travel Form');
+    const warrior = run({});
+    for (const s of walks(warrior.steps)) expect(s.note).toBeUndefined();
+    expect(druid.seconds).toBeLessThan(warrior.seconds);
+  });
+
   describe('level-gated pickups', () => {
     const A = npc(1, 'Gruk', BASE);
     const setup = (south: number, gatedXp: number): AtlasQuest[] => {
