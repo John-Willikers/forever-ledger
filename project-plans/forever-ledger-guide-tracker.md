@@ -15,7 +15,9 @@ the step's spot.
    quests, remove guide-added watches when the step moves on). The native tracker does the drawing.
 2. **A TomTom-style arrow** for the step's coordinates (works for steps that aren't quests too: "go to X", "pick up
    from Y").
-3. **Probe first.** The API dump has the watch / super-track functions but not frames or templates, so
+3. **Takes over the watch list** (2026-10-07 23:58): your watches are saved once and restored on hide / finish.
+4. **A real "Guide" module in the tracker** for the step text, with Next / Back / Pick guide / Hide in its menu.
+5. **Probe first.** The API dump has the watch / super-track functions but not frames or templates, so
    `ForeverLedgerProbe` 0.5.0 asks the client before any design.
 
 ## 🔬 Probe 0.5.0 — what it asks
@@ -40,7 +42,10 @@ the step's spot.
   - **No quest waypoints:** `C_QuestLog.GetNextWaypoint` is empty, so the arrow uses the guide's own coordinates.
   - 🐞 Probe nit: `tracker watch` restores the super-tracked *quest* but not a super-tracked *user waypoint* (it
     was on before the test, off after). Harmless; the viewer rework must restore it properly.
-- 🟡 2½ 🤔 Design questions for Harlan (next): guide watches vs. the player's own watches; our arrow vs. the native
-  marker vs. both
-- ⏳ 3 🛠️ Viewer rework: guide drives quest watches + arrow (design after step 2)
-- ⏳ 4 🚀 Release a new addon version (`addon-vX` → `addon-cli publish X`)
+- ✅ 2½ 🤔 Design agreed with Harlan, section by section — 2026-10-07 23:58 CDT: guide **takes over** the watch list
+  (yours saved and restored), a real **"Guide" tracker module** above Quests (fallback: lookalike frame), **our own
+  TomTom arrow** (Pin and the old window go). Design: `docs/plans/2026-10-07-guide-tracker-design.md`
+- 🟡 3 🛠️ Viewer rework on `feat/guide-tracker` (implementation plan next, then the tasks below)
+- ⏳ 4 🎮 Harlan tests in-game: section, Next/Back, watch takeover + restore, arrow walking/turning, a fight with a
+  quest item
+- ⏳ 5 🚀 Addon 0.7.0 (`addon-v0.7.0` → `addon-cli publish 0.7.0`)
