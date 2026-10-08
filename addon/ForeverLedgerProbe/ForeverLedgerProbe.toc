@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Forever Ledger Probe
 ## Notes: Read-only dump of what this client supports (API docs, globals, events, logging, reload) for Forever Ledger development. /flprobe
-## Version: 0.5.0
+## Version: 0.6.0
 ## SavedVariables: ForeverLedgerProbeDB
 
 ForeverLedgerProbe.lua

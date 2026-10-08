@@ -27,6 +27,14 @@ export interface CommentDraft {
   gameVersion: GameVersion;
 }
 
+/** A page a parser says should be fetched too (a list page's quests), queued when the snapshot is applied. */
+export interface FollowDraft {
+  url: string;
+  entityType: EntityType | null;
+  entityId: number | null;
+  priority: number;
+}
+
 export interface ParseResult {
   /** e.g. `wowhead@1`. Bump the number when a parser's output changes, then run `knowledge-cli reparse`. */
   parser: string;
@@ -38,4 +46,6 @@ export interface ParseResult {
   comments: CommentDraft[];
   /** Parts of the page the parser expected but couldn't read, for the admin panel. */
   problems: string[];
+  /** Pages to queue (never re-queues one already known: its state and priority stay). */
+  follow?: FollowDraft[];
 }

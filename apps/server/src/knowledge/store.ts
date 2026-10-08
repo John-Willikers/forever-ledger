@@ -31,7 +31,7 @@ import { FOREVER_ID_THRESHOLDS } from '../routes/shared.js';
 import { chicagoIso } from '../time.js';
 import { looksLikeChallenge } from './challenge.js';
 import { parseSnapshot } from './parsers/index.js';
-import type { ClaimDraft, CommentDraft, ParseResult } from './parsers/index.js';
+import type { ClaimDraft, CommentDraft, FollowDraft, ParseResult } from './parsers/index.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type Conn = Db | Tx;
@@ -182,7 +182,8 @@ async function snapshotSource(
 }
 
 /**
- * Parses a stored page into its source, claims and comments. Safe to repeat. With `replace`, claims an older parser
+ * Parses a stored page into its source, claims and comments, and queues the pages it says to follow (a quest list's
+ * quests; a URL already on the queue is left as it is). Safe to repeat. With `replace`, claims an older parser
  * read off this same page are dropped first (a parser fix, not new information); hand-entered claims stay.
  */
 export async function applySnapshot(
@@ -206,7 +207,8 @@ export async function applySnapshot(
   }
   const added = await insertClaims(conn, source, parsed.claims, parsed.parser);
   await insertComments(conn, classifySource(snap.finalUrl).site, snap.id, parsed.comments);
-  return { sourceId: source.id, claims: added, problems: parsed.problems };
+  const queued = await enqueueFollows(conn, parsed.follow ?? []);
+  return { sourceId: source.id, claims: added, queued, problems: parsed.problems };
 }
 
 /** The page's raw bytes (at most MAX_HTML_BYTES; larger throws). */
@@ -216,7 +218,8 @@ export const inflate = (gz: Buffer) => inflateBytes(gz).toString('utf8');
 
 export interface EnqueueOptions {
   url: string;
-  addedBy: 'seed' | 'cli' | 'admin' | 'ingest';
+  /** `parser`: a stored page named it (`ParseResult.follow`). */
+  addedBy: 'seed' | 'cli' | 'admin' | 'ingest' | 'parser';
   priority?: number;
   entityType?: EntityType | null;
   entityId?: number | null;
@@ -252,6 +255,49 @@ export async function enqueueUrl(conn: Conn, opts: EnqueueOptions): Promise<bool
         .returning({ url: fetchTargets.url })
     : await q.onConflictDoNothing().returning({ url: fetchTargets.url });
   return res.length > 0;
+}
+
+/** Most follows queued from one page (the parser caps them too). */
+export const MAX_FOLLOWS_PER_PAGE = 2000;
+const FOLLOW_BATCH = 500;
+
+/**
+ * Queues the pages a parsed page names, in batched inserts: new URLs are added (`added_by` `parser`), a URL still
+ * queued only gains priority (`greatest`), any other state (done, leased, skipped, failed) is left alone. Returns how
+ * many URLs were new.
+ */
+export async function enqueueFollows(conn: Conn, follows: FollowDraft[]): Promise<number> {
+  const byUrl = new Map<string, FollowDraft & { url: string }>();
+  for (const f of follows.slice(0, MAX_FOLLOWS_PER_PAGE)) {
+    const url = normalizeUrl(f.url);
+    const seen = byUrl.get(url);
+    if (!seen || f.priority > seen.priority) byUrl.set(url, { ...f, url });
+  }
+  const rows = [...byUrl.values()].map((f) => ({
+    url: f.url,
+    site: classifySource(f.url).site,
+    entityType: f.entityType,
+    entityId: f.entityId,
+    priority: f.priority,
+    addedBy: 'parser',
+  }));
+  let added = 0;
+  for (let i = 0; i < rows.length; i += FOLLOW_BATCH) {
+    const res = await conn
+      .insert(fetchTargets)
+      .values(rows.slice(i, i + FOLLOW_BATCH))
+      .onConflictDoUpdate({
+        target: fetchTargets.url,
+        set: {
+          priority: sql`greatest(${fetchTargets.priority}, excluded.priority)`,
+          updatedAt: sql`now()`,
+        },
+        setWhere: sql`${fetchTargets.state} = 'queued' and ${fetchTargets.priority} < excluded.priority`,
+      })
+      .returning({ added: sql<boolean>`(xmax = 0)` });
+    added += res.filter((r) => r.added).length;
+  }
+  return added;
 }
 
 /**
@@ -557,6 +603,7 @@ export async function reparseAll(db: Db, site?: string, opts: { replace?: boolea
     .orderBy(webSnapshots.id);
   let pages = 0;
   let added = 0;
+  let queued = 0;
   const problems: string[] = [];
   for (const s of snaps) {
     if (site && classifySource(s.url).site !== site) continue;
@@ -568,10 +615,11 @@ export async function reparseAll(db: Db, site?: string, opts: { replace?: boolea
       const r = await db.transaction((tx) => applySnapshot(tx, s, inflate(row!.htmlGz), opts));
       pages++;
       added += r.claims;
+      queued += r.queued;
       problems.push(...r.problems.map((p) => `#${s.id} ${s.url}: ${p}`));
     } catch (err) {
       problems.push(`#${s.id} ${s.url}: parse failed: ${(err as Error).message}`);
     }
   }
-  return { pages, added, problems };
+  return { pages, added, queued, problems };
 }
