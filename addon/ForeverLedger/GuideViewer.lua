@@ -266,14 +266,20 @@ function G.stepQuests(step)
   return ids
 end
 
--- Brings the arrow, the watch list and the tracker section in line with the step. Watches and the tracker only change
--- out of combat (taint guard): in combat the sync is owed and PLAYER_REGEN_ENABLED runs it. `rewatch` re-applies the
--- watch list even when the step didn't change (after an accept, which the game auto-watches).
+-- Brings the arrow, the fallback window, the watch list and the tracker section in line with the step. The arrow and
+-- the window are our own frames and follow at once; watches and the tracker only change out of combat (taint guard):
+-- in combat that part is owed and PLAYER_REGEN_ENABLED runs it. `rewatch` re-applies the watch list even when the step
+-- didn't change (after an accept, which the game auto-watches).
 function G.sync(rewatch)
   local g = G.shown and G.current() or nil
   local i = g and G.stepIndex()
   local step = g and g.steps[i] or nil
   if G.arrow then G.arrow.setTarget(step) end
+  local T = G.tracker
+  if not (T and T.active()) then
+    if G.shown then G.frame():Show() end
+    G.render()
+  end
   if inCombat() then
     G.owed = true
     return
@@ -289,12 +295,7 @@ function G.sync(rewatch)
       W.restore()
     end
   end
-  local T = G.tracker
   if T then T.refresh() end
-  if not (T and T.active()) then
-    if G.shown then G.frame():Show() end
-    G.render()
-  end
 end
 
 ---------------------------------------------------------------- window

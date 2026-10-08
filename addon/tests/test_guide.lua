@@ -184,6 +184,14 @@ return function(H)
     H.ok(counter(again):find("Step 3 of 5", 1, true), counter(again))
   end)
 
+  H.test("guide: the window is our own frame, so it keeps updating in combat", function()
+    local c = viewer(H)
+    c.world.inCombat = true
+    c.slash("FOREVERLEDGER", "guide next")
+    H.ok(counter(c):find("Step 2 of 5", 1, true), counter(c))
+    H.ok(body(c):find("Turn in to Shadow Priest Sarvis", 1, true), body(c))
+  end)
+
   H.test("guide: only this character's guides; list and use switch between them", function()
     local c = viewer(H, { guides = { guide(9, ME, "Undead 4-10 (Rot's run)"), guide(8, "Someone Else-Bayou"),
                                      guide(7, ME) } })

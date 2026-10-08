@@ -46,7 +46,7 @@ the step's spot.
   (yours saved and restored), a real **"Guide" tracker module** above Quests (fallback: lookalike frame), **our own
   TomTom arrow** (Pin and the old window go). Design: `docs/plans/2026-10-07-guide-tracker-design.md`
 - 🟡 3 🛠️ Viewer rework on `feat/guide-tracker`: implementation plan written (7 tasks, built on Blizzard's real 11.x
-  tracker source) — `docs/plans/2026-10-08-guide-tracker.md` — 2026-10-08 00:20 CDT. Waiting on Harlan to pick how
+  tracker source) — `docs/plans/2026-10-08-guide-tracker.md` — 2026-10-08 00:05 CDT. Waiting on Harlan to pick how
   it runs.
   - ✅ T1 test helpers (2026-10-08 00:08 CDT) · ✅ T2 `G.sync` + combat guard (2026-10-08 00:09 CDT) ·
     ⏳ T3 watches · ⏳ T4 arrow · ⏳ T5 tracker module · ⏳ T6 wire-up + 0.7.0 · ⏳ T7 review / PR
