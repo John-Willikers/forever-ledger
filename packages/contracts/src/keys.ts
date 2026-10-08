@@ -57,6 +57,12 @@ export function recordKey<K extends RecordKind>(kind: K, record: RecordOf<K>): s
       return `gear:${r.char}:${r.build}`;
     case 'objectiveProgress':
       return `objp:${r.char}:${r.questId}:${r.index}:${r.have}:${r.time}`;
+    case 'charState':
+      return `cstate:${r.char}:${r.build}`;
+    case 'xpCurve':
+      return `xpc:${r.build}:${r.level}`;
+    case 'trips':
+      return `trip:${r.char}:${r.kind}:${r.startedAt}`;
     case 'trainers':
       return `trainer:${r.npcId}:${r.build}`;
     case 'vendors':

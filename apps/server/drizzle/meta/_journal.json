@@ -155,6 +155,20 @@
       "when": 1791428728374,
       "tag": "0021_guides",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791466024373,
+      "tag": "0022_character_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791466949231,
+      "tag": "0023_completed_truncated",
+      "breakpoints": true
     }
   ]
 }

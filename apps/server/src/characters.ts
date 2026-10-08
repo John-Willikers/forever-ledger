@@ -2,6 +2,7 @@
 // "Sam-Realm". Addon 0.4.0 keys by full name again and sends the GUID. Aliases map old keys to their character;
 // `mergeCharacter` moves an old key's rows onto the canonical key (characters-cli merge, or ingest when two keys
 // share a GUID).
+import { CHAR_STATE_LIMITS } from '@forever-ledger/contracts';
 import type { Records } from '@forever-ledger/contracts';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from './db/client.js';
@@ -10,18 +11,76 @@ import { characterAliases, characters } from './db/schema.js';
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type Conn = Db | Tx;
 
+/** Server cap on a character's completed quest ids (the contracts limit); a longer union keeps the highest ids. */
+const COMPLETED_KEEP = CHAR_STATE_LIMITS.completed;
+
+/**
+ * How a character state row (`n`, the newer) takes in an older one (`o`), per column, as SQL over two row aliases
+ * (`excluded` and the table at ingest; the two copies in a merge). Forever loads SavedVariables empty at every login
+ * (bug #34), so each session uploads only what it saw:
+ * - a section the newer row lacks keeps the older one;
+ * - `completed` only grows: the union (highest ids kept past the cap); `completed_truncated` goes with the list;
+ * - `taxi` merges by taxiMapId, the newest `at` per map winning (the newer row on a tie);
+ * - `bind` without a spot keeps the older spot while the zone is the same (a login reads the zone only).
+ * Everything else (level, xp, log, pos, …) is newest-wins.
+ */
+export function stateSections(n: string, o: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const c of [
+    'level',
+    'xp',
+    'xp_max',
+    'completed_at',
+    'log',
+    'pos',
+    'hearth_ready_at',
+    'mount',
+  ])
+    out[c] = `coalesce(${n}."${c}", ${o}."${c}")`;
+  out.completed = `case when ${n}."completed" is null then ${o}."completed" else (
+      select array_agg(id order by id) from (
+        select distinct id from unnest(coalesce(${o}."completed", '{}'::int[]) || ${n}."completed") as u(id)
+         order by id desc limit ${COMPLETED_KEEP}) k) end`;
+  out.completed_truncated = `case when ${n}."completed" is null then ${o}."completed_truncated" else ${n}."completed_truncated" end`;
+  out.taxi = `case when ${n}."taxi" is null or ${o}."taxi" is null then coalesce(${n}."taxi", ${o}."taxi") else (
+      select jsonb_agg(m order by (m->>'taxiMapId')::bigint) from (
+        select distinct on (m->>'taxiMapId') m from (
+          select m, 1 as mine from jsonb_array_elements(${n}."taxi") m
+          union all select m, 0 from jsonb_array_elements(${o}."taxi") m) a
+         order by m->>'taxiMapId', coalesce((m->>'at')::float8, 0) desc, mine desc) b) end`;
+  out.bind = `case when ${n}."bind" is null then ${o}."bind"
+      when ${n}."bind"->'spot' is null and ${o}."bind"->'spot' is not null
+       and ${n}."bind"->>'zone' is not distinct from ${o}."bind"->>'zone'
+      then ${n}."bind" || jsonb_build_object('spot', ${o}."bind"->'spot')
+      else ${n}."bind" end`;
+  return out;
+}
+
 /**
  * Tables with a `char` column, their primary key, and the column that says which of two colliding rows is newer.
  * When both keys have the same row (same skill line, same recipe and build), the newer one is kept: the short key's
  * rows are usually the newer ones (written after build 70009 dropped the surname). Without a `newer` column the
  * canonical row stays.
  */
-export const CHAR_TABLES: readonly { table: string; pk: readonly string[]; newer?: string }[] = [
+export const CHAR_TABLES: readonly {
+  table: string;
+  pk: readonly string[];
+  newer?: string;
+  /** How the kept (newer) row takes in the other's columns, as ingest does (see stateSections). */
+  fill?: (keep: string, other: string) => Record<string, string>;
+}[] = [
   { table: 'quest_observations', pk: ['quest_id', 'build', 'stage', 'char'], newer: 'observed_at' },
   { table: 'turn_ins', pk: ['id'] },
   { table: 'fishing_casts', pk: ['id'] },
   { table: 'character_gear', pk: ['char', 'build'], newer: 'seen_at' },
   { table: 'quest_objective_progress', pk: ['char', 'quest_id', 'idx', 'have', 'at'] },
+  {
+    table: 'character_state',
+    pk: ['char'],
+    newer: 'observed_at',
+    fill: stateSections,
+  },
+  { table: 'trips', pk: ['char', 'kind', 'started_at'] },
   { table: 'skills', pk: ['char', 'skill_line_id'], newer: 'last_seen' },
   { table: 'skill_ups', pk: ['char', 'skill_line_id', 'observed_at', 'to_rank'] },
   { table: 'recipe_status', pk: ['recipe_id', 'build', 'char'], newer: 'seen_at' },
@@ -99,6 +158,8 @@ export function canonicalize(r: Records, aliases: Map<string, string>): Records 
     fishingCasts: withChar(r.fishingCasts),
     gear: withChar(r.gear),
     objectiveProgress: withChar(r.objectiveProgress),
+    charState: withChar(r.charState),
+    trips: withChar(r.trips),
     runs: withChar(r.runs),
   };
 }
@@ -150,18 +211,39 @@ export async function mergeCharacter(
       guid: null,
     });
   }
-  for (const { table, pk, newer } of CHAR_TABLES) {
+  for (const { table, pk, newer, fill } of CHAR_TABLES) {
     const others = pk.filter((c) => c !== 'char');
+    // A table keyed by the character alone (character_state) clashes on any row of `into`.
     const clash = others.length
       ? sql.raw(others.map((c) => `x."${c}" = t."${c}"`).join(' and '))
-      : sql.raw('false');
+      : sql.raw('true');
+    // A row without a time is the older one (as at ingest).
+    const fromIsNewer = newer
+      ? sql`coalesce(t.${sql.identifier(newer)}, '-infinity') > coalesce(x.${sql.identifier(newer)}, '-infinity')`
+      : sql`false`;
+    // The copy that stays keeps its own values and takes the other's where it has none.
+    if (fill) {
+      const fillFrom = (keep: string, other: string) =>
+        sql.raw(
+          Object.entries(fill(keep, other))
+            .map(([c, v]) => `"${c}" = ${v}`)
+            .join(', '),
+        );
+      await conn.execute(
+        sql`update ${sql.identifier(table)} t set ${fillFrom('t', 'x')} from ${sql.identifier(table)} x
+             where t.char = ${from} and x.char = ${into} and ${clash} and ${fromIsNewer}`,
+      );
+      await conn.execute(
+        sql`update ${sql.identifier(table)} x set ${fillFrom('x', 't')} from ${sql.identifier(table)} t
+             where t.char = ${from} and x.char = ${into} and ${clash} and not (${fromIsNewer})`,
+      );
+    }
     // Where `from` has the newer copy of a row, `into`'s older copy goes and `from`'s moves in its place.
     let replaced = 0;
-    if (newer && others.length) {
+    if (newer) {
       const res = await conn.execute(
         sql`delete from ${sql.identifier(table)} x using ${sql.identifier(table)} t
-             where t.char = ${from} and x.char = ${into} and ${clash}
-               and t.${sql.identifier(newer)} > x.${sql.identifier(newer)}`,
+             where t.char = ${from} and x.char = ${into} and ${clash} and ${fromIsNewer}`,
       );
       replaced = res.rowCount ?? 0;
     }

@@ -1,8 +1,8 @@
--- Forever Ledger v0.8.0 (SavedVariables schema 10)
+-- Forever Ledger v0.7.0 (SavedVariables schema 9)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.8.0"
+local VERSION = "0.7.0"
 -- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
 -- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
 -- items[].classID/subclassID and apiSamples; 5 adds vendors[].title, vendors[].items[].costs (extended costs paid in
@@ -10,10 +10,8 @@ local VERSION = "0.8.0"
 -- held); 7 adds fishingCasts (one record per cast: zone, spot, skill, lure, outcome, catch) and chars[].firstName /
 -- guid, and keys characters by full name (first name + Forever surname); 8 adds gear (what each character wears:
 -- item, link with enchant and suffix, stats per slot); 9 adds objectiveProgress (where each quest objective's count
--- went up); 10 adds charState (where each character stands, for the route planner: level, completed quests, quest
--- log, position, hearth, flight paths, mounts), xpCurve (XP per level per build) and trips (flights, boats /
--- zeppelins and hearths with their times). Each is additive: older data is valid as it is.
-local SCHEMA_VERSION = 10
+-- went up). Each is additive: older data is valid as it is.
+local SCHEMA_VERSION = 9
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local LIST_CAP = 500     -- bossLoot and groupLoot entries kept per run
 local f = CreateFrame("Frame")
@@ -2281,11 +2279,11 @@ local function newSessionID()
   return format("%d-%04x", now(), rnd(0, 65535))
 end
 
--- Schema 4 (professions), 6 (containers), 7 (fishing casts), 8 (gear), 9 (objective progress) and 10 (character
--- state, XP curve, trips) tables; /fl reset confirm wipes them too.
+-- Schema 4 (professions), 6 (containers), 7 (fishing casts), 8 (gear) and 9 (objective progress) tables; /fl reset
+-- confirm wipes them too.
 local PROFESSION_TABLES = { "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
                             "trainers", "vendors", "apiSamples", "containers", "containerLoot", "containerQty",
-                            "fishingCasts", "gear", "objectiveProgress", "charState", "xpCurve", "trips" }
+                            "fishingCasts", "gear", "objectiveProgress" }
 
 local function initDB()
   ForeverLedgerDB = ForeverLedgerDB or {}
@@ -2298,7 +2296,7 @@ local function initDB()
   local hadData = next(db.quests) or next(db.items) or next(db.runs) or next(db.drops)
   local existed = db.meta.schemaVersion ~= nil or hadData
   if not db.meta.schemaVersion and hadData then migrateV0() end
-  -- 1 -> 2 -> ... -> 10 only add fields, so older data needs nothing but the new stamp.
+  -- 1 -> 2 -> ... -> 8 only add fields, so older data needs nothing but the new stamp.
   if (tonumber(db.meta.schemaVersion) or 0) < SCHEMA_VERSION then db.meta.schemaVersion = SCHEMA_VERSION end
   -- Per-session totals (drops, dropQty, corpses, containers, containerLoot, containerQty) belong to this session id
   -- for the life of the table. Forever starts every load with an empty table, so each load is a session. A table
@@ -2555,592 +2553,6 @@ do
   function objProg.forget(questID) objProg.last[questID], objProg.dirty[questID] = nil, nil end
 end
 
----------------------------------------------------------------- character state (schema 10)
--- Where each character stands, so the route planner can plan from the real character. db.charState[charKey] holds
--- one table per character whose fields are replaced, never appended:
---   build, at                    the build and time of the last write
---   level, xp, xpMax             UnitLevel / UnitXP / UnitXPMax (login, level up, logout)
---   completed, completedAt       sorted quest ids from C_QuestLog.GetAllCompletedQuestIDs (login, a few seconds after
---                                turn-ins: at most one read per 10 s, logout)
---   log = { { id, done = { count per objective } } }   the quest log (login, logout)
---   pos = { mapID, x, y, zone, subzone, at }           where the character logged out; x, y 0..1 (4 places)
---   bind = { zone, spot = { mapID, x, y }, at }        GetBindLocation(); the spot is where the player stood when
---                                HEARTHSTONE_BOUND fired (at the innkeeper)
---   hearthReadyAt                epoch seconds the hearthstone is ready, 0 = ready (logout)
---   taxi = { [taxiMapID] = { at, nodes = { { id, name, x, y, state } } } }   each flight map opened; state 0 = where
---                                you stand, 1 = learned, 2 = not learned (Enum.FlightPathState); x, y on the taxi map
---   mount = { owned, mounted }   mounts collected (C_MountJournal) and IsMounted (login, logout)
--- Plus db.xpCurve[build][level] = UnitXPMax: the XP each level needs, shared by all characters.
--- Probe 0.6.0 (build 70245, fixtures/real/probe-70245-travel.json): GetAllTaxiNodes(GetTaxiMapID()) only answers while
--- the flight map is open; nodes carry nodeID, name, position (a vector), state and slotIndex (TakeTaxiNode's slot);
--- the hearthstone (item 6948) cooldown is (start, duration) on the GetTime clock; GetMountInfoByID's 11th value is
--- isCollected.
-local cs = { completedPending = false } -- key: the character key the state was last written under
-do
-  local HEARTHSTONE_ITEM = 6948
-  local LOG_CAP, COMPLETED_CAP, TAXI_MAPS, TAXI_NODES, CURVE_BUILDS = 35, 10000, 4, 80, 3
-  local COMPLETED_GAP = 10 -- seconds between completed-quest reads after turn-ins
-
-  local function r4(v)
-    v = tonumber(v)
-    return v and floor(v * 10000 + 0.5) / 10000
-  end
-  cs.r4 = r4
-
-  -- x, y of a client position: a Vector2D (GetXY), or a plain { x, y } / { [1], [2] } table.
-  function cs.xy(v)
-    if type(v) ~= "table" then return nil end
-    if type(v.GetXY) == "function" then
-      local ok, x, y = pcall(v.GetXY, v)
-      if ok and tonumber(x) and tonumber(y) then return tonumber(x), tonumber(y) end
-    end
-    local x, y = tonumber(v.x or v[1]), tonumber(v.y or v[2])
-    if x and y then return x, y end
-  end
-
-  local function text(fn)
-    if not fn then return nil end
-    local ok, s = pcall(fn)
-    return ok and type(s) == "string" and s or nil
-  end
-
-  -- Zone and subzone text onto a position (the trip sampler leaves them out of its samples).
-  function cs.named(p)
-    if p then p.zone, p.subzone = text(GetRealZoneText), text(GetSubZoneText) end
-    return p
-  end
-
-  -- Where the player stands: { mapID, x, y, zone, subzone } (`bare`: no zone text); nil without a map.
-  function cs.pos(bare)
-    if not (C_Map and C_Map.GetBestMapForUnit) then return nil end
-    local ok, mapID = pcall(C_Map.GetBestMapForUnit, "player")
-    mapID = ok and tonumber(mapID)
-    if not mapID then return nil end
-    local p = { mapID = mapID }
-    if not bare then cs.named(p) end
-    if C_Map.GetPlayerMapPosition then
-      local okP, v = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
-      local x, y = cs.xy(okP and v)
-      if x then p.x, p.y = r4(x), r4(y) end
-    end
-    return p
-  end
-
-  -- This character's state table. The key can change within a session (the surname arrives after login): what was
-  -- written under the old key moves to the new one.
-  function cs.rec()
-    local key = charKey()
-    if cs.key and cs.key ~= key and db.charState[cs.key] then
-      db.charState[key] = db.charState[key] or db.charState[cs.key]
-      db.charState[cs.key] = nil
-    end
-    cs.key = key
-    local s = db.charState[key]
-    if type(s) ~= "table" then
-      s = {}
-      db.charState[key] = s
-    end
-    s.build, s.at = build, now()
-    return s
-  end
-
-  function cs.curve(level, xpMax)
-    level, xpMax = tonumber(level), tonumber(xpMax)
-    if not level or not xpMax or level < 1 or xpMax <= 0 then return end
-    db.xpCurve[build] = db.xpCurve[build] or {}
-    db.xpCurve[build][level] = xpMax
-    -- the newest CURVE_BUILDS builds (build numbers only grow)
-    while true do
-      local n, oldest = 0, nil
-      for b in pairs(db.xpCurve) do
-        n = n + 1
-        if not oldest or (tonumber(b) or 0) < (tonumber(oldest) or 0) then oldest = b end
-      end
-      if n <= CURVE_BUILDS then break end
-      db.xpCurve[oldest] = nil
-    end
-  end
-
-  function cs.level()
-    local level, xp, xpMax = tonumber(UnitLevel("player")), tonumber(UnitXP("player")), tonumber(UnitXPMax("player"))
-    if not level then return end
-    local s = cs.rec()
-    s.level, s.xp, s.xpMax = level, xp, xpMax
-    cs.curve(level, xpMax)
-  end
-
-  -- An empty answer (quest data not loaded yet, e.g. right after login) never replaces a recorded list: the old one is
-  -- kept. Any empty answer is read once more 5 s later (`retry` is that second read, which doesn't try again).
-  -- completedTruncated = how many ids were cut by the cap (nil when none).
-  function cs.completed(retry)
-    if not QuestLog.GetAllCompletedQuestIDs then return end
-    local ok, ids = pcall(QuestLog.GetAllCompletedQuestIDs)
-    if not ok or type(ids) ~= "table" then return end
-    local list = {}
-    for _, id in pairs(ids) do
-      id = tonumber(id)
-      if id then list[#list + 1] = id end
-    end
-    table.sort(list)
-    -- over the cap the lowest ids go: the highest are the newest (likely Forever-only) quests
-    local cut = #list - COMPLETED_CAP
-    if cut > 0 then
-      for i = 1, COMPLETED_CAP do list[i] = list[i + cut] end
-      for i = #list, COMPLETED_CAP + 1, -1 do list[i] = nil end
-    end
-    local s = cs.rec()
-    if #list == 0 then
-      if not retry and C_Timer then
-        C_Timer.After(5, function() safely("charState", cs.completed, true) end)
-      end
-      if type(s.completed) == "table" and #s.completed > 0 then return end
-    end
-    s.completed, s.completedAt = list, now()
-    s.completedTruncated = cut > 0 and cut or nil
-    cs.completedReadAt = now()
-  end
-
-  -- After a turn-in the list is read a moment later (the client may not have it yet), at most once per 10 s.
-  function cs.turnedIn()
-    if cs.completedPending or not C_Timer or not QuestLog.GetAllCompletedQuestIDs then return end
-    cs.completedPending = true
-    local wait = math.max(1, COMPLETED_GAP - (now() - (cs.completedReadAt or 0)))
-    C_Timer.After(wait, function()
-      cs.completedPending = false
-      safely("charState", cs.completed)
-    end)
-  end
-
-  function cs.log()
-    if not NumLogEntries then return end
-    local list = {}
-    for i = 1, NumLogEntries() or 0 do
-      local _, _, _, isHeader, qid = logEntry(i)
-      qid = tonumber(qid)
-      if not isHeader and qid and qid > 0 then
-        local done = {}
-        if QuestLog.GetQuestObjectives then
-          local ok, objs = pcall(QuestLog.GetQuestObjectives, qid)
-          if ok and type(objs) == "table" then
-            for j, o in ipairs(objs) do done[j] = type(o) == "table" and tonumber(o.numFulfilled) or 0 end
-          end
-        end
-        list[#list + 1] = { id = qid, done = done }
-        if #list >= LOG_CAP then break end
-      end
-    end
-    cs.rec().log = list
-  end
-
-  local function bindZone()
-    if not GetBindLocation then return nil end
-    local ok, zone = pcall(GetBindLocation)
-    if ok and type(zone) == "string" and zone ~= "" then return zone end
-  end
-
-  -- Login: the bind zone. A different zone than recorded means the hearth was set elsewhere: the old spot is gone.
-  function cs.bind()
-    local zone = bindZone()
-    if not zone then return end
-    local s = cs.rec()
-    if type(s.bind) ~= "table" or s.bind.zone ~= zone then s.bind = { zone = zone, at = now() } end
-  end
-
-  -- HEARTHSTONE_BOUND: the player stands at the innkeeper.
-  function cs.bound()
-    local zone = bindZone()
-    if not zone then return end
-    local p = cs.pos()
-    cs.rec().bind = { zone = zone, spot = p and p.x and { mapID = p.mapID, x = p.x, y = p.y } or nil, at = now() }
-  end
-
-  function cs.hearth()
-    local fn = (C_Container and C_Container.GetItemCooldown) or (C_Item and C_Item.GetItemCooldown)
-    if not fn or not GetTime then return end
-    local ok, start, duration = pcall(fn, HEARTHSTONE_ITEM)
-    start, duration = ok and tonumber(start), ok and tonumber(duration)
-    if not start or not duration then return end
-    local left = (start > 0 and duration > 0) and (start + duration - GetTime()) or 0
-    local serverNow = GetServerTime and GetServerTime() or now()
-    cs.rec().hearthReadyAt = left > 0 and floor(serverNow + left + 0.5) or 0
-  end
-
-  -- The flight map that is open: its nodes go to the state (most recent TAXI_MAPS maps); the window (every node by
-  -- TakeTaxiNode slot, and where you stand) stays in cs.taxiWindow for the flight trip.
-  function cs.taxiOpened()
-    cs.taxiWindow = nil
-    if not (GetTaxiMapID and C_TaxiMap and C_TaxiMap.GetAllTaxiNodes) then return end
-    local ok, mapID = pcall(GetTaxiMapID)
-    mapID = ok and tonumber(mapID)
-    if not mapID then return end
-    local okN, list = pcall(C_TaxiMap.GetAllTaxiNodes, mapID)
-    if not okN or type(list) ~= "table" then return end
-    local nodes, slots, current = {}, {}, nil
-    for _, n in ipairs(list) do
-      local id = type(n) == "table" and tonumber(n.nodeID)
-      if id then
-        local x, y = cs.xy(n.position)
-        local node = { id = id, name = type(n.name) == "string" and n.name or nil, x = r4(x), y = r4(y),
-                       state = tonumber(n.state) }
-        if #nodes < TAXI_NODES then nodes[#nodes + 1] = node end
-        if tonumber(n.slotIndex) then slots[tonumber(n.slotIndex)] = node end
-        if node.state == 0 then current = node end
-      end
-    end
-    if #nodes == 0 then return end
-    cs.taxiWindow = { mapID = mapID, slots = slots, current = current }
-    local s = cs.rec()
-    if type(s.taxi) ~= "table" then s.taxi = {} end
-    s.taxi[mapID] = { at = now(), nodes = nodes }
-    while true do
-      local n, oldest = 0, nil
-      for id, t in pairs(s.taxi) do
-        n = n + 1
-        if not oldest or (t.at or 0) < (s.taxi[oldest].at or 0) then oldest = id end
-      end
-      if n <= TAXI_MAPS then break end
-      s.taxi[oldest] = nil
-    end
-  end
-
-  function cs.mount()
-    local m, J = {}, C_MountJournal
-    if J and J.GetMountIDs and J.GetMountInfoByID then
-      local ok, ids = pcall(J.GetMountIDs)
-      if ok and type(ids) == "table" then
-        local owned = 0
-        for _, id in ipairs(ids) do
-          local okI, collected = pcall(function() return select(11, J.GetMountInfoByID(id)) end)
-          if okI and collected then owned = owned + 1 end
-        end
-        m.owned = owned
-      end
-    end
-    if IsMounted then
-      local ok, mounted = pcall(IsMounted)
-      if ok then m.mounted = mounted and true or false end
-    end
-    if m.owned == nil and m.mounted == nil then return end
-    cs.rec().mount = m
-  end
-
-  function cs.login()
-    safely("charState", cs.level)
-    safely("charState", cs.completed)
-    safely("charState", cs.bind)
-    safely("charState", cs.mount)
-    safely("charState", cs.log)
-  end
-
-  -- PLAYER_LOGOUT (also on /reload): the last word before SavedVariables are written. No timers run after it.
-  function cs.logout()
-    safely("charState", cs.level)
-    safely("charState", cs.completed)
-    safely("charState", cs.log)
-    safely("charState", cs.hearth)
-    safely("charState", cs.mount)
-    safely("charState", function()
-      local p = cs.pos()
-      if p then
-        p.at = now()
-        cs.rec().pos = p
-      end
-    end)
-  end
-
-  -- A level up: UnitLevel / UnitXPMax may lag the event, so they are read a moment later.
-  function cs.levelUp()
-    if C_Timer then C_Timer.After(1, function() safely("charState", cs.level) end)
-    else safely("charState", cs.level) end
-  end
-
-  -- /fl state: one line of what is recorded for this character.
-  function cs.summary()
-    local s = db.charState[charKey()]
-    if type(s) ~= "table" then return "state: nothing recorded for this character yet." end
-    local parts = {}
-    if s.level then parts[#parts + 1] = format("level %d (%d/%d XP)", s.level, s.xp or 0, s.xpMax or 0) end
-    if s.completed then
-      parts[#parts + 1] = format("%d quests completed", #s.completed)
-        .. (s.completedTruncated and format(" (%d more not kept)", s.completedTruncated) or "")
-    end
-    if s.log then parts[#parts + 1] = format("%d in the log", #s.log) end
-    if s.bind then
-      parts[#parts + 1] = "bound to " .. tostring(s.bind.zone) .. (s.bind.spot and " (spot known)" or "")
-    end
-    if s.hearthReadyAt then
-      local left = s.hearthReadyAt - (GetServerTime and GetServerTime() or now())
-      parts[#parts + 1] = left > 0 and format("hearth ready in %d min", math.ceil(left / 60)) or "hearth ready"
-    end
-    if s.taxi then
-      local learned = {}
-      for _, t in pairs(s.taxi) do
-        for _, n in ipairs(t.nodes or {}) do
-          if n.state == 0 or n.state == 1 then learned[n.id] = true end
-        end
-      end
-      local n = 0
-      for _ in pairs(learned) do n = n + 1 end
-      parts[#parts + 1] = format("%d flight paths", n)
-    end
-    if s.mount then
-      parts[#parts + 1] = format("%s mounts (%s)", s.mount.owned and tostring(s.mount.owned) or "?",
-        s.mount.mounted and "mounted" or "not mounted")
-    end
-    return "state: " .. table.concat(parts, ", ") .. "."
-  end
-end
-
----------------------------------------------------------------- trips (schema 10)
--- Real travel times for the route planner, one record per trip in db.trips (cap 300, oldest dropped):
--- { kind = "flight" | "transport" | "hearth", build, char, from, to, startedAt, seconds, fromNode, toNode }, where
--- from / to are { mapID, x, y, zone, subzone } (x, y 0..1) and fromNode / toNode = { id, name } are a flight's taxi
--- nodes. Only observed: nothing here acts.
--- Flight: a post-hook on TakeTaxiNode(slot) notes the picked node (and the one you stand at, from the open flight
--- map); PLAYER_CONTROL_LOST starts the clock, PLAYER_CONTROL_GAINED stops it. Probe 0.6.0 (build 70245): control
--- comes back on landing while UnitOnTaxi is still true, Orgrimmar -> Splintertree Post took 89.7 s.
--- Hearth: UNIT_SPELLCAST_SUCCEEDED of spell 8690 starts it where you stand; the next PLAYER_ENTERING_WORLD or a
--- sample more than 200 yd away ends it. After a loading screen the landing spot is read 2 s after
--- LOADING_SCREEN_DISABLED, again every 2 s (up to 5 reads) until the client has a zone map, not none or a continent
--- (probe: at PLAYER_ENTERING_WORLD the map was still the continent, 1414).
--- Transport (boats, zeppelins): a sample every 2 s while not on a taxi (no zone text in samples). A sample is
--- "carried" when GetUnitSpeed is 0 and the position moved more than 3 yd; a ride starts after 2 carried samples in a
--- row. It ends at the first of 2 samples in a row where the player moves by themself (walking off) or of 3 that
--- aren't carried. Samples are skipped during loading screens (nothing moves then); a far end read after a loading
--- screen gets the same zone-map wait as a hearth. Rides under 10 s or under 100 yd net are not kept.
-local trips = {}
-do
-  -- (one table: the addon's main chunk is near Lua's 200-local limit)
-  local K = {
-    HEARTH_SPELL = 8690,
-    CAP = 300,
-    TICK = 2,           -- seconds between samples
-    MOVE_YD = 3,        -- yd per sample that counts as being carried
-    JUMP_YD = 200,      -- yd per sample beyond which it is a teleport, not a ride; also a hearth's arrival
-    START_TICKS = 2,    -- carried samples in a row that start a ride
-    WALK_TICKS = 2,     -- samples in a row moving by yourself that end a ride
-    STOP_TICKS = 3,     -- samples in a row not carried that end a ride
-    MIN_RIDE = 10,      -- seconds: shorter rides are not kept
-    MIN_RIDE_YD = 100,  -- yd net: shorter rides are not kept
-    TAXI_WAIT = 15,     -- seconds from TakeTaxiNode to PLAYER_CONTROL_LOST
-    HEARTH_WAIT = 120,  -- seconds after the cast a hearth may still arrive
-    SETTLE = 2,         -- seconds between landing-spot reads
-    SETTLE_TRIES = 5,
-    LOADING_MAX = 60,   -- seconds: a loading screen whose end never came no longer pauses the sampler
-    FLIGHT_MAX = 1800,  -- seconds: a flight whose landing never came (a disconnect) is dropped
-    -- continent / world maps, when C_Map.GetMapInfo can't say (Azeroth, Kalimdor, Eastern Kingdoms, taxi maps)
-    WIDE = { [947] = true, [1414] = true, [1415] = true, [1463] = true, [1464] = true },
-  }
-
-  local function clock() return GetTime and GetTime() or now() end
-
-  -- Yards between two positions; math.huge on different maps; nil when they can't be compared.
-  local function yards(a, b)
-    if not (a and b and a.mapID and b.mapID and a.x and b.x) then return nil end
-    if a.mapID ~= b.mapID then return math.huge end
-    if not (C_Map and C_Map.GetMapWorldSize) then return nil end
-    local ok, w, h = pcall(C_Map.GetMapWorldSize, a.mapID)
-    w, h = ok and tonumber(w), ok and tonumber(h)
-    if not w or not h or w <= 0 or h <= 0 then return nil end
-    local dx, dy = (a.x - b.x) * w, (a.y - b.y) * h
-    return math.sqrt(dx * dx + dy * dy)
-  end
-
-  local function record(kind, t, to, seconds)
-    local entry = { kind = kind, build = build, char = charKey(), from = t.from, to = to, startedAt = t.startedAt,
-                    seconds = floor(math.max(0, seconds or (clock() - t.t0)) * 10 + 0.5) / 10, fromNode = t.fromNode,
-                    toNode = t.toNode }
-    db.trips[#db.trips + 1] = entry
-    trim(db.trips, K.CAP)
-    added()
-    return entry
-  end
-
-  -- A zone or city map (Enum.UIMapType Zone = 3 and up), not a continent or the world.
-  function trips.zoneMap(p)
-    if not (p and p.mapID) then return false end
-    if C_Map and C_Map.GetMapInfo then
-      local ok, info = pcall(C_Map.GetMapInfo, p.mapID)
-      if ok and type(info) == "table" and tonumber(info.mapType) then return tonumber(info.mapType) >= 3 end
-    end
-    return not K.WIDE[p.mapID]
-  end
-
-  -- Reads entry.to every SETTLE seconds (up to SETTLE_TRIES) until it is on a zone map; when none comes, the last
-  -- read is kept (a continent spot beats none).
-  function trips.settle(entry, tries)
-    tries = tries or 1
-    if not C_Timer then
-      entry.to = cs.pos() or entry.to
-      return
-    end
-    C_Timer.After(K.SETTLE, function()
-      safely("trips", function()
-        local p = cs.pos()
-        if p and (trips.zoneMap(p) or (tries >= K.SETTLE_TRIES and not entry.to)) then entry.to = p end
-        if not trips.zoneMap(entry.to) and tries < K.SETTLE_TRIES then trips.settle(entry, tries + 1) end
-      end)
-    end)
-  end
-
-  function trips.onTaxi()
-    if not UnitOnTaxi then return false end
-    local ok, v = pcall(UnitOnTaxi, "player")
-    return ok and v and true or false
-  end
-
-  function trips.speed()
-    if not GetUnitSpeed then return nil end
-    local ok, v = pcall(GetUnitSpeed, "player")
-    return ok and tonumber(v) or nil
-  end
-
-  -- flights
-  function trips.takeTaxi(slot)
-    local w = cs.taxiWindow
-    local node = w and w.slots[tonumber(slot) or -1]
-    local name
-    if TaxiNodeName then
-      local ok, n = pcall(TaxiNodeName, slot)
-      if ok and type(n) == "string" and n ~= "INVALID" then name = n end
-    end
-    local cur = w and w.current
-    trips.pendingFlight = { at = clock(), from = cs.pos(),
-                            fromNode = cur and { id = cur.id, name = cur.name } or nil,
-                            toNode = (node or name) and { id = node and node.id, name = name or node.name } or nil }
-  end
-
-  function trips.controlLost()
-    local p = trips.pendingFlight
-    trips.pendingFlight = nil
-    if not p or clock() - p.at > K.TAXI_WAIT then return end
-    trips.flight = { t0 = clock(), startedAt = now(), from = p.from, fromNode = p.fromNode, toNode = p.toNode }
-    trips.ride, trips.cand, trips.last = nil, nil, nil
-  end
-
-  function trips.controlGained()
-    local fl = trips.flight
-    if not fl then return end
-    trips.flight = nil
-    record("flight", fl, cs.pos())
-  end
-
-  -- hearths
-  function trips.spellSucceeded(spellID)
-    if tonumber(spellID) ~= K.HEARTH_SPELL then return end
-    trips.hearth = { t0 = clock(), startedAt = now(), from = cs.pos() }
-    trips.ride, trips.cand = nil, nil
-  end
-
-  function trips.hearthAlive()
-    local h = trips.hearth
-    if h and clock() - h.t0 > K.HEARTH_WAIT then trips.hearth = nil end
-    return trips.hearth
-  end
-
-  -- The hearth is timed to PLAYER_ENTERING_WORLD; where it landed is read once the loading screen is gone.
-  function trips.enteredWorld()
-    if not trips.hearthAlive() then return end
-    local entry = record("hearth", trips.hearth, nil)
-    trips.hearth, trips.last = nil, nil
-    if trips.isLoading then trips.arrival = entry else trips.settle(entry) end
-  end
-
-  function trips.loading(on)
-    trips.isLoading = on and clock() or nil
-    if on then return end
-    if trips.ride then trips.ride.crossed = true end
-    if trips.arrival then
-      trips.settle(trips.arrival)
-      trips.arrival = nil
-    end
-  end
-
-  local function endRide(ride)
-    trips.ride = nil
-    local stop = ride.stop
-    local seconds = stop.t - ride.t0
-    local net = yards(ride.from, stop.pos)
-    if seconds < K.MIN_RIDE or not net or net < K.MIN_RIDE_YD then return end
-    local entry = record("transport", ride, stop.pos, seconds)
-    if ride.crossed and not trips.zoneMap(stop.pos) then trips.settle(entry) end
-  end
-
-  -- One sample: hearth arrival without a loading screen, and boats / zeppelins.
-  function trips.tick()
-    local t = clock()
-    if trips.isLoading and t - trips.isLoading > K.LOADING_MAX then trips.isLoading = nil end
-    if trips.isLoading then return end
-    if trips.pendingFlight and t - trips.pendingFlight.at > K.TAXI_WAIT then trips.pendingFlight = nil end
-    if trips.flight and t - trips.flight.t0 > K.FLIGHT_MAX then trips.flight = nil end
-    if trips.flight or trips.pendingFlight or trips.onTaxi() then
-      trips.ride, trips.cand, trips.last = nil, nil, nil
-      return
-    end
-    local here = cs.pos(true)
-    if not here then return end
-    local prev = trips.last
-    trips.last = { pos = here, t = t, at = now() }
-    if trips.hearthAlive() then
-      local d = yards(trips.hearth.from, here)
-      if d and d > K.JUMP_YD then
-        record("hearth", trips.hearth, cs.named(here))
-        trips.hearth = nil
-      end
-      return
-    end
-    if not prev then return end
-    local d, v = yards(prev.pos, here), trips.speed()
-    local carried = v == 0 and d ~= nil and d > K.MOVE_YD
-    local ride = trips.ride
-    if not ride then
-      if not (carried and d < K.JUMP_YD) then
-        trips.cand = nil
-        return
-      end
-      local cand = trips.cand or { t0 = prev.t, startedAt = prev.at, from = cs.named(prev.pos), n = 0 }
-      cand.n = cand.n + 1
-      trips.cand = cand
-      if cand.n >= K.START_TICKS then
-        trips.cand = nil
-        cand.off, cand.walk = 0, 0
-        trips.ride = cand
-      end
-      return
-    end
-    if carried then
-      ride.off, ride.walk, ride.stop = 0, 0, nil
-      return
-    end
-    local walking = v and v > 0
-    ride.off = ride.off + 1
-    ride.walk = walking and ride.walk + 1 or 0
-    ride.stop = ride.stop or { pos = cs.named(here), t = t }
-    if ride.walk >= K.WALK_TICKS or ride.off >= K.STOP_TICKS then endRide(ride) end
-  end
-
-  -- The sampler runs for the session when the client can measure distances (C_Map.GetMapWorldSize).
-  function trips.start()
-    if trips.running or not (C_Timer and C_Map and C_Map.GetMapWorldSize) then return end
-    trips.running = true
-    safely("trips", trips.tick)
-    if C_Timer.NewTicker then
-      C_Timer.NewTicker(K.TICK, function() safely("trips", trips.tick) end)
-      return
-    end
-    local function loop()
-      safely("trips", trips.tick)
-      C_Timer.After(K.TICK, loop)
-    end
-    C_Timer.After(K.TICK, loop)
-  end
-end
-
--- Observe only: the post-hook runs after the client's TakeTaxiNode and just notes which node was picked.
-if hooksecurefunc and type(TakeTaxiNode) == "function" then
-  pcall(hooksecurefunc, "TakeTaxiNode", function(slot) safely("trips", trips.takeTaxi, slot) end)
-end
-
 ---------------------------------------------------------------- events
 local handlers = {}
 
@@ -3158,8 +2570,6 @@ function handlers.PLAYER_LOGIN()
   lastXP, lastMax, lastLevel = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
   safely("scanSkills", scanSkills)
   gear.changed()
-  cs.login()
-  trips.start()
   say("v" .. VERSION .. " recording. /fl for commands.")
 end
 
@@ -3167,22 +2577,12 @@ function handlers.PLAYER_EQUIPMENT_CHANGED() gear.changed() end
 
 function handlers.PLAYER_LEVEL_UP(level)
   if db.chars and db.chars[charKey()] then db.chars[charKey()].level = level end
-  cs.levelUp()
 end
-
-function handlers.PLAYER_LOGOUT() cs.logout() end
-function handlers.HEARTHSTONE_BOUND() safely("charState", cs.bound) end
-function handlers.TAXIMAP_OPENED() safely("charState", cs.taxiOpened) end
-function handlers.PLAYER_CONTROL_LOST() safely("trips", trips.controlLost) end
-function handlers.PLAYER_CONTROL_GAINED() safely("trips", trips.controlGained) end
-function handlers.LOADING_SCREEN_ENABLED() trips.loading(true) end
-function handlers.LOADING_SCREEN_DISABLED() trips.loading(false) end
 
 function handlers.PLAYER_ENTERING_WORLD()
   if C_Timer then C_Timer.After(3, function() safely("objectives", objProg.baseline) end) end
   checkInstance()
   safely("noteChar", fishLog.noteChar)
-  safely("trips", trips.enteredWorld)
 end
 function handlers.ZONE_CHANGED_NEW_AREA() checkInstance() end
 function handlers.QUEST_DETAIL() captureQuestFrame("detail") end
@@ -3232,7 +2632,6 @@ function handlers.QUEST_TURNED_IN(questID, xp, money)
   trim(db.turnIns, HISTORY_CAP)
   added()
   if run then run.questXP = run.questXP + (xp or 0) end
-  safely("charState", cs.turnedIn)
   checkpoint()
 end
 
@@ -3326,7 +2725,6 @@ function handlers.UNIT_SPELLCAST_SUCCEEDED(unit, castGUID, spellID)
   if unit ~= "player" then return end
   safely("onPlayerSpellForRecipeItem", onPlayerSpellForRecipeItem, spellID)
   safely("onPlayerCastSucceeded", onPlayerCastSucceeded, castGUID, spellID)
-  safely("trips", trips.spellSucceeded, spellID)
 end
 function handlers.TRADE_SKILL_CRAFT_BEGIN(recipeSpellID) safely("onCraftBegin", onCraftBegin, recipeSpellID) end
 function handlers.TRADE_SKILL_ITEM_CRAFTED_RESULT(data) safely("onCraftedResult", onCraftedResult, data) end
@@ -3404,8 +2802,6 @@ SlashCmdList.FOREVERLEDGER = function(msg)
   elseif msg == "guide" or msg:sub(1, 6) == "guide " then
     if ForeverLedgerGuide and ForeverLedgerGuide.slash then ForeverLedgerGuide.slash(msg:sub(7))
     else say("the guide viewer didn't load.") end
-  elseif msg == "state" then
-    say(cs.summary())
   elseif msg == "reset confirm" then
     wipe(db.quests); wipe(db.items); wipe(db.runs); wipe(db.drops); wipe(db.turnIns)
     wipe(db.dropQty); wipe(db.corpses)
@@ -3435,7 +2831,6 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     say("/fl nudge off|on  -  reminders to /reload after bosses, runs and turn-ins")
     say("/fl guide  -  the leveling guide sent to this character, in the quest tracker with an arrow (list, use N, "
       .. "next, back, pin, hide, tracker on|off)")
-    say("/fl state  -  what is recorded for this character (level, quests, hearth, flight paths, mounts)")
     say("/fl guide auto off|on  -  the guide accepts and turns in its step's quests (never picks a reward)")
     say("/fl reset confirm  -  wipe everything")
     say("Type /reload after each dungeon so the data hits disk.")

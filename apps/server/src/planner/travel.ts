@@ -9,6 +9,8 @@ export interface TravelData {
   /** Flight master nodes: id, name, faction ('Horde' | 'Alliance' | 'both'), spot on a client map. */
   flightNodes: { id: number; name: string; faction: string; spot: MapSpot }[];
   transports: Transport[];
+  /** Flight path bend fitted from recorded flights (knowledge/character-state.ts); default FLIGHT_DETOUR. */
+  flightDetour?: number;
 }
 
 export interface Leg {
@@ -24,7 +26,7 @@ export const RUN_SPEED = 7;
 export const MOUNT_SPEED = 11.2;
 /** Taxi speed (probe 0.6.0, build 70245). */
 export const FLIGHT_SPEED = 30.52;
-/** Flight paths bend: straight distance × this. */
+/** Flight paths bend: straight distance × this, unless recorded flights say otherwise (TravelData.flightDetour). */
 export const FLIGHT_DETOUR = 1.25;
 /** Take-off and landing. */
 export const FLIGHT_OVERHEAD = 15;
@@ -36,8 +38,8 @@ export const HEARTH_COOLDOWN = 3600;
  * Flight time between two taxi nodes. Calibration: Orgrimmar → Splintertree Post is 1895 yd straight on map 1414,
  * estimated 92.6 s; the probe measured 89.7 s (TakeTaxiNode → PLAYER_CONTROL_GAINED), measured / estimate = 0.97.
  */
-export const flightSeconds = (yards: number): number =>
-  (yards * FLIGHT_DETOUR) / FLIGHT_SPEED + FLIGHT_OVERHEAD;
+export const flightSeconds = (yards: number, detour = FLIGHT_DETOUR): number =>
+  (yards * detour) / FLIGHT_SPEED + FLIGHT_OVERHEAD;
 
 interface Node {
   spot: MapSpot;
@@ -127,7 +129,7 @@ export function route(
       link(i, j, { seconds: d / speed, how: 'walk' });
       if (a.flightId !== undefined && b.flightId !== undefined) {
         link(i, j, {
-          seconds: flightSeconds(d),
+          seconds: flightSeconds(d, data.flightDetour),
           how: 'fly',
           note: `${names.get(a.flightId)} → ${names.get(b.flightId)}`,
         });

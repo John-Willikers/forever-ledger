@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** SavedVariables / upload schema major. Bump together with `SCHEMA_VERSION` in the addon. */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /**
  * Schema majors this code reads. Each one is additive, so older files and queued older batches stay valid:
@@ -13,9 +13,11 @@ export const SCHEMA_VERSION = 9;
  * (one per cast: zone, spot, skill, lure, outcome, catch) and the character's `firstName` / `guid`, with characters
  * keyed by full name, first name + Forever surname (addon 0.4.0); 8 adds gear: what each character wears, per slot
  * (item, link with enchant and suffix, stats) (addon 0.5.0); 9 adds objective progress: where each quest objective's
- * count went up (addon 0.6.0).
+ * count went up (addon 0.6.0); 10 adds character state, xp curve and trips — where each character stands for the
+ * route planner (level, completed quests, quest log, position, hearth, flight paths, mount), XP needed per level, and
+ * timed flights, boat / zeppelin rides and hearths (addon 0.8.0).
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 export type SchemaVersion = (typeof SUPPORTED_SCHEMA_VERSIONS)[number];
 /** The newest schema this code reads: what the tray sends as `?schema=` when it asks for an addon manifest. */
 export const MAX_SUPPORTED_SCHEMA: SchemaVersion = Math.max(
@@ -35,6 +37,7 @@ const schemaVersion = z.union([
   z.literal(7),
   z.literal(8),
   z.literal(9),
+  z.literal(10),
 ]);
 
 /** Schema 3 `meta.session`: `<epoch>-<4 hex>`, one per SavedVariables table. '' for older files. */
@@ -473,6 +476,165 @@ export const ObjectiveProgress = z.object({
 });
 export type ObjectiveProgress = z.infer<typeof ObjectiveProgress>;
 
+// ---------------------------------------------------------------------------------------------------------------
+// Schema 10: character state for the route planner, the XP curve and timed trips (addon 0.8.0 plan).
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Schema 10 coordinates are a 0..1 map fraction (C_Map position, 4 places), not the 0..100 of older records. Anything
+ * else is dropped by normalize (that coordinate only).
+ */
+const spotCoord = z.number().min(0).max(1);
+const placeName = z.string().max(128);
+
+/**
+ * Where a character stood: `pos`, a trip's ends. x/y are a 0..1 map fraction. Every field optional; an off-map
+ * coordinate is dropped alone.
+ */
+export const StateSpot = z.object({
+  mapId: nonNegInt.optional(),
+  x: spotCoord.optional(),
+  y: spotCoord.optional(),
+  zone: placeName.optional(),
+  subzone: placeName.optional(),
+  at: epochSecs.optional(),
+});
+export type StateSpot = z.infer<typeof StateSpot>;
+
+/**
+ * Longest lists accepted; longer ones are junk. `completed` is the addon's own cap (COMPLETED_CAP 10000, exactly);
+ * the rest leave headroom over the addon's caps (log 35, taxi 4 maps × 80 nodes).
+ */
+export const CHAR_STATE_LIMITS = {
+  completed: 10_000,
+  log: 50,
+  objectives: 32,
+  taxiMaps: 8,
+  taxiNodes: 200,
+} as const;
+
+export const StateLogQuest = z.object({
+  questId: nonNegInt,
+  /** Count done per objective, in the quest's order. */
+  done: z.array(nonNegInt).max(CHAR_STATE_LIMITS.objectives),
+});
+export type StateLogQuest = z.infer<typeof StateLogQuest>;
+
+export const StateBind = z.object({
+  /** GetBindLocation(). */
+  zone: placeName.optional(),
+  /** Where the character stood when HEARTHSTONE_BOUND fired (at the innkeeper). */
+  spot: StateSpot.pick({ mapId: true, x: true, y: true }).optional(),
+  at: epochSecs.optional(),
+});
+export type StateBind = z.infer<typeof StateBind>;
+
+/**
+ * A flight master node on a taxi map. `state`: 0 current, 1 learned (reachable), 2 not learned. x/y: 0..1 fraction of
+ * the taxi map.
+ */
+export const StateTaxiNode = z.object({
+  nodeId: nonNegInt,
+  name: z.string().max(200).optional(),
+  x: spotCoord.optional(),
+  y: spotCoord.optional(),
+  state: z.number().int().min(0).max(16).optional(),
+});
+export type StateTaxiNode = z.infer<typeof StateTaxiNode>;
+
+export const StateTaxiMap = z.object({
+  taxiMapId: nonNegInt,
+  at: epochSecs.optional(),
+  nodes: z.array(StateTaxiNode).max(CHAR_STATE_LIMITS.taxiNodes),
+});
+export type StateTaxiMap = z.infer<typeof StateTaxiMap>;
+
+export const StateMount = z.object({
+  /** Mounts collected (C_MountJournal). */
+  owned: nonNegInt.optional(),
+  mounted: z.boolean().optional(),
+});
+export type StateMount = z.infer<typeof StateMount>;
+
+/** Sections of a character state, each validated on its own: a bad one is dropped and reported, the rest kept. */
+export const CharStateSections = {
+  level: nonNegInt,
+  xp: nonNegInt,
+  xpMax: nonNegInt,
+  /** Every quest the character has completed (C_QuestLog.GetAllCompletedQuestIDs), sorted. */
+  completed: z.array(nonNegInt).max(CHAR_STATE_LIMITS.completed),
+  completedAt: epochSecs,
+  /** How many completed ids the addon cut by its cap (absent when none were). */
+  completedTruncated: nonNegInt,
+  log: z.array(StateLogQuest).max(CHAR_STATE_LIMITS.log),
+  /** Last position (written at logout / reload). */
+  pos: StateSpot,
+  bind: StateBind,
+  /** Epoch seconds when the hearthstone is ready; 0 = ready. */
+  hearthReadyAt: epochSecs,
+  taxi: z.array(StateTaxiMap).max(CHAR_STATE_LIMITS.taxiMaps),
+  mount: StateMount,
+} as const;
+
+/**
+ * Schema 10: where a character stands, for the route planner. One record per character and build; the addon replaces
+ * fields, never appends, so the newest `observedAt` wins. Everything but the character is optional.
+ */
+export const CharState = z.object({
+  char: charKey,
+  build,
+  /** When the addon last wrote this state (SV `at`): an older batch never overwrites newer state. */
+  observedAt: epochSecs.optional(),
+  level: CharStateSections.level.optional(),
+  xp: CharStateSections.xp.optional(),
+  xpMax: CharStateSections.xpMax.optional(),
+  completed: CharStateSections.completed.optional(),
+  completedAt: CharStateSections.completedAt.optional(),
+  completedTruncated: CharStateSections.completedTruncated.optional(),
+  log: CharStateSections.log.optional(),
+  pos: CharStateSections.pos.optional(),
+  bind: CharStateSections.bind.optional(),
+  hearthReadyAt: CharStateSections.hearthReadyAt.optional(),
+  taxi: CharStateSections.taxi.optional(),
+  mount: CharStateSections.mount.optional(),
+});
+export type CharState = z.infer<typeof CharState>;
+
+/** Schema 10: XP needed to finish `level` (UnitXPMax) in a build. */
+export const XpCurveEntry = z.object({
+  build,
+  level: z.number().int().min(1).max(255),
+  xpMax: nonNegInt,
+});
+export type XpCurveEntry = z.infer<typeof XpCurveEntry>;
+
+export const TRIP_KINDS = ['flight', 'transport', 'hearth'] as const;
+export type TripKind = (typeof TRIP_KINDS)[number];
+
+/** A taxi node at either end of a flight. */
+export const TripNode = z.object({
+  nodeId: nonNegInt.optional(),
+  name: z.string().max(200).optional(),
+});
+export type TripNode = z.infer<typeof TripNode>;
+
+/**
+ * Schema 10: a timed trip — a flight (TakeTaxiNode → control regained), a boat / zeppelin ride, or a hearth (cast →
+ * arrival). `seconds` is the measured duration; a trip over a day is junk.
+ */
+export const Trip = z.object({
+  kind: z.enum(TRIP_KINDS),
+  char: charKey,
+  build,
+  startedAt: epochSecs,
+  seconds: z.number().nonnegative().max(86_400),
+  from: StateSpot.optional(),
+  to: StateSpot.optional(),
+  fromNode: TripNode.optional(),
+  toNode: TripNode.optional(),
+});
+export type Trip = z.infer<typeof Trip>;
+
 export const TrainerService = z.object({
   name: z.string(),
   /** GetTrainerServiceInfo type, e.g. 'available', 'unavailable', 'used'. */
@@ -663,6 +825,9 @@ export const Records = z.object({
   fishingCasts: z.array(FishingCast).default([]),
   gear: z.array(CharacterGear).default([]),
   objectiveProgress: z.array(ObjectiveProgress).default([]),
+  charState: z.array(CharState).default([]),
+  xpCurve: z.array(XpCurveEntry).default([]),
+  trips: z.array(Trip).default([]),
   trainers: z.array(Trainer).default([]),
   vendors: z.array(Vendor).default([]),
   apiSamples: z.array(ApiSample).default([]),

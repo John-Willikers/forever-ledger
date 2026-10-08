@@ -10,6 +10,14 @@ describe('planner XP', () => {
     expect(xpToNext(30)).toBe(0);
   });
 
+  it('uses the recorded XP curve of the build where it has the level', () => {
+    const curve = new Map([[10, 7000]]);
+    expect(xpToNext(10, 30, curve)).toBe(7000);
+    expect(xpToNext(11, 30, curve)).toBe(8800);
+    expect(xpToNext(30, 30, new Map([[30, 1]]))).toBe(0);
+    expect(gain({ level: 10, xp: 0 }, 7100, 30, curve)).toEqual({ level: 11, xp: 100 });
+  });
+
   it('scales quest XP by how far above the quest the player is', () => {
     expect(questXp(1000, 10, 15)).toBe(1000);
     expect(questXp(1000, 10, 16)).toBe(800);

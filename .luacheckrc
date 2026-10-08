@@ -55,6 +55,9 @@ read_globals = {
   "GetTrainerServiceTypeFilter",
   "GetMerchantNumItems", "GetMerchantItemID", "GetMerchantItemLink", "GetItemSpell",
   "GetMerchantItemCostInfo", "GetMerchantItemCostItem", "GetMerchantCurrencies",
+  -- character state and trips (schema 10)
+  "GetBindLocation", "GetTaxiMapID", "C_TaxiMap", "TaxiNodeName", "TakeTaxiNode", "UnitOnTaxi", "IsMounted",
+  "C_MountJournal", "GetUnitSpeed",
   -- NPC subtitles (unit tooltips) and the level-line templates
   "C_TooltipInfo", "TOOLTIP_UNIT_LEVEL", "TOOLTIP_UNIT_LEVEL_TYPE", "UNIT_LEVEL_TEMPLATE", "LEVEL",
 }
