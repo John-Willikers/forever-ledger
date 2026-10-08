@@ -25,27 +25,43 @@ local function aim(dx, dy, facing)
   return { state = "point", yards = yards, rotation = (math.atan2(-dx, -dy) - facing) % TWO_PI }
 end
 
+-- The spot's offset from the player in yards east and south: on the same map from its size, else through world yards
+-- when both points are on one continent. nil and why ("none" / "elsewhere") when it can't be told.
+local function offset(target, me, tw)
+  local sameMap = me.mapId == target.mapId
+  if sameMap and me.width and me.height and me.width > 0 and me.height > 0 then
+    return (target.x / 100 - me.x) * me.width, (target.y / 100 - me.y) * me.height
+  end
+  -- Another map, or a map with no size in yards: world yards when both points are on one continent.
+  if tw and me.continent ~= nil and tw.continent == me.continent and me.wx and me.wy then
+    return -(tw.y - me.wy), -(tw.x - me.wx)
+  end
+  return nil, sameMap and "none" or "elsewhere"
+end
+
+local function placed(target, me)
+  return target and target.mapId and tonumber(target.x) and tonumber(target.y) and me and me.mapId and me.x
+end
+
 -- Where the arrow points and how far. Map x/y are 0..1 and grow east and south; target x/y are the guide's 0..100.
 -- Facing is radians counter-clockwise from north (GetPlayerFacing), and so is the returned rotation. On another map
 -- (a city inside its zone) it uses world yards when both points are on one continent: `targetWorld` is the step's
 -- { continent, x, y } and me.continent / wx / wy the player's (probe walk, build 70245: world X grows north, Y west).
 function A.compute(target, me, targetWorld)
-  if not target or not target.mapId or not tonumber(target.x) or not tonumber(target.y) then
-    return { state = "none" }
-  end
-  if not me or not me.mapId or not me.x then return { state = "none" } end
-  local sameMap = me.mapId == target.mapId
-  if sameMap and me.width and me.height and me.width > 0 and me.height > 0 then
-    if not me.facing then return { state = "none" } end
-    return aim((target.x / 100 - me.x) * me.width, (target.y / 100 - me.y) * me.height, me.facing)
-  end
-  -- Another map, or a map with no size in yards: world yards when both points are on one continent.
-  local tw = targetWorld
-  if tw and me.continent ~= nil and tw.continent == me.continent and me.wx and me.wy then
-    if not me.facing then return { state = "none" } end
-    return aim(-(tw.y - me.wy), -(tw.x - me.wx), me.facing)
-  end
-  return { state = sameMap and "none" or "elsewhere" }
+  if not placed(target, me) then return { state = "none" } end
+  local dx, dy = offset(target, me, targetWorld)
+  if not dx then return { state = dy } end
+  if not me.facing then return { state = "none" } end
+  return aim(dx, dy, me.facing)
+end
+
+-- Yards from the player (`me`, as A.player gives it) to the step's spot, or nil when it can't be told (no position,
+-- another continent). Needs no facing: travel steps use it to tell the player got there.
+function A.yards(target, me, targetWorld)
+  if not placed(target, me) then return nil end
+  local dx, dy = offset(target, me, targetWorld)
+  if not dx then return nil end
+  return math.sqrt(dx * dx + dy * dy)
 end
 
 -- A map point (x/y 0..1) in world yards: { continent, x, y }, or nil when the client can't place it.
@@ -86,6 +102,13 @@ function A.player()
   return { mapId = mapId, x = x, y = y, width = tonumber(w), height = tonumber(h),
            continent = world.continent, wx = world.x, wy = world.y,
            facing = not inInstance and tonumber(call(GetPlayerFacing)) or nil }
+end
+
+-- Yards from the player to `step`'s spot now (nil when it can't be told).
+function A.yardsTo(step)
+  if not step or not step.mapId or not tonumber(step.x) or not tonumber(step.y) then return nil end
+  local tw = A.target == step and A.targetWorld or worldPos(step.mapId, tonumber(step.x) / 100, tonumber(step.y) / 100)
+  return A.yards(step, A.player(), tw)
 end
 
 local function label(step)

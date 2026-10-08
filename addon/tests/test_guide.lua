@@ -184,6 +184,45 @@ end
 
 local function did(c) return table.concat(c.did, "; ") end
 
+-- A planned guide (format 2): travel steps between the quest steps. Spots on 1420 (Tirisfal, 1000 x 1000 yd in
+-- these tests) and 1411 (Durotar).
+local function travelGuide(id, char)
+  return {
+    id = id, char = char, title = "Undead 1-12 (planned)", fromLevel = 1, toLevel = 12, basedOn = "the planner",
+    steps = {
+      { action = "accept", npc = "Undertaker Mordo", zone = "Tirisfal Glades", subzone = "Deathknell", mapId = 1420,
+        x = 30.2, y = 71.6, quests = { { questId = RUDE, title = "Rude Awakening" } } },
+      { action = "travel", how = "walk", note = "Travel Form", npc = "Brill", zone = "Tirisfal Glades", mapId = 1420,
+        x = 60, y = 52, quests = {} },
+      { action = "travel", how = "fly", note = "Brill -> Orgrimmar", npc = "Doras", zone = "Durotar", mapId = 1411,
+        x = 45, y = 63, quests = {} },
+      { action = "travel", how = "boat", note = "Tirisfal Glades <-> Durotar", npc = "Zeppelin tower",
+        zone = "Tirisfal Glades", mapId = 1420, x = 61, y = 58, quests = {} },
+      { action = "travel", how = "hearth", note = "Hearthstone", npc = "Brill", zone = "Tirisfal Glades",
+        mapId = 1420, x = 61, y = 52, quests = {} },
+      { action = "turn_in", npc = "Shadow Priest Sarvis", zone = "Tirisfal Glades", subzone = "Deathknell",
+        mapId = 1420, x = 30.8, y = 66.2, quests = { { questId = RUDE, title = "Rude Awakening" } } },
+      { action = "travel", how = "fly", npc = "Doras", zone = "Durotar", mapId = 1411, x = 45, y = 63, quests = {} },
+      { action = "travel", how = "walk", zone = "Durotar", mapId = 1411, x = 50, y = 50, quests = {} },
+    },
+  }
+end
+
+-- Puts the player on `map` at x/y (0..1); every map is 1000 x 1000 yd.
+local function standAt(c, map, x, y)
+  c.env.C_Map.GetBestMapForUnit = function() return map end
+  c.env.C_Map.GetPlayerMapPosition = function() return { GetXY = function() return x, y end } end
+  c.env.C_Map.GetMapWorldSize = function() return 1000, 1000 end
+end
+
+local function withTimers(c)
+  c.world.timers = {}
+  c.env.C_Timer = { After = function(secs, fn) c.world.timers[#c.world.timers + 1] = { at = c.world.clock + secs,
+                                                                                       fn = fn } end }
+end
+
+local function stepNo(c) return c.env.ForeverLedgerGuide.stepIndex() end
+
 return function(H)
   H.test("guide: shows this character's newest guide at login, from step 1", function()
     local c = viewer(H)
@@ -1035,5 +1074,171 @@ return function(H)
     c.fire("QUEST_TURNED_IN", RUDE, 40, 0)
     H.eq(#db.turnIns, turnIns + 1, "turn-in recorded")
     H.eq(db.turnIns[#db.turnIns].questID, RUDE)
+  end)
+
+  ---------------------------------------------------------------- travel steps (guide format 2)
+  local function travelViewer(opts)
+    opts = opts or {}
+    opts.guides = opts.guides or { travelGuide(9, ME) }
+    local c = viewer(H, opts)
+    c.env.ForeverLedgerGuidesData.version = 2
+    return c
+  end
+
+  H.test("guide travel: walk, fly, boat and hearth steps say how to get there", function()
+    local c = travelViewer({ onQuest = { [RUDE] = true } })
+    local G = c.env.ForeverLedgerGuide
+    local g = G.current()
+    H.eq(stepNo(c), 2, "accepted: on to the walk")
+    H.ok(body(c):find("Go to Brill (Travel Form)", 1, true), body(c))
+    H.ok(body(c):find("Tirisfal Glades (60.0, 52.0)", 1, true), body(c))
+    H.ok(G.stepText(g.steps[3], g.steps[2]):find("Fly to Doras|r", 1, true), "after a walk: at a flight master")
+    H.ok(G.stepText(g.steps[3], g.steps[2]):find("Brill -> Orgrimmar", 1, true), "the flight")
+    H.ok(G.stepText(g.steps[4], g.steps[3]):find("Take the Tirisfal Glades <-> Durotar to Zeppelin tower", 1, true),
+      G.stepText(g.steps[4], g.steps[3]))
+    H.ok(G.stepText(g.steps[5], g.steps[4]):find("Hearth to Brill|r", 1, true), G.stepText(g.steps[5], g.steps[4]))
+    H.ok(not G.stepText(g.steps[5], g.steps[4]):find("Hearthstone", 1, true), "the plain note isn't repeated")
+    H.ok(G.stepText(g.steps[7], g.steps[6]):find("Fly to Doras from the flight master", 1, true), "after a quest step")
+    H.ok(G.stepText(g.steps[8], g.steps[7]):find("Go to Durotar|r", 1, true), "no npc: the zone")
+    local boat = { action = "travel", how = "boat", npc = "Booty Bay", quests = {} }
+    H.ok(G.stepText(boat):find("Take the boat to Booty Bay", 1, true), "no note: the boat")
+    H.ok(G.stepText(g.steps[3], g.steps[4]):find("Fly to Doras from the flight master", 1, true), "after a boat")
+    H.ok(G.stepText(g.steps[3]):find("from the flight master", 1, true), "the first step")
+    local rude = { action = "travel", how = "walk", npc = "A|cffff0000B", note = "x|r", quests = {} }
+    H.ok(G.stepText(rude):find("Go to A||cffff0000B (x||r)", 1, true), "escaped")
+    H.ok(not body(c):find("Not in your quest log", 1, true), "no quest lines")
+    H.ok(not body(c):find("Can't get one", 1, true), "no accept line")
+  end)
+
+  H.test("guide travel: done within 60 yd of the spot, checked on the quest-log refresh", function()
+    local c = travelViewer({ onQuest = { [RUDE] = true } })
+    standAt(c, 1420, 0.60, 0.60) -- 80 yd south of Brill (60, 52)
+    c.fire("QUEST_LOG_UPDATE")
+    H.eq(stepNo(c), 2, "80 yd: not there yet")
+    H.eq(c.env.ForeverLedgerGuide.stepDone(c.env.ForeverLedgerGuide.current().steps[2]), false)
+    c.advance(1)
+    standAt(c, 1420, 0.60, 0.57) -- 50 yd
+    c.fire("QUEST_LOG_UPDATE")
+    H.eq(stepNo(c), 3, "50 yd: there")
+    standAt(c, 1420, 0.45, 0.63) -- 1420 at Doras' coordinates: another map
+    c.advance(1)
+    c.fire("QUEST_LOG_UPDATE")
+    H.eq(stepNo(c), 3, "the spot's map only")
+  end)
+
+  H.test("guide travel: a 2 s check runs only while the step is travel", function()
+    local c = travelViewer()
+    withTimers(c)
+    standAt(c, 1420, 0.302, 0.716)
+    c.advance(10)
+    H.eq(#c.world.timers, 0, "accept step: no check")
+    c.q.onQuest[RUDE] = true
+    c.fire("QUEST_ACCEPTED", RUDE)
+    c.advance(1)
+    H.eq(stepNo(c), 2)
+    H.eq(#c.world.timers, 1, "travel step: one check pending")
+    c.advance(2)
+    H.eq(stepNo(c), 2, "still far")
+    H.eq(#c.world.timers, 1, "one check, not a pile")
+    c.fire("QUEST_LOG_UPDATE")
+    H.eq(#c.world.timers, 1, "a sync doesn't start a second one")
+    standAt(c, 1420, 0.605, 0.52)
+    c.advance(2)
+    H.eq(stepNo(c), 3, "the check moved it on")
+    standAt(c, 1411, 0.45, 0.63)
+    c.advance(2)
+    H.eq(stepNo(c), 4, "the fly step too")
+    c.slash("FOREVERLEDGER", "guide use 1")
+    c.env.ForeverLedgerGuideState.steps[9] = 6
+    c.slash("FOREVERLEDGER", "guide show")
+    H.eq(stepNo(c), 6, "a quest step")
+    c.advance(2)
+    c.advance(2)
+    H.eq(#c.world.timers, 0, "the check stopped")
+  end)
+
+  H.test("guide travel: after a flight lands or a loading screen, on the spot's map within 300 yd", function()
+    local c = travelViewer({ onQuest = { [RUDE] = true } })
+    withTimers(c)
+    c.slash("FOREVERLEDGER", "guide next")
+    H.eq(stepNo(c), 3, "the fly step")
+    standAt(c, 1411, 0.45, 0.88) -- 250 yd from Doras
+    c.advance(2)
+    H.eq(stepNo(c), 3, "250 yd walking: not there")
+    standAt(c, 1420, 0.45, 0.63)
+    c.fire("PLAYER_CONTROL_GAINED")
+    H.eq(stepNo(c), 3, "landed on another map")
+    c.advance(20)
+    standAt(c, 1411, 0.45, 0.30) -- 330 yd
+    c.fire("PLAYER_CONTROL_GAINED")
+    H.eq(stepNo(c), 3, "landed too far")
+    c.advance(20)
+    standAt(c, 1411, 0.45, 0.88)
+    c.fire("PLAYER_CONTROL_GAINED")
+    H.eq(stepNo(c), 4, "landed 250 yd away: there")
+    -- The boat (61, 58 on 1420): the loading screen ends before the position is known, the check after it finds it.
+    c.env.C_Map.GetPlayerMapPosition = function() return nil end
+    c.fire("LOADING_SCREEN_DISABLED")
+    H.eq(stepNo(c), 4)
+    standAt(c, 1420, 0.61, 0.80) -- 220 yd
+    c.advance(2)
+    H.eq(stepNo(c), 5, "the check after the loading screen, and only for the boat: the hearth spot is 280 yd off")
+    standAt(c, 1420, 0.61, 0.80)
+    c.advance(30)
+    H.eq(stepNo(c), 5, "the window is over: 60 yd again")
+  end)
+
+  H.test("guide travel: progress past it (a quest beyond turned in) moves on; Back holds it; Next skips it", function()
+    local c = travelViewer({ onQuest = { [RUDE] = true } })
+    H.eq(stepNo(c), 2)
+    c.q.onQuest[RUDE], c.q.done[RUDE] = nil, true
+    c.fire("QUEST_TURNED_IN", RUDE, 40, 0)
+    H.eq(stepNo(c), 7, "the travel steps before the turn-in are behind you")
+    standAt(c, 1411, 0.45, 0.63)
+    c.fire("QUEST_LOG_UPDATE")
+    H.eq(stepNo(c), 8)
+    c.slash("FOREVERLEDGER", "guide back")
+    c.advance(1)
+    c.fire("QUEST_LOG_UPDATE")
+    H.eq(stepNo(c), 7, "went back by hand: stays though you stand there")
+    c.slash("FOREVERLEDGER", "guide next")
+    H.eq(stepNo(c), 8)
+    c.slash("FOREVERLEDGER", "guide next")
+    H.ok(counter(c):find("Done: all 8 steps", 1, true), counter(c))
+  end)
+
+  H.test("guide travel: the watch list stays as it was; the arrow points at the spot", function()
+    local c = travelViewer()
+    c.q.onQuest[RUDE] = true
+    autoWatch(c, RUDE)
+    c.fire("QUEST_ACCEPTED", RUDE)
+    H.eq(stepNo(c), 2)
+    H.eq(sortedWatches(c), tostring(RUDE), "the accepted quest stays watched")
+    c.q.watches[#c.q.watches + 1] = 999
+    c.slash("FOREVERLEDGER", "guide next")
+    H.eq(sortedWatches(c), RUDE .. ",999", "nothing changed on a travel step")
+    local A = c.env.ForeverLedgerGuide.arrow
+    H.eq(A.target.npc, "Doras")
+    H.eq(c.env.ForeverLedgerGuideArrow.label.text, "Doras")
+    c.slash("FOREVERLEDGER", "guide next")
+    c.slash("FOREVERLEDGER", "guide next")
+    c.slash("FOREVERLEDGER", "guide next")
+    H.eq(stepNo(c), 6)
+    H.eq(sortedWatches(c), tostring(RUDE), "a quest step sets them again")
+  end)
+
+  H.test("guide travel: auto quest does nothing on a travel step", function()
+    local c = travelViewer({ onQuest = { [RUDE] = true } })
+    npcWindows(c)
+    H.eq(stepNo(c), 2)
+    questWindow(c, "QUEST_COMPLETE", RUDE)
+    questWindow(c, "QUEST_DETAIL", MINDLESS)
+    H.eq(did(c), "")
+  end)
+
+  H.test("guide travel: the tracker section shows the travel step", function()
+    local c = travelViewer({ onQuest = { [RUDE] = true }, tracker = true })
+    local b = c.tracker.draw()
+    H.ok(b.lines[1]:find("Go to Brill (Travel Form)", 1, true), b.lines[1])
   end)
 end

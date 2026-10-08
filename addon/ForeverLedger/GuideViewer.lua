@@ -5,6 +5,8 @@
 -- them in line with the step. It only reads the quest log and shows text; `/fl guide pin` still sets a map pin.
 -- Your place in each guide is kept per character in ForeverLedgerGuideState.
 -- GuideAutoQuest.lua accepts and turns in the step's quests at the NPC (never picks a reward).
+-- Planned guides (data version 2) also have travel steps (walk / fly / boat / hearth to a spot, no quests): one is done
+-- when the player gets there (G.travelDone), checked on the quest-log refresh and every 2 s while it is the step.
 -- /fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off | auto on|off
 
 local G = {}
@@ -12,6 +14,10 @@ ForeverLedgerGuide = G
 
 local QuestLog = C_QuestLog or {}
 local READ_GAP = 0.5 -- seconds between quest-log driven re-checks
+local NEAR = 60 -- yards: a travel step's spot is reached
+local LANDED_NEAR = 300 -- yards: ... right after a flight, a boat or a hearth put you on its map
+local LANDED_FOR = 10 -- seconds a landing counts (the position can lag behind the loading screen)
+local TRAVEL_CHECK = 2 -- seconds between travel checks
 local WIDTH = 330
 
 local function say(msg) print("|cff33ff99Forever Ledger:|r " .. msg) end
@@ -91,10 +97,30 @@ local function deferredOf(g)
   return s.later[g.id]
 end
 
+local function now() return GetTime and GetTime() or time() end
+
+-- A travel step is behind the player once they are within NEAR yards of its spot (on its map, or through world yards
+-- on its continent), or within LANDED_NEAR yards just after a flight landed or a loading screen ended while it was the
+-- step (G.landed: only that step, so a walk to the flight master next to the inn you hearthed to isn't skipped too).
+-- No position (an instance, no arrow) is not there.
+function G.travelDone(step)
+  local A = G.arrow
+  if not A or not A.yardsTo then return false end
+  local ok, yards = pcall(A.yardsTo, step)
+  if not ok or type(yards) ~= "number" then return false end
+  local l = G.landed
+  local landed = l ~= nil and l.step == step and now() - l.at <= LANDED_FOR
+  return yards <= (landed and LANDED_NEAR or NEAR)
+end
+
+local function isTravel(step) return step ~= nil and step.action == "travel" end
+G.isTravel = isTravel
+
 -- Whether a step is behind the player: picked up (or done), objectives finished, or turned in. A pickup they are too
 -- low for counts as behind them for now (it is kept as a "Later" note), and so do its objectives and turn-in while
--- they still can't have it.
+-- they still can't have it. A travel step: see G.travelDone.
 function G.stepDone(step, later)
+  if isTravel(step) then return G.travelDone(step) end
   for _, q in ipairs(step.quests or {}) do
     local id = q.questId
     local waiting = later and later[id] and not onQuest(id) and not completed(id)
@@ -121,6 +147,22 @@ local function deferTooLow(g, step)
   end
 end
 
+-- A travel step is behind the player too when the first quest step after it is done with real progress (one of its
+-- quests in the log or turned in): they got there their own way.
+local function pastTravel(g, i, later)
+  for j = i + 1, #g.steps do
+    local step = g.steps[j]
+    if not isTravel(step) then
+      if not G.stepDone(step, later) then return false end
+      for _, q in ipairs(step.quests or {}) do
+        if onQuest(q.questId) or completed(q.questId) then return true end
+      end
+      return false
+    end
+  end
+  return false
+end
+
 -- Moves past every finished step from the current one; returns whether the step changed. A step the player went back
 -- to by hand is left alone until they press Next or real progress happens (a quest accepted or turned in).
 function G.advance(force)
@@ -132,7 +174,7 @@ function G.advance(force)
   local i = s.steps[g.id] or 1
   local start = i
   local later = deferredOf(g)
-  while i <= #g.steps and G.stepDone(g.steps[i], later) do
+  while i <= #g.steps and (G.stepDone(g.steps[i], later) or isTravel(g.steps[i]) and pastTravel(g, i, later)) do
     deferTooLow(g, g.steps[i])
     i = i + 1
   end
@@ -206,9 +248,39 @@ function G.laterLines(g)
   return lines
 end
 
--- The step as text: what to do, where, and its quests (with live objective counts while on them).
-function G.stepText(step)
+-- A travel step's line: "Fly to Ratchet", "Take the boat to Menethil Harbor", "Hearth to Orgrimmar", "Go to Brill
+-- (Travel Form)". A flight says where to take it when the step before ended away from a flight master (a quest NPC,
+-- a dock, an inn); after a walk or a flight you are at one.
+local function travelLine(step, before)
+  local to = esc(step.npc or step.subzone or step.zone or "the next spot")
+  local how, note = step.how, step.note
+  if how == "fly" then
+    local atMaster = isTravel(before) and (before.how == "walk" or before.how == "fly")
+    return "Fly to " .. to .. (atMaster and "" or " from the flight master")
+  elseif how == "boat" then
+    return "Take the " .. (note and note ~= "" and esc(note) or "boat") .. " to " .. to
+  elseif how == "hearth" then
+    return "Hearth to " .. to
+  end
+  return "Go to " .. to .. (note and note ~= "" and (" (" .. esc(note) .. ")") or "")
+end
+
+-- The step as text: what to do, where, and its quests (with live objective counts while on them). `before` is the
+-- step before it (travel text only).
+function G.stepText(step, before)
   local lines = {}
+  if isTravel(step) then
+    lines[#lines + 1] = GOLD .. travelLine(step, before) .. "|r"
+    local where = place(step)
+    if where ~= "" then lines[#lines + 1] = GREY .. where .. "|r" end
+    -- A flight's route ("Crossroads -> Ratchet") or a hearth's wait; a walk's form and a boat's name are in the line.
+    local note = step.note
+    if (step.how == "fly" or step.how == "hearth") and note and note ~= "" and note ~= "Hearthstone" then
+      lines[#lines + 1] = GREY .. esc(note) .. "|r"
+    end
+    if step.levelAfter then lines[#lines + 1] = GREY .. "Level " .. step.levelAfter .. " after this|r" end
+    return table.concat(lines, "\n")
+  end
   local verb = VERB[step.action] or step.action
   local who = step.npc and (step.action == "accept" and " from " or step.action == "turn_in" and " to " or " ") or ""
   lines[#lines + 1] = GOLD .. verb .. (step.npc and (who .. esc(step.npc)) or "") .. "|r"
@@ -292,6 +364,7 @@ function G.sync(rewatch)
   local i = g and G.stepIndex()
   local step = g and g.steps[i] or nil
   if G.arrow then G.arrow.setTarget(step) end
+  if isTravel(step) and G.travelCheck then G.travelCheck() end -- also in combat: it only reads the position
   if inCombat() then
     G.owed = true
     G.owedRewatch = G.owedRewatch or rewatch
@@ -303,10 +376,13 @@ function G.sync(rewatch)
   local W = G.watches
   if W and G.shown ~= nil then
     -- No step (no guide, or the guide is finished): the player's own watches come back.
+    -- A travel step has no quests: the watch list stays as the step before left it.
     if step then
       W.take()
-      local ids = G.stepQuests(step)
-      W.apply(ids, g.id .. ":" .. i .. ":" .. table.concat(ids, ","), rewatch)
+      if not isTravel(step) then
+        local ids = G.stepQuests(step)
+        W.apply(ids, g.id .. ":" .. i .. ":" .. table.concat(ids, ","), rewatch)
+      end
     else
       W.restore()
     end
@@ -399,7 +475,7 @@ function G.view()
                     .. "|r" }
   end
   local later = G.laterLines(g)
-  local body = G.stepText(g.steps[i])
+  local body = G.stepText(g.steps[i], g.steps[i - 1])
   if #later > 0 then body = table.concat(later, "\n") .. "\n\n" .. body end
   return { title = esc(g.title),
            counter = string.format("Step %d of %d  ·  %s's run", i, #g.steps, esc(g.basedOn or "?")),
@@ -567,14 +643,47 @@ end
 handlers.ADDON_ACTION_FORBIDDEN = handlers.ADDON_ACTION_BLOCKED
 function handlers.QUEST_LOG_UPDATE()
   if #G.myGuides() == 0 then return end
-  local now = GetTime and GetTime() or time()
-  if now - lastRead >= READ_GAP then
-    lastRead = now
+  local t = now()
+  if t - lastRead >= READ_GAP then
+    lastRead = t
     refresh(false)
   elseif not pending and C_Timer then
     pending = true
     C_Timer.After(READ_GAP, safe(function() pending = false; refresh(false) end))
   end
 end
+-- A flight landed (control comes back) or a loading screen ended (a boat, a zeppelin, a hearth): a travel step whose
+-- map you are on counts within LANDED_NEAR yards for a moment (the guide's spot is the flight master or dock, where
+-- you land a little off). The 2 s check catches a position that comes after the event.
+local function landed()
+  local g = G.current()
+  local step = g and g.steps[G.stepIndex()]
+  if not isTravel(step) then return end
+  G.landed = { step = step, at = now() }
+  refresh(false)
+end
+handlers.PLAYER_CONTROL_GAINED = landed
+handlers.LOADING_SCREEN_DISABLED = landed
+
+-- While the step is travel, one check every TRAVEL_CHECK seconds (the quest log doesn't change while you ride); it
+-- stops on its own once the step is something else. It syncs only when the step moved.
+local checking = false
+local function travelStep()
+  local g = G.shown and G.current()
+  return g and g.steps[G.stepIndex()] or nil
+end
+local tick
+function G.travelCheck()
+  if checking or not C_Timer or not isTravel(travelStep()) then return end
+  checking = true
+  C_Timer.After(TRAVEL_CHECK, safe(tick))
+end
+tick = function()
+  checking = false
+  if not isTravel(travelStep()) then return end
+  if G.advance(false) then G.sync() end -- a sync onto another travel step schedules the next check itself
+  G.travelCheck()
+end
+
 for event in pairs(handlers) do pcall(events.RegisterEvent, events, event) end
 events:SetScript("OnEvent", function(_, event, ...) safe(handlers[event])(...) end)

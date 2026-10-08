@@ -40,6 +40,7 @@ local FIXTURE_V8 = "../../fixtures/synthetic/session-v8.lua"
 local ADDON_0_5_0 = "legacy/ForeverLedger-0.5.0.lua" -- last schema 8 release, writes session-v8
 local FIXTURE_V9 = "../../fixtures/synthetic/session-v9.lua"
 local ADDON_0_7_0 = "legacy/ForeverLedger-0.7.0.lua" -- last schema 9 release, writes session-v9
+local ADDON_0_8_0 = "legacy/ForeverLedger-0.8.0.lua" -- writes session-v10 (contracts pin its addonVersion)
 local FIXTURE_V10 = "../../fixtures/synthetic/session-v10.lua"
 
 -- The schema 4 fixture: the shared play session (quests, loot, a dungeon run), then a profession session that
@@ -1942,7 +1943,7 @@ return function(H)
   end)
 
   H.test("professions: session-v10 fixture adds character state and the XP curve", function()
-    local d = profSession(H, ADDON, true, true, true, true, true, true)
+    local d = profSession(H, ADDON_0_8_0, true, true, true, true, true, true)
     H.writeFile(FIXTURE_V10, H.serialize("ForeverLedgerDB", d))
     H.eq(d.meta.schemaVersion, 10)
     H.eq(d.meta.addonVersion, "0.8.0")
