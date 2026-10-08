@@ -325,6 +325,33 @@ describe('planner loop', () => {
     it('hearths back at once when it is ready', () => {
       expect(run(0).map((s) => s.how)).toEqual(['walk', 'hearth']);
     });
+
+    it('walks a short hop instead of burning the hearth; hearths back from far away', () => {
+      const DK: MapSpot = { mapId: 1420, x: 30.8, y: 66.2 };
+      const sarvis = npc(5, 'Shadow Priest Sarvis', DK);
+      const trip = (yards: number) =>
+        plan(
+          atlas([
+            quest(70, {
+              level: 1,
+              giver: sarvis,
+              ender: sarvis,
+              objectives: [kill([offset(DK, yards)], 1)],
+            }),
+          ]),
+          character({ level: 1, race: 'Scourge', position: DK, hearth: { spot: DK, readyAt: 0 } }),
+          NO_TRAVEL,
+          { toLevel: 30 },
+        ).steps;
+      const hop = trip(150);
+      expect(hop.some((s) => s.how === 'hearth')).toBe(false);
+      expect(indexOf(hop, 'turn_in', 70)).toBeGreaterThan(0);
+      const far = trip(3000);
+      expect(far.filter((s) => s.action === 'travel').map((s) => s.how)).toEqual([
+        'walk',
+        'hearth',
+      ]);
+    });
   });
 
   describe('limits', () => {
