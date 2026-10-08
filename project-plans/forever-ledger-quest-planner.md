@@ -24,11 +24,11 @@ hub batches, few run-backs, real travel (flights, boats, hearth). Runs become ti
 - ✅ 0 🤝 Design agreed section by section — 2026-10-08 04:34 CDT
 - ✅ 1 🔬 Probe 0.6.0 run by Harlan (2026-10-08 04:53 CDT), answers below + `CLAUDE.md` (zeppelin + hearth cooldown added 05:04 CDT): `C_TaxiMap` nodes + learned state, `GetBindLocation`, hearthstone cooldown, mount state,
   transports, every uiMap's size in yards → Harlan runs it
-- 🟡 2 📚 Atlas: ✅ parser `wowhead@5` reviewed + merged (2026-10-08 05:03 CDT, `a51437d`: mapper start/end/objectives, series, restrictions, hostile-page caps, Forever-only zone lists, series follows) → ✅ deployed + 44 lists queued + 68 pages re-parsed + budget 900/60 live (2026-10-08 05:09 CDT; queued item/NPC pages moved to priority 15 so the atlas goes first) → fetching → parser `wowhead@5` (mapper start/end/objectives, series, restrictions) → list pages (9 class + ~40
+- 🟡 2 📚 Atlas: ✅ parser `wowhead@5` reviewed + merged (2026-10-08 05:03 CDT, `a51437d`: mapper start/end/objectives, series, restrictions, hostile-page caps, Forever-only zone lists, series follows) → ✅ deployed + 44 lists queued + 68 pages re-parsed + budget 900/60 live (2026-10-08 05:09 CDT; queued item/NPC pages moved to priority 15 so the atlas goes first) → fetching (cruiser: quiet hours 02–08 CDT, its own 400/day + 120–200 s/page unless changed there) → parser `wowhead@5` (mapper start/end/objectives, series, restrictions) → list pages (9 class + ~40
   zone) → quest pages (starter zones first) → `atlas_quests` → boats list + flight network
 - ⏳ 3 🧍 Addon 0.8.0 / schema 10: completed quests, last position, flight paths, bind + hearth, mount, recorded trips,
   `travel` steps (after 0.7.0 merges)
-- ⏳ 4 🧠 Planner + travel network (unit tests on hand-made atlases, golden undead 1–6 test)
+- 🟡 4 🧠 Planner + travel network (plan `docs/plans/2026-10-08-route-planner.md` written 2026-10-08 06:37 CDT; building on `feat/route-planner`: geo · xp · travel · tour · available · hubs · loop · atlas builder) (unit tests on hand-made atlases, golden undead 1–6 test)
 - ⏳ 5 🧾 Delivery: `createGuide` uses the planner, `leveling_route` planned mode, Discord / admin
 - ⏳ 6 🎮 Harlan follows a planned guide in-game
 
