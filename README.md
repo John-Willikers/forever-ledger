@@ -20,7 +20,7 @@ Copy both folders from `addon/` into the Forever client's `Interface/AddOns/` fo
 
 | Addon                | What it does                                                                                                                                                                                                                                                                                    | Commands                                                                                                                                                                                                                       |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, loot and drop rates, dungeon runs and professions. Shows the leveling guide sent from the tray in Blizzard's quest tracker + arrow, and accepts / turns in the step's quests at the NPC (never picks a reward). | `/fl` status · `/fl scanlog` · `/fl done` · `/fl nudge off` / `on` · `/fl guide` · `/fl guide tracker off` / `on` · `/fl guide auto off` / `on` · `/fl reset confirm`                                                          |
+| `ForeverLedger`      | Records quests (offered XP, rewards, givers), turn-ins, items per client build, loot and drop rates, dungeon runs and professions. Shows the leveling guide sent from the tray in Blizzard's quest tracker + arrow, and accepts / turns in the step's quests at the NPC (never picks a reward). | `/fl` status · `/fl state` · `/fl scanlog` · `/fl done` · `/fl nudge off` / `on` · `/fl guide` · `/fl guide tracker off` / `on` · `/fl guide auto off` / `on` · `/fl reset confirm`                                            |
 | `ForeverLedgerProbe` | Development only: dumps what the client supports (same API docs as `/api`, globals, events) and can sniff event payloads.                                                                                                                                                                       | `/flprobe` dump · `/flprobe names` · `/flprobe tracker [watch]` · `/flprobe arrow` · `/flprobe travel` · `/flprobe trip on`/`off` · `/flprobe fish on`/`off` · `/flprobe sniff on`/`off` · `/flprobe io …` · `/flprobe status` |
 
 Data reaches disk only on `/reload`, logout or a clean exit, so `/reload` after each dungeon. Upgrading from
@@ -62,6 +62,10 @@ Characters are keyed by full name again: Forever returns the surname as `UnitNam
 on its single server many players share a first name. The record also keeps the first name and the GUID, so a later
 rename is merged automatically. Old 0.3.4 short keys ("Sam-…") are merged with
 `pnpm --filter @forever-ledger/server characters suggest` / `characters merge <from> <into> --apply`.
+
+Since 0.8.0 (schema 10) it records each character's state for the route planner: completed quests, the quest log,
+where you logged out, the bind location and hearthstone cooldown, learned flight paths, mounts and the XP each level
+needs. It also times your trips (flights, boats / zeppelins, hearths). `/fl state` shows what is recorded.
 
 Since 0.2.2 the addon reminds you at natural checkpoints (a boss kill, a dungeon run closing, a quest turn-in, a
 dungeon finder reward): `Forever Ledger: N new records since your last /reload — type /reload to save them`. It

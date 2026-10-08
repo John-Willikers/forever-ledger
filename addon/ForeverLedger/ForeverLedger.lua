@@ -2682,8 +2682,12 @@ do
       if id then list[#list + 1] = id end
     end
     table.sort(list)
+    -- over the cap the lowest ids go: the highest are the newest (likely Forever-only) quests
     local cut = #list - COMPLETED_CAP
-    for i = #list, COMPLETED_CAP + 1, -1 do list[i] = nil end
+    if cut > 0 then
+      for i = 1, COMPLETED_CAP do list[i] = list[i + cut] end
+      for i = #list, COMPLETED_CAP + 1, -1 do list[i] = nil end
+    end
     local s = cs.rec()
     if #list == 0 then
       if not retry and C_Timer then
