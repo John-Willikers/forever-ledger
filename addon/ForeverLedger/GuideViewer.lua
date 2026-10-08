@@ -102,6 +102,7 @@ local function now() return GetTime and GetTime() or time() end
 -- A travel step is behind the player once they are within NEAR yards of its spot (on its map, or through world yards
 -- on its continent), or within LANDED_NEAR yards just after a flight landed or a loading screen ended while it was the
 -- step (G.landed: only that step, so a walk to the flight master next to the inn you hearthed to isn't skipped too).
+-- Never for a walk: control also comes back after a stun or a fear.
 -- No position (an instance, no arrow) is not there.
 function G.travelDone(step)
   local A = G.arrow
@@ -109,7 +110,7 @@ function G.travelDone(step)
   local ok, yards = pcall(A.yardsTo, step)
   if not ok or type(yards) ~= "number" then return false end
   local l = G.landed
-  local landed = l ~= nil and l.step == step and now() - l.at <= LANDED_FOR
+  local landed = l ~= nil and l.step == step and step.how ~= "walk" and now() - l.at <= LANDED_FOR
   return yards <= (landed and LANDED_NEAR or NEAR)
 end
 
@@ -251,6 +252,15 @@ end
 -- A travel step's line: "Fly to Ratchet", "Take the boat to Menethil Harbor", "Hearth to Orgrimmar", "Go to Brill
 -- (Travel Form)". A flight says where to take it when the step before ended away from a flight master (a quest NPC,
 -- a dock, an inn); after a walk or a flight you are at one.
+-- A boat step's note is "<kind>: <route>" ("zeppelin: Tirisfal Glades to Durotar"): the kind and the route. A note
+-- with no kind is all route; the kind is then "boat".
+local function boatNote(note)
+  if type(note) ~= "string" or note == "" then return "boat", nil end
+  local kind, route = note:match("^%s*([^:]-)%s*:%s*(.-)%s*$")
+  if not kind or kind == "" then return "boat", note end
+  return kind, route ~= "" and route or nil
+end
+
 local function travelLine(step, before)
   local to = esc(step.npc or step.subzone or step.zone or "the next spot")
   local how, note = step.how, step.note
@@ -258,7 +268,7 @@ local function travelLine(step, before)
     local atMaster = isTravel(before) and (before.how == "walk" or before.how == "fly")
     return "Fly to " .. to .. (atMaster and "" or " from the flight master")
   elseif how == "boat" then
-    return "Take the " .. (note and note ~= "" and esc(note) or "boat") .. " to " .. to
+    return "Take the " .. esc((boatNote(note))) .. " to " .. to
   elseif how == "hearth" then
     return "Hearth to " .. to
   end
@@ -273,9 +283,11 @@ function G.stepText(step, before)
     lines[#lines + 1] = GOLD .. travelLine(step, before) .. "|r"
     local where = place(step)
     if where ~= "" then lines[#lines + 1] = GREY .. where .. "|r" end
-    -- A flight's route ("Crossroads -> Ratchet") or a hearth's wait; a walk's form and a boat's name are in the line.
+    -- A flight's or a boat's route ("Crossroads -> Ratchet") or a hearth's wait; a walk's form is in the line.
     local note = step.note
-    if (step.how == "fly" or step.how == "hearth") and note and note ~= "" and note ~= "Hearthstone" then
+    if step.how == "boat" then note = select(2, boatNote(note)) end
+    if (step.how == "fly" or step.how == "hearth" or step.how == "boat") and note and note ~= ""
+       and note ~= "Hearthstone" then
       lines[#lines + 1] = GREY .. esc(note) .. "|r"
     end
     if step.levelAfter then lines[#lines + 1] = GREY .. "Level " .. step.levelAfter .. " after this|r" end
@@ -658,6 +670,7 @@ end
 -- map you are on counts within LANDED_NEAR yards for a moment (the guide's spot is the flight master or dock, where
 -- you land a little off). The 2 s check catches a position that comes after the event.
 local function landed()
+  if G.shown == nil then return end -- the guide hasn't started (login): nothing to land on yet
   local g = G.current()
   local step = g and g.steps[G.stepIndex()]
   if not isTravel(step) then return end

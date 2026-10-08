@@ -196,7 +196,7 @@ local function travelGuide(id, char)
         x = 60, y = 52, quests = {} },
       { action = "travel", how = "fly", note = "Brill -> Orgrimmar", npc = "Doras", zone = "Durotar", mapId = 1411,
         x = 45, y = 63, quests = {} },
-      { action = "travel", how = "boat", note = "Tirisfal Glades <-> Durotar", npc = "Zeppelin tower",
+      { action = "travel", how = "boat", note = "zeppelin: Tirisfal Glades to Durotar", npc = "Zeppelin tower",
         zone = "Tirisfal Glades", mapId = 1420, x = 61, y = 58, quests = {} },
       { action = "travel", how = "hearth", note = "Hearthstone", npc = "Brill", zone = "Tirisfal Glades",
         mapId = 1420, x = 61, y = 52, quests = {} },
@@ -1094,14 +1094,21 @@ return function(H)
     H.ok(body(c):find("Tirisfal Glades (60.0, 52.0)", 1, true), body(c))
     H.ok(G.stepText(g.steps[3], g.steps[2]):find("Fly to Doras|r", 1, true), "after a walk: at a flight master")
     H.ok(G.stepText(g.steps[3], g.steps[2]):find("Brill -> Orgrimmar", 1, true), "the flight")
-    H.ok(G.stepText(g.steps[4], g.steps[3]):find("Take the Tirisfal Glades <-> Durotar to Zeppelin tower", 1, true),
-      G.stepText(g.steps[4], g.steps[3]))
+    local zep = G.stepText(g.steps[4], g.steps[3])
+    H.ok(zep:find("Take the zeppelin to Zeppelin tower|r", 1, true), zep)
+    H.ok(zep:find("\n|cff9d9d9dTirisfal Glades to Durotar|r", 1, true), "the route on the grey line: " .. zep)
     H.ok(G.stepText(g.steps[5], g.steps[4]):find("Hearth to Brill|r", 1, true), G.stepText(g.steps[5], g.steps[4]))
     H.ok(not G.stepText(g.steps[5], g.steps[4]):find("Hearthstone", 1, true), "the plain note isn't repeated")
     H.ok(G.stepText(g.steps[7], g.steps[6]):find("Fly to Doras from the flight master", 1, true), "after a quest step")
     H.ok(G.stepText(g.steps[8], g.steps[7]):find("Go to Durotar|r", 1, true), "no npc: the zone")
     local boat = { action = "travel", how = "boat", npc = "Booty Bay", quests = {} }
     H.ok(G.stepText(boat):find("Take the boat to Booty Bay", 1, true), "no note: the boat")
+    boat.note = "Ratchet to Booty Bay"
+    H.ok(G.stepText(boat):find("Take the boat to Booty Bay|r", 1, true), "a note without a kind: the boat")
+    H.ok(G.stepText(boat):find("|cff9d9d9dRatchet to Booty Bay|r", 1, true), "... and the note on the grey line")
+    boat.note = "boat|r: Ratchet|r to Booty Bay"
+    H.ok(G.stepText(boat):find("Take the boat||r to Booty Bay", 1, true), "escaped kind: " .. G.stepText(boat))
+    H.ok(G.stepText(boat):find("Ratchet||r to Booty Bay", 1, true), "escaped route")
     H.ok(G.stepText(g.steps[3], g.steps[4]):find("Fly to Doras from the flight master", 1, true), "after a boat")
     H.ok(G.stepText(g.steps[3]):find("from the flight master", 1, true), "the first step")
     local rude = { action = "travel", how = "walk", npc = "A|cffff0000B", note = "x|r", quests = {} }
@@ -1186,6 +1193,27 @@ return function(H)
     standAt(c, 1420, 0.61, 0.80)
     c.advance(30)
     H.eq(stepNo(c), 5, "the window is over: 60 yd again")
+  end)
+
+  H.test("guide travel: a walk step isn't widened by a landing (stuns and fears give control back too)", function()
+    local c = travelViewer({ onQuest = { [RUDE] = true } })
+    H.eq(stepNo(c), 2, "the walk to Brill (60, 52)")
+    standAt(c, 1420, 0.60, 0.77) -- 250 yd
+    c.fire("PLAYER_CONTROL_GAINED")
+    c.fire("LOADING_SCREEN_DISABLED")
+    c.fire("QUEST_LOG_UPDATE")
+    H.eq(stepNo(c), 2, "still 60 yd for a walk")
+  end)
+
+  H.test("guide travel: landing events before the guide started are ignored", function()
+    local c = travelViewer({ onQuest = { [RUDE] = true }, beforeStart = true,
+                             state = { guide = 9, steps = { [9] = 3 } } })
+    standAt(c, 1411, 0.45, 0.88) -- 250 yd from Doras
+    c.fire("PLAYER_CONTROL_GAINED")
+    c.fire("LOADING_SCREEN_DISABLED")
+    H.eq(c.env.ForeverLedgerGuide.landed, nil, "no landing recorded")
+    c.advance(4)
+    H.eq(stepNo(c), 3, "the fly step waits for 60 yd")
   end)
 
   H.test("guide travel: progress past it (a quest beyond turned in) moves on; Back holds it; Next skips it", function()
