@@ -3,8 +3,9 @@
 // included (plan-estimate.ts): turn in what ends there, accept everything takeable, run one objective loop through
 // every log quest done nearby (nearest first, smoothed), turn in, accept follow-ups, and stay while the hub has work
 // (steps: plan-emit.ts). Class quests for the character's class go first wherever they are; level-gated pickups left
-// behind are fetched only when the trip pays the run's XP per minute so far, else dropped with a gap line
-// (plan-gated.ts). Deterministic (ties by hub id / quest id) and pure.
+// behind earn a trip back only when it pays the run's XP per minute so far (then they compete in normal scoring),
+// else they are taken only if the plan is at their hub anyway (plan-gated.ts). Unreachable objectives or turn-ins are
+// never counted done: such quests are not taken, or abandoned. Deterministic (ties by hub id / quest id) and pure.
 import type { Hub } from './hubs.js';
 import { accept, HALT, runLoop, turnIn } from './plan-emit.js';
 import { estimate, type Estimate } from './plan-estimate.js';
@@ -34,23 +35,21 @@ export interface PlanResult {
 function visit(sim: Sim, hub: Hub): boolean {
   let progress = false;
   for (let round = 0; round < 100; round++) {
-    let did = false;
+    const before = sim.logState();
     const done = sim.logQuests().filter((q) => sim.finished(q) && sim.enderHub.get(q.id) === hub);
     if (done.length) {
       turnIn(sim, done);
-      did = true;
     }
     const take = sim.takeable(hub);
     if (take.length) {
       accept(sim, take);
-      did = true;
     }
     const loop = sim.loopQuests(hub, []);
     if (loop.length) {
       runLoop(sim, loop);
-      did = true;
     }
-    if (!did) break;
+    // Only a changed log counts as work: an unreachable NPC must not keep the round going.
+    if (sim.logState() === before) break;
     progress = true;
   }
   return progress;
@@ -69,7 +68,10 @@ export function plan(
     seconds: sim.clock,
     xp: sim.gained,
   });
-  if (sim.level >= sim.toLevel) return result();
+  if (sim.level >= sim.toLevel) {
+    sim.gap(`already at level ${sim.level} (target ${sim.toLevel})`);
+    return result();
+  }
 
   try {
     for (let decision = 0; decision < sim.maxSteps * 4 + 10; decision++) {
@@ -96,5 +98,8 @@ export function plan(
     if (e !== HALT) throw e;
     if (sim.level < sim.toLevel) sim.gap(`plan cut at maxSteps (${sim.maxSteps} steps)`);
   }
+  for (const id of [...sim.noTrip].sort((a, b) => a - b))
+    if (!sim.completed.has(id) && !sim.log.has(id))
+      sim.gap(`skipped ${sim.quest(id).title}: not worth the trip`);
   return result();
 }

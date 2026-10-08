@@ -164,6 +164,40 @@ describe('planner loop', () => {
       expect(indexOf(r.steps, 'turn_in', 32)).toBeGreaterThan(0);
       expect(r.gaps).toContain('skipped Quest 31: not worth the trip');
     });
+
+    it('still takes a quest not worth the trip when the plan is at its hub anyway', () => {
+      const qs = setup(4000, 50);
+      // A follow-up at hub 2 that ends at hub 1 brings the character back.
+      const back = quest(33, {
+        level: 3,
+        reqLevel: 3,
+        xp: 1000,
+        giver: npc(3, 'Far Orc', offset(BASE, -4000)),
+        ender: A,
+        prereqs: [32],
+        objectives: [collect([offset(BASE, -4050)], 1)],
+      });
+      const r = plan(atlas([...qs, back]), lvl2, NO_TRAVEL, { toLevel: 30 });
+      expect(indexOf(r.steps, 'accept', 31)).toBeGreaterThan(indexOf(r.steps, 'accept', 33));
+      expect(indexOf(r.steps, 'turn_in', 31)).toBeGreaterThan(0);
+      expect(r.gaps.join('\n')).not.toMatch(/Quest 31/);
+    });
+
+    it('takes a quest the level-up at the same hub unlocks in the same visit', () => {
+      const qs = setup(700, 3000);
+      // 30 alone takes the character to 3: 31 is accepted before leaving for hub 2.
+      qs[0]!.xp = 1000;
+      const r = plan(atlas(qs), lvl2, NO_TRAVEL, { toLevel: 30 });
+      expect(brief(r.steps).slice(0, 4)).toEqual([
+        'accept:30',
+        'complete:30',
+        'turn_in:30',
+        'accept:31',
+      ]);
+      expect(
+        r.steps.slice(0, indexOf(r.steps, 'accept', 31)).some((s) => s.action === 'travel'),
+      ).toBe(false);
+    });
   });
 
   it('crosses the sea for a class quest of the character class only', () => {
@@ -239,18 +273,37 @@ describe('planner loop', () => {
     const H2 = offset(BASE, -3000);
     const A = npc(1, 'Gruk', BASE);
     const C = npc(3, 'Far Orc', H2);
-    const qs = [quest(60, { giver: A, ender: C }), quest(61, { giver: C, ender: A })];
-    const hearthSteps = (readyAt: number) =>
-      plan(atlas(qs), character({ hearth: { spot: HEARTH, readyAt } }), NO_TRAVEL, {
-        toLevel: 30,
-      }).steps.filter((s) => s.how === 'hearth');
+    // 60 goes out to hub 2, 61 comes back; `kills` mobs at hub 2 keep the character there a while.
+    const run = (readyAt: number, kills = 0) =>
+      plan(
+        atlas([
+          quest(60, { giver: A, ender: C }),
+          quest(61, {
+            giver: C,
+            ender: A,
+            objectives: kills ? [kill([offset(H2, -50)], kills)] : [],
+          }),
+        ]),
+        character({ hearth: { spot: HEARTH, readyAt } }),
+        NO_TRAVEL,
+        { toLevel: 30 },
+      ).steps.filter((s) => s.action === 'travel');
 
-    it('uses no hearth leg within the first hour when it is on cooldown', () => {
-      for (const s of hearthSteps(3600)) expect(s.at - HEARTH_SECONDS).toBeGreaterThanOrEqual(3600);
+    it('walks back instead of hearthing while it is on cooldown', () => {
+      const travel = run(3600);
+      expect(travel.map((s) => s.how)).toEqual(['walk', 'walk']);
+      expect(travel[1]!.at).toBeLessThan(3600);
     });
 
-    it('hearths back when it is ready', () => {
-      expect(hearthSteps(0)).toHaveLength(1);
+    it('hearths back once the plan clock passes the cooldown', () => {
+      const travel = run(3600, 130);
+      expect(travel.map((s) => s.how)).toEqual(['walk', 'hearth']);
+      expect(travel[1]!.at - HEARTH_SECONDS).toBeGreaterThanOrEqual(3600);
+      expect(travel[1]!.note).toBe('Hearthstone');
+    });
+
+    it('hearths back at once when it is ready', () => {
+      expect(run(0).map((s) => s.how)).toEqual(['walk', 'hearth']);
     });
   });
 
@@ -314,6 +367,83 @@ describe('planner loop', () => {
     );
     expect(brief(r.steps)).toEqual(['accept:90', 'complete:90', 'turn_in:90']);
     expect(r.gaps).toContain('no objective spots for Quest 90: done near the giver');
+  });
+
+  it('keeps objective progress already in the log', () => {
+    const A = npc(1, 'Gruk', BASE);
+    const qs = [
+      quest(100, { giver: A, ender: A, objectives: [kill([offset(BASE, 100)], 5)] }),
+      quest(101, { giver: A, ender: A, objectives: [kill([offset(BASE, -100)], 5)] }),
+    ];
+    const ch = character({
+      log: new Map([
+        [100, [5]],
+        [101, [3]],
+      ]),
+    });
+    const r = plan(atlas(qs), ch, NO_TRAVEL, { toLevel: 30 });
+    // 100 is done: straight to the turn-in. 101 needs 2 more kills (60 s) plus the 200 yd walk there and back.
+    expect(brief(r.steps)).toEqual(['turn_in:100', 'complete:101', 'turn_in:101']);
+    expect(r.seconds).toBeCloseTo(60 + 200 / 7, 0);
+  });
+
+  it('never takes a quest whose objectives cannot be reached, and abandons a log quest that turns out so', () => {
+    const A = npc(1, 'Gruk', BASE);
+    // Tirisfal Glades is on another continent and there is no boat in NO_TRAVEL.
+    const FAR: MapSpot = { mapId: 1420, x: 50, y: 50 };
+    const qs = [
+      quest(110, { giver: A, ender: A, objectives: [kill([FAR])] }),
+      quest(111, { giver: A, ender: A, objectives: [kill([offset(BASE, 100)])] }),
+      quest(112, { giver: A, ender: A, objectives: [kill([FAR])] }),
+    ];
+    const r = plan(atlas(qs), character({ log: new Map([[112, [0]]]) }), NO_TRAVEL, {
+      toLevel: 30,
+    });
+    expect(r.steps.some((s) => ids(s).includes(110))).toBe(false);
+    expect(r.steps.some((s) => ids(s).includes(112))).toBe(false);
+    expect(indexOf(r.steps, 'turn_in', 111)).toBeGreaterThan(0);
+    expect(r.gaps).toContain("can't reach objectives of Quest 112: abandoned");
+  });
+
+  it('falls back to the giver when the ender is on an unknown map', () => {
+    const A = npc(1, 'Gruk', BASE);
+    const B = npc(2, 'Mok', offset(BASE, 0, 30));
+    const LOST = npc(3, 'Lost Orc', { mapId: 999999, x: 50, y: 50 });
+    const qs = [
+      quest(120, { giver: A, ender: LOST, objectives: [kill([offset(BASE, 100)])] }),
+      quest(121, { giver: A, ender: B, objectives: [kill([offset(BASE, 100)])] }),
+    ];
+    const r = plan(atlas(qs), character(), NO_TRAVEL, { toLevel: 30 });
+    const turnIns = r.steps.filter((s) => s.action === 'turn_in');
+    expect(turnIns.map((s) => [s.npc, ids(s)])).toEqual(
+      expect.arrayContaining([
+        ['Gruk', [120]],
+        ['Mok', [121]],
+      ]),
+    );
+  });
+
+  it('says so when a log quest is not in the atlas, or the character is already at the level', () => {
+    const r = plan(atlas([]), character({ log: new Map([[999, [0]]]) }), NO_TRAVEL, {
+      toLevel: 30,
+    });
+    expect(r.gaps).toContain('quest 999 in the log is not in the atlas: left out');
+    const done = plan(atlas([]), character({ level: 10 }), NO_TRAVEL, { toLevel: 10 });
+    expect(done.steps).toEqual([]);
+    expect(done.gaps).toEqual(['already at level 10 (target 10)']);
+  });
+
+  it('names the hub once in the set-hearth gap line', () => {
+    const A = npc(1, 'Gruk', BASE);
+    // 141 waits for level 3 at Gruk: the plan comes back, so it would set the hearth there.
+    const qs = [
+      quest(140, { level: 2, xp: 100, giver: A, ender: A }),
+      quest(141, { level: 3, reqLevel: 3, giver: A, ender: A }),
+    ];
+    const r = plan(atlas(qs), character({ level: 2 }), NO_TRAVEL, { toLevel: 30 });
+    expect(r.gaps).toContain(
+      'set hearth near Gruk: no innkeeper in the atlas yet (the plan comes back)',
+    );
   });
 
   it('is deterministic and fast on a large atlas', () => {

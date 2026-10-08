@@ -1,6 +1,8 @@
 // The planner loop's level-gated pickups (plan.ts): quests a hub had that only the character's level kept out are
-// remembered when it leaves; once the level allows them and the character is elsewhere, a trip back is kept only if
-// it pays the run's XP per minute so far, else they are dropped with a gap line. Pure.
+// remembered when it leaves. Once the level allows them and the character is elsewhere, a trip back is worth making
+// only if it pays the run's XP per minute so far: then the hub competes in normal scoring like any other. Else the
+// quests count for no hub choice (no special trip) but are still taken when the plan is at their hub anyway; a gap
+// line names those never taken (plan.ts).
 import { canTake, isClassQuest, MAX_LEVELS_UP } from './available.js';
 import { distance } from './geo.js';
 import type { Hub } from './hubs.js';
@@ -12,23 +14,23 @@ import type { AtlasQuest } from './types.js';
 export function leave(sim: Sim, hub: Hub): void {
   for (const id of hub.givers) {
     const q = sim.quest(id);
-    if (sim.dropped.has(id) || isClassQuest(q) || canTake(q, sim.taker(), sim.level)) continue;
+    if (sim.noTrip.has(id) || isClassQuest(q) || canTake(q, sim.taker(), sim.level, sim.atlas))
+      continue;
     const later = Math.max(q.reqLevel, q.level - MAX_LEVELS_UP, sim.level);
-    if (canTake(q, sim.taker(), later)) sim.gated.set(id, hub);
+    if (canTake(q, sim.taker(), later, sim.atlas)) sim.gated.set(id, hub);
   }
   const back =
     [...sim.gated.values()].includes(hub) ||
     sim.logQuests().some((q) => sim.enderHub.get(q.id) === hub);
-  if (back)
-    sim.gap(`set hearth near ${hub.name}: no innkeeper in the atlas yet (the plan comes back)`);
+  if (back) sim.gap(`set hearth ${hub.name}: no innkeeper in the atlas yet (the plan comes back)`);
 }
 
-/** Level-gated pickups now takeable elsewhere: keep those whose trip pays the run's XP per minute, drop the rest. */
+/** Level-gated pickups now takeable elsewhere: those whose trip doesn't pay the run's XP per minute get no trip. */
 export function reviewGated(sim: Sim): void {
   const now = new Map<Hub, AtlasQuest[]>();
   for (const [id, hub] of [...sim.gated].sort((a, b) => a[0] - b[0])) {
     const q = sim.quest(id);
-    if (!canTake(q, sim.taker(), sim.level)) continue;
+    if (!canTake(q, sim.taker(), sim.level, sim.atlas)) continue;
     sim.gated.delete(id);
     if (distance(sim.here(), hub.pos) <= AT_HUB) continue;
     now.set(hub, [...(now.get(hub) ?? []), q]);
@@ -39,9 +41,6 @@ export function reviewGated(sim: Sim): void {
     const back = sim.travelSeconds(hub.spot, sim.pos);
     const pays = e !== null && back !== null && e.xp / Math.max(1, e.seconds + back) >= rate;
     if (pays) continue;
-    for (const q of qs) {
-      sim.dropped.add(q.id);
-      sim.gap(`skipped ${q.title}: not worth the trip`);
-    }
+    for (const q of qs) sim.noTrip.add(q.id);
   }
 }

@@ -4,7 +4,7 @@
 import { distance, mapInfo, toWorld } from './geo.js';
 import { byId, FOLD_WALK, pointKey, zoneOf, type Sim } from './plan-sim.js';
 import { orderStops } from './tour.js';
-import { HEARTH_COOLDOWN, route, type Leg } from './travel.js';
+import { HEARTH_COOLDOWN, HEARTH_SECONDS, route, type Leg } from './travel.js';
 import type { AtlasQuest, MapSpot, PlanStep, QuestPoint, WorldPos } from './types.js';
 import { questXp } from './xp.js';
 
@@ -36,7 +36,9 @@ export function goTo(sim: Sim, spot: MapSpot): boolean {
   }
   for (const l of r.legs) {
     sim.clock += l.seconds;
-    if (l.how === 'hearth' && sim.hearth) sim.hearth.readyAt = sim.clock + HEARTH_COOLDOWN;
+    // The cooldown starts with the cast (after any wait for it), not on arrival.
+    if (l.how === 'hearth' && sim.hearth)
+      sim.hearth.readyAt = sim.clock - HEARTH_SECONDS + HEARTH_COOLDOWN;
     sim.pos = l.to;
     if (showLeg(l)) {
       const step: Omit<PlanStep, 'at' | 'level'> = {
@@ -114,7 +116,10 @@ export function turnIn(sim: Sim, qs: AtlasQuest[]): void {
     qs,
     (q) => sim.enderOf(q)!,
     (group, npc) => {
-      if (!goTo(sim, npc.spots[0]!)) return;
+      if (!goTo(sim, npc.spots[0]!)) {
+        for (const q of group) sim.abandon(q, 'the turn-in');
+        return;
+      }
       for (const q of group) {
         sim.addXp(questXp(q.xp, q.level, sim.level));
         sim.log.delete(q.id);
@@ -137,17 +142,16 @@ export function runLoop(sim: Sim, qs: AtlasQuest[]): void {
   // Start and end where the character stands (at the hub): a closed loop, so the nearest-first direction is kept.
   const stops = orderStops(sim.here(), sim.stopsOf(qs, new Set()), sim.here());
   for (const st of stops) {
-    const reached = goTo(sim, st.spot);
-    const parts = st.parts.filter((p) => sim.left(p.q, p.obj) > 0);
+    const parts = st.parts.filter((p) => sim.log.has(p.q.id) && sim.left(p.q, p.obj) > 0);
     if (!parts.length) continue;
-    const kills = parts.reduce((sum, p) => sum + sim.killXp(p.q, p.obj), 0);
-    if (reached) {
-      sim.clock += parts.reduce((sum, p) => sum + sim.objSeconds(p.q, p.obj), 0);
-      sim.addXp(kills);
+    if (!goTo(sim, st.spot)) {
+      // Never counted done: the quest leaves the log (and the plan).
+      for (const q of new Set(parts.map((p) => p.q))) sim.abandon(q, 'objectives');
+      continue;
     }
-    // Unreachable stops count as done (with the route gap line) so the quest can still be handed in.
+    sim.clock += parts.reduce((sum, p) => sum + sim.objSeconds(p.q, p.obj), 0);
+    sim.addXp(parts.reduce((sum, p) => sum + sim.killXp(p.q, p.obj), 0));
     for (const p of parts) sim.log.get(p.q.id)![p.obj.index] = sim.need(p.obj);
-    if (!reached) continue;
     const byQuest = new Map<AtlasQuest, string[]>();
     for (const p of parts) byQuest.set(p.q, [...(byQuest.get(p.q) ?? []), p.obj.text]);
     const done = [...byQuest.keys()];

@@ -83,8 +83,10 @@ export class Sim {
   readonly hubs: Hub[];
   readonly giverHub = new Map<number, Hub>();
   readonly enderHub = new Map<number, Hub>();
-  /** Level-gated quests not worth a trip. */
-  readonly dropped = new Set<number>();
+  /** Level-gated quests not worth a special trip: taken only when the plan is at their hub anyway. */
+  readonly noTrip = new Set<number>();
+  /** Quests whose objectives or turn-in turned out unreachable: out of the plan. */
+  readonly abandoned = new Set<number>();
   /** Level-gated quests left behind: quest id → its giver hub. */
   readonly gated = new Map<number, Hub>();
   /** Hubs a visit made no progress at. */
@@ -92,6 +94,7 @@ export class Sim {
 
   private readonly placed = new Map<string, Placed | null>();
   private readonly routes = new Map<string, number | null>();
+  private readonly reach = new Map<number, boolean>();
 
   constructor(
     readonly atlas: Atlas,
@@ -107,7 +110,10 @@ export class Sim {
     this.xp = ch.xp;
     this.completed = new Set(ch.completed);
     this.hearth = ch.hearth ? { spot: ch.hearth.spot, readyAt: ch.hearth.readyAt } : null;
-    for (const [id, counts] of ch.log) if (atlas.quests.has(id)) this.log.set(id, [...counts]);
+    for (const [id, counts] of [...ch.log].sort((a, b) => a[0] - b[0])) {
+      if (atlas.quests.has(id)) this.log.set(id, [...counts]);
+      else this.gap(`quest ${id} in the log is not in the atlas: left out`);
+    }
 
     this.hubs = buildHubs(atlas).sort(byId);
     for (const h of this.hubs) {
@@ -157,8 +163,10 @@ export class Sim {
     return this.atlas.quests.get(id)!;
   }
 
+  /** Who takes the quest back: its ender when that NPC is on a known map, else its giver. */
   enderOf(q: AtlasQuest): QuestPoint | null {
-    return q.ender && q.ender.spots.length ? q.ender : q.giver;
+    const spot = q.ender?.spots[0];
+    return q.ender && spot && toWorld(spot) ? q.ender : q.giver;
   }
 
   /** A class quest for this character's class. */
@@ -215,11 +223,48 @@ export class Sim {
     return [...this.log.keys()].sort((a, b) => a - b).map((id) => this.quest(id));
   }
 
-  takeable(hub: Hub): AtlasQuest[] {
+  /**
+   * Quests the character can take at `hub` now. `trip`: for deciding where to go, so quests not worth a special trip
+   * don't count; at the hub they are taken.
+   */
+  takeable(hub: Hub, trip = false): AtlasQuest[] {
     return hub.givers
-      .filter((id) => !this.dropped.has(id))
+      .filter((id) => !this.abandoned.has(id) && !(trip && this.noTrip.has(id)))
       .map((id) => this.quest(id))
-      .filter((q) => canTake(q, this.taker(), this.level));
+      .filter((q) => canTake(q, this.taker(), this.level, this.atlas) && this.reachable(q));
+  }
+
+  /**
+   * Whether every objective stop and the turn-in of `q` can be routed to from its giver's hub (from the character
+   * when the quest has no giver hub). Decided once per quest.
+   */
+  reachable(q: AtlasQuest): boolean {
+    let ok = this.reach.get(q.id);
+    if (ok === undefined) {
+      const from = this.giverHub.get(q.id)?.spot ?? this.pos;
+      const ender = this.enderOf(q)?.spots[0];
+      ok =
+        ender !== undefined &&
+        this.travelSeconds(from, ender) !== null &&
+        q.objectives.every((o) => {
+          const p = this.place(q, o);
+          return p !== null && this.travelSeconds(from, p.spot) !== null;
+        });
+      this.reach.set(q.id, ok);
+    }
+    return ok;
+  }
+
+  /** Drop `q` from the plan (and the log): its objectives or turn-in can't be reached. */
+  abandon(q: AtlasQuest, what: string): void {
+    this.log.delete(q.id);
+    this.abandoned.add(q.id);
+    this.gap(`can't reach ${what} of ${q.title}: abandoned`);
+  }
+
+  /** A fingerprint of the quest log and completed set: a visit round that leaves it unchanged did nothing. */
+  logState(): string {
+    return `${this.completed.size}|${[...this.log].map(([id, c]) => `${id}:${c.join(',')}`).join(';')}`;
   }
 
   /** Quests of the log plus `extra` that one objective loop from `hub` does. */
