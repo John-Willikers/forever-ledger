@@ -1,8 +1,8 @@
--- Forever Ledger v0.8.0 (SavedVariables schema 10)
+-- Forever Ledger v0.7.0 (SavedVariables schema 9)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.8.0"
+local VERSION = "0.7.0"
 -- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
 -- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
 -- items[].classID/subclassID and apiSamples; 5 adds vendors[].title, vendors[].items[].costs (extended costs paid in
@@ -10,10 +10,8 @@ local VERSION = "0.8.0"
 -- held); 7 adds fishingCasts (one record per cast: zone, spot, skill, lure, outcome, catch) and chars[].firstName /
 -- guid, and keys characters by full name (first name + Forever surname); 8 adds gear (what each character wears:
 -- item, link with enchant and suffix, stats per slot); 9 adds objectiveProgress (where each quest objective's count
--- went up); 10 adds charState (where each character stands, for the route planner: level, completed quests, quest
--- log, position, hearth, flight paths, mounts), xpCurve (XP per level per build) and trips (flights, boats /
--- zeppelins and hearths with their times). Each is additive: older data is valid as it is.
-local SCHEMA_VERSION = 10
+-- went up). Each is additive: older data is valid as it is.
+local SCHEMA_VERSION = 9
 local HISTORY_CAP = 2000 -- runs and turn-ins kept on disk; the uploader already has older rows
 local LIST_CAP = 500     -- bossLoot and groupLoot entries kept per run
 local f = CreateFrame("Frame")
@@ -2281,11 +2279,11 @@ local function newSessionID()
   return format("%d-%04x", now(), rnd(0, 65535))
 end
 
--- Schema 4 (professions), 6 (containers), 7 (fishing casts), 8 (gear), 9 (objective progress) and 10 (character
--- state, XP curve, trips) tables; /fl reset confirm wipes them too.
+-- Schema 4 (professions), 6 (containers), 7 (fishing casts), 8 (gear) and 9 (objective progress) tables; /fl reset
+-- confirm wipes them too.
 local PROFESSION_TABLES = { "skills", "skillUps", "recipes", "recipeSeen", "learned", "crafts", "nodes", "nodeLoot",
                             "trainers", "vendors", "apiSamples", "containers", "containerLoot", "containerQty",
-                            "fishingCasts", "gear", "objectiveProgress", "charState", "xpCurve", "trips" }
+                            "fishingCasts", "gear", "objectiveProgress" }
 
 local function initDB()
   ForeverLedgerDB = ForeverLedgerDB or {}
@@ -2298,7 +2296,7 @@ local function initDB()
   local hadData = next(db.quests) or next(db.items) or next(db.runs) or next(db.drops)
   local existed = db.meta.schemaVersion ~= nil or hadData
   if not db.meta.schemaVersion and hadData then migrateV0() end
-  -- 1 -> 2 -> ... -> 10 only add fields, so older data needs nothing but the new stamp.
+  -- 1 -> 2 -> ... -> 8 only add fields, so older data needs nothing but the new stamp.
   if (tonumber(db.meta.schemaVersion) or 0) < SCHEMA_VERSION then db.meta.schemaVersion = SCHEMA_VERSION end
   -- Per-session totals (drops, dropQty, corpses, containers, containerLoot, containerQty) belong to this session id
   -- for the life of the table. Forever starts every load with an empty table, so each load is a session. A table
@@ -2555,307 +2553,6 @@ do
   function objProg.forget(questID) objProg.last[questID], objProg.dirty[questID] = nil, nil end
 end
 
----------------------------------------------------------------- character state (schema 10)
--- Where each character stands, so the route planner can plan from the real character. db.charState[charKey] holds
--- one table per character whose fields are replaced, never appended:
---   build, at                    the build and time of the last write
---   level, xp, xpMax             UnitLevel / UnitXP / UnitXPMax (login, level up, logout)
---   completed, completedAt       sorted quest ids from C_QuestLog.GetAllCompletedQuestIDs (login, a few seconds after
---                                turn-ins: at most one read per 10 s, logout)
---   log = { { id, done = { count per objective } } }   the quest log (login, logout)
---   pos = { mapID, x, y, zone, subzone, at }           where the character logged out; x, y 0..1 (4 places)
---   bind = { zone, spot = { mapID, x, y }, at }        GetBindLocation(); the spot is where the player stood when
---                                HEARTHSTONE_BOUND fired (at the innkeeper)
---   hearthReadyAt                epoch seconds the hearthstone is ready, 0 = ready (logout)
---   taxi = { [taxiMapID] = { at, nodes = { { id, name, x, y, state } } } }   each flight map opened; state 0 = where
---                                you stand, 1 = learned, 2 = not learned (Enum.FlightPathState); x, y on the taxi map
---   mount = { owned, mounted }   mounts collected (C_MountJournal) and IsMounted (login, logout)
--- Plus db.xpCurve[build][level] = UnitXPMax: the XP each level needs, shared by all characters.
--- Probe 0.6.0 (build 70245, fixtures/real/probe-70245-travel.json): GetAllTaxiNodes(GetTaxiMapID()) only answers while
--- the flight map is open; nodes carry nodeID, name, position (a vector), state and slotIndex (TakeTaxiNode's slot);
--- the hearthstone (item 6948) cooldown is (start, duration) on the GetTime clock; GetMountInfoByID's 11th value is
--- isCollected.
-local HEARTHSTONE_ITEM = 6948
-local cs = { completedPending = false } -- key: the character key the state was last written under
-do
-  local LOG_CAP, COMPLETED_CAP, TAXI_MAPS, TAXI_NODES = 35, 5000, 4, 80
-  local COMPLETED_GAP = 10 -- seconds between completed-quest reads after turn-ins
-
-  local function r4(v)
-    v = tonumber(v)
-    return v and floor(v * 10000 + 0.5) / 10000
-  end
-  cs.r4 = r4
-
-  -- x, y of a client position: a Vector2D (GetXY), or a plain { x, y } / { [1], [2] } table.
-  function cs.xy(v)
-    if type(v) ~= "table" then return nil end
-    if type(v.GetXY) == "function" then
-      local ok, x, y = pcall(v.GetXY, v)
-      if ok and tonumber(x) and tonumber(y) then return tonumber(x), tonumber(y) end
-    end
-    local x, y = tonumber(v.x or v[1]), tonumber(v.y or v[2])
-    if x and y then return x, y end
-  end
-
-  local function text(fn)
-    if not fn then return nil end
-    local ok, s = pcall(fn)
-    return ok and type(s) == "string" and s or nil
-  end
-
-  -- Where the player stands: { mapID, x, y, zone, subzone }; nil without a map.
-  function cs.pos()
-    if not (C_Map and C_Map.GetBestMapForUnit) then return nil end
-    local ok, mapID = pcall(C_Map.GetBestMapForUnit, "player")
-    mapID = ok and tonumber(mapID)
-    if not mapID then return nil end
-    local p = { mapID = mapID, zone = text(GetRealZoneText), subzone = text(GetSubZoneText) }
-    if C_Map.GetPlayerMapPosition then
-      local okP, v = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
-      local x, y = cs.xy(okP and v)
-      if x then p.x, p.y = r4(x), r4(y) end
-    end
-    return p
-  end
-
-  -- This character's state table. The key can change within a session (the surname arrives after login): what was
-  -- written under the old key moves to the new one.
-  function cs.rec()
-    local key = charKey()
-    if cs.key and cs.key ~= key and db.charState[cs.key] then
-      db.charState[key] = db.charState[key] or db.charState[cs.key]
-      db.charState[cs.key] = nil
-    end
-    cs.key = key
-    local s = db.charState[key]
-    if type(s) ~= "table" then
-      s = {}
-      db.charState[key] = s
-    end
-    s.build, s.at = build, now()
-    return s
-  end
-
-  function cs.curve(level, xpMax)
-    level, xpMax = tonumber(level), tonumber(xpMax)
-    if not level or not xpMax or level < 1 or xpMax <= 0 then return end
-    db.xpCurve[build] = db.xpCurve[build] or {}
-    db.xpCurve[build][level] = xpMax
-  end
-
-  function cs.level()
-    local level, xp, xpMax = tonumber(UnitLevel("player")), tonumber(UnitXP("player")), tonumber(UnitXPMax("player"))
-    if not level then return end
-    local s = cs.rec()
-    s.level, s.xp, s.xpMax = level, xp, xpMax
-    cs.curve(level, xpMax)
-  end
-
-  function cs.completed()
-    if not QuestLog.GetAllCompletedQuestIDs then return end
-    local ok, ids = pcall(QuestLog.GetAllCompletedQuestIDs)
-    if not ok or type(ids) ~= "table" then return end
-    local list = {}
-    for _, id in pairs(ids) do
-      id = tonumber(id)
-      if id then list[#list + 1] = id end
-    end
-    table.sort(list)
-    for i = #list, COMPLETED_CAP + 1, -1 do list[i] = nil end
-    local s = cs.rec()
-    s.completed, s.completedAt = list, now()
-    cs.completedReadAt = now()
-  end
-
-  -- After a turn-in the list is read a moment later (the client may not have it yet), at most once per 10 s.
-  function cs.turnedIn()
-    if cs.completedPending or not C_Timer or not QuestLog.GetAllCompletedQuestIDs then return end
-    cs.completedPending = true
-    local wait = math.max(1, COMPLETED_GAP - (now() - (cs.completedReadAt or 0)))
-    C_Timer.After(wait, function()
-      cs.completedPending = false
-      safely("charState", cs.completed)
-    end)
-  end
-
-  function cs.log()
-    if not NumLogEntries then return end
-    local list = {}
-    for i = 1, NumLogEntries() or 0 do
-      local _, _, _, isHeader, qid = logEntry(i)
-      qid = tonumber(qid)
-      if not isHeader and qid and qid > 0 then
-        local done = {}
-        if QuestLog.GetQuestObjectives then
-          local ok, objs = pcall(QuestLog.GetQuestObjectives, qid)
-          if ok and type(objs) == "table" then
-            for j, o in ipairs(objs) do done[j] = type(o) == "table" and tonumber(o.numFulfilled) or 0 end
-          end
-        end
-        list[#list + 1] = { id = qid, done = done }
-        if #list >= LOG_CAP then break end
-      end
-    end
-    cs.rec().log = list
-  end
-
-  local function bindZone()
-    if not GetBindLocation then return nil end
-    local ok, zone = pcall(GetBindLocation)
-    if ok and type(zone) == "string" and zone ~= "" then return zone end
-  end
-
-  -- Login: the bind zone. A different zone than recorded means the hearth was set elsewhere: the old spot is gone.
-  function cs.bind()
-    local zone = bindZone()
-    if not zone then return end
-    local s = cs.rec()
-    if type(s.bind) ~= "table" or s.bind.zone ~= zone then s.bind = { zone = zone, at = now() } end
-  end
-
-  -- HEARTHSTONE_BOUND: the player stands at the innkeeper.
-  function cs.bound()
-    local zone = bindZone()
-    if not zone then return end
-    local p = cs.pos()
-    cs.rec().bind = { zone = zone, spot = p and p.x and { mapID = p.mapID, x = p.x, y = p.y } or nil, at = now() }
-  end
-
-  function cs.hearth()
-    local fn = (C_Container and C_Container.GetItemCooldown) or (C_Item and C_Item.GetItemCooldown)
-    if not fn or not GetTime then return end
-    local ok, start, duration = pcall(fn, HEARTHSTONE_ITEM)
-    start, duration = ok and tonumber(start), ok and tonumber(duration)
-    if not start or not duration then return end
-    local left = (start > 0 and duration > 0) and (start + duration - GetTime()) or 0
-    local serverNow = GetServerTime and GetServerTime() or now()
-    cs.rec().hearthReadyAt = left > 0 and floor(serverNow + left + 0.5) or 0
-  end
-
-  -- The flight map that is open: its nodes go to the state (most recent TAXI_MAPS maps); the window (every node by
-  -- TakeTaxiNode slot, and where you stand) stays in cs.taxiWindow for the flight trip.
-  function cs.taxiOpened()
-    cs.taxiWindow = nil
-    if not (GetTaxiMapID and C_TaxiMap and C_TaxiMap.GetAllTaxiNodes) then return end
-    local ok, mapID = pcall(GetTaxiMapID)
-    mapID = ok and tonumber(mapID)
-    if not mapID then return end
-    local okN, list = pcall(C_TaxiMap.GetAllTaxiNodes, mapID)
-    if not okN or type(list) ~= "table" then return end
-    local nodes, slots, current = {}, {}, nil
-    for _, n in ipairs(list) do
-      local id = type(n) == "table" and tonumber(n.nodeID)
-      if id then
-        local x, y = cs.xy(n.position)
-        local node = { id = id, name = type(n.name) == "string" and n.name or nil, x = r4(x), y = r4(y),
-                       state = tonumber(n.state) }
-        if #nodes < TAXI_NODES then nodes[#nodes + 1] = node end
-        if tonumber(n.slotIndex) then slots[tonumber(n.slotIndex)] = node end
-        if node.state == 0 then current = node end
-      end
-    end
-    if #nodes == 0 then return end
-    cs.taxiWindow = { mapID = mapID, slots = slots, current = current }
-    local s = cs.rec()
-    if type(s.taxi) ~= "table" then s.taxi = {} end
-    s.taxi[mapID] = { at = now(), nodes = nodes }
-    while true do
-      local n, oldest = 0, nil
-      for id, t in pairs(s.taxi) do
-        n = n + 1
-        if not oldest or (t.at or 0) < (s.taxi[oldest].at or 0) then oldest = id end
-      end
-      if n <= TAXI_MAPS then break end
-      s.taxi[oldest] = nil
-    end
-  end
-
-  function cs.mount()
-    local m, J = {}, C_MountJournal
-    if J and J.GetMountIDs and J.GetMountInfoByID then
-      local ok, ids = pcall(J.GetMountIDs)
-      if ok and type(ids) == "table" then
-        local owned = 0
-        for _, id in ipairs(ids) do
-          local okI, collected = pcall(function() return select(11, J.GetMountInfoByID(id)) end)
-          if okI and collected then owned = owned + 1 end
-        end
-        m.owned = owned
-      end
-    end
-    if IsMounted then
-      local ok, mounted = pcall(IsMounted)
-      if ok then m.mounted = mounted and true or false end
-    end
-    if m.owned == nil and m.mounted == nil then return end
-    cs.rec().mount = m
-  end
-
-  function cs.login()
-    safely("charState", cs.level)
-    safely("charState", cs.completed)
-    safely("charState", cs.bind)
-    safely("charState", cs.mount)
-    safely("charState", cs.log)
-  end
-
-  -- PLAYER_LOGOUT (also on /reload): the last word before SavedVariables are written. No timers run after it.
-  function cs.logout()
-    safely("charState", cs.level)
-    safely("charState", cs.completed)
-    safely("charState", cs.log)
-    safely("charState", cs.hearth)
-    safely("charState", cs.mount)
-    safely("charState", function()
-      local p = cs.pos()
-      if p then
-        p.at = now()
-        cs.rec().pos = p
-      end
-    end)
-  end
-
-  -- A level up: UnitLevel / UnitXPMax may lag the event, so they are read a moment later.
-  function cs.levelUp()
-    if C_Timer then C_Timer.After(1, function() safely("charState", cs.level) end)
-    else safely("charState", cs.level) end
-  end
-
-  -- /fl state: one line of what is recorded for this character.
-  function cs.summary()
-    local s = db.charState[charKey()]
-    if type(s) ~= "table" then return "state: nothing recorded for this character yet." end
-    local parts = {}
-    if s.level then parts[#parts + 1] = format("level %d (%d/%d XP)", s.level, s.xp or 0, s.xpMax or 0) end
-    if s.completed then parts[#parts + 1] = format("%d quests completed", #s.completed) end
-    if s.log then parts[#parts + 1] = format("%d in the log", #s.log) end
-    if s.bind then
-      parts[#parts + 1] = "bound to " .. tostring(s.bind.zone) .. (s.bind.spot and " (spot known)" or "")
-    end
-    if s.hearthReadyAt then
-      local left = s.hearthReadyAt - (GetServerTime and GetServerTime() or now())
-      parts[#parts + 1] = left > 0 and format("hearth ready in %d min", math.ceil(left / 60)) or "hearth ready"
-    end
-    if s.taxi then
-      local learned = {}
-      for _, t in pairs(s.taxi) do
-        for _, n in ipairs(t.nodes or {}) do
-          if n.state == 0 or n.state == 1 then learned[n.id] = true end
-        end
-      end
-      local n = 0
-      for _ in pairs(learned) do n = n + 1 end
-      parts[#parts + 1] = format("%d flight paths", n)
-    end
-    if s.mount then
-      parts[#parts + 1] = format("%s mounts (%s)", s.mount.owned and tostring(s.mount.owned) or "?",
-        s.mount.mounted and "mounted" or "not mounted")
-    end
-    return "state: " .. table.concat(parts, ", ") .. "."
-  end
-end
-
 ---------------------------------------------------------------- events
 local handlers = {}
 
@@ -2873,7 +2570,6 @@ function handlers.PLAYER_LOGIN()
   lastXP, lastMax, lastLevel = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
   safely("scanSkills", scanSkills)
   gear.changed()
-  cs.login()
   say("v" .. VERSION .. " recording. /fl for commands.")
 end
 
@@ -2881,12 +2577,7 @@ function handlers.PLAYER_EQUIPMENT_CHANGED() gear.changed() end
 
 function handlers.PLAYER_LEVEL_UP(level)
   if db.chars and db.chars[charKey()] then db.chars[charKey()].level = level end
-  cs.levelUp()
 end
-
-function handlers.PLAYER_LOGOUT() cs.logout() end
-function handlers.HEARTHSTONE_BOUND() safely("charState", cs.bound) end
-function handlers.TAXIMAP_OPENED() safely("charState", cs.taxiOpened) end
 
 function handlers.PLAYER_ENTERING_WORLD()
   if C_Timer then C_Timer.After(3, function() safely("objectives", objProg.baseline) end) end
@@ -2941,7 +2632,6 @@ function handlers.QUEST_TURNED_IN(questID, xp, money)
   trim(db.turnIns, HISTORY_CAP)
   added()
   if run then run.questXP = run.questXP + (xp or 0) end
-  safely("charState", cs.turnedIn)
   checkpoint()
 end
 
@@ -3112,8 +2802,6 @@ SlashCmdList.FOREVERLEDGER = function(msg)
   elseif msg == "guide" or msg:sub(1, 6) == "guide " then
     if ForeverLedgerGuide and ForeverLedgerGuide.slash then ForeverLedgerGuide.slash(msg:sub(7))
     else say("the guide viewer didn't load.") end
-  elseif msg == "state" then
-    say(cs.summary())
   elseif msg == "reset confirm" then
     wipe(db.quests); wipe(db.items); wipe(db.runs); wipe(db.drops); wipe(db.turnIns)
     wipe(db.dropQty); wipe(db.corpses)
@@ -3143,7 +2831,6 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     say("/fl nudge off|on  -  reminders to /reload after bosses, runs and turn-ins")
     say("/fl guide  -  the leveling guide sent to this character, in the quest tracker with an arrow (list, use N, "
       .. "next, back, pin, hide, tracker on|off)")
-    say("/fl state  -  what is recorded for this character (level, quests, hearth, flight paths, mounts)")
     say("/fl guide auto off|on  -  the guide accepts and turns in its step's quests (never picks a reward)")
     say("/fl reset confirm  -  wipe everything")
     say("Type /reload after each dungeon so the data hits disk.")

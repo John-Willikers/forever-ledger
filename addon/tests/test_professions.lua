@@ -39,6 +39,8 @@ local FIXTURE_V7 = "../../fixtures/synthetic/session-v7.lua"
 local FIXTURE_V8 = "../../fixtures/synthetic/session-v8.lua"
 local ADDON_0_5_0 = "legacy/ForeverLedger-0.5.0.lua" -- last schema 8 release, writes session-v8
 local FIXTURE_V9 = "../../fixtures/synthetic/session-v9.lua"
+local ADDON_0_7_0 = "legacy/ForeverLedger-0.7.0.lua" -- last schema 9 release, writes session-v9
+local FIXTURE_V10 = "../../fixtures/synthetic/session-v10.lua"
 
 -- The schema 4 fixture: the shared play session (quests, loot, a dungeon run), then a profession session that
 -- touches every appendix table: skills and a skill-up, a trainer (a recipe learned there), a vendor, the profession
@@ -48,13 +50,21 @@ local FIXTURE_V9 = "../../fixtures/synthetic/session-v9.lua"
 -- and a stack of two clams (named by the bag item lock), one with copper, and one item nothing can name (container 0).
 -- `v7` (the schema 7 fixture) gives the character a Forever surname and fishes three casts at 0.4.0's cast log:
 -- a lured catch, one that got away and one that timed out. `v8` (the schema 8 fixture) dresses the character
--- (boots, a vest, an axe) and takes the boots off at the end, so gear holds what is worn last.
-local function profSession(H, addon, v5, v6, v7, v8, v9)
+-- (boots, a vest, an axe) and takes the boots off at the end, so gear holds what is worn last. `v9` (the schema 9
+-- fixture) moves a quest objective twice. `v10` (the schema 10 fixture) has the travel APIs: the character sets the
+-- hearth in Goldshire, opens the Stormwind flight map, levels up and logs out (character state, XP curve).
+local function profSession(H, addon, v5, v6, v7, v8, v9, v10)
   local c = H.new({ items = P.items(), questLog = S.questLog(), professionAPI = true, skillLines = P.gatherLines(),
                     bags = { [0] = { [1] = 2598, [2] = 5523 } },
                     itemGUIDs = v6 and { [P.BOTTLE_GUID] = 6307 } or nil,
                     equipped = v8 and { [8] = 5555, [5] = 2568, [16] = 872 } or nil,
-                    api = v9 and "forever" or nil })
+                    api = v9 and "forever" or nil, travelAPI = v10 or nil,
+                    travel = v10 and {
+                      completed = { 783, 7, 33, 5261, 15 },
+                      bind = "Northshire Abbey",
+                      mounts = { { id = 6, collected = true }, { id = 9, collected = false } },
+                      mapSizes = { [1429] = { 3470.83, 2314.58 }, [1453] = { 1344.27, 896.36 } },
+                    } or nil })
   if v7 then c.world.player.guid = "Player-4618-00A9A08A" end -- one GUID for the whole session, as in the client
   c.load(addon)
   S.play(c, "ForeverLedger")
@@ -185,6 +195,24 @@ local function profSession(H, addon, v5, v6, v7, v8, v9)
       c.fire("QUEST_LOG_UPDATE")
       c.advance(20)
     end
+  end
+  if v10 then
+    -- Character state (schema 10): the hearth is set at the Goldshire inn, the Stormwind flight map is opened, a
+    -- level is gained, and the character logs out with the hearthstone on cooldown.
+    c.world.travel.bind = "Goldshire"
+    c.fire("HEARTHSTONE_BOUND")
+    c.world.travel.taxiMapID = 1415
+    c.world.travel.taxiNodes = {
+      { nodeID = 2, name = "Stormwind, Elwynn", x = 0.4282, y = 0.6533, state = 1, slotIndex = 1 },
+      { nodeID = 4, name = "Sentinel Hill, Westfall", x = 0.4019, y = 0.7262, state = 0, slotIndex = 2 },
+      { nodeID = 6, name = "Ironforge, Dun Morogh", x = 0.4718, y = 0.5248, state = 2, slotIndex = 3 },
+    }
+    c.fire("TAXIMAP_OPENED", 1)
+    c.gainXP(7600)
+    c.fire("PLAYER_LEVEL_UP", 11)
+    c.advance(5)
+    c.world.travel.hearthCD = { c.world.clock - 600, 3600 }
+    c.fire("PLAYER_LOGOUT")
   end
   return c.env.ForeverLedgerDB
 end
@@ -1883,8 +1911,8 @@ return function(H)
     H.ok(d.items[872].byBuild[B], "worn items are scanned like any item")
   end)
 
-  H.test("professions: session-v9 fixture adds where quest objectives went up", function()
-    local d = profSession(H, ADDON, true, true, true, true, true)
+  H.test("professions: session-v9 fixture (0.7.0) adds where quest objectives went up", function()
+    local d = profSession(H, ADDON_0_7_0, true, true, true, true, true)
     H.writeFile(FIXTURE_V9, H.serialize("ForeverLedgerDB", d))
     H.eq(d.meta.schemaVersion, 9)
     H.eq(d.meta.addonVersion, "0.7.0")
@@ -1893,5 +1921,26 @@ return function(H)
     H.eq(d.objectiveProgress[2].questID, 364)
     H.eq(d.objectiveProgress[2].have, 2)
     H.eq(d.objectiveProgress[2].char, "Thibodeaux Willikers-Bayou")
+  end)
+
+  H.test("professions: session-v10 fixture adds character state and the XP curve", function()
+    local d = profSession(H, ADDON, true, true, true, true, true, true)
+    H.writeFile(FIXTURE_V10, H.serialize("ForeverLedgerDB", d))
+    H.eq(d.meta.schemaVersion, 10)
+    H.eq(d.meta.addonVersion, "0.8.0")
+    H.eq(#d.objectiveProgress, 2, "schema 9 data as before")
+    local s = d.charState["Thibodeaux Willikers-Bayou"]
+    H.ok(s, "state under the full name")
+    H.eq(s.build, B)
+    H.eq(s.level, 11)
+    H.eq(table.concat(s.completed, ","), "7,15,33,783,5261")
+    H.eq(s.bind.zone, "Goldshire")
+    H.ok(s.bind.spot.mapID, "the bind spot")
+    H.eq(s.taxi[1415].nodes[2].state, 0)
+    H.eq(s.hearthReadyAt, d.charState["Thibodeaux Willikers-Bayou"].pos.at + 3000)
+    H.eq(s.mount.owned, 1)
+    H.ok(#s.log > 0, "the quest log")
+    H.eq(d.xpCurve[B][10], 7600)
+    H.ok(d.xpCurve[B][11], "the next level")
   end)
 end

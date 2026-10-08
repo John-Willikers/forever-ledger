@@ -819,6 +819,83 @@ function H.new(worldOverrides)
     end
   end
 
+  -- Character state and travel (schema 10), only with world.travelAPI = true so the probe's global census stays as it
+  -- was. Shapes follow probe 0.6.0 on build 70245 (fixtures/real/probe-70245-travel.json). world.travel = {
+  --   completed = { questID, ... },           -- C_QuestLog.GetAllCompletedQuestIDs()
+  --   bind = "Undercity",                     -- GetBindLocation()
+  --   hearthCD = { start, duration },         -- C_Container.GetItemCooldown(6948), start on the GetTime clock
+  --   taxiMapID = 1464, taxiNodes = { { nodeID=, name=, x=, y=, state=, slotIndex= } },
+  --   onTaxi = false, speed = 0, mounted = false,
+  --   mounts = { { id=, collected= } },        -- C_MountJournal
+  --   mapSizes = { [mapID] = { w, h } },       -- C_Map.GetMapWorldSize (yards)
+  -- }; world.calls counts GetAllCompletedQuestIDs and TakeTaxiNode calls.
+  if world.travelAPI then
+    local t = world.travel or {}
+    world.travel = t
+    world.calls = world.calls or {}
+    local function called(api) world.calls[api] = (world.calls[api] or 0) + 1 end
+    local function vec(x, y) return { x = x, y = y, GetXY = function(self) return self.x, self.y end } end
+    if not env.C_Timer then
+      world.timers = world.timers or {}
+      env.C_Timer = {
+        After = function(secs, fn) world.timers[#world.timers + 1] = { at = world.clock + secs, fn = fn } end,
+      }
+    end
+    env.GetTime = env.GetTime or function() return world.clock end
+    env.GetServerTime = function() return math.floor(world.clock) end
+    env.C_QuestLog = env.C_QuestLog or {}
+    env.C_QuestLog.GetAllCompletedQuestIDs = function()
+      called("GetAllCompletedQuestIDs")
+      return copy(t.completed or {})
+    end
+    env.C_Map.GetMapWorldSize = function(mapID)
+      local s = (t.mapSizes or {})[mapID]
+      if s then return s[1], s[2] end
+      return 0, 0
+    end
+    env.GetBindLocation = function() return t.bind end
+    env.C_Container = env.C_Container or {}
+    env.C_Container.GetItemCooldown = function(itemID)
+      if itemID ~= 6948 or not t.hearthCD then return 0, 0, 1 end
+      return t.hearthCD[1], t.hearthCD[2], 1
+    end
+    env.GetTaxiMapID = function() return t.taxiMapID end
+    env.C_TaxiMap = {
+      GetAllTaxiNodes = function(mapID)
+        if mapID ~= t.taxiMapID then return {} end
+        local out = {}
+        for i, n in ipairs(t.taxiNodes or {}) do
+          out[i] = { nodeID = n.nodeID, name = n.name, position = vec(n.x, n.y), state = n.state,
+                     slotIndex = n.slotIndex or i, isMapLayerTransition = false, useSpecialIcon = false }
+        end
+        return out
+      end,
+    }
+    env.TaxiNodeName = function(slot)
+      for i, n in ipairs(t.taxiNodes or {}) do
+        if (n.slotIndex or i) == slot then return n.name end
+      end
+      return "INVALID"
+    end
+    env.TakeTaxiNode = function(slot) called("TakeTaxiNode"); t.taken = slot end
+    env.UnitOnTaxi = function() return t.onTaxi or false end
+    env.IsMounted = function() return t.mounted or false end
+    env.GetUnitSpeed = function() return t.speed or 0, 7, 7, 4.72 end
+    env.C_MountJournal = {
+      GetMountIDs = function()
+        local ids = {}
+        for i, m in ipairs(t.mounts or {}) do ids[i] = m.id end
+        return ids
+      end,
+      GetMountInfoByID = function(id)
+        for _, m in ipairs(t.mounts or {}) do
+          if m.id == id then return "Mount " .. id, id * 100, 132261, false, true, 0, false, false, nil, false,
+                                    m.collected and true or false, id, false end
+        end
+      end,
+    }
+  end
+
   -- Simulate an API the client lacks. The real Lua _G behind __index has no WoW names, so nil is enough.
   for name in pairs(world.missing) do env[name] = nil end
 
