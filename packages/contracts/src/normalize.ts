@@ -3,6 +3,8 @@ import {
   ApiSample,
   Character,
   CharacterGear,
+  CharState,
+  CharStateSections,
   GearSlot,
   ContainerLoot,
   ContainerOpen,
@@ -29,8 +31,10 @@ import {
   SkillUp,
   SUPPORTED_SCHEMA_VERSIONS,
   Trainer,
+  Trip,
   TurnIn,
   Vendor,
+  XpCurveEntry,
 } from './schemas.js';
 import type { Records, RecordKind } from './schemas.js';
 
@@ -139,6 +143,77 @@ function toSpots(v: unknown) {
   }));
 }
 
+/** A 0..100 map coordinate, or undefined (an off-map or non-finite value drops the coordinate, not the record). */
+const coord = (v: unknown) =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : undefined;
+
+/** Schema 10 spot (SV `{ mapID, x, y, zone, subzone, at }`) → `{ mapId, ... }`; non-tables pass through to fail. */
+function toSpot(v: unknown) {
+  if (!isObj(v)) return v;
+  const { mapID, mapId, x, y, ...rest } = v;
+  return { ...rest, mapId: mapID ?? mapId, x: coord(x), y: coord(y) };
+}
+
+/** A list of ids; a Lua set `{ [id] = true }` reads as its keys. */
+function toIdList(v: unknown): unknown[] {
+  if (isObj(v)) {
+    const vals = Object.values(v);
+    if (vals.length > 0 && vals.every((x) => x === true)) return Object.keys(v).map(Number);
+  }
+  return list(v);
+}
+
+/** A trip end's taxi node: a table `{ id, name }`, a bare node id or a bare name. */
+function toTripNode(v: unknown) {
+  if (typeof v === 'number') return { nodeId: v };
+  if (typeof v === 'string') return { name: v };
+  if (!isObj(v)) return v;
+  return { nodeId: v.id ?? v.nodeID ?? v.nodeId, name: v.name };
+}
+
+/** Schema 10 character state sections, SV spelling → record spelling. */
+const charStateSection: { [K in keyof typeof CharStateSections]?: (v: unknown) => unknown } = {
+  completed: toIdList,
+  log: (v) =>
+    list(v).map((q) =>
+      isObj(q) ? { questId: q.id ?? q.questID ?? q.questId, done: list(q.done) } : q,
+    ),
+  pos: toSpot,
+  bind: (v) => {
+    if (!isObj(v)) return v;
+    const spot = toSpot(v.spot);
+    return {
+      zone: v.zone,
+      at: v.at,
+      spot: isObj(spot) ? { mapId: spot.mapId, x: spot.x, y: spot.y } : spot,
+    };
+  },
+  taxi: (v) =>
+    entries(v).map(([taxiMapId, t]) =>
+      isObj(t)
+        ? {
+            taxiMapId: num(taxiMapId),
+            at: t.at,
+            nodes: list(t.nodes).map((n) =>
+              isObj(n)
+                ? {
+                    nodeId: n.id ?? n.nodeID ?? n.nodeId,
+                    name: n.name,
+                    x: coord(n.x),
+                    y: coord(n.y),
+                    state: n.state,
+                  }
+                : n,
+            ),
+          }
+        : t,
+    ),
+  mount: (v) =>
+    isObj(v)
+      ? { owned: v.owned, mounted: typeof v.mounted === 'number' ? v.mounted !== 0 : v.mounted }
+      : v,
+};
+
 function splitCharKey(key: string) {
   const i = key.indexOf('-');
   return i < 0 ? { name: key, realm: '' } : { name: key.slice(0, i), realm: key.slice(i + 1) };
@@ -180,6 +255,9 @@ export function normalize(db: unknown): Normalized {
     fishingCasts: [],
     gear: [],
     objectiveProgress: [],
+    charState: [],
+    xpCurve: [],
+    trips: [],
     trainers: [],
     vendors: [],
     apiSamples: [],
@@ -469,6 +547,58 @@ export function normalize(db: unknown): Normalized {
       mapId: mapID,
       x: coord(x),
       y: coord(y),
+    });
+  });
+
+  // Schema 10: where each character stands (`charState.<charKey>`). Each section is checked on its own, like gear
+  // slots: a bad one is dropped and reported, the rest of the character's state kept.
+  for (const [char, cs] of entries(db.charState)) {
+    if (!isObj(cs)) {
+      add('charState', CharState, `charState.${char}`, cs);
+      continue;
+    }
+    const state: Obj = { char, build: cs.build ?? meta.build };
+    for (const k of Object.keys(CharStateSections) as (keyof typeof CharStateSections)[]) {
+      if (cs[k] === undefined) continue;
+      const raw = charStateSection[k] ? charStateSection[k](cs[k]) : cs[k];
+      const res = CharStateSections[k].safeParse(raw);
+      if (res.success) state[k] = res.data;
+      else
+        problems.push({
+          kind: 'charState',
+          path: `charState.${char}.${k}`,
+          issues: res.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`),
+        });
+    }
+    add('charState', CharState, `charState.${char}`, state);
+  }
+
+  // Schema 10: XP to finish each level, per build (`xpCurve.<build>.<level> = UnitXPMax`).
+  for (const [b, byLevel] of entries(db.xpCurve)) {
+    for (const [lvl, xpMax] of entries(byLevel)) {
+      add('xpCurve', XpCurveEntry, `xpCurve.${b}.${lvl}`, {
+        build: num(b),
+        level: num(lvl),
+        xpMax: isObj(xpMax) ? xpMax.xpMax : xpMax,
+      });
+    }
+  }
+
+  // Schema 10: timed flights, boat / zeppelin rides and hearths. A trip without a build is the file's build.
+  list(db.trips).forEach((t, i) => {
+    const path = `trips.${i + 1}`;
+    if (!isObj(t)) {
+      add('trips', Trip, path, t);
+      return;
+    }
+    const { from, to, fromNode, toNode, build: b, ...rest } = t;
+    add('trips', Trip, path, {
+      ...rest,
+      build: b ?? meta.build,
+      from: toSpot(from),
+      to: toSpot(to),
+      fromNode: fromNode === undefined ? undefined : toTripNode(fromNode),
+      toNode: toNode === undefined ? undefined : toTripNode(toNode),
     });
   });
 

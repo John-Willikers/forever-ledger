@@ -108,8 +108,8 @@ describe('normalize — edge cases', () => {
   });
 
   it('rejects unknown schema majors', () => {
-    expect(() => normalize({ meta: { schemaVersion: 10, addonVersion: 'x', build: 1 } })).toThrow(
-      /schemaVersion 10 is not supported \(expected 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9\)/,
+    expect(() => normalize({ meta: { schemaVersion: 11, addonVersion: 'x', build: 1 } })).toThrow(
+      /schemaVersion 11 is not supported \(expected 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10\)/,
     );
   });
 
@@ -202,7 +202,7 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(t2).toEqual(v1.records.turnIns[0]);
   });
 
-  it('accepts schema 1 and 2 upload batches, not 10', () => {
+  it('accepts schema 1 and 2 upload batches, not 11', () => {
     const batch = { uploaderId: 'pc-1', account: 'A', meta: v2.meta, records: v2.records };
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 2 }).success).toBe(true);
     expect(
@@ -213,7 +213,8 @@ describe('normalize — schema 2 (addon 0.2.3)', () => {
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 6 }).success).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 8 }).success).toBe(true);
     expect(UploadBatch.safeParse({ ...batch, schemaVersion: 9 }).success).toBe(true);
-    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 10 }).success).toBe(false);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 10 }).success).toBe(true);
+    expect(UploadBatch.safeParse({ ...batch, schemaVersion: 11 }).success).toBe(false);
   });
 });
 
@@ -1022,11 +1023,13 @@ describe('normalize — schema 8 gear (session-v8.lua)', () => {
 describe('normalize — schema 9 objective progress (session-v9.lua)', () => {
   const { meta, records, problems } = normalize(load('session-v9.lua'));
 
-  it('validates as schema 9, the current major', () => {
+  it('validates as schema 9, still a supported major, with no schema 10 records', () => {
     expect(problems).toEqual([]);
     expect(meta).toMatchObject({ schemaVersion: 9, addonVersion: '0.7.0' });
-    expect(SCHEMA_VERSION).toBe(9);
-    expect(isSupportedSchemaVersion(10)).toBe(false);
+    expect(isSupportedSchemaVersion(9)).toBe(true);
+    expect(records.charState).toEqual([]);
+    expect(records.xpCurve).toEqual([]);
+    expect(records.trips).toEqual([]);
   });
 
   it('objective progress: questId, index, counts and where', () => {
@@ -1051,5 +1054,253 @@ describe('normalize — schema 9 objective progress (session-v9.lua)', () => {
     const r = normalize(db);
     expect(r.problems).toEqual([]);
     expect(r.records.objectiveProgress[0]!.x).toBeUndefined();
+  });
+});
+
+describe('normalize — schema 10 character state, xp curve and trips (hand-made)', () => {
+  const char = 'Sam Willikers-Bayou';
+  const v10 = () => ({
+    meta: { schemaVersion: 10, addonVersion: '0.8.0', build: 70245, session: '1791000000-ab12' },
+    charState: {
+      [char]: {
+        level: 12,
+        xp: 3400,
+        xpMax: 8800,
+        completed: [5, 364, 365, 1001],
+        completedAt: 1791000100,
+        log: [
+          { id: 366, done: [3, 0] },
+          { id: 840, done: {} },
+        ],
+        pos: {
+          mapID: 1411,
+          x: 0.5123,
+          y: 0.6789,
+          zone: 'Durotar',
+          subzone: 'Razor Hill',
+          at: 1791000200,
+        },
+        bind: { zone: 'Razor Hill', spot: { mapID: 1411, x: 0.519, y: 0.4123 }, at: 1791000050 },
+        hearthReadyAt: 1791000800,
+        taxi: {
+          1411: {
+            at: 1791000300,
+            nodes: [
+              { id: 23, name: 'Orgrimmar, Durotar', x: 0.41, y: 0.22, state: 1 },
+              { id: 25, name: 'Crossroads, The Barrens', x: 0.52, y: 0.61, state: 2 },
+              { id: 77, name: 'Razor Hill, Durotar', x: 0.5, y: 0.4, state: 0 },
+            ],
+          },
+        },
+        mount: { owned: 1, mounted: false },
+      },
+      'Nobody Home-Bayou': {},
+    },
+    xpCurve: { 70245: { 11: 7600, 12: 8800 }, 70009: { 12: 8700 } },
+    trips: [
+      {
+        kind: 'flight',
+        char,
+        from: { mapID: 1411, x: 0.41, y: 0.22, zone: 'Orgrimmar' },
+        to: { mapID: 1413, x: 0.52, y: 0.61, zone: 'The Barrens' },
+        startedAt: 1791000400,
+        seconds: 89.7,
+        fromNode: { id: 23, name: 'Orgrimmar, Durotar' },
+        toNode: { id: 25, name: 'Crossroads, The Barrens' },
+      },
+      {
+        kind: 'hearth',
+        char,
+        from: { mapID: 1413, x: 0.52, y: 0.61 },
+        to: { mapID: 1411, x: 0.519, y: 0.4123 },
+        startedAt: 1791000600,
+        seconds: 21,
+      },
+      { kind: 'transport', char, startedAt: 1791000700, seconds: 95, build: 70009 },
+    ],
+  });
+
+  it('schema 10 is the current major', () => {
+    expect(SCHEMA_VERSION).toBe(10);
+    expect(isSupportedSchemaVersion(10)).toBe(true);
+    expect(isSupportedSchemaVersion(11)).toBe(false);
+  });
+
+  it('a v10 file normalizes: one charState per character, xp curve per build and level, trips', () => {
+    const { meta, records, problems } = normalize(v10());
+    expect(problems).toEqual([]);
+    expect(
+      UploadBatch.safeParse({ schemaVersion: 10, uploaderId: 'pc-1', account: 'A', meta, records })
+        .success,
+    ).toBe(true);
+    expect(records.charState).toHaveLength(2);
+    const s = records.charState.find((c) => c.char === char)!;
+    expect(s).toEqual({
+      char,
+      build: 70245,
+      level: 12,
+      xp: 3400,
+      xpMax: 8800,
+      completed: [5, 364, 365, 1001],
+      completedAt: 1791000100,
+      log: [
+        { questId: 366, done: [3, 0] },
+        { questId: 840, done: [] },
+      ],
+      pos: {
+        mapId: 1411,
+        x: 0.5123,
+        y: 0.6789,
+        zone: 'Durotar',
+        subzone: 'Razor Hill',
+        at: 1791000200,
+      },
+      bind: { zone: 'Razor Hill', spot: { mapId: 1411, x: 0.519, y: 0.4123 }, at: 1791000050 },
+      hearthReadyAt: 1791000800,
+      taxi: [
+        {
+          taxiMapId: 1411,
+          at: 1791000300,
+          nodes: [
+            { nodeId: 23, name: 'Orgrimmar, Durotar', x: 0.41, y: 0.22, state: 1 },
+            { nodeId: 25, name: 'Crossroads, The Barrens', x: 0.52, y: 0.61, state: 2 },
+            { nodeId: 77, name: 'Razor Hill, Durotar', x: 0.5, y: 0.4, state: 0 },
+          ],
+        },
+      ],
+      mount: { owned: 1, mounted: false },
+    });
+    expect(records.charState.find((c) => c.char === 'Nobody Home-Bayou')).toEqual({
+      char: 'Nobody Home-Bayou',
+      build: 70245,
+    });
+    expect(recordKey('charState', s)).toBe(`cstate:${char}:70245`);
+
+    expect(records.xpCurve).toHaveLength(3);
+    expect(records.xpCurve).toEqual(
+      expect.arrayContaining([
+        { build: 70245, level: 11, xpMax: 7600 },
+        { build: 70245, level: 12, xpMax: 8800 },
+        { build: 70009, level: 12, xpMax: 8700 },
+      ]),
+    );
+    expect(recordKey('xpCurve', records.xpCurve[0]!)).toMatch(/^xpc:\d+:\d+$/);
+
+    expect(records.trips).toHaveLength(3);
+    const [flight, hearth, boat] = records.trips;
+    expect(flight).toEqual({
+      kind: 'flight',
+      char,
+      build: 70245,
+      from: { mapId: 1411, x: 0.41, y: 0.22, zone: 'Orgrimmar' },
+      to: { mapId: 1413, x: 0.52, y: 0.61, zone: 'The Barrens' },
+      startedAt: 1791000400,
+      seconds: 89.7,
+      fromNode: { nodeId: 23, name: 'Orgrimmar, Durotar' },
+      toNode: { nodeId: 25, name: 'Crossroads, The Barrens' },
+    });
+    expect(hearth).toMatchObject({ kind: 'hearth', seconds: 21, to: { mapId: 1411 } });
+    expect(boat).toEqual({
+      kind: 'transport',
+      char,
+      build: 70009,
+      startedAt: 1791000700,
+      seconds: 95,
+    });
+    expect(recordKey('trips', flight!)).toBe(`trip:${char}:flight:1791000400`);
+  });
+
+  it('tolerates small shape differences: a set of completed ids, a bare node id or name, 1/0 mounted', () => {
+    const db = v10();
+    const s = db.charState[char] as Record<string, unknown>;
+    s.completed = { 5: true, 364: true };
+    s.mount = { owned: 2, mounted: 1 };
+    db.trips[0]!.fromNode = 23 as never;
+    db.trips[0]!.toNode = 'Crossroads, The Barrens' as never;
+    const { records, problems } = normalize(db);
+    expect(problems).toEqual([]);
+    const st = records.charState.find((c) => c.char === char)!;
+    expect(st.completed).toEqual([5, 364]);
+    expect(st.mount).toEqual({ owned: 2, mounted: true });
+    expect(records.trips[0]).toMatchObject({
+      fromNode: { nodeId: 23 },
+      toNode: { name: 'Crossroads, The Barrens' },
+    });
+  });
+
+  it('off-map coordinates drop the coordinate, not the record', () => {
+    const db = v10();
+    const s = db.charState[char] as { pos: Record<string, unknown> };
+    s.pos.x = 140;
+    s.pos.y = Number.NaN;
+    db.trips[0]!.to!.x = -3;
+    const { records, problems } = normalize(db);
+    expect(problems).toEqual([]);
+    const pos = records.charState.find((c) => c.char === char)!.pos!;
+    expect(pos.x).toBeUndefined();
+    expect(pos.y).toBeUndefined();
+    expect(pos.mapId).toBe(1411);
+    expect(records.trips[0]!.to!.x).toBeUndefined();
+  });
+
+  it('junk is rejected per record (or per section of a character state), never per file', () => {
+    const db = v10() as Record<string, unknown> & ReturnType<typeof v10>;
+    const s = db.charState[char] as Record<string, unknown>;
+    s.completed = [5, 'x', 7];
+    s.level = Number.POSITIVE_INFINITY;
+    s.taxi = { 1411: { nodes: Array.from({ length: 500 }, (_, i) => ({ id: i })) } };
+    (db.charState as Record<string, unknown>)['Junk-Bayou'] = 'not a table';
+    db.xpCurve = { 70245: { 11: 7600, 12: -5, 13: 'lots' }, nope: { 2: 400 } } as never;
+    db.trips.push(
+      { kind: 'teleport', char, startedAt: 1, seconds: 3 } as never,
+      { kind: 'flight', char, startedAt: 2, seconds: Number.POSITIVE_INFINITY } as never,
+      { kind: 'flight', startedAt: 3, seconds: 4 } as never,
+      'junk' as never,
+    );
+    const { records, problems } = normalize(db);
+    // The good character state stays, minus the bad sections.
+    const st = records.charState.find((c) => c.char === char)!;
+    expect(st.completed).toBeUndefined();
+    expect(st.level).toBeUndefined();
+    expect(st.taxi).toBeUndefined();
+    expect(st.xp).toBe(3400);
+    expect(st.log).toHaveLength(2);
+    expect(st.pos?.mapId).toBe(1411);
+    expect(records.charState.map((c) => c.char).sort()).toEqual(['Nobody Home-Bayou', char]);
+    expect(
+      problems
+        .filter((p) => p.kind === 'charState')
+        .map((p) => p.path)
+        .sort(),
+    ).toEqual([
+      'charState.Junk-Bayou',
+      `charState.${char}.completed`,
+      `charState.${char}.level`,
+      `charState.${char}.taxi`,
+    ]);
+    expect(records.xpCurve).toEqual([{ build: 70245, level: 11, xpMax: 7600 }]);
+    expect(problems.filter((p) => p.kind === 'xpCurve')).toHaveLength(3);
+    expect(records.trips).toHaveLength(3);
+    expect(problems.filter((p) => p.kind === 'trips').map((p) => p.path)).toEqual([
+      'trips.4',
+      'trips.5',
+      'trips.6',
+      'trips.7',
+    ]);
+  });
+
+  it('bounds untrusted lists: a log over the cap is dropped', () => {
+    const db = v10();
+    const s = db.charState[char] as Record<string, unknown>;
+    s.log = Array.from({ length: 200 }, (_, i) => ({ id: i + 1, done: [] }));
+    s.completed = Array.from({ length: 20001 }, (_, i) => i + 1);
+    const { records, problems } = normalize(db);
+    const st = records.charState.find((c) => c.char === char)!;
+    expect(st.log).toBeUndefined();
+    expect(st.completed).toBeUndefined();
+    expect(problems.map((p) => p.path).sort()).toEqual([
+      `charState.${char}.completed`,
+      `charState.${char}.log`,
+    ]);
   });
 });
