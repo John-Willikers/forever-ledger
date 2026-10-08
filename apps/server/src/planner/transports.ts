@@ -12,7 +12,11 @@ export interface Transport {
   crossing: number;
   wait: number;
   faction: 'Horde' | 'Alliance' | 'both';
+  /** The ride (crossing / wait) and, unless overridden below, both ends. */
   confidence: 'measured' | 'guess';
+  /** Per-end overrides when one end was measured and the other was not. */
+  confidenceA?: 'measured' | 'guess';
+  confidenceB?: 'measured' | 'guess';
 }
 
 export const TRANSPORTS: readonly Transport[] = [
@@ -27,6 +31,8 @@ export const TRANSPORTS: readonly Transport[] = [
     wait: 150,
     faction: 'Horde',
     confidence: 'measured',
+    confidenceA: 'measured',
+    confidenceB: 'guess',
   },
   {
     // Guess: same Tirisfal tower, the Stranglethorn platform.

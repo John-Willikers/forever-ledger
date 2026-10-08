@@ -35,9 +35,9 @@ describe('planner travel', () => {
     const r = route(a, b, horde(), DATA, 0)!;
     expect(r.legs.map((l) => l.how)).toEqual(['walk']);
     expect(r.seconds).toBeCloseTo(yards(a, b) / 7, 3);
-    // Mounted: twice as fast.
+    // Mounted: Classic riding at 40, +60 %.
     expect(route(a, b, horde({ mounted: true }), DATA, 0)!.seconds).toBeCloseTo(
-      yards(a, b) / 14,
+      yards(a, b) / 11.2,
       3,
     );
   });
@@ -70,20 +70,72 @@ describe('planner travel', () => {
     expect(route(brill, razor, { ...horde(), faction: 'Alliance' }, DATA, 0)).toBeNull();
   });
 
-  it('hearths only when the stone is ready by the clock', () => {
+  it('hearths when the stone is ready by the clock, or waits for it when that is still faster', () => {
     const a = { mapId: 1420, x: 40, y: 50 };
     const target = { mapId: 1411, x: 52, y: 44 };
     const bind = { mapId: 1411, x: 51.5, y: 41.5 };
-    const ready = route(a, target, horde({ hearth: { spot: bind, readyIn: 0 } }), DATA, 0)!;
+    const ready = route(a, target, horde({ hearth: { spot: bind, readyAt: 0 } }), DATA, 0)!;
     expect(ready.legs.map((l) => l.how)).toEqual(['hearth', 'walk']);
     expect(ready.legs[0]!.seconds).toBe(20);
 
-    const cooling = horde({ hearth: { spot: bind, readyIn: 1800 } });
+    const cooling = horde({ hearth: { spot: bind, readyAt: 1800 } });
     expect(route(a, target, cooling, DATA, 0)!.legs.map((l) => l.how)).not.toContain('hearth');
     expect(route(a, target, cooling, DATA, 1800)!.legs.map((l) => l.how)).toEqual([
       'hearth',
       'walk',
     ]);
+  });
+
+  it('waits for the hearth only when the wait beats walking', () => {
+    // Across Durotar: 4230 yd, about 604 s on foot.
+    const a = { mapId: 1411, x: 10, y: 50 };
+    const target = { mapId: 1411, x: 90, y: 50 };
+    const bind = { mapId: 1411, x: 89, y: 50 };
+    const soon = route(a, target, horde({ hearth: { spot: bind, readyAt: 160 } }), DATA, 100)!;
+    expect(soon.legs.map((l) => l.how)).toEqual(['hearth', 'walk']);
+    expect(soon.legs[0]!.seconds).toBe(60 + 20);
+    expect(soon.legs[0]!.note).toBe('wait 60 s');
+    const late = route(a, target, horde({ hearth: { spot: bind, readyAt: 3100 } }), DATA, 100)!;
+    expect(late.legs.map((l) => l.how)).toEqual(['walk']);
+  });
+
+  it('skips a ready hearth when walking is faster', () => {
+    const a = { mapId: 1411, x: 52, y: 44 };
+    const target = { mapId: 1411, x: 52.2, y: 44 };
+    const r = route(a, target, horde({ hearth: { spot: target, readyAt: 0 } }), DATA, 0)!;
+    expect(r.legs.map((l) => l.how)).toEqual(['walk']);
+  });
+
+  it("ignores another faction's flight node even when its id is learned", () => {
+    const a = { mapId: 1411, x: 45, y: 10 };
+    const b = { mapId: 1446, x: 51, y: 28 };
+    const data: TravelData = {
+      ...DATA,
+      flightNodes: [
+        DATA.flightNodes[0]!,
+        { id: 39, name: 'Gadgetzan', faction: 'Alliance', spot: GADGETZAN },
+      ],
+    };
+    const r = route(a, b, horde({ flightPaths: new Set([23, 39]) }), data, 0)!;
+    expect(r.legs.map((l) => l.how)).toEqual(['walk']);
+  });
+
+  it('lets both factions ride a neutral boat', () => {
+    const data: TravelData = { flightNodes: [], transports: [...TRANSPORTS] };
+    const bootyBay = { mapId: 1434, x: 27, y: 77 };
+    const ratchet = { mapId: 1413, x: 62, y: 37 };
+    const r = route(bootyBay, ratchet, { ...horde(), faction: 'Alliance' }, data, 0)!;
+    expect(r.legs.map((l) => l.how)).toContain('boat');
+    expect(r.legs.find((l) => l.how === 'boat')!.note).toBe('Booty Bay ↔ Ratchet');
+  });
+
+  it('never swims between the two ends of one transport', () => {
+    const data: TravelData = { flightNodes: [], transports: [...TRANSPORTS] };
+    const auberdine = { mapId: 1439, x: 34, y: 41 };
+    const ruttheran = { mapId: 1438, x: 55.5, y: 94 };
+    const alliance = { ...horde({ mounted: true }), faction: 'Alliance' as const };
+    const r = route(auberdine, ruttheran, alliance, data, 0)!;
+    expect(r.legs.map((l) => l.how)).toContain('boat');
   });
 
   it('estimates the Orgrimmar → Splintertree Post flight within 40 % of the probe trip', () => {

@@ -63,8 +63,8 @@ export interface CharacterState {
   position: MapSpot;
   /** Flight master node ids the character has learned. */
   flightPaths: Set<number>;
-  /** Hearthstone: where it goes (a spot) and when it is ready (seconds from now, 0 = ready). */
-  hearth: { spot: MapSpot; readyIn: number } | null;
+  /** Hearthstone: where it goes (a spot) and when it is ready, on the planner clock (seconds from the plan start). */
+  hearth: { spot: MapSpot; readyAt: number } | null;
   mounted: boolean;
 }
 

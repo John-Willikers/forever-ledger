@@ -19,9 +19,10 @@ export interface Leg {
   note?: string;
 }
 
-/** Yards per second on foot and on a Classic 100 % mount; taxi speed (probe 0.6.0, build 70245). */
+/** Yards per second on foot (probe 0.6.0, build 70245) and on a Classic riding-40 mount (+60 %). */
 export const RUN_SPEED = 7;
-export const MOUNT_SPEED = 14;
+export const MOUNT_SPEED = 11.2;
+/** Taxi speed (probe 0.6.0, build 70245). */
 export const FLIGHT_SPEED = 30.52;
 /** Flight paths bend: straight distance × this. */
 export const FLIGHT_DETOUR = 1.25;
@@ -52,7 +53,14 @@ interface Edge {
 
 const sideOk = (f: string, faction: string) => f === faction || f === 'both';
 
-/** Fastest way from one spot to another at clock `now`; hearth only if ready by then. */
+/** Two spots this close to the two ends of one transport are across its water: no walk edge between them. */
+export const DOCK_RADIUS = 150;
+
+/**
+ * Fastest way from one spot to another, starting at planner clock `now`. The hearthstone is used from the start
+ * spot, waiting for `hearth.readyAt` if it is not ready yet (a 'hearth' leg noted 'wait N s'). After a route with a
+ * 'hearth' leg the caller sets `hearth.readyAt = clock + HEARTH_COOLDOWN`. Null when unreachable.
+ */
 export function route(
   from: MapSpot,
   to: MapSpot,
@@ -92,10 +100,20 @@ export function route(
     link(a, b, e);
     link(b, a, e);
   }
-  if (ch.hearth && ch.hearth.readyIn <= now) {
+  if (ch.hearth) {
     const h = add(ch.hearth.spot);
-    if (h >= 0) link(0, h, { seconds: HEARTH_SECONDS, how: 'hearth', note: 'Hearthstone' });
+    const wait = Math.max(0, ch.hearth.readyAt - now);
+    const note = wait > 0 ? `wait ${Math.round(wait)} s` : 'Hearthstone';
+    if (h >= 0) link(0, h, { seconds: wait + HEARTH_SECONDS, how: 'hearth', note });
   }
+  // Transport ends in world yards, to keep walks from crossing the water a transport crosses.
+  const docks = data.transports
+    .filter((t) => sideOk(t.faction, ch.faction))
+    .map((t) => [toWorld(t.a), toWorld(t.b)] as const)
+    .filter((d): d is readonly [WorldPos, WorldPos] => d[0] !== null && d[1] !== null);
+  const near = (p: WorldPos, q: WorldPos) => distance(p, q) <= DOCK_RADIUS;
+  const acrossWater = (p: WorldPos, q: WorldPos) =>
+    docks.some(([a, b]) => (near(p, a) && near(q, b)) || (near(p, b) && near(q, a)));
 
   const speed = ch.mounted ? MOUNT_SPEED : RUN_SPEED;
   for (let i = 0; i < nodes.length; i++) {
@@ -104,7 +122,7 @@ export function route(
       const a = nodes[i]!;
       const b = nodes[j]!;
       const d = distance(a.pos, b.pos);
-      if (!Number.isFinite(d)) continue;
+      if (!Number.isFinite(d) || acrossWater(a.pos, b.pos)) continue;
       link(i, j, { seconds: d / speed, how: 'walk' });
       if (a.flightId !== undefined && b.flightId !== undefined) {
         link(i, j, {
