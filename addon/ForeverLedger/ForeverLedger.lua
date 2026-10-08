@@ -2578,7 +2578,7 @@ end
 local cs = { completedPending = false } -- key: the character key the state was last written under
 do
   local HEARTHSTONE_ITEM = 6948
-  local LOG_CAP, COMPLETED_CAP, TAXI_MAPS, TAXI_NODES = 35, 5000, 4, 80
+  local LOG_CAP, COMPLETED_CAP, TAXI_MAPS, TAXI_NODES, CURVE_BUILDS = 35, 10000, 4, 80, 3
   local COMPLETED_GAP = 10 -- seconds between completed-quest reads after turn-ins
 
   local function r4(v)
@@ -2604,13 +2604,20 @@ do
     return ok and type(s) == "string" and s or nil
   end
 
-  -- Where the player stands: { mapID, x, y, zone, subzone }; nil without a map.
-  function cs.pos()
+  -- Zone and subzone text onto a position (the trip sampler leaves them out of its samples).
+  function cs.named(p)
+    if p then p.zone, p.subzone = text(GetRealZoneText), text(GetSubZoneText) end
+    return p
+  end
+
+  -- Where the player stands: { mapID, x, y, zone, subzone } (`bare`: no zone text); nil without a map.
+  function cs.pos(bare)
     if not (C_Map and C_Map.GetBestMapForUnit) then return nil end
     local ok, mapID = pcall(C_Map.GetBestMapForUnit, "player")
     mapID = ok and tonumber(mapID)
     if not mapID then return nil end
-    local p = { mapID = mapID, zone = text(GetRealZoneText), subzone = text(GetSubZoneText) }
+    local p = { mapID = mapID }
+    if not bare then cs.named(p) end
     if C_Map.GetPlayerMapPosition then
       local okP, v = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
       local x, y = cs.xy(okP and v)
@@ -2642,6 +2649,16 @@ do
     if not level or not xpMax or level < 1 or xpMax <= 0 then return end
     db.xpCurve[build] = db.xpCurve[build] or {}
     db.xpCurve[build][level] = xpMax
+    -- the newest CURVE_BUILDS builds (build numbers only grow)
+    while true do
+      local n, oldest = 0, nil
+      for b in pairs(db.xpCurve) do
+        n = n + 1
+        if not oldest or (tonumber(b) or 0) < (tonumber(oldest) or 0) then oldest = b end
+      end
+      if n <= CURVE_BUILDS then break end
+      db.xpCurve[oldest] = nil
+    end
   end
 
   function cs.level()
@@ -2653,7 +2670,8 @@ do
   end
 
   -- An empty answer (quest data not loaded yet, e.g. right after login) never replaces a recorded list: the old one is
-  -- kept and the read is tried once more 5 s later (`retry` is that second read, which doesn't try again).
+  -- kept. Any empty answer is read once more 5 s later (`retry` is that second read, which doesn't try again).
+  -- completedTruncated = how many ids were cut by the cap (nil when none).
   function cs.completed(retry)
     if not QuestLog.GetAllCompletedQuestIDs then return end
     local ok, ids = pcall(QuestLog.GetAllCompletedQuestIDs)
@@ -2664,15 +2682,17 @@ do
       if id then list[#list + 1] = id end
     end
     table.sort(list)
+    local cut = #list - COMPLETED_CAP
     for i = #list, COMPLETED_CAP + 1, -1 do list[i] = nil end
     local s = cs.rec()
-    if #list == 0 and type(s.completed) == "table" and #s.completed > 0 then
+    if #list == 0 then
       if not retry and C_Timer then
         C_Timer.After(5, function() safely("charState", cs.completed, true) end)
       end
-      return
+      if type(s.completed) == "table" and #s.completed > 0 then return end
     end
     s.completed, s.completedAt = list, now()
+    s.completedTruncated = cut > 0 and cut or nil
     cs.completedReadAt = now()
   end
 
@@ -2836,7 +2856,10 @@ do
     if type(s) ~= "table" then return "state: nothing recorded for this character yet." end
     local parts = {}
     if s.level then parts[#parts + 1] = format("level %d (%d/%d XP)", s.level, s.xp or 0, s.xpMax or 0) end
-    if s.completed then parts[#parts + 1] = format("%d quests completed", #s.completed) end
+    if s.completed then
+      parts[#parts + 1] = format("%d quests completed", #s.completed)
+        .. (s.completedTruncated and format(" (%d more not kept)", s.completedTruncated) or "")
+    end
     if s.log then parts[#parts + 1] = format("%d in the log", #s.log) end
     if s.bind then
       parts[#parts + 1] = "bound to " .. tostring(s.bind.zone) .. (s.bind.spot and " (spot known)" or "")
@@ -2872,13 +2895,15 @@ end
 -- Flight: a post-hook on TakeTaxiNode(slot) notes the picked node (and the one you stand at, from the open flight
 -- map); PLAYER_CONTROL_LOST starts the clock, PLAYER_CONTROL_GAINED stops it. Probe 0.6.0 (build 70245): control
 -- comes back on landing while UnitOnTaxi is still true, Orgrimmar -> Splintertree Post took 89.7 s.
--- Hearth: UNIT_SPELLCAST_SUCCEEDED of spell 8690 starts it where you stand; the next PLAYER_ENTERING_WORLD (after a
--- loading screen; the position is read 2 s later, once the client has the new zone) or a sample more than 200 yd away
--- ends it.
--- Transport (boats, zeppelins): a sample every 2 s while not on a taxi. Moving more than 3 yd per sample at
--- GetUnitSpeed 0 is being carried; the ride ends after 3 samples that aren't (stopped, or walking off once it has
--- crossed a loading screen), at the first of them. Samples are skipped during loading screens (nothing moves then).
--- Rides under 10 s (knock-backs, elevators) are not kept. One position read per sample keeps it cheap.
+-- Hearth: UNIT_SPELLCAST_SUCCEEDED of spell 8690 starts it where you stand; the next PLAYER_ENTERING_WORLD or a
+-- sample more than 200 yd away ends it. After a loading screen the landing spot is read 2 s after
+-- LOADING_SCREEN_DISABLED, again every 2 s (up to 5 reads) until the client has a zone map, not none or a continent
+-- (probe: at PLAYER_ENTERING_WORLD the map was still the continent, 1414).
+-- Transport (boats, zeppelins): a sample every 2 s while not on a taxi (no zone text in samples). A sample is
+-- "carried" when GetUnitSpeed is 0 and the position moved more than 3 yd; a ride starts after 2 carried samples in a
+-- row. It ends at the first of 2 samples in a row where the player moves by themself (walking off) or of 3 that
+-- aren't carried. Samples are skipped during loading screens (nothing moves then); a far end read after a loading
+-- screen gets the same zone-map wait as a hearth. Rides under 10 s or under 100 yd net are not kept.
 local trips = {}
 do
   -- (one table: the addon's main chunk is near Lua's 200-local limit)
@@ -2888,13 +2913,19 @@ do
     TICK = 2,           -- seconds between samples
     MOVE_YD = 3,        -- yd per sample that counts as being carried
     JUMP_YD = 200,      -- yd per sample beyond which it is a teleport, not a ride; also a hearth's arrival
-    STOP_TICKS = 3,     -- samples not carried that end a ride
+    START_TICKS = 2,    -- carried samples in a row that start a ride
+    WALK_TICKS = 2,     -- samples in a row moving by yourself that end a ride
+    STOP_TICKS = 3,     -- samples in a row not carried that end a ride
     MIN_RIDE = 10,      -- seconds: shorter rides are not kept
+    MIN_RIDE_YD = 100,  -- yd net: shorter rides are not kept
     TAXI_WAIT = 15,     -- seconds from TakeTaxiNode to PLAYER_CONTROL_LOST
     HEARTH_WAIT = 120,  -- seconds after the cast a hearth may still arrive
-    ARRIVE_READ = 2,    -- seconds after PLAYER_ENTERING_WORLD the arrival is read
+    SETTLE = 2,         -- seconds between landing-spot reads
+    SETTLE_TRIES = 5,
     LOADING_MAX = 60,   -- seconds: a loading screen whose end never came no longer pauses the sampler
     FLIGHT_MAX = 1800,  -- seconds: a flight whose landing never came (a disconnect) is dropped
+    -- continent / world maps, when C_Map.GetMapInfo can't say (Azeroth, Kalimdor, Eastern Kingdoms, taxi maps)
+    WIDE = { [947] = true, [1414] = true, [1415] = true, [1463] = true, [1464] = true },
   }
 
   local function clock() return GetTime and GetTime() or now() end
@@ -2919,6 +2950,33 @@ do
     trim(db.trips, K.CAP)
     added()
     return entry
+  end
+
+  -- A zone or city map (Enum.UIMapType Zone = 3 and up), not a continent or the world.
+  function trips.zoneMap(p)
+    if not (p and p.mapID) then return false end
+    if C_Map and C_Map.GetMapInfo then
+      local ok, info = pcall(C_Map.GetMapInfo, p.mapID)
+      if ok and type(info) == "table" and tonumber(info.mapType) then return tonumber(info.mapType) >= 3 end
+    end
+    return not K.WIDE[p.mapID]
+  end
+
+  -- Reads entry.to every SETTLE seconds (up to SETTLE_TRIES) until it is on a zone map; when none comes, the last
+  -- read is kept (a continent spot beats none).
+  function trips.settle(entry, tries)
+    tries = tries or 1
+    if not C_Timer then
+      entry.to = cs.pos() or entry.to
+      return
+    end
+    C_Timer.After(K.SETTLE, function()
+      safely("trips", function()
+        local p = cs.pos()
+        if p and (trips.zoneMap(p) or (tries >= K.SETTLE_TRIES and not entry.to)) then entry.to = p end
+        if not trips.zoneMap(entry.to) and tries < K.SETTLE_TRIES then trips.settle(entry, tries + 1) end
+      end)
+    end)
   end
 
   function trips.onTaxi()
@@ -2953,7 +3011,7 @@ do
     trips.pendingFlight = nil
     if not p or clock() - p.at > K.TAXI_WAIT then return end
     trips.flight = { t0 = clock(), startedAt = now(), from = p.from, fromNode = p.fromNode, toNode = p.toNode }
-    trips.ride, trips.last = nil, nil
+    trips.ride, trips.cand, trips.last = nil, nil, nil
   end
 
   function trips.controlGained()
@@ -2967,7 +3025,7 @@ do
   function trips.spellSucceeded(spellID)
     if tonumber(spellID) ~= K.HEARTH_SPELL then return end
     trips.hearth = { t0 = clock(), startedAt = now(), from = cs.pos() }
-    trips.ride = nil
+    trips.ride, trips.cand = nil, nil
   end
 
   function trips.hearthAlive()
@@ -2976,20 +3034,32 @@ do
     return trips.hearth
   end
 
+  -- The hearth is timed to PLAYER_ENTERING_WORLD; where it landed is read once the loading screen is gone.
   function trips.enteredWorld()
     if not trips.hearthAlive() then return end
     local entry = record("hearth", trips.hearth, nil)
     trips.hearth, trips.last = nil, nil
-    if C_Timer then
-      C_Timer.After(K.ARRIVE_READ, function() safely("trips", function() entry.to = cs.pos() end) end)
-    else
-      entry.to = cs.pos()
-    end
+    if trips.isLoading then trips.arrival = entry else trips.settle(entry) end
   end
 
   function trips.loading(on)
     trips.isLoading = on and clock() or nil
-    if trips.ride and not on then trips.ride.crossed = true end
+    if on then return end
+    if trips.ride then trips.ride.crossed = true end
+    if trips.arrival then
+      trips.settle(trips.arrival)
+      trips.arrival = nil
+    end
+  end
+
+  local function endRide(ride)
+    trips.ride = nil
+    local stop = ride.stop
+    local seconds = stop.t - ride.t0
+    local net = yards(ride.from, stop.pos)
+    if seconds < K.MIN_RIDE or not net or net < K.MIN_RIDE_YD then return end
+    local entry = record("transport", ride, stop.pos, seconds)
+    if ride.crossed and not trips.zoneMap(stop.pos) then trips.settle(entry) end
   end
 
   -- One sample: hearth arrival without a loading screen, and boats / zeppelins.
@@ -3000,17 +3070,17 @@ do
     if trips.pendingFlight and t - trips.pendingFlight.at > K.TAXI_WAIT then trips.pendingFlight = nil end
     if trips.flight and t - trips.flight.t0 > K.FLIGHT_MAX then trips.flight = nil end
     if trips.flight or trips.pendingFlight or trips.onTaxi() then
-      trips.ride, trips.last = nil, nil
+      trips.ride, trips.cand, trips.last = nil, nil, nil
       return
     end
-    local here = cs.pos()
+    local here = cs.pos(true)
     if not here then return end
     local prev = trips.last
     trips.last = { pos = here, t = t, at = now() }
     if trips.hearthAlive() then
       local d = yards(trips.hearth.from, here)
       if d and d > K.JUMP_YD then
-        record("hearth", trips.hearth, here)
+        record("hearth", trips.hearth, cs.named(here))
         trips.hearth = nil
       end
       return
@@ -3020,33 +3090,44 @@ do
     local carried = v == 0 and d ~= nil and d > K.MOVE_YD
     local ride = trips.ride
     if not ride then
-      if carried and d < K.JUMP_YD then
-        trips.ride = { t0 = prev.t, startedAt = prev.at, from = prev.pos, still = 0 }
+      if not (carried and d < K.JUMP_YD) then
+        trips.cand = nil
+        return
+      end
+      local cand = trips.cand or { t0 = prev.t, startedAt = prev.at, from = cs.named(prev.pos), n = 0 }
+      cand.n = cand.n + 1
+      trips.cand = cand
+      if cand.n >= K.START_TICKS then
+        trips.cand = nil
+        cand.off, cand.walk = 0, 0
+        trips.ride = cand
       end
       return
     end
     if carried then
-      ride.still, ride.stop = 0, nil
+      ride.off, ride.walk, ride.stop = 0, 0, nil
       return
     end
-    if v and v > 0 and not ride.crossed then return end -- walking on deck
-    ride.still = ride.still + 1
-    ride.stop = ride.stop or { pos = here, t = t }
-    if ride.still < K.STOP_TICKS then return end
-    trips.ride = nil
-    local seconds = ride.stop.t - ride.t0
-    if seconds >= K.MIN_RIDE then record("transport", ride, ride.stop.pos, seconds) end
+    local walking = v and v > 0
+    ride.off = ride.off + 1
+    ride.walk = walking and ride.walk + 1 or 0
+    ride.stop = ride.stop or { pos = cs.named(here), t = t }
+    if ride.walk >= K.WALK_TICKS or ride.off >= K.STOP_TICKS then endRide(ride) end
   end
 
   -- The sampler runs for the session when the client can measure distances (C_Map.GetMapWorldSize).
   function trips.start()
     if trips.running or not (C_Timer and C_Map and C_Map.GetMapWorldSize) then return end
     trips.running = true
+    safely("trips", trips.tick)
+    if C_Timer.NewTicker then
+      C_Timer.NewTicker(K.TICK, function() safely("trips", trips.tick) end)
+      return
+    end
     local function loop()
       safely("trips", trips.tick)
       C_Timer.After(K.TICK, loop)
     end
-    safely("trips", trips.tick)
     C_Timer.After(K.TICK, loop)
   end
 end

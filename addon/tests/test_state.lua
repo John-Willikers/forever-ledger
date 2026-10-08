@@ -124,6 +124,29 @@ return function(H)
     H.eq(#stateOf(again).completed, 5)
   end)
 
+  H.test("state: a first login's empty completed list is read again once, 5 s later", function()
+    local t = travel()
+    t.completed = {}
+    local c = login(H, { travel = t })
+    H.eq(#stateOf(c).completed, 0)
+    c.world.travel.completed = { 790, 364 }
+    c.advance(5)
+    H.eq(c.world.calls.GetAllCompletedQuestIDs, 2)
+    H.eq(table.concat(stateOf(c).completed, ","), "364,790")
+  end)
+
+  H.test("state: the XP curve keeps the last 3 builds", function()
+    local c = login(H)
+    local d = c.env.ForeverLedgerDB
+    d.xpCurve[61000], d.xpCurve[61100], d.xpCurve[61200] = { [10] = 7000 }, { [10] = 7100 }, { [10] = 7200 }
+    c.world.player.level, c.world.player.xpMax = 11, 8800
+    c.fire("PLAYER_LEVEL_UP", 11)
+    c.advance(2)
+    H.eq(H.count(d.xpCurve), 3)
+    H.eq(d.xpCurve[61000], nil, "the oldest build goes")
+    H.ok(d.xpCurve[61100] and d.xpCurve[61200] and d.xpCurve[B][11], "the newest builds")
+  end)
+
   H.test("state: logout records position, quest log, hearth cooldown and mount", function()
     local c = login(H)
     c.world.zone = UNDERCITY
@@ -233,17 +256,24 @@ return function(H)
     H.eq(errors(c), "")
   end)
 
-  H.test("state: caps hold (35 log quests, 5000 completed, 4 taxi maps of 80 nodes)", function()
+  H.test("state: caps hold (35 log quests, 10000 completed, 4 taxi maps of 80 nodes)", function()
     local t = travel()
     t.completed = {}
-    for i = 1, 6000 do t.completed[i] = 7000 - i end
+    for i = 1, 12000 do t.completed[i] = 13000 - i end
     local log = {}
     for i = 1, 40 do log[i] = { title = "Q" .. i, level = 5, questID = 1000 + i, objectives = { "0/1 Thing" } } end
     local c = login(H, { travel = t, questLog = log })
     c.fire("PLAYER_LOGOUT")
     local s = stateOf(c)
-    H.eq(#s.completed, 5000)
+    H.eq(#s.completed, 10000)
     H.eq(s.completed[1], 1000, "the lowest ids are kept")
+    H.eq(s.completedTruncated, 2000, "how many were cut")
+    c.world.printed = {}
+    c.slash("FOREVERLEDGER", "state")
+    H.ok(printed(c, "10000 quests completed (2000 more not kept)"), table.concat(c.world.printed, "\n"))
+    c.world.travel.completed = { 1, 2 }
+    c.fire("PLAYER_LOGOUT")
+    H.eq(s.completedTruncated, nil, "a full list clears it")
     H.eq(#s.log, 35)
     local nodes = {}
     for i = 1, 100 do nodes[i] = { nodeID = i, name = "N" .. i, x = 0.5, y = 0.5, state = 1, slotIndex = i } end
@@ -464,6 +494,92 @@ return function(H)
     c.world.travel.speed = 0
     wait(c, 20)
     H.eq(#tripsOf(c), 0)
+  end)
+
+  H.test("trips: stop-and-go walking never records a transport", function()
+    local c = login(H, { zone = at("Tirisfal Glades", "Brill", 1420, 0.5, 0.5) })
+    -- one sample caught just as the player stopped (speed 0, moved 10 yd), then 5 minutes running, then standing
+    c.world.zone.x = c.world.zone.x + 0.002
+    c.advance(2)
+    c.world.travel.speed = 7
+    move(c, 150, 0.003, 0)
+    c.world.travel.speed = 0
+    wait(c, 20)
+    -- walking with short stops: every stop sample has moved a little at speed 0
+    for _ = 1, 20 do
+      c.world.travel.speed = 7
+      move(c, 2, 0.003, 0)
+      c.world.travel.speed = 0
+      move(c, 1, 0.001, 0)
+    end
+    wait(c, 20)
+    H.eq(#tripsOf(c), 0)
+  end)
+
+  H.test("trips: a boat with no loading screen ends when the player walks off", function()
+    local t0 = travel()
+    t0.mapSizes[1439] = { 6550, 4366.67 }
+    local c = login(H, { zone = at("Darkshore", "Auberdine", 1439, 0.3304, 0.4006), travel = t0 })
+    wait(c, 4)
+    local before = c.world.clock
+    move(c, 15, -0.002, 0.003) -- 30 s, about 19 yd per sample
+    local docked = c.world.clock
+    c.world.travel.speed = 7
+    move(c, 3, -0.003, 0)
+    wait(c, 10)
+    local t = tripsOf(c)
+    H.eq(#t, 1)
+    H.eq(t[1].kind, "transport")
+    H.eq(t[1].startedAt, before)
+    H.ok(math.abs(t[1].seconds - (docked - before)) <= 2, "seconds " .. tostring(t[1].seconds))
+    H.eq(t[1].to.zone, "Darkshore", "zone text when the trip ends")
+    H.eq(t[1].from.zone, "Darkshore")
+  end)
+
+  H.test("trips: a ride that went nowhere (net < 100 yd) is no trip", function()
+    local c = login(H)
+    for _ = 1, 4 do
+      move(c, 2, 0.003, 0)
+      move(c, 2, -0.003, 0)
+    end
+    wait(c, 10)
+    H.eq(#tripsOf(c), 0)
+  end)
+
+  H.test("trips: a hearth's landing spot waits for a zone map (not none, not a continent)", function()
+    local c = login(H)
+    c.advance(2)
+    c.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-1-1-1-8690-0005", 8690)
+    c.fire("LOADING_SCREEN_ENABLED")
+    c.world.zone = at("Kalimdor", "", nil, nil, nil)
+    c.advance(6)
+    c.fire("PLAYER_ENTERING_WORLD", false, false)
+    c.advance(2)
+    c.fire("LOADING_SCREEN_DISABLED")
+    c.advance(2)
+    local h = tripsOf(c)[1]
+    H.eq(h.seconds, 6, "timed to PLAYER_ENTERING_WORLD")
+    H.eq(h.to, nil, "no map yet")
+    c.world.zone = at("Kalimdor", "", 1414, 0.5, 0.5)
+    c.advance(2)
+    H.eq(h.to, nil, "a continent map is not a landing spot")
+    c.world.zone = at("Orgrimmar", "Valley of Strength", 1454, 0.5413, 0.6865)
+    c.advance(2)
+    H.eq(h.to.mapID, 1454)
+    H.eq(h.to.subzone, "Valley of Strength")
+  end)
+
+  H.test("trips: the sampler uses C_Timer.NewTicker when the client has it", function()
+    local w = { api = "forever", travelAPI = true, travel = travel(), questLog = questLog(), zone = BRILL }
+    local c2 = H.new(w)
+    local made = {}
+    c2.env.C_Timer.NewTicker = function(secs, fn) made[#made + 1] = { secs = secs, fn = fn } end
+    c2.load(P.ADDON)
+    c2.login("ForeverLedger")
+    H.eq(#made, 1)
+    H.eq(made[1].secs, 2)
+    made[1].fn()
+    H.eq(#tripsOf(c2), 0)
   end)
 
   H.test("trips: a short push at speed 0 (a knock-back) is no trip", function()
