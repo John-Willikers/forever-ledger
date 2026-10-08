@@ -1,0 +1,3433 @@
+{
+  "probeVersion": "0.5.0",
+  "tracker": {
+    "70245": {
+      "watchTypes": {
+        "Automatic": 0,
+        "Manual": 1
+      },
+      "nav": {
+        "mapID": 1420,
+        "navDistance": {
+          "ok": true,
+          "values": [
+            7.720197677612305
+          ]
+        },
+        "instance": {
+          "ok": true,
+          "values": [
+            false,
+            "none"
+          ]
+        },
+        "t": 1751306.27,
+        "y": 0.662,
+        "x": 0.3106,
+        "navState": {
+          "ok": true,
+          "values": [
+            0
+          ]
+        },
+        "facing": 4.8198,
+        "unitPosition": {
+          "ok": true,
+          "values": [
+            1843.200073242188,
+            1629.900024414063,
+            0,
+            0
+          ]
+        },
+        "navOnScreen": {
+          "ok": true,
+          "values": [
+            true
+          ]
+        },
+        "world": {
+          "ok": true,
+          "values": [
+            0,
+            {
+              "RotateDirection": "<function>",
+              "GetLength": "<function>",
+              "Normalize": "<function>",
+              "Dot": "<function>",
+              "GetLengthSquared": "<function>",
+              "GetXY": "<function>",
+              "OnLoad": "<function>",
+              "IsZero": "<function>",
+              "DivideBy": "<function>",
+              "IsEqualTo": "<function>",
+              "y": 1629.911010742188,
+              "Subtract": "<function>",
+              "Clone": "<function>",
+              "Cross": "<function>",
+              "x": 1843.176879882813,
+              "SetXY": "<function>",
+              "ScaleBy": "<function>",
+              "Add": "<function>"
+            }
+          ]
+        }
+      },
+      "globalCount": 130,
+      "templates": {
+        "ObjectiveTrackerBlockTemplate": {
+          "ok": true,
+          "methods": [
+            "AddCustomRegion",
+            "AddObjective",
+            "AddProgressBar",
+            "AddRightEdgeFrame",
+            "AddTimerBar",
+            "AdjustRightEdgeOffset",
+            "AdjustSlideAnchor",
+            "EndSlide",
+            "ForEachUsedLine",
+            "Free",
+            "FreeLine",
+            "FreeUnusedLines",
+            "GetExistingLine",
+            "GetLine",
+            "HasActiveAnim",
+            "Init",
+            "IsSliding",
+            "OnAddedRegion",
+            "OnEndSlide",
+            "OnHeaderClick",
+            "OnHeaderEnter",
+            "OnHeaderLeave",
+            "OnSlideUpdate",
+            "Reset",
+            "SetHeader",
+            "SetStringText",
+            "Slide",
+            "UpdateHighlight",
+            "UpdateSlideProgress"
+          ]
+        },
+        "ObjectiveTrackerContainerHeaderTemplate": {
+          "ok": true,
+          "methods": [
+            "OnLoad",
+            "OnToggle",
+            "SetCollapsed"
+          ]
+        },
+        "ObjectiveTrackerLineTemplate": {
+          "ok": true,
+          "methods": [
+            "OnHyperlinkClick",
+            "OnLoad",
+            "UpdateModule"
+          ]
+        },
+        "ObjectiveTrackerHeaderTemplate": {
+          "ok": false,
+          "err": "CreateFrame(): Couldn't find inherited node 'ObjectiveTrackerHeaderTemplate'\nLua Taint: ForeverLedgerProbe"
+        },
+        "ObjectiveTrackerModuleHeaderTemplate": {
+          "ok": true,
+          "methods": [
+            "OnLoad",
+            "OnToggle",
+            "PlayAddAnimation",
+            "SetCollapsed"
+          ]
+        },
+        "ObjectiveTrackerModuleTemplate": {
+          "ok": true,
+          "methods": [
+            "AcquireFrame",
+            "AddBlock",
+            "AddBlockToCache",
+            "AddTag",
+            "AdjustSlideAnchor",
+            "AnchorBlock",
+            "BeginLayout",
+            "CallOnCreateFunction",
+            "CanFitBlock",
+            "CanUpdate",
+            "CheckCachedBlocks",
+            "ClearFanfares",
+            "ClearHeightModifier",
+            "ClearSelection",
+            "EndLayout",
+            "EndSlide",
+            "EnumerateActiveBlocks",
+            "FindButtonByQuestID",
+            "FindButtonByTrackable",
+            "ForceExpand",
+            "ForceRemoveBlock",
+            "FreeBlock",
+            "FreeUnusedBlocks",
+            "FreeUnusedProgressBars",
+            "FreeUnusedRightEdgeFrames",
+            "FreeUnusedTimerBars",
+            "GetBlock",
+            "GetButtonForAreaPOI",
+            "GetButtonForQuest",
+            "GetButtonForQuestInternal",
+            "GetButtonForStyleInternal",
+            "GetButtonForTrackable",
+            "GetContentsHeight",
+            "GetContextMenuParent",
+            "GetExistingBlock",
+            "GetLastBlock",
+            "GetNextBlockAnchoring",
+            "GetProgressBar",
+            "GetRightEdgeFrame",
+            "GetTag",
+            "GetTimerBar",
+            "HasContents",
+            "HasSkippedBlocks",
+            "HideAllButtons",
+            "Init",
+            "InitModule",
+            "InternalAddBlock",
+            "IsCollapsed",
+            "IsComplete",
+            "IsDirty",
+            "IsDisplayable",
+            "IsFullyDisplayable",
+            "IsSliding",
+            "IsTruncated",
+            "LayoutBlock",
+            "LayoutContents",
+            "MarkBlocksUnused",
+            "MarkDirty",
+            "MarkProgressBarsUnused",
+            "MarkRightEdgeFramesUnused",
+            "MarkTimerBarsUnused",
+            "MatchesTag",
+            "NeedsFanfare",
+            "OnBlockHeaderClick",
+            "OnBlockHeaderEnter",
+            "OnBlockHeaderLeave",
+            "OnEndSlide",
+            "OnEvent",
+            "OnFreeBlock",
+            "OnHide",
+            "OnLoad",
+            "OnSlideUpdate",
+            "PostInitButtonInternal",
+            "RemoveBlockFromCache",
+            "ResetUsage",
+            "SelectButton",
+            "SelectButtonByQuestID",
+            "SelectButtonByTrackable",
+            "SelectSuperTrackedButton",
+            "SetCollapsed",
+            "SetContainer",
+            "SetHeader",
+            "SetHeightModifier",
+            "SetNeedsFanfare",
+            "Slide",
+            "ToggleCollapsed",
+            "Update",
+            "UpdateCachedOrderList",
+            "UpdateHeight",
+            "UpdateSlideProgress"
+          ]
+        }
+      },
+      "apis": {
+        "GetQuestIndexForWatch": "nil",
+        "C_Navigation.GetFrame": "function",
+        "C_QuestLog.GetQuestWatchType": "function",
+        "C_QuestLog.GetNextWaypoint": "function",
+        "RemoveQuestWatch": "nil",
+        "C_QuestLog.AddQuestWatch": "function",
+        "C_SuperTrack.SetSuperTrackedQuestID": "function",
+        "C_Navigation.GetTargetState": "function",
+        "UnitPosition": "function",
+        "C_Map.ClearUserWaypoint": "function",
+        "C_Map.GetWorldPosFromMapPos": "function",
+        "C_Map.HasUserWaypoint": "function",
+        "C_QuestLog.SortQuestWatches": "function",
+        "C_QuestLog.GetQuestIDForQuestWatchIndex": "function",
+        "GetNumQuestWatches": "nil",
+        "C_Navigation.HasValidScreenPosition": "function",
+        "UiMapPoint.CreateFromCoordinates": "function",
+        "C_Map.GetMapWorldSize": "function",
+        "IsQuestWatched": "nil",
+        "C_SuperTrack.IsSuperTrackingUserWaypoint": "function",
+        "GetPlayerFacing": "function",
+        "C_Navigation.WasClampedToScreen": "function",
+        "C_Map.GetUserWaypoint": "function",
+        "C_QuestLog.GetNextWaypointText": "function",
+        "C_Navigation.GetDistance": "function",
+        "C_Map.CanSetUserWaypointOnMap": "function",
+        "C_QuestLog.GetNumQuestWatches": "function",
+        "C_SuperTrack.GetSuperTrackedQuestID": "function",
+        "C_QuestLog.GetQuestsOnMap": "function",
+        "C_Map.GetMapInfo": "function",
+        "C_QuestLog.RemoveQuestWatch": "function",
+        "C_QuestLog.GetMaxNumQuestsCanAccept": "function",
+        "C_SuperTrack.SetSuperTrackedUserWaypoint": "function",
+        "QuestUtils_IsQuestWatched": "function",
+        "C_Map.SetUserWaypoint": "function",
+        "AddQuestWatch": "nil"
+      },
+      "map": {
+        "canPin": {
+          "ok": true,
+          "values": [
+            true
+          ]
+        },
+        "questsOnMap": {
+          "ok": true,
+          "values": [
+            {
+              "1": "<table>",
+              "2": "<table>"
+            }
+          ]
+        },
+        "info": {
+          "ok": true,
+          "values": [
+            {
+              "mapType": 3,
+              "mapID": 1420,
+              "name": "Tirisfal Glades",
+              "parentMapID": 1415,
+              "flags": 2
+            }
+          ]
+        },
+        "worldSize": {
+          "ok": true,
+          "values": [
+            4518.75,
+            3012.499755859375
+          ]
+        }
+      },
+      "watches": {
+        "count": {
+          "ok": true,
+          "values": [
+            2
+          ]
+        },
+        "ids": [
+          3901,
+          376
+        ]
+      },
+      "userWaypoint": {
+        "has": {
+          "ok": true,
+          "values": [
+            true
+          ]
+        },
+        "superTracked": {
+          "ok": true,
+          "values": [
+            true
+          ]
+        },
+        "get": {
+          "ok": true,
+          "values": [
+            {
+              "position": "<table>",
+              "uiMapID": 1420
+            }
+          ]
+        }
+      },
+      "objects": {
+        "ObjectiveTrackerFrame": {
+          "type": "table",
+          "point": {
+            "ok": true,
+            "values": [
+              "TOPRIGHT",
+              "<table>",
+              "TOPRIGHT",
+              0,
+              -26.00000190734863
+            ]
+          },
+          "shown": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "modules": [
+            {
+              "uiOrder": 1,
+              "name": "ScenarioObjectiveTracker",
+              "header": "Scenario"
+            },
+            {
+              "uiOrder": 2,
+              "name": "UIWidgetObjectiveTracker",
+              "header": "Scenario"
+            },
+            {
+              "uiOrder": 3,
+              "name": "CampaignQuestObjectiveTracker",
+              "header": "Campaign"
+            },
+            {
+              "uiOrder": 4,
+              "name": "QuestObjectiveTracker",
+              "header": "Quests"
+            },
+            {
+              "uiOrder": 5,
+              "name": "AdventureObjectiveTracker",
+              "header": "Collections"
+            },
+            {
+              "uiOrder": 6,
+              "name": "AchievementObjectiveTracker",
+              "header": "Achievements"
+            },
+            {
+              "uiOrder": 7,
+              "name": "MonthlyActivitiesObjectiveTracker",
+              "header": "Traveler's Log"
+            },
+            {
+              "uiOrder": 8,
+              "name": "InitiativeTasksObjectiveTracker",
+              "header": "Endeavors"
+            },
+            {
+              "uiOrder": 9,
+              "name": "ProfessionsRecipeTracker",
+              "header": "Profession"
+            },
+            {
+              "uiOrder": 10,
+              "name": "BonusObjectiveTracker",
+              "header": "Bonus Objectives"
+            },
+            {
+              "uiOrder": 11,
+              "name": "WorldQuestObjectiveTracker",
+              "header": "World Quests"
+            }
+          ],
+          "fields": [
+            "Header:table",
+            "NineSlice:table",
+            "QuestTimerFrame:table",
+            "Selection:table",
+            "align:string",
+            "bottomModulePadding:number",
+            "breakSnappedFramesOnSave:boolean",
+            "dirtySettings:table",
+            "downKeys:table",
+            "editModeHeight:number",
+            "hasActiveChanges:boolean",
+            "headerText:string",
+            "hideWhenActionBarIsOverriden:boolean",
+            "init:boolean",
+            "isCollapsed:boolean",
+            "isManagedFrame:boolean",
+            "isRightManagedFrame:boolean",
+            "layoutIndex:number",
+            "layoutParent:table",
+            "moduleSpacing:number",
+            "modules:table",
+            "needsSorting:boolean",
+            "savedSystemInfo:table",
+            "selectedAnchored:boolean",
+            "settingDisplayInfoMap:table",
+            "settingMap:table",
+            "settingsDialogAnchor:table",
+            "snappedFrames:table",
+            "system:number",
+            "systemInfo:table",
+            "systemNameString:string",
+            "topModulePadding:number",
+            "topPadding:number",
+            "topPaddingProviders:table"
+          ],
+          "size": {
+            "ok": true,
+            "values": [
+              260.0000610351563,
+              794.5
+            ]
+          },
+          "objectType": {
+            "ok": true,
+            "values": [
+              "Frame"
+            ]
+          },
+          "children": {
+            "ok": true,
+            "values": [
+              15
+            ]
+          },
+          "methods": [
+            "AddExtraButtons",
+            "AddModule",
+            "AddSnappedFrame",
+            "AddTopPaddingProvider",
+            "AnchorSelectionFrame",
+            "AnySettingsDirty",
+            "ApplySystemAnchor",
+            "AreAllSystemSettingsDefault",
+            "BindQuestItemFromTracker",
+            "BreakFrameSnap",
+            "BreakFromFrameManager",
+            "BreakSnappedFrames",
+            "CanBeMoved",
+            "ClearAllPoints",
+            "ClearAllPointsBase",
+            "ClearAllPointsOverride",
+            "ClearDirtySetting",
+            "ClearDownKeys",
+            "ClearFrameSnap",
+            "ClearHighlight",
+            "ConvertSettingDisplayValueToRawValue",
+            "DoesSettingDisplayValueEqual",
+            "DoesSettingValueEqual",
+            "FocusGamepad",
+            "FocusQuestFromTracker",
+            "ForEachModule",
+            "ForceExpand",
+            "GetAvailableHeight",
+            "GetBottomOffset",
+            "GetCombinedCenterOffset",
+            "GetCombinedSelectionOffset",
+            "GetCompositeNumberSettingValue",
+            "GetFrameMagneticEligibility",
+            "GetHeightToModule",
+            "GetLeftOffset",
+            "GetManagedFrameContainer",
+            "GetRightOffset",
+            "GetScaledCenter",
+            "GetScaledSelectionCenter",
+            "GetScaledSelectionSides",
+            "GetSelectionOffset",
+            "GetSettingValue",
+            "GetSettingValueBool",
+            "GetSettingsDialogAnchor",
+            "GetSnapOffsets",
+            "GetSystemName",
+            "GetTopOffset",
+            "HasActiveChanges",
+            "HasAnyModules",
+            "HasCompositeNumberSetting",
+            "HasModule",
+            "HasSetting",
+            "HasValidSelectionRect",
+            "Hide",
+            "HideBase",
+            "HideOverride",
+            "HighlightSystem",
+            "Init",
+            "InitializeGamepad",
+            "IsAboveFrame",
+            "IsBelowFrame",
+            "IsCollapsed",
+            "IsEditModeDragging",
+            "IsFrameAnchoredToMe",
+            "IsHorizontallyAlignedWithFrame",
+            "IsInDefaultPosition",
+            "IsInitialized",
+            "IsSettingDirty",
+            "IsShiftKeyDown",
+            "IsSystemSettingDefault",
+            "IsToTheLeftOfFrame",
+            "IsToTheRightOfFrame",
+            "IsVerticallyAlignedWithFrame",
+            "MarkAllSettingsDirty",
+            "MarkDirty",
+            "MinimizeTrackerModule",
+            "OnAdded",
+            "OnAnyEditModeSystemAnchorChanged",
+            "OnDragStart",
+            "OnDragStop",
+            "OnEditModeEnter",
+            "OnEditModeExit",
+            "OnEvent",
+            "OnHide",
+            "OnKeyDown",
+            "OnKeyUp",
+            "OnLoad",
+            "OnShow",
+            "OnSizeChanged",
+            "OnSmartNavFocus",
+            "OnSystemHide",
+            "OnSystemLoad",
+            "OnSystemPositionChange",
+            "OnUpdateSystem",
+            "OpenQuestDetailsFromTracker",
+            "OpenQuestOptionsFromTracker",
+            "PrepareForSave",
+            "ProcessMovementKey",
+            "RegisterForTransitions",
+            "RemoveAllModules",
+            "RemoveModule",
+            "RemoveSnappedFrame",
+            "ResetToDefaultPosition",
+            "SelectFirstButton",
+            "SelectSystem",
+            "SetBackgroundAlpha",
+            "SetCollapsed",
+            "SetDirtyMethod",
+            "SetHasActiveChanges",
+            "SetPoint",
+            "SetPointBase",
+            "SetPointOverride",
+            "SetScale",
+            "SetScaleBase",
+            "SetScaleOverride",
+            "SetSelectionShown",
+            "SetShown",
+            "SetShownBase",
+            "SetShownOverride",
+            "SetSnappedToFrame"
+          ]
+        },
+        "ObjectiveTrackerModuleMixin": {
+          "type": "table",
+          "fields": [
+            "availableHeight:number",
+            "blockOffsetX:number",
+            "blockTemplate:string",
+            "bottomSpacing:number",
+            "contentsHeight:number",
+            "fromBlockOffsetY:number",
+            "fromHeaderOffsetY:number",
+            "hasContents:boolean",
+            "hasDisplayPriority:boolean",
+            "hasSkippedBlocks:boolean",
+            "hasTriedBlocks:boolean",
+            "headerHeight:number",
+            "isCollapsed:boolean",
+            "isDirty:boolean",
+            "isModule:boolean",
+            "leftMargin:number",
+            "lineSpacing:number",
+            "lineTemplate:string",
+            "mustFit:boolean",
+            "numCachedBlocks:number",
+            "progressBarTemplate:string",
+            "rightEdgeFrameSpacing:number",
+            "state:number",
+            "wasDisplayedLastLayout:boolean"
+          ],
+          "methods": [
+            "AcquireFrame",
+            "AddBlock",
+            "AddBlockToCache",
+            "AddTag",
+            "AdjustSlideAnchor",
+            "AnchorBlock",
+            "BeginLayout",
+            "CanFitBlock",
+            "CanUpdate",
+            "CheckCachedBlocks",
+            "ClearFanfares",
+            "ClearHeightModifier",
+            "EndLayout",
+            "EndSlide",
+            "EnumerateActiveBlocks",
+            "ForceExpand",
+            "ForceRemoveBlock",
+            "FreeBlock",
+            "FreeUnusedBlocks",
+            "FreeUnusedProgressBars",
+            "FreeUnusedRightEdgeFrames",
+            "FreeUnusedTimerBars",
+            "GetBlock",
+            "GetContentsHeight",
+            "GetContextMenuParent",
+            "GetExistingBlock",
+            "GetLastBlock",
+            "GetNextBlockAnchoring",
+            "GetProgressBar",
+            "GetRightEdgeFrame",
+            "GetTag",
+            "GetTimerBar",
+            "HasContents",
+            "HasSkippedBlocks",
+            "InitModule",
+            "InternalAddBlock",
+            "IsCollapsed",
+            "IsComplete",
+            "IsDirty",
+            "IsDisplayable",
+            "IsFullyDisplayable",
+            "IsSliding",
+            "IsTruncated",
+            "LayoutBlock",
+            "LayoutContents",
+            "MarkBlocksUnused",
+            "MarkDirty",
+            "MarkProgressBarsUnused",
+            "MarkRightEdgeFramesUnused",
+            "MarkTimerBarsUnused",
+            "MatchesTag",
+            "NeedsFanfare",
+            "OnBlockHeaderClick",
+            "OnBlockHeaderEnter",
+            "OnBlockHeaderLeave",
+            "OnEndSlide",
+            "OnEvent",
+            "OnFreeBlock",
+            "OnHide",
+            "OnLoad",
+            "OnSlideUpdate",
+            "RemoveBlockFromCache",
+            "SetCollapsed",
+            "SetContainer",
+            "SetHeader",
+            "SetHeightModifier",
+            "SetNeedsFanfare",
+            "Slide",
+            "ToggleCollapsed",
+            "Update",
+            "UpdateCachedOrderList",
+            "UpdateHeight",
+            "UpdateSlideProgress"
+          ]
+        },
+        "SuperTrackedFrame": {
+          "type": "table",
+          "fields": [
+            "Arrow:table",
+            "DistanceText:table",
+            "Icon:table",
+            "IconBorder:table",
+            "axesMultiplied:number",
+            "circularVec:table",
+            "clampedChanged:boolean",
+            "indicatorVec:table",
+            "isClamped:boolean",
+            "majorAxis:number",
+            "majorAxisSquared:number",
+            "minorAxis:number",
+            "minorAxisSquared:number",
+            "mouseToNavVec:table",
+            "navFrame:table",
+            "navFrameRadius:number",
+            "navFrameRadiusSq:number",
+            "timeSinceLastPartyMemberUpdate:number"
+          ],
+          "point": {
+            "ok": true,
+            "values": [
+              "CENTER",
+              "<table>",
+              "CENTER",
+              291.544921875,
+              -162.4815368652344
+            ]
+          },
+          "size": {
+            "ok": true,
+            "values": [
+              100.0001678466797,
+              100.0000305175781
+            ]
+          },
+          "shown": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "objectType": {
+            "ok": true,
+            "values": [
+              "Frame"
+            ]
+          },
+          "children": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "methods": [
+            "CheckInitializeNavigationFrame",
+            "ClampElliptical",
+            "ForceTransparentUntil",
+            "GetTargetAlpha",
+            "GetTargetAlphaBaseValue",
+            "InitializeNavigationFrame",
+            "OnDestinationReached",
+            "OnEvent",
+            "OnLoad",
+            "OnUpdate",
+            "PingNavFrame",
+            "SetEllipticalRadii",
+            "SetTargetAlphaForState",
+            "ShouldClearSuperTrackWhenDestinationReached",
+            "ShutdownNavigationFrame",
+            "UpdateAlpha",
+            "UpdateArrow",
+            "UpdateClampedState",
+            "UpdateDistanceText",
+            "UpdateIcon",
+            "UpdateIconSize",
+            "UpdatePosition"
+          ]
+        },
+        "ScenarioObjectiveTracker": {
+          "type": "table",
+          "fields": [
+            "BottomWidgetContainerBlock:table",
+            "ChallengeModeBlock:table",
+            "ContentsFrame:table",
+            "FixedBlocks:table",
+            "Header:table",
+            "MawBuffsBlock:table",
+            "ObjectivesBlock:table",
+            "ProvingGroundsBlock:table",
+            "StageBlock:table",
+            "TieredEntranceTraitsBlock:table",
+            "TopWidgetContainerBlock:table",
+            "availableHeight:number",
+            "blockOffsetX:number",
+            "blockTemplate:string",
+            "bottomSpacing:number",
+            "contentsHeight:number",
+            "events:table",
+            "fromBlockOffsetY:number",
+            "fromHeaderOffsetY:number",
+            "hasContents:boolean",
+            "hasDisplayPriority:boolean",
+            "hasNewStage:boolean",
+            "hasSkippedBlocks:boolean",
+            "hasTriedBlocks:boolean",
+            "headerHeight:number",
+            "headerText:string",
+            "init:boolean",
+            "isCollapsed:boolean",
+            "isDirty:boolean",
+            "isModule:boolean",
+            "leftMargin:number",
+            "lineSpacing:number",
+            "lineTemplate:string",
+            "mustFit:boolean",
+            "numCachedBlocks:number",
+            "parentContainer:table",
+            "progressBarLineSpacing:number",
+            "progressBarTemplate:string",
+            "rightEdgeFrameSpacing:number",
+            "shouldShowCriteria:boolean",
+            "showCriteria:boolean",
+            "slideDuration:number",
+            "spellFramePool:table",
+            "state:number",
+            "uiOrder:number",
+            "usedBlocks:table",
+            "wasDisplayedLastLayout:boolean"
+          ],
+          "point": {
+            "ok": true,
+            "values": [
+              "TOPLEFT",
+              "<table>",
+              "TOPLEFT",
+              0,
+              0
+            ]
+          },
+          "size": {
+            "ok": true,
+            "values": [
+              280.0000610351563,
+              10.00000190734863
+            ]
+          },
+          "shown": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "objectType": {
+            "ok": true,
+            "values": [
+              "Frame"
+            ]
+          },
+          "children": {
+            "ok": true,
+            "values": [
+              2
+            ]
+          },
+          "methods": [
+            "AcquireFrame",
+            "AddBlock",
+            "AddBlockToCache",
+            "AddSpells",
+            "AddTag",
+            "AddWeightedProgressObjective",
+            "AdjustSlideAnchor",
+            "AnchorBlock",
+            "BeginLayout",
+            "CallOnCreateFunction",
+            "CanFitBlock",
+            "CanUpdate",
+            "CheckCachedBlocks",
+            "ClearFanfares",
+            "ClearHeightModifier",
+            "ClearSelection",
+            "EndLayout",
+            "EndSlide",
+            "EnumerateActiveBlocks",
+            "FindButtonByQuestID",
+            "FindButtonByTrackable",
+            "ForceExpand",
+            "ForceRemoveBlock",
+            "FreeBlock",
+            "FreeUnusedBlocks",
+            "FreeUnusedProgressBars",
+            "FreeUnusedRightEdgeFrames",
+            "FreeUnusedTimerBars",
+            "GetBlock",
+            "GetButtonForAreaPOI",
+            "GetButtonForQuest",
+            "GetButtonForQuestInternal",
+            "GetButtonForStyleInternal",
+            "GetButtonForTrackable",
+            "GetContentsHeight",
+            "GetContextMenuParent",
+            "GetExistingBlock",
+            "GetLastBlock",
+            "GetNextBlockAnchoring",
+            "GetProgressBar",
+            "GetRightEdgeFrame",
+            "GetTag",
+            "GetTimerBar",
+            "HasContents",
+            "HasSkippedBlocks",
+            "HideAllButtons",
+            "Init",
+            "InitModule",
+            "InternalAddBlock",
+            "IsCollapsed",
+            "IsComplete",
+            "IsDirty",
+            "IsDisplayable",
+            "IsFullyDisplayable",
+            "IsSliding",
+            "IsTruncated",
+            "LayoutBlock",
+            "LayoutContents",
+            "LayoutWidgetBlock",
+            "MarkBlocksUnused",
+            "MarkDirty",
+            "MarkProgressBarsUnused",
+            "MarkRightEdgeFramesUnused",
+            "MarkTimerBarsUnused",
+            "MatchesTag",
+            "NeedsFanfare",
+            "OnBlockHeaderClick",
+            "OnBlockHeaderEnter",
+            "OnBlockHeaderLeave",
+            "OnEndSlide",
+            "OnEvent",
+            "OnFreeBlock",
+            "OnHide",
+            "OnLoad",
+            "OnSlideUpdate",
+            "PostInitButtonInternal",
+            "RemoveBlockFromCache",
+            "ResetUsage",
+            "SelectButton",
+            "SelectButtonByQuestID",
+            "SelectButtonByTrackable",
+            "SelectSuperTrackedButton",
+            "SetCollapsed",
+            "SetContainer",
+            "SetHasNewStage",
+            "SetHeader",
+            "SetHeightModifier",
+            "SetNeedsFanfare",
+            "SetShouldShowCriteria",
+            "SetStageBlockModelScenesShown",
+            "SetupWidgetContainers",
+            "ShouldShowCriteria",
+            "Slide",
+            "SlideInContents",
+            "SlideOutContents",
+            "ToggleCollapsed",
+            "Update",
+            "UpdateCachedOrderList",
+            "UpdateCriteria",
+            "UpdateHeight",
+            "UpdateSlideProgress",
+            "UpdateSpellCooldowns"
+          ]
+        },
+        "ObjectiveTrackerBlockMixin": {
+          "type": "table",
+          "fields": {},
+          "methods": [
+            "AddCustomRegion",
+            "AddObjective",
+            "AddProgressBar",
+            "AddRightEdgeFrame",
+            "AddTimerBar",
+            "AdjustRightEdgeOffset",
+            "AdjustSlideAnchor",
+            "EndSlide",
+            "ForEachUsedLine",
+            "Free",
+            "FreeLine",
+            "FreeUnusedLines",
+            "GetExistingLine",
+            "GetLine",
+            "HasActiveAnim",
+            "Init",
+            "IsSliding",
+            "OnAddedRegion",
+            "OnEndSlide",
+            "OnHeaderClick",
+            "OnHeaderEnter",
+            "OnHeaderLeave",
+            "OnSlideUpdate",
+            "Reset",
+            "SetHeader",
+            "SetStringText",
+            "Slide",
+            "UpdateHighlight",
+            "UpdateSlideProgress"
+          ]
+        },
+        "ObjectiveTrackerContainerMixin": {
+          "modules": [
+            {
+              "uiOrder": 1,
+              "name": "ScenarioObjectiveTracker",
+              "header": "Scenario"
+            },
+            {
+              "uiOrder": 2,
+              "name": "UIWidgetObjectiveTracker",
+              "header": "Scenario"
+            },
+            {
+              "uiOrder": 3,
+              "name": "CampaignQuestObjectiveTracker",
+              "header": "Campaign"
+            },
+            {
+              "uiOrder": 4,
+              "name": "QuestObjectiveTracker",
+              "header": "Quests"
+            },
+            {
+              "uiOrder": 5,
+              "name": "AdventureObjectiveTracker",
+              "header": "Collections"
+            },
+            {
+              "uiOrder": 6,
+              "name": "AchievementObjectiveTracker",
+              "header": "Achievements"
+            },
+            {
+              "uiOrder": 7,
+              "name": "MonthlyActivitiesObjectiveTracker",
+              "header": "Traveler's Log"
+            },
+            {
+              "uiOrder": 8,
+              "name": "InitiativeTasksObjectiveTracker",
+              "header": "Endeavors"
+            },
+            {
+              "uiOrder": 9,
+              "name": "ProfessionsRecipeTracker",
+              "header": "Profession"
+            },
+            {
+              "uiOrder": 10,
+              "name": "BonusObjectiveTracker",
+              "header": "Bonus Objectives"
+            },
+            {
+              "uiOrder": 11,
+              "name": "WorldQuestObjectiveTracker",
+              "header": "World Quests"
+            }
+          ],
+          "type": "table",
+          "fields": [
+            "init:boolean",
+            "isCollapsed:boolean",
+            "modules:table",
+            "needsSorting:boolean"
+          ],
+          "methods": [
+            "AddModule",
+            "AddTopPaddingProvider",
+            "ForEachModule",
+            "ForceExpand",
+            "GetAvailableHeight",
+            "GetHeightToModule",
+            "HasAnyModules",
+            "HasModule",
+            "Init",
+            "IsCollapsed",
+            "MarkDirty",
+            "OnAdded",
+            "OnLoad",
+            "OnShow",
+            "OnSizeChanged",
+            "RemoveAllModules",
+            "RemoveModule",
+            "SetBackgroundAlpha",
+            "SetCollapsed",
+            "SetDirtyMethod",
+            "ToggleCollapsed",
+            "Update",
+            "UpdateHeight",
+            "UpdateTopPadding"
+          ]
+        },
+        "EditModeManagerFrame": {
+          "type": "table",
+          "fields": [
+            "AccountSettings:table",
+            "Border:table",
+            "CloseButton:table",
+            "EnableAdvancedOptionsCheckButton:table",
+            "EnableSnapCheckButton:table",
+            "FramesBlockingEditMode:table",
+            "Grid:table",
+            "GridSpacingSlider:table",
+            "LayoutDropdown:table",
+            "LayoutLabel:table",
+            "MagnetismPreviewLinesContainer:table",
+            "RevertAllChangesButton:table",
+            "SaveChangesButton:table",
+            "ShowGridCheckButton:table",
+            "Title:table",
+            "Tutorial:table",
+            "accountSettingMap:table",
+            "accountSettings:table",
+            "advancedOptionsEnabled:boolean",
+            "dirty:boolean",
+            "editModeSystemAnchorDirty:boolean",
+            "fixedWidth:number",
+            "hasActiveChanges:boolean",
+            "layoutApplyInProgress:boolean",
+            "layoutInfo:table",
+            "modernSystemMap:table",
+            "modernSystems:table",
+            "numLayouts:table",
+            "registeredSystemFrames:table",
+            "snapEnabled:boolean"
+          ],
+          "point": {
+            "ok": true,
+            "values": [
+              "TOP",
+              "<table>",
+              "TOP",
+              0,
+              -100
+            ]
+          },
+          "size": {
+            "ok": true,
+            "values": [
+              510.0000305175781,
+              338.6000061035156
+            ]
+          },
+          "shown": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "objectType": {
+            "ok": true,
+            "values": [
+              "Frame"
+            ]
+          },
+          "children": {
+            "ok": true,
+            "values": [
+              13
+            ]
+          },
+          "methods": [
+            "AddLayoutChildren",
+            "AddNewSystemsAndSettings",
+            "AreAdvancedOptionsEnabled",
+            "AreLayoutsFullyMaxed",
+            "AreLayoutsOfTypeMaxed",
+            "ArePartyFramesForcedShown",
+            "AreRaidFramesForcedShown",
+            "BlockEnteringEditMode",
+            "CanCreateNewLayoutFromDialog",
+            "CanEnterEditMode",
+            "CanImportFromDialog",
+            "CanRenameLayoutFromDialog",
+            "CheckForSystemActiveChanges",
+            "CheckHideAndLockEditMode",
+            "ClearActiveChangesFlags",
+            "ClearEditModeLockState",
+            "ClearFixedSize",
+            "ClearOverrideLayout",
+            "ClearSelectedSystem",
+            "ClearSnapPreviewFrame",
+            "ClearUnsavedChangesGlow",
+            "CopyActiveLayoutToClipboard",
+            "CreateEnterEditModeMenuButton",
+            "CreateLayoutTbls",
+            "CreateNewLayoutFromDialog",
+            "DeleteAllLayouts",
+            "DeleteLayout",
+            "DeleteLayoutFromDialog",
+            "DoesSettingDisplayValueEqual",
+            "DoesSettingValueEqual",
+            "EnterEditMode",
+            "ExitEditMode",
+            "GetAccountSettingValue",
+            "GetAccountSettingValueBool",
+            "GetActiveLayoutInfo",
+            "GetActiveLayoutSystemInfo",
+            "GetAdditionalRegions",
+            "GetBestLayoutIndex",
+            "GetChildHeight",
+            "GetChildSize",
+            "GetChildWidth",
+            "GetDefaultAnchor",
+            "GetFixedHeight",
+            "GetFixedSize",
+            "GetFixedWidth",
+            "GetHeightPadding",
+            "GetLayoutChildren",
+            "GetLayoutName",
+            "GetLayouts",
+            "GetMaxLayoutsErrorText",
+            "GetMaximumWidth",
+            "GetMinimumWidth",
+            "GetNumArenaFramesForcedShown",
+            "GetNumRaidGroupsForcedShown",
+            "GetNumRaidMembersForcedShown",
+            "GetRaidFrameAuraOrganizationType",
+            "GetRaidFrameHeight",
+            "GetRaidFrameIconScale",
+            "GetRaidFrameWidth",
+            "GetRegisteredSystemFrame",
+            "GetRightActionBarBottomLimit",
+            "GetRightActionBarTopLimit",
+            "GetRightActionBars",
+            "GetSettingValue",
+            "GetSettingValueBool",
+            "GetWidthPadding",
+            "HasAccountSettings",
+            "HasActiveChanges",
+            "HideSnapPreviewLines",
+            "HideSystemSelections",
+            "IgnoreLayoutIndex",
+            "ImportLayout",
+            "ImportLayoutFromDialog",
+            "InitSystemAnchors",
+            "InitializeAccountSettings",
+            "InvokeOnAnyEditModeSystemAnchorChanged",
+            "IsActiveLayoutPreset",
+            "IsCharacterSpecificLayout",
+            "IsDirty",
+            "IsEditModeActive",
+            "IsEditModeInLockState",
+            "IsEditModeLocked",
+            "IsInitialized",
+            "IsLayoutFrame",
+            "IsLayoutSelected",
+            "IsSnapEnabled",
+            "Layout",
+            "MakeNewLayout",
+            "MarkClean",
+            "MarkDirty",
+            "MarkIgnoreInLayout",
+            "MirrorSetting",
+            "NotifyChatOfLayoutChange",
+            "OnAccountSettingChanged",
+            "OnCleaned",
+            "OnDragStart",
+            "OnDragStop",
+            "OnEditModeSystemAnchorChanged",
+            "OnEvent",
+            "OnHide",
+            "OnLoad",
+            "OnShow",
+            "OnSystemPositionChange",
+            "OnSystemSettingChange",
+            "OnUpdate",
+            "OnUpdateBottomActionBarPositionsRequested",
+            "PrepareSystemsForSave",
+            "ReconcileLayoutsWithModern",
+            "ReconcileWithModern",
+            "RefreshSnapPreviewLines",
+            "RegisterSystemFrame",
+            "RemoveOldSystemsAndSettings",
+            "RenameLayout",
+            "RenameLayoutFromDialog",
+            "ResetDropdownToActiveLayout",
+            "RevertAllChanges",
+            "RevertSystemChanges",
+            "SaveLayoutChanges",
+            "SaveLayouts",
+            "SelectLayout"
+          ]
+        },
+        "ObjectiveTrackerManager": {
+          "type": "table",
+          "fields": [
+            "backgroundAlpha:number",
+            "canAddModules:boolean",
+            "containers:table",
+            "moduleToContainerMap:table",
+            "poolCollection:table",
+            "questPOIEnabled:boolean",
+            "questPOIEnabledModules:table",
+            "templateTypes:table"
+          ],
+          "methods": [
+            "AcquireFrame",
+            "AddContainer",
+            "AssignModulesOrder",
+            "CanShowPOIs",
+            "EnumerateActiveBlocksByTag",
+            "GetContainerForModule",
+            "HasAnyModules",
+            "HasRewardsToastForBlock",
+            "HideRewardsToast",
+            "Init",
+            "OnCVarChanged",
+            "OnVariablesLoaded",
+            "ReleaseFrame",
+            "RemoveAllModules",
+            "SetCanAddModules",
+            "SetModuleContainer",
+            "SetOpacity",
+            "SetTextSize",
+            "ShowRewardsToast",
+            "UpdateAll",
+            "UpdateModule",
+            "UpdatePOIEnabled"
+          ]
+        },
+        "CampaignQuestObjectiveTracker": {
+          "type": "table",
+          "fields": [
+            "ContentsFrame:table",
+            "Header:table",
+            "availableHeight:number",
+            "blockOffsetX:number",
+            "blockTemplate:string",
+            "bottomSpacing:number",
+            "contentsHeight:number",
+            "events:table",
+            "findGroupButtonSettings:table",
+            "fromBlockOffsetY:number",
+            "fromHeaderOffsetY:number",
+            "hasContents:boolean",
+            "hasDisplayPriority:boolean",
+            "hasSkippedBlocks:boolean",
+            "hasTriedBlocks:boolean",
+            "headerHeight:number",
+            "headerText:string",
+            "init:boolean",
+            "isCollapsed:boolean",
+            "isDirty:boolean",
+            "isModule:boolean",
+            "leftMargin:number",
+            "lineSpacing:number",
+            "lineTemplate:string",
+            "mustFit:boolean",
+            "numCachedBlocks:number",
+            "parentContainer:table",
+            "playerMoney:number",
+            "progressBarTemplate:string",
+            "questItemButtonSettings:table",
+            "rightEdgeFrameSpacing:number",
+            "state:number",
+            "tag:string",
+            "uiOrder:number",
+            "usedBlocks:table",
+            "wasDisplayedLastLayout:boolean",
+            "watchMoney:boolean"
+          ],
+          "point": {
+            "ok": true,
+            "values": [
+              "TOPLEFT",
+              "<table>",
+              "TOPLEFT",
+              0,
+              0
+            ]
+          },
+          "size": {
+            "ok": true,
+            "values": [
+              260.0000610351563,
+              10.00000190734863
+            ]
+          },
+          "shown": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "objectType": {
+            "ok": true,
+            "values": [
+              "Frame"
+            ]
+          },
+          "children": {
+            "ok": true,
+            "values": [
+              2
+            ]
+          },
+          "methods": [
+            "AcquireFrame",
+            "AddAutoQuestObjectives",
+            "AddAutoQuestPopUp",
+            "AddBlock",
+            "AddBlockToCache",
+            "AddTag",
+            "AdjustSlideAnchor",
+            "AnchorBlock",
+            "BeginLayout",
+            "BuildQuestWatchInfos",
+            "CallOnCreateFunction",
+            "CanFitBlock",
+            "CanShowTimerBar",
+            "CanUpdate",
+            "CheckCachedBlocks",
+            "ClearFanfares",
+            "ClearHeightModifier",
+            "ClearSelection",
+            "DoQuestObjectives",
+            "EndLayout",
+            "EndSlide",
+            "EnumQuestWatchData",
+            "EnumerateActiveBlocks",
+            "FindButtonByQuestID",
+            "FindButtonByTrackable",
+            "ForceExpand",
+            "ForceRemoveBlock",
+            "FreeBlock",
+            "FreeUnusedBlocks",
+            "FreeUnusedProgressBars",
+            "FreeUnusedRightEdgeFrames",
+            "FreeUnusedTimerBars",
+            "GetBlock",
+            "GetButtonForAreaPOI",
+            "GetButtonForQuest",
+            "GetButtonForQuestInternal",
+            "GetButtonForStyleInternal",
+            "GetButtonForTrackable",
+            "GetContentsHeight",
+            "GetContextMenuParent",
+            "GetDebugReportInfo",
+            "GetExistingBlock",
+            "GetLastBlock",
+            "GetNextBlockAnchoring",
+            "GetProgressBar",
+            "GetRightEdgeFrame",
+            "GetTag",
+            "GetTimerBar",
+            "HasContents",
+            "HasSkippedBlocks",
+            "HideAllButtons",
+            "Init",
+            "InitModule",
+            "InternalAddBlock",
+            "IsCollapsed",
+            "IsComplete",
+            "IsDirty",
+            "IsDisplayable",
+            "IsFullyDisplayable",
+            "IsSliding",
+            "IsTruncated",
+            "LayoutBlock",
+            "LayoutContents",
+            "MarkBlocksUnused",
+            "MarkDirty",
+            "MarkProgressBarsUnused",
+            "MarkRightEdgeFramesUnused",
+            "MarkTimerBarsUnused",
+            "MatchesTag",
+            "NeedsFanfare",
+            "OnBlockHeaderClick",
+            "OnBlockHeaderEnter",
+            "OnBlockHeaderLeave",
+            "OnEndSlide",
+            "OnEvent",
+            "OnFreeBlock",
+            "OnHide",
+            "OnLoad",
+            "OnSlideUpdate",
+            "PostInitButtonInternal",
+            "RemoveAutoQuestPopUp",
+            "RemoveBlockFromCache",
+            "ResetUsage",
+            "SelectButton",
+            "SelectButtonByQuestID",
+            "SelectButtonByTrackable",
+            "SelectSuperTrackedButton",
+            "SetCollapsed",
+            "SetContainer",
+            "SetHeader",
+            "SetHeightModifier",
+            "SetNeedsFanfare",
+            "ShouldDisplayAutoQuest",
+            "ShouldDisplayQuest",
+            "Slide",
+            "ToggleCollapsed",
+            "Update",
+            "UpdateCachedOrderList",
+            "UpdateHeight",
+            "UpdateSingle",
+            "UpdateSlideProgress",
+            "WatchMoney"
+          ]
+        },
+        "QuestObjectiveTracker": {
+          "type": "table",
+          "fields": [
+            "ContentsFrame:table",
+            "Header:table",
+            "availableHeight:number",
+            "blockOffsetX:number",
+            "blockTemplate:string",
+            "bottomSpacing:number",
+            "contentsHeight:number",
+            "events:table",
+            "findGroupButtonSettings:table",
+            "firstBlock:table",
+            "fromBlockOffsetY:number",
+            "fromHeaderOffsetY:number",
+            "hasContents:boolean",
+            "hasDisplayPriority:boolean",
+            "hasSkippedBlocks:boolean",
+            "hasTriedBlocks:boolean",
+            "headerHeight:number",
+            "headerText:string",
+            "init:boolean",
+            "isCollapsed:boolean",
+            "isDirty:boolean",
+            "isModule:boolean",
+            "lastBlock:table",
+            "leftMargin:number",
+            "lineSpacing:number",
+            "lineTemplate:string",
+            "mustFit:boolean",
+            "numCachedBlocks:number",
+            "parentContainer:table",
+            "playerMoney:number",
+            "progressBarTemplate:string",
+            "questItemButtonSettings:table",
+            "rightEdgeFrameSpacing:number",
+            "state:number",
+            "tag:string",
+            "uiOrder:number",
+            "usedBlocks:table",
+            "wasDisplayedLastLayout:boolean",
+            "watchMoney:boolean"
+          ],
+          "point": {
+            "ok": true,
+            "values": [
+              "TOP",
+              "<table>",
+              "TOP",
+              0,
+              -38.00000381469727
+            ]
+          },
+          "size": {
+            "ok": true,
+            "values": [
+              260.0000610351563,
+              127.8335189819336
+            ]
+          },
+          "shown": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          },
+          "objectType": {
+            "ok": true,
+            "values": [
+              "Frame"
+            ]
+          },
+          "children": {
+            "ok": true,
+            "values": [
+              2
+            ]
+          },
+          "methods": [
+            "AcquireFrame",
+            "AddAutoQuestObjectives",
+            "AddAutoQuestPopUp",
+            "AddBlock",
+            "AddBlockToCache",
+            "AddTag",
+            "AdjustSlideAnchor",
+            "AnchorBlock",
+            "BeginLayout",
+            "BuildQuestWatchInfos",
+            "CallOnCreateFunction",
+            "CanFitBlock",
+            "CanShowTimerBar",
+            "CanUpdate",
+            "CheckCachedBlocks",
+            "ClearFanfares",
+            "ClearHeightModifier",
+            "ClearSelection",
+            "DoQuestObjectives",
+            "EndLayout",
+            "EndSlide",
+            "EnumQuestWatchData",
+            "EnumerateActiveBlocks",
+            "FindButtonByQuestID",
+            "FindButtonByTrackable",
+            "ForceExpand",
+            "ForceRemoveBlock",
+            "FreeBlock",
+            "FreeUnusedBlocks",
+            "FreeUnusedProgressBars",
+            "FreeUnusedRightEdgeFrames",
+            "FreeUnusedTimerBars",
+            "GetBlock",
+            "GetButtonForAreaPOI",
+            "GetButtonForQuest",
+            "GetButtonForQuestInternal",
+            "GetButtonForStyleInternal",
+            "GetButtonForTrackable",
+            "GetContentsHeight",
+            "GetContextMenuParent",
+            "GetDebugReportInfo",
+            "GetExistingBlock",
+            "GetLastBlock",
+            "GetNextBlockAnchoring",
+            "GetProgressBar",
+            "GetRightEdgeFrame",
+            "GetTag",
+            "GetTimerBar",
+            "HasContents",
+            "HasSkippedBlocks",
+            "HideAllButtons",
+            "Init",
+            "InitModule",
+            "InternalAddBlock",
+            "IsCollapsed",
+            "IsComplete",
+            "IsDirty",
+            "IsDisplayable",
+            "IsFullyDisplayable",
+            "IsSliding",
+            "IsTruncated",
+            "LayoutBlock",
+            "LayoutContents",
+            "MarkBlocksUnused",
+            "MarkDirty",
+            "MarkProgressBarsUnused",
+            "MarkRightEdgeFramesUnused",
+            "MarkTimerBarsUnused",
+            "MatchesTag",
+            "NeedsFanfare",
+            "OnBlockHeaderClick",
+            "OnBlockHeaderEnter",
+            "OnBlockHeaderLeave",
+            "OnEndSlide",
+            "OnEvent",
+            "OnFreeBlock",
+            "OnHide",
+            "OnLoad",
+            "OnSlideUpdate",
+            "PostInitButtonInternal",
+            "RemoveAutoQuestPopUp",
+            "RemoveBlockFromCache",
+            "ResetUsage",
+            "SelectButton",
+            "SelectButtonByQuestID",
+            "SelectButtonByTrackable",
+            "SelectSuperTrackedButton",
+            "SetCollapsed",
+            "SetContainer",
+            "SetHeader",
+            "SetHeightModifier",
+            "SetNeedsFanfare",
+            "ShouldDisplayAutoQuest",
+            "ShouldDisplayQuest",
+            "Slide",
+            "ToggleCollapsed",
+            "Update",
+            "UpdateCachedOrderList",
+            "UpdateHeight",
+            "UpdateSingle",
+            "UpdateSlideProgress",
+            "WatchMoney"
+          ]
+        }
+      },
+      "maxWatchable": "<nil>",
+      "at": 1791434291,
+      "superTrackedQuest": {
+        "ok": true,
+        "values": {}
+      },
+      "cvars": {
+        "autoQuestProgress": {
+          "ok": true,
+          "values": [
+            "1"
+          ]
+        },
+        "autoQuestWatch": {
+          "ok": true,
+          "values": [
+            "1"
+          ]
+        },
+        "trackQuestSorting": {
+          "ok": true,
+          "values": [
+            "<nil>"
+          ]
+        },
+        "showQuestTrackingTooltips": {
+          "ok": true,
+          "values": [
+            "<nil>"
+          ]
+        },
+        "showInGameNavigation": {
+          "ok": true,
+          "values": [
+            "0"
+          ]
+        }
+      },
+      "addons": {
+        "Blizzard_ObjectiveTracker": {
+          "ok": true,
+          "values": [
+            true,
+            true
+          ]
+        },
+        "Blizzard_ObjectiveTrackerShared": {
+          "ok": true,
+          "values": [
+            false,
+            false
+          ]
+        },
+        "Blizzard_EditMode": {
+          "ok": true,
+          "values": [
+            true,
+            true
+          ]
+        },
+        "Blizzard_QuestNavigation": {
+          "ok": true,
+          "values": [
+            true,
+            true
+          ]
+        }
+      },
+      "probeVersion": "0.5.0",
+      "globals": {
+        "SmartNavigation_RegisterOutgoingDirNavCallback": "function",
+        "EditModeObjectiveTrackerSystemMixin": "table",
+        "ObjectiveTrackerFont16": "table",
+        "SmartNavigationMixin": "table",
+        "ObjectiveTrackerFont13": "table",
+        "UIWidgetObjectiveTracker": "table",
+        "ObjectiveTrackerAnimBlockMixin": "table",
+        "InitiativeTasksObjectiveTrackerMixin": "table",
+        "QuestObjectiveTracker": "table",
+        "SmartNavigation_AddBidirectionalJumpNavigationOverride": "function",
+        "ObjectiveTrackerUIWidgetContainer": "table",
+        "SmartNavigation_SetButtonFrame": "function",
+        "ObjectiveTrackerLineMixin": "table",
+        "ScenarioObjectiveTrackerStageMixin": "table",
+        "QuestSuperTracking_ShouldHighlightWorldQuests": "function",
+        "SmartNavigation_MarkFrameIgnored": "function",
+        "QuestPOIUpdateIcons": "function",
+        "SmartNavigation_GetNavigationOverrideFrame": "function",
+        "SmartNavigation": "table",
+        "ObjectiveTrackerLineFont": "table",
+        "ObjectiveTrackerRewardsToastMixin": "table",
+        "ScenarioObjectiveTrackerMixin": "table",
+        "GetQuestPOILeaderBoard": "function",
+        "ScenarioObjectiveTracker": "table",
+        "CampaignQuestObjectiveTrackerMixin": "table",
+        "SuperTrackablePinMixin": "table",
+        "AdventureObjectiveTrackerMixin": "table",
+        "SmartNavigation_MarkFrameSubSection": "function",
+        "QuestSuperTracking_GetSuperTrackedMapPin": "function",
+        "BonusObjectiveTrackerProgressBarMixin": "table",
+        "ObjectiveTrackerTopBannerFrame": "table",
+        "AchievementObjectiveTracker": "table",
+        "MonthlyActivitiesObjectiveTrackerMixin": "table",
+        "SmartNavigation_ClearIgnoreStatus": "function",
+        "SuperTrackWaypointDataProviderMixin": "table",
+        "SmartNavigation_MarkFrameBlockingSmartNavClick": "function",
+        "WorldMapFloorNavigationFrameMixin": "table",
+        "SuperTrackedFrameMixin": "table",
+        "ObjectiveTrackerSlidingState": "table",
+        "SmartNavigation_SetDirectionBufferThreshold": "function",
+        "SmartNavigation_AddIgnoreInputNavigationOverride": "function",
+        "C_Navigation": "table",
+        "ObjectiveTrackerFont17": "table",
+        "SmartNavigation_IsCurrentButtonClickable": "function",
+        "ObjectiveTrackerFrame": "table",
+        "ScenarioObjectiveTrackerFindGroupButtonMixin": "table",
+        "AdventureObjectiveTracker": "table",
+        "WorldQuestObjectiveTrackerMixin": "table",
+        "ObjectiveTrackerFont18": "table",
+        "ObjectiveTrackerFont21": "table",
+        "ObjectiveTrackerUIWidgetContainerMixin": "table",
+        "ObjectiveTrackerFont15": "table",
+        "SmartNavigation_SetReturnFrameFocusButton": "function",
+        "ObjectiveTrackerTimerBarMixin": "table",
+        "ObjectiveTrackerProgressBarMixin": "table",
+        "ObjectiveTrackerFrameMixin": "table",
+        "WorldQuestObjectiveTracker": "table",
+        "QuestUtils_IsQuestWatched": "function",
+        "QuestSuperTracking_ShouldHighlightWorldQuestsElite": "function",
+        "SmartNavigation_IsIgnoredContainerFrame": "function",
+        "ObjectiveTrackerQuestPOIBlockMixin": "table",
+        "SuperTrackablePoiPinMixin": "table",
+        "ObjectiveTrackerAnimLineState": "table",
+        "SmartNavigation_MarkFrameFocusable": "function",
+        "SmartNavigation_CallOutgoingDirNavigationCallbacks": "function",
+        "ObjectiveTrackerModuleMixin": "table",
+        "SmartNavigation_UseVerticalCursorForFrame": "function",
+        "SmartNavigation_ClearJumpNavigationOverrides": "function",
+        "WaypointLocationPinMixin": "table",
+        "ObjectiveTrackerModuleState": "table",
+        "ObjectiveTrackerFont19": "table",
+        "SmartNavigation_SetCustomCursorAnchorPointForFrame": "function",
+        "ObjectiveTrackerFont20": "table",
+        "SmartNavigation_AddJumpNavigationOverride": "function",
+        "ObjectiveTrackerModuleHeaderMixin": "table",
+        "QuestSuperTracking_ShouldHighlightDungeons": "function",
+        "QuestSuperTracking_GetSuperTrackedQuestID": "function",
+        "BonusObjectiveTracker": "table",
+        "SuperTrackableVignettePinMixin": "table",
+        "SuperTrackedFrame": "table",
+        "OpenMapToUserWaypoint": "function",
+        "ObjectiveTrackerBlockHeaderMixin": "table",
+        "SmartNavigation_MarkScrollFrameMaintainPreviousButtonOnScroll": "function",
+        "AchievementObjectiveTrackerMixin": "table",
+        "CampaignQuestObjectiveTracker": "table",
+        "ScenarioObjectiveTrackerProvingGroundsMixin": "table",
+        "SmartNavigation_IsFrameSubSection": "function",
+        "SmartNavigation_ResetData": "function",
+        "WaypointLocationDataProviderMixin": "table",
+        "GetQuestPOIs": "function",
+        "SmartNavigation_CanFocusFrame": "function",
+        "InitiativeTasksObjectiveTracker": "table",
+        "ObjectiveTrackerFont14": "table",
+        "ObjectiveTrackerManager": "table",
+        "SmartNavigation_MarkFrameNonCollapsingScrollBoxElement": "function",
+        "BonusObjectiveTrackerMixin": "table",
+        "ObjectiveTrackerTopBannerMixin": "table",
+        "QuestMapFrame_UpdateSuperTrackedQuest": "function",
+        "QuestSuperTracking_Initialize": "function",
+        "ObjectiveTrackerAnimLineMixin": "table",
+        "QuestSuperTracking_GetSuperTrackedVignette": "function",
+        "SmartNavigation_RegisterOutgoingNavCallback_MultiDir": "function",
+        "QuestSuperTracking_GetSuperTrackedContent": "function",
+        "SmartNavigation_IsFrameIgnored": "function",
+        "PROMPT_VIEW_QUEST_TRACKER": "string",
+        "ObjectiveTrackerFont12": "table",
+        "ObjectiveTrackerBlockMixin": "table",
+        "QuestMapWaypoint_CreateContextMenu": "function",
+        "SmartNavigationDebug": "table",
+        "QuestSuperTracking_ShouldHighlightTreasures": "function",
+        "ObjectiveTrackerContainerMixin": "table",
+        "QuestObjectiveTrackerMixin": "table",
+        "SmartNavigation_ShouldScrollFrameMaintainPreviousButtonOnScroll": "function",
+        "SuperTrackWaypointPinMixin": "table",
+        "SmartNavigation_ClearJumpNavigationOverridesInDirection": "function",
+        "UIWidgetObjectiveTrackerMixin": "table",
+        "C_SuperTrack": "table",
+        "SmartNavigation_IsFrameFocusable": "function",
+        "SmartNavigation_MarkFrameIgnoredContainerFrame": "function",
+        "SmartNavigation_IsFrameBlockingSmartNavClick": "function",
+        "MonthlyActivitiesObjectiveTracker": "table",
+        "ObjectiveTrackerHeaderFont": "table",
+        "SmartNavigation_SelectScrollBoxCurrentOrTop": "function",
+        "ObjectiveTrackerSlidingMixin": "table",
+        "ObjectiveTrackerFont22": "table",
+        "ScenarioObjectiveTrackerChallengeModeMixin": "table",
+        "GuildControlUINavigationDropdown": "table",
+        "GetQuestPOIBlobCount": "function",
+        "ObjectiveTrackerContainerHeaderMixin": "table",
+        "SmartNavigation_IsFrameNonCollapsingScrollBoxElement": "function"
+      },
+      "quests": [
+        {
+          "isHidden": false,
+          "waypoint": {
+            "ok": true,
+            "values": {}
+          },
+          "questID": 376,
+          "watchType": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          },
+          "title": "The Damned",
+          "waypointText": {
+            "ok": true,
+            "values": {}
+          },
+          "hasLocalPOI": true,
+          "isOnMap": true,
+          "isWatched": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          }
+        },
+        {
+          "isHidden": false,
+          "waypoint": {
+            "ok": true,
+            "values": {}
+          },
+          "questID": 3901,
+          "watchType": {
+            "ok": true,
+            "values": [
+              1
+            ]
+          },
+          "title": "Rattling the Rattlecages",
+          "waypointText": {
+            "ok": true,
+            "values": {}
+          },
+          "hasLocalPOI": true,
+          "isOnMap": true,
+          "isWatched": {
+            "ok": true,
+            "values": [
+              true
+            ]
+          }
+        }
+      ],
+      "inCombat": false
+    },
+    "watchTest": {
+      "70245": {
+        "at": 1791434299,
+        "title": "The Damned",
+        "probeVersion": "0.5.0",
+        "questID": 376,
+        "steps": [
+          {
+            "name": "before",
+            "watches": {
+              "ok": true,
+              "values": [
+                2
+              ]
+            },
+            "superTracked": {
+              "ok": true,
+              "values": {}
+            },
+            "result": {
+              "ok": true,
+              "values": [
+                1
+              ]
+            },
+            "watchType": {
+              "ok": true,
+              "values": [
+                1
+              ]
+            }
+          },
+          {
+            "name": "RemoveQuestWatch",
+            "watches": {
+              "ok": true,
+              "values": [
+                1
+              ]
+            },
+            "superTracked": {
+              "ok": true,
+              "values": {}
+            },
+            "result": {
+              "ok": true,
+              "values": [
+                true
+              ]
+            },
+            "watchType": {
+              "ok": true,
+              "values": {}
+            }
+          },
+          {
+            "name": "AddQuestWatch",
+            "watches": {
+              "ok": true,
+              "values": [
+                2
+              ]
+            },
+            "superTracked": {
+              "ok": true,
+              "values": {}
+            },
+            "result": {
+              "ok": true,
+              "values": [
+                true
+              ]
+            },
+            "watchType": {
+              "ok": true,
+              "values": [
+                1
+              ]
+            }
+          },
+          {
+            "name": "SetSuperTrackedQuestID",
+            "watches": {
+              "ok": true,
+              "values": [
+                2
+              ]
+            },
+            "superTracked": {
+              "ok": true,
+              "values": [
+                376
+              ]
+            },
+            "result": {
+              "ok": true,
+              "values": {}
+            },
+            "watchType": {
+              "ok": true,
+              "values": [
+                1
+              ]
+            }
+          },
+          {
+            "name": "SetSuperTrackedQuestID (restore)",
+            "watches": {
+              "ok": true,
+              "values": [
+                2
+              ]
+            },
+            "superTracked": {
+              "ok": true,
+              "values": {}
+            },
+            "result": {
+              "ok": true,
+              "values": {}
+            },
+            "watchType": {
+              "ok": true,
+              "values": [
+                1
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "arrow": {
+      "70245": [
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751340.29,
+          "y": 0.6551,
+          "x": 0.3176,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.2568,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1864,
+              1598,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1598.040649414063,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1863.992065429688,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751341.29,
+          "y": 0.6532,
+          "x": 0.3177,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.2568,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1869.599975585938,
+              1597.900024414063,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1597.891967773438,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1869.625244140625,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751342.3,
+          "y": 0.6509,
+          "x": 0.3177,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.2568,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1876.700073242188,
+              1597.700073242188,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1597.705810546875,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1876.664672851563,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751343.3,
+          "y": 0.6486,
+          "x": 0.3179,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.1125,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1883.599975585938,
+              1596.700073242188,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1596.661865234375,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1883.622192382813,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751344.31,
+          "y": 0.6468,
+          "x": 0.3181,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 0.0492,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1889.099975585938,
+              1595.800048828125,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1595.849487304688,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1889.14208984375,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751345.31,
+          "y": 0.6449,
+          "x": 0.3176,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 2.5429,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1894.700073242188,
+              1598,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1597.9794921875,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1894.723876953125,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751346.32,
+          "y": 0.6465,
+          "x": 0.3167,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 3.1869,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1889.900024414063,
+              1602.400024414063,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1602.373413085938,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1889.913818359375,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751347.34,
+          "y": 0.648,
+          "x": 0.3173,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 4.4396,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1885.5,
+              1599.800048828125,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1599.750854492188,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1885.468139648438,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751348.34,
+          "y": 0.648,
+          "x": 0.3188,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 4.8676,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1885.5,
+              1592.800048828125,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1592.751831054688,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1885.541015625,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751349.35,
+          "y": 0.6473,
+          "x": 0.32,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 5.9161,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1887.5,
+              1587.300048828125,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1587.321899414063,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1887.462158203125,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751350.36,
+          "y": 0.6465,
+          "x": 0.3201,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.1793,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1889.900024414063,
+              1587.099975585938,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1587.064331054688,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1889.933837890625,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751351.38,
+          "y": 0.6441,
+          "x": 0.3202,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.1793,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1897.099975585938,
+              1586.300048828125,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1586.318359375,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1897.083984375,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751352.38,
+          "y": 0.6418,
+          "x": 0.3204,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.1793,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1904,
+              1585.599975585938,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1585.592041015625,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1904.046020507813,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751353.38,
+          "y": 0.6395,
+          "x": 0.3205,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.1793,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1911,
+              1584.900024414063,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1584.866455078125,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1911.001220703125,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751354.38,
+          "y": 0.6372,
+          "x": 0.3207,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.1793,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1918,
+              1584.099975585938,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1584.139526367188,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1917.970458984375,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751355.38,
+          "y": 0.6349,
+          "x": 0.3209,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.1793,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1924.900024414063,
+              1583.400024414063,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1583.413208007813,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1924.9326171875,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751356.4,
+          "y": 0.6335,
+          "x": 0.3219,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 4.9382,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1929,
+              1578.700073242188,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1578.743041992188,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1928.953735351563,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751357.41,
+          "y": 0.633,
+          "x": 0.3234,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 4.9382,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1930.5,
+              1571.800048828125,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1571.838623046875,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1930.539794921875,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751358.43,
+          "y": 0.6327,
+          "x": 0.3238,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.0095,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1931.400024414063,
+              1570.200073242188,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1570.23291015625,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1931.380126953125,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        },
+        {
+          "mapID": 1420,
+          "navDistance": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "instance": {
+            "ok": true,
+            "values": [
+              false,
+              "none"
+            ]
+          },
+          "t": 1751359.45,
+          "y": 0.6322,
+          "x": 0.3239,
+          "navState": {
+            "ok": true,
+            "values": [
+              0
+            ]
+          },
+          "facing": 6.033,
+          "unitPosition": {
+            "ok": true,
+            "values": [
+              1933.099975585938,
+              1569.800048828125,
+              0,
+              0
+            ]
+          },
+          "navOnScreen": {
+            "ok": true,
+            "values": [
+              false
+            ]
+          },
+          "world": {
+            "ok": true,
+            "values": [
+              0,
+              {
+                "RotateDirection": "<function>",
+                "GetLength": "<function>",
+                "Normalize": "<function>",
+                "Dot": "<function>",
+                "GetLengthSquared": "<function>",
+                "GetXY": "<function>",
+                "OnLoad": "<function>",
+                "IsZero": "<function>",
+                "DivideBy": "<function>",
+                "IsEqualTo": "<function>",
+                "y": 1569.752807617188,
+                "Subtract": "<function>",
+                "Clone": "<function>",
+                "Cross": "<function>",
+                "x": 1933.06298828125,
+                "SetXY": "<function>",
+                "ScaleBy": "<function>",
+                "Add": "<function>"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
