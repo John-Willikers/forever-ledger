@@ -22,6 +22,8 @@ export const CHAR_TABLES: readonly { table: string; pk: readonly string[]; newer
   { table: 'fishing_casts', pk: ['id'] },
   { table: 'character_gear', pk: ['char', 'build'], newer: 'seen_at' },
   { table: 'quest_objective_progress', pk: ['char', 'quest_id', 'idx', 'have', 'at'] },
+  { table: 'character_state', pk: ['char'], newer: 'observed_at' },
+  { table: 'trips', pk: ['char', 'kind', 'started_at'] },
   { table: 'skills', pk: ['char', 'skill_line_id'], newer: 'last_seen' },
   { table: 'skill_ups', pk: ['char', 'skill_line_id', 'observed_at', 'to_rank'] },
   { table: 'recipe_status', pk: ['recipe_id', 'build', 'char'], newer: 'seen_at' },
@@ -99,6 +101,8 @@ export function canonicalize(r: Records, aliases: Map<string, string>): Records 
     fishingCasts: withChar(r.fishingCasts),
     gear: withChar(r.gear),
     objectiveProgress: withChar(r.objectiveProgress),
+    charState: withChar(r.charState),
+    trips: withChar(r.trips),
     runs: withChar(r.runs),
   };
 }
@@ -152,12 +156,13 @@ export async function mergeCharacter(
   }
   for (const { table, pk, newer } of CHAR_TABLES) {
     const others = pk.filter((c) => c !== 'char');
+    // A table keyed by the character alone (character_state) clashes on any row of `into`.
     const clash = others.length
       ? sql.raw(others.map((c) => `x."${c}" = t."${c}"`).join(' and '))
-      : sql.raw('false');
+      : sql.raw('true');
     // Where `from` has the newer copy of a row, `into`'s older copy goes and `from`'s moves in its place.
     let replaced = 0;
-    if (newer && others.length) {
+    if (newer) {
       const res = await conn.execute(
         sql`delete from ${sql.identifier(table)} x using ${sql.identifier(table)} t
              where t.char = ${from} and x.char = ${into} and ${clash}

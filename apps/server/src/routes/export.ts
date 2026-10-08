@@ -12,6 +12,7 @@ import {
   drops,
   fishingCasts,
   characterGear,
+  characterState,
   questObjectiveProgress,
   items,
   itemSnapshots,
@@ -31,8 +32,10 @@ import {
   skills,
   skillUps,
   trainers,
+  trips,
   turnIns,
   vendors,
+  xpCurve,
 } from '../db/schema.js';
 import { chicagoIso } from '../time.js';
 import type { ReadGuard } from './analysis.js';
@@ -64,6 +67,9 @@ export const EXPORT_TABLES = {
   fishing_casts: fishingCasts,
   character_gear: characterGear,
   quest_objective_progress: questObjectiveProgress,
+  character_state: characterState,
+  xp_curve: xpCurve,
+  trips,
   trainers,
   vendors,
   api_samples: apiSamples,

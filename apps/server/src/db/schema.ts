@@ -333,6 +333,61 @@ export const questObjectiveProgress = pgTable(
   ],
 );
 
+/**
+ * Schema 10: where a character stands, for the route planner. One row per character; the newest `observed_at` wins (an
+ * older queued batch never overwrites newer state). jsonb columns hold the contracts CharState sections as uploaded.
+ */
+export const characterState = pgTable('character_state', {
+  char: text('char').primaryKey(),
+  build: integer('build').notNull(),
+  level: integer('level'),
+  xp: integer('xp'),
+  xpMax: integer('xp_max'),
+  completed: integer('completed').array(),
+  completedAt: tz('completed_at'),
+  log: jsonb('log'),
+  pos: jsonb('pos'),
+  bind: jsonb('bind'),
+  hearthReadyAt: tz('hearth_ready_at'),
+  taxi: jsonb('taxi'),
+  mount: jsonb('mount'),
+  observedAt: tz('observed_at'),
+  updatedAt: updatedAt(),
+});
+
+/** Schema 10: XP needed to finish each level (UnitXPMax), per build. */
+export const xpCurve = pgTable(
+  'xp_curve',
+  {
+    build: integer('build').notNull(),
+    level: integer('level').notNull(),
+    xpMax: integer('xp_max').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.build, t.level] })],
+);
+
+/** Schema 10: a timed flight, boat / zeppelin ride or hearth. A re-upload changes nothing. */
+export const trips = pgTable(
+  'trips',
+  {
+    char: text('char').notNull(),
+    kind: text('kind').notNull(),
+    startedAt: tz('started_at').notNull(),
+    build: integer('build').notNull(),
+    seconds: real('seconds').notNull(),
+    from: jsonb('from'),
+    to: jsonb('to'),
+    fromNode: jsonb('from_node'),
+    toNode: jsonb('to_node'),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.char, t.kind, t.startedAt] }),
+    index('trips_kind_idx').on(t.kind, t.build),
+  ],
+);
+
 export const items = pgTable('items', {
   itemId: integer('item_id').primaryKey(),
   name: text('name').notNull(),

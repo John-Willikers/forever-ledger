@@ -14,6 +14,7 @@ import {
   crafts,
   fishingCasts,
   characterGear,
+  characterState,
   questObjectiveProgress,
   drops,
   items,
@@ -35,8 +36,10 @@ import {
   skills,
   skillUps,
   trainers,
+  trips,
   turnIns,
   vendors,
+  xpCurve,
 } from './db/schema.js';
 import { accountsOf, canonicalize, hasSurname, loadAliases, mergeCharacter } from './characters.js';
 import { lockRunGroups, regroupRuns } from './runGroups.js';
@@ -210,6 +213,9 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       'fishingCasts',
       'gear',
       'objectiveProgress',
+      'charState',
+      'xpCurve',
+      'trips',
       'trainers',
       'vendors',
       'apiSamples',
@@ -523,6 +529,52 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         questObjectiveProgress.at,
       ],
     );
+
+    // Schema 10: where each character stands. One row per character: the newest observedAt wins, so an older queued
+    // batch never rolls state back. A section the newer state lacks (dropped by normalize) keeps the stored one. Two
+    // records of one character (an alias and its full name) keep the newer.
+    const states = new Map<string, (typeof w.charState)[number]>();
+    for (const c of w.charState) {
+      const held = states.get(c.char);
+      if (!held || (c.observedAt ?? 0) >= (held.observedAt ?? 0)) states.set(c.char, c);
+    }
+    await upsert(
+      tx,
+      characterState,
+      [...states.values()].map((c) => ({
+        char: c.char,
+        build: c.build,
+        level: c.level,
+        xp: c.xp,
+        xpMax: c.xpMax,
+        completed: c.completed,
+        completedAt: fromEpoch(c.completedAt),
+        log: c.log,
+        pos: c.pos,
+        bind: c.bind,
+        hearthReadyAt: fromEpoch(c.hearthReadyAt),
+        taxi: c.taxi,
+        mount: c.mount,
+        observedAt: fromEpoch(c.observedAt),
+      })),
+      [characterState.char],
+      {
+        keepKnown: true,
+        setWhere: sql`coalesce(excluded.observed_at, '-infinity') >= coalesce(${characterState.observedAt}, '-infinity')`,
+      },
+    );
+    await upsert(tx, xpCurve, w.xpCurve, [xpCurve.build, xpCurve.level]);
+    // Trips are facts: the first upload of one stands.
+    const tripRows = w.trips.map(({ startedAt, ...t }) => ({
+      ...t,
+      startedAt: fromEpoch(startedAt)!,
+    }));
+    for (let i = 0; i < tripRows.length; i += CHUNK) {
+      await tx
+        .insert(trips)
+        .values(tripRows.slice(i, i + CHUNK))
+        .onConflictDoNothing({ target: [trips.char, trips.kind, trips.startedAt] });
+    }
 
     // Trainer and vendor lists: a newer scan wins, an older SavedVariables session uploaded late changes nothing. A
     // trainer scan that saw only part of the list (a type filter off, a collapsed header) merges its services into the
