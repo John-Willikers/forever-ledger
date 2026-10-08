@@ -276,6 +276,34 @@ export const characterGear = pgTable(
 );
 
 /**
+ * In-game guides (project-plans/forever-ledger-guides.md): built from one of our players' runs for a character, held
+ * for the tray token that uploads that character until it writes them into the game. `doc` is the contracts GuideDoc.
+ */
+export const guides = pgTable(
+  'guides',
+  {
+    id: serial('id').primaryKey(),
+    char: text('char').notNull(),
+    tokenId: integer('token_id')
+      .notNull()
+      .references(() => apiTokens.id),
+    title: text('title').notNull(),
+    /** What was asked (start, toLevel, fromLevel, basedOn). */
+    request: jsonb('request').notNull(),
+    doc: jsonb('doc').notNull(),
+    /** "discord:<user id>" or "admin:<battletag>". */
+    requestedBy: text('requested_by').notNull(),
+    createdAt: tz('created_at').notNull().defaultNow(),
+    deliveredAt: tz('delivered_at'),
+    deletedAt: tz('deleted_at'),
+  },
+  (t) => [
+    index('guides_token_idx').on(t.tokenId, t.deletedAt),
+    index('guides_char_idx').on(t.char),
+  ],
+);
+
+/**
  * Schema 9: one quest objective's count going up, with where the player stood: what guides use to say where an
  * objective gets done. One row per increment; a re-upload changes nothing.
  */

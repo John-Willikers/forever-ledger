@@ -1,0 +1,14 @@
+/* Guides page only (ships with its lazy chunk). */
+.guide-steps td.step-no {
+  color: var(--muted);
+  width: 3rem;
+}
+.guide-steps .objectives {
+  margin: 0.15rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.guide-result {
+  margin: 0.75rem 0 0;
+}

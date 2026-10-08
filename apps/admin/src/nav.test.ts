@@ -14,6 +14,7 @@ describe('NAV', () => {
       'Vendors & trainers',
       'Builds',
       'Maps',
+      'Guides',
       'Knowledge',
       'Health',
       'Access',

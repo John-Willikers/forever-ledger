@@ -109,6 +109,12 @@ function setup(opts: { file?: ConfigFile; prefs?: Partial<Prefs> } = {}) {
     rollbackAddonEverywhere: vi.fn(async () => '0.2.0'),
     readAddonSyncState: vi.fn(async () => ({})),
     summarizeRejected: vi.fn(async (): Promise<RejectedSummary> => ({ total: 0, accounts: [] })),
+    syncGuides: vi.fn(async () => ({
+      status: 'none' as string,
+      guides: [] as { id: number; char: string; title: string; steps: number }[],
+      arrived: [] as { id: number; char: string; title: string }[],
+      addonsDirs: ['/wow/_classic_era_/Interface/AddOns'],
+    })),
   };
 
   // Error reports go to this fake server, never the network.
@@ -868,5 +874,42 @@ describe('LedgerController', () => {
       await elapse(t, FIVE_MIN);
       expect(t.fetchImpl).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('in-game guides', () => {
+  it('checks for guides a minute after start, then every 5 minutes, and announces new ones', async () => {
+    const t = setup();
+    t.uploader.syncGuides.mockResolvedValueOnce({
+      status: 'written',
+      guides: [{ id: 7, char: 'Sam Willikers-Classic Beta PvE', title: 'Undead 1-13', steps: 40 }],
+      arrived: [{ id: 7, char: 'Sam Willikers-Classic Beta PvE', title: 'Undead 1-13' }],
+      addonsDirs: ['/wow/_classic_era_/Interface/AddOns'],
+    });
+    await t.controller.start();
+    await flush();
+    expect(t.uploader.syncGuides).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await flush();
+    expect(t.uploader.syncGuides).toHaveBeenCalledTimes(1);
+    expect(t.toasts).toContain(
+      'Guide ready for Sam Willikers: Undead 1-13. Type /reload in game, then /fl guide.',
+    );
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    await flush();
+    expect(t.uploader.syncGuides).toHaveBeenCalledTimes(2);
+    await t.controller.stop();
+  });
+
+  it('a failed check is retried at the next interval', async () => {
+    const t = setup();
+    t.uploader.syncGuides.mockRejectedValueOnce(new Error('offline'));
+    await t.controller.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await flush();
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    await flush();
+    expect(t.uploader.syncGuides).toHaveBeenCalledTimes(2);
+    await t.controller.stop();
   });
 });

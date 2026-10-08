@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -22,8 +22,16 @@ describe('renameDirWithRetry', () => {
   it('keeps retrying until the destination frees up', async () => {
     await mkdir(join(dir, 'a'));
     await blocker(join(dir, 'b'));
-    setTimeout(() => void rm(join(dir, 'b'), { recursive: true, force: true }), 150);
+    // Free the destination in one step (move it aside, then delete it): deleting it in place lets the retry rename
+    // onto the emptied folder mid-delete, and the delete then takes the renamed one too.
+    let freed: Promise<void> = Promise.resolve();
+    setTimeout(() => {
+      freed = rename(join(dir, 'b'), join(dir, 'gone')).then(() =>
+        rm(join(dir, 'gone'), { recursive: true, force: true }),
+      );
+    }, 150);
     await renameDirWithRetry(join(dir, 'a'), join(dir, 'b'), { budgetMs: 5_000 });
+    await freed;
     expect(await readdir(dir)).toEqual(['b']);
   });
 

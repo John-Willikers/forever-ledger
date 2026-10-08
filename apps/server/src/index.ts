@@ -40,3 +40,5 @@ export { importSeed } from './knowledge/seed.js';
 export { gearUpgrades, lookupCharacter } from './knowledge/upgrades.js';
 export { levelingRoute } from './knowledge/leveling.js';
 export { withWowheadLinks, wowheadUrl } from './knowledge/links.js';
+export { createGuide, GuideError } from './knowledge/guides.js';
+export type { GuideRequest } from './knowledge/guides.js';

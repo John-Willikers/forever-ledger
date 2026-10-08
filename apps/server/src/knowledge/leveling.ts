@@ -482,6 +482,8 @@ export interface LevelingQuery {
   fromLevel?: number;
   /** The player asking: the guide starts at their level and leaves out the quests they already turned in. */
   forCharacter?: string;
+  /** Steps listed in full (default ROUTE_STEPS_MAX; in-game guides take more). */
+  stepsMax?: number;
 }
 
 /**
@@ -569,8 +571,9 @@ export async function levelingRoute(db: Db, q: LevelingQuery) {
       gaps.push(
         `no character of ours has reached ${toLevel} this way yet: this is the furthest one`,
       );
-    if (guide.length > ROUTE_STEPS_MAX)
-      gaps.push(`guide cut to its first ${ROUTE_STEPS_MAX} of ${guide.length} steps`);
+    const stepsMax = q.stepsMax ?? ROUTE_STEPS_MAX;
+    if (guide.length > stepsMax)
+      gaps.push(`guide cut to its first ${stepsMax} of ${guide.length} steps`);
     if (events.some((e) => e.kind === 'turn_in' && !e.npc))
       gaps.push('some turn-ins have no NPC or position recorded (older addon versions)');
     const points = (await levelPoints(db, best.key)).filter(
@@ -588,7 +591,7 @@ export async function levelingRoute(db: Db, q: LevelingQuery) {
     route = {
       ...progressView(best, toLevel),
       levelUps,
-      guide: guide.slice(0, ROUTE_STEPS_MAX),
+      guide: guide.slice(0, q.stepsMax ?? ROUTE_STEPS_MAX),
     };
   }
   const zoneList = zones.length > 0 ? await zoneQuests(db, zones) : [];

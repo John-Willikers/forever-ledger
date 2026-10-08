@@ -93,6 +93,7 @@ describe('forever-ledger MCP endpoint (real Postgres)', () => {
       'lookup_quest',
       'lookup_zone',
       'search',
+      'send_guide',
       'where_to_get',
     ]);
     expect(client.getInstructions()).toContain('Answer from these only');

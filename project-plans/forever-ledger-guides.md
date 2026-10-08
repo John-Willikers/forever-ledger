@@ -1,6 +1,6 @@
 # 🧭 Forever Ledger — In-game guides (objective spots, guide delivery, Zygor-style viewer)
 
-> Owner: John-Willikers <harlanbmiltonjr@gmail.com> · 2026-10-07 22:05 CDT (America/Chicago)
+> Owner: John-Willikers <harlanbmiltonjr@gmail.com> · 2026-10-07 21:45 CDT (America/Chicago)
 > Branches `feat/objective-spots`, `feat/guide-delivery`, `feat/guide-viewer` → PRs → merge to `master`.
 
 ## 🧭 Why
@@ -52,15 +52,23 @@ ForeverLedger addon: GuideViewer.lua reads ForeverLedgerGuidesData, shows the st
 
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/Chicago.
 
-- ✅ 0 📝 Plan and decisions — 22:05 CDT; Forever API checked in the dump (QUEST_WATCH_UPDATE,
+- ✅ 0 📝 Plan and decisions — 21:45 CDT; Forever API checked in the dump (QUEST_WATCH_UPDATE,
   C_QuestLog.GetQuestObjectives / IsQuestFlaggedCompleted / ReadyForTurnIn, C_Map.SetUserWaypoint,
   C_SuperTrack.SetSuperTrackedUserWaypoint all present)
 - ✅ 1 🎯 Objective spots: addon 0.6.0 records each objective increment (`QUEST_WATCH_UPDATE` → read on the next
   `QUEST_LOG_UPDATE` or 0.5 s later; baselines at login and on accept), `test_objectives.lua`, `session-v9.lua`,
   0.5.0 frozen (session-v8 byte-identical); contracts schema 9 `ObjectiveProgress`; migration 0020
   `quest_objective_progress`; guide "complete" steps placed at the middle of the route character's own increments
-  (else anyone's), per objective, and every step carries `mapId`/`x`/`y` for a map pin — 22:58 CDT
-- ⬜ 2 📦 Guide delivery: `GuideDoc`, guides table + API, MCP `send_guide` + bot prompt, admin Guides page, tray writer
+  (else anyone's), per objective, and every step carries `mapId`/`x`/`y` for a map pin — 22:03 CDT (PR #66)
+- ✅ 2 📦 Guide delivery: contracts `GuideDoc`; migration 0021 `guides` (target character, the tray token whose
+  uploads carry it, doc, requested by, delivered, deleted); `createGuide` (exact character, its tray, 6 per hour,
+  newest 5 kept, already-done quests left out, preview mode); `GET /v1/guides` + `POST /v1/guides/ack` (upload
+  token); admin `GET/POST /admin/api/guides` + delete and a **Guides** page (build, preview, send, list, delete); MCP
+  `send_guide` + bot prompt; uploader `syncGuides` writes `ForeverLedger_Guides/{toc, Guides.lua}` (Lua data only,
+  every string byte-escaped, Interface copied from ForeverLedger.toc; removed when no guides are left; `no-addon` when
+  ForeverLedger isn't installed) and acks; tray checks 1 min after start, then every 5 min, and toasts new guides.
+  Fixed the uploader's flaky `renameDirWithRetry` test (its in-place delete raced the rename). `pnpm check` 1115
+  tests — 22:14 CDT
 - ⬜ 3 🖥️ Viewer: `GuideViewer.lua` (state machine tested in the harness), UI frame, slash commands
 - ⬜ 4 🔍 Review → PRs → merge → deploy (backup first: migrations)
 - ⬜ 5 🚀 Tray v0.3.0, addon 0.6.0; Harlan sends Sam a guide, `/reload`s, and follows a few steps in game
