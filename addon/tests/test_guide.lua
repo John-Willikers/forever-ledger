@@ -184,4 +184,31 @@ return function(H)
     c.slash("FOREVERLEDGER", "guide next")
     H.ok(body(c):find("Not in your quest log", 1, true), "a turn-in for a quest not in the log")
   end)
+
+  H.test("guide: a pickup above your level waits as a Later note, then Ready once you level", function()
+    local g = guide(7, ME)
+    g.steps[3].quests[2].minLevel = 2 -- The Damned, as Timbo took it at level 2
+    local c = viewer(H, { guides = { g }, done = { [RUDE] = true } })
+    c.world.player.level = 1
+    c.q.onQuest[MINDLESS] = true
+    c.fire("QUEST_ACCEPTED", MINDLESS)
+    -- Step 3 (Mindless + Damned): Damned is too high, so the guide moves on to doing The Mindless Ones.
+    H.ok(counter(c):find("Step 4 of 5", 1, true), counter(c))
+    H.ok(body(c):find("Later: The Damned at level 2 from Shadow Priest Sarvis", 1, true), body(c))
+    c.world.player.level = 2
+    c.fire("PLAYER_LEVEL_UP", 2)
+    H.ok(body(c):find("Ready: pick up The Damned from Shadow Priest Sarvis", 1, true), body(c))
+    c.q.onQuest[DAMNED] = true
+    c.fire("QUEST_ACCEPTED", DAMNED)
+    H.ok(not body(c):find("The Damned at level", 1, true) and not body(c):find("Ready:", 1, true), body(c))
+  end)
+
+  H.test("guide: pickups show their level, red when you are too low", function()
+    local g = guide(7, ME)
+    g.steps[1].quests[1].minLevel = 5
+    local c = viewer(H, { guides = { g } })
+    c.world.player.level = 10
+    c.slash("FOREVERLEDGER", "guide")
+    H.ok(body(c):find("Rude Awakening|r |cff9d9d9d(level 5)", 1, true), body(c))
+  end)
 end
