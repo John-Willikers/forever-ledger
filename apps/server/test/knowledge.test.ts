@@ -251,7 +251,7 @@ describe('knowledge pipeline', () => {
     expect(await reparseAll(s.database.db)).toMatchObject({ pages: 2, added: 0 });
     expect(await s.count('claims')).toBe(before);
     // A parser fix: claims an older parser version read off the page are swapped, hand-entered ones stay.
-    await q(`update claims set parser = 'wowhead@0' where parser = 'wowhead@3'`);
+    await q(`update claims set parser = 'wowhead@0' where parser = 'wowhead@4'`);
     expect(await reparseAll(s.database.db, 'wowhead.com', { replace: true })).toMatchObject({
       pages: 1,
       added: 7,

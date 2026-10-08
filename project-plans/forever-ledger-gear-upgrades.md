@@ -69,6 +69,29 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
 - 🟡 8 📝 Discord layout: no tables (Discord shows raw pipes); a bold one-line answer, `###` groups, two lines per
   entry (`**Slot** — Item`, then a `-#` source line), caveats as `-#` lines at the end.
 
+- 🟡 9 🧵 Crafted gear (Harlan, 2026-10-07): Sam Willikers' upgrades were full of Tailoring and Leatherworking items
+  he can't make. An upgrade is crafted when a recipe our players scanned makes it, or Wowhead's `created_by_spell`
+  names it (the spell's profession from our `recipes`, else the row's `skills`; parser `wowhead@4` stops dropping
+  Wowhead's `skill: [197]` array). Crafted items stay only when the character has the profession (`crafted`:
+  professions, `byCharacter`, `knowsRecipe`); the rest are counted in a gap by profession, and `includeCrafted`
+  (MCP `gear_upgrades`) lists them. Deploy: `knowledge-cli reparse --site wowhead.com --replace` so existing item
+  pages get the profession. No real spec: Forever's spec catalog is still a placeholder (one spec per class), so the
+  role stays asked-or-guessed.
+
+- 🟡 10 🗺️ Leveling routes (Harlan, 2026-10-07 21:10 CDT): "quickest way to 13 as an undead" got "no quest data" three
+  times although Tirisfal was quested to 13. The data was there (turn-ins with level, XP and time; quest-log zone
+  header in `quests.category`; givers in `quest_observations`), but no tool could reach it: `search` matches titles,
+  `lookup_zone` listed only nodes. New `knowledge/leveling.ts` + MCP `leveling_route(start: race|zone, character?,
+  toLevel, fromLevel?)`: our characters of that race (or who quested in that zone), the one that reached the level in
+  the least play time first, its turn-ins in order (zone, quest/character level, XP, giver, turn-in NPC), level-ups,
+  others' progress, and the zone's quests. `lookup_zone` gains `questsSeen`. Play time is an estimate: only quest
+  events are timed, pauses over an hour between them are dropped.
+  21:30 CDT: the bot (still the old build) found only "Scavenging Deathknell", by title search, although Timmy
+  Willikers quested to ~12. The route is now a **guide** (Zygor-style): steps in played order, `accept` (NPC,
+  subzone, coordinates, quests), `complete` (objectives, "0/8" → "8") and `turn_in` (NPC, coordinates, XP, level
+  after); same-NPC steps merge; abandoned quests are dropped. `forCharacter` starts at the asker's level and skips
+  quests they've turned in. Objective locations aren't recorded (addon follow-up).
+
 ## ⚠️ Risks
 
 - **Estimates, not truth:** stat weights per role are a Classic-era rule of thumb; answers label them as estimates.

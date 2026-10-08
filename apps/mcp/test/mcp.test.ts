@@ -86,6 +86,7 @@ describe('forever-ledger MCP endpoint (real Postgres)', () => {
       'check_claim',
       'fishing_yield',
       'gear_upgrades',
+      'leveling_route',
       'lookup_character',
       'lookup_item',
       'lookup_npc',

@@ -1,0 +1,497 @@
+// Leveling routes for the MCP server: the quests our own players turned in, in order, on their way to a level. A
+// route is what one character really did (turn-ins with their level, XP and quest givers), so "the quickest way to 13
+// as an Undead" is answered by the Undead characters that got there, fastest first. Quests carry their quest-log
+// zone header (`quests.category`), which is how a zone's quests are found. Kill XP is not recorded: a route is the
+// quests, and its time includes the grinding between them.
+import { sql } from 'drizzle-orm';
+import type { Db } from '../db/client.js';
+import { rows } from '../routes/adminData.js';
+import { containsPattern } from '../routes/shared.js';
+import { chicagoIso } from '../time.js';
+import { findCharacters } from './upgrades.js';
+
+/**
+ * A pause longer than this between two quest events is a break, not play time. Only quest events are timed (kills are
+ * counted per session, not per character and time), so play time is an estimate: grinding between quests counts.
+ */
+export const BREAK_MINUTES = 60;
+/** Steps of a route listed in full; longer routes are cut and say so. */
+export const ROUTE_STEPS_MAX = 120;
+/** Other characters listed next to the chosen route. */
+const OTHERS_MAX = 5;
+
+/** `UnitRace` tokens, from what players type. */
+const RACES: Record<string, string> = {
+  undead: 'Scourge',
+  scourge: 'Scourge',
+  forsaken: 'Scourge',
+  orc: 'Orc',
+  troll: 'Troll',
+  tauren: 'Tauren',
+  human: 'Human',
+  dwarf: 'Dwarf',
+  gnome: 'Gnome',
+  'night elf': 'NightElf',
+  nightelf: 'NightElf',
+};
+
+/** Classic starting zones per race token: where a route for that race begins. */
+export const START_ZONES: Record<string, string[]> = {
+  Scourge: ['Tirisfal Glades'],
+  Orc: ['Durotar'],
+  Troll: ['Durotar'],
+  Tauren: ['Mulgore'],
+  Human: ['Elwynn Forest'],
+  Dwarf: ['Dun Morogh'],
+  Gnome: ['Dun Morogh'],
+  NightElf: ['Teldrassil'],
+};
+
+export function raceToken(ref: string | undefined): string | null {
+  if (!ref) return null;
+  return RACES[ref.trim().toLowerCase().replace(/s$/, '')] ?? null;
+}
+
+/** Minutes between the first and last event, without pauses longer than `BREAK_MINUTES`. */
+export function activeMinutes(times: Date[]): number {
+  let ms = 0;
+  for (let i = 1; i < times.length; i++) {
+    const gap = times[i]!.getTime() - times[i - 1]!.getTime();
+    if (gap > 0 && gap <= BREAK_MINUTES * 60_000) ms += gap;
+  }
+  return Math.round(ms / 60_000);
+}
+
+interface Point {
+  at: Date;
+  level: number;
+}
+
+interface Progress {
+  key: string;
+  name: string;
+  race: string | null;
+  class: string | null;
+  level: number | null;
+  start: Date | null;
+  reached: Date | null;
+  activeMinutes: number | null;
+  wallMinutes: number | null;
+  turnIns: number;
+}
+
+/** When a character was first seen at each level (quest events and their last upload). */
+async function levelPoints(db: Db, key: string): Promise<Point[]> {
+  const found = await rows<{ at: Date | string; level: number }>(
+    db,
+    sql`select at, level from (
+          select observed_at as at, level from quest_observations
+           where char = ${key} and observed_at is not null and level is not null
+          union select turned_in_at, level from turn_ins where char = ${key} and level is not null
+        ) x order by at, level`,
+  );
+  // A union's timestamps can come back as text.
+  return found.map((p) => ({ at: new Date(p.at), level: p.level }));
+}
+
+/** A character's run from `fromLevel` to `toLevel`: when it started, when it got there, how long it played. */
+async function progressOf(
+  db: Db,
+  c: { key: string; name: string; race: string | null; class: string | null; level: number | null },
+  fromLevel: number,
+  toLevel: number,
+): Promise<Progress> {
+  const points = await levelPoints(db, c.key);
+  const start = points.find((p) => p.level >= fromLevel)?.at ?? null;
+  const reached = points.find((p) => p.level >= toLevel)?.at ?? null;
+  const inRun = points.filter((p) => start && p.at >= start && (!reached || p.at <= reached));
+  const [count] = start
+    ? await rows<{ n: number }>(
+        db,
+        sql`select count(*)::int as n from turn_ins where char = ${c.key} and turned_in_at >= ${start}
+             and (${reached}::timestamptz is null or turned_in_at <= ${reached})`,
+      )
+    : [];
+  return {
+    ...c,
+    start,
+    reached,
+    activeMinutes: start ? activeMinutes(inRun.map((p) => p.at)) : null,
+    wallMinutes:
+      start && reached ? Math.round((reached.getTime() - start.getTime()) / 60_000) : null,
+    turnIns: count?.n ?? 0,
+  };
+}
+
+const progressView = (p: Progress, toLevel: number) => ({
+  character: p.name,
+  race: p.race,
+  class: p.class,
+  level: p.level,
+  reachedTarget: p.reached !== null,
+  startedAt: p.start && chicagoIso(p.start),
+  reachedAt: p.reached && chicagoIso(p.reached),
+  activeMinutes: p.activeMinutes,
+  wallClockMinutes: p.wallMinutes,
+  questsTurnedIn: p.turnIns,
+  note: p.reached ? undefined : `has not reached ${toLevel} in our data`,
+});
+
+interface Where {
+  zone?: string;
+  subzone?: string;
+  x?: number;
+  y?: number;
+}
+
+/** One pickup or turn-in from a character's run, as the guide is built from them. */
+export interface GuideEvent {
+  kind: 'accept' | 'turn_in';
+  at: Date;
+  questId: number;
+  title: string | null;
+  questLevel: number | null;
+  zone: string | null;
+  objectives: string[] | null;
+  npc: string | null;
+  where: Where | null;
+  /** Turn-ins: the character's level and the XP the quest paid. */
+  level?: number | null;
+  xp?: number | null;
+}
+
+/** "Mindless Zombie slain: 0/8" → "Mindless Zombie slain: 8" (the guide shows what to do, not the progress). */
+export function objectiveText(o: string): string {
+  return o.replace(/:?\s*\d+\s*\/\s*(\d+)\s*$/, ': $1').trim();
+}
+
+const coords = (w: Where | null) =>
+  w && typeof w.x === 'number' && typeof w.y === 'number' && (w.x > 0 || w.y > 0)
+    ? `${w.x.toFixed(1)}, ${w.y.toFixed(1)}`
+    : null;
+
+/**
+ * Zygor-style steps from a run's pickups and turn-ins, in the order the character did them: pickups and turn-ins at
+ * the same NPC in a row become one step, and before each turn-in a "complete" step lists those quests' objectives.
+ * Only quests turned in during the run are kept (abandoned ones would only send a player the wrong way), and quests in
+ * `skip` (already done by the player asking) are left out.
+ */
+export function buildGuide(events: GuideEvent[], skip: Set<number> = new Set()) {
+  const turnedIn = new Set(events.filter((e) => e.kind === 'turn_in').map((e) => e.questId));
+  const kept = events
+    .filter((e) => turnedIn.has(e.questId) && !skip.has(e.questId))
+    .sort((a, b) => a.at.getTime() - b.at.getTime() || (a.kind === 'accept' ? -1 : 1));
+  type Step = {
+    step: number;
+    action: 'accept' | 'complete' | 'turn_in';
+    npc: string | null;
+    zone: string | null;
+    subzone: string | null;
+    coords: string | null;
+    quests: {
+      questId: number;
+      title: string | null;
+      questLevel?: number | null;
+      objectives?: string[];
+      xp?: number | null;
+    }[];
+    levelAfter?: number | null;
+  };
+  const steps: Step[] = [];
+  const at = (e: GuideEvent) => e.npc ?? e.where?.subzone ?? null;
+  for (const e of kept) {
+    const last = steps.at(-1);
+    if (e.kind === 'accept') {
+      if (last?.action === 'accept' && last.npc === at(e)) {
+        last.quests.push({ questId: e.questId, title: e.title, questLevel: e.questLevel });
+        continue;
+      }
+      steps.push({
+        step: 0,
+        action: 'accept',
+        npc: at(e),
+        zone: e.where?.zone ?? e.zone,
+        subzone: e.where?.subzone ?? null,
+        coords: coords(e.where),
+        quests: [{ questId: e.questId, title: e.title, questLevel: e.questLevel }],
+      });
+      continue;
+    }
+    const quest = { questId: e.questId, title: e.title, xp: e.xp };
+    const objectives = (e.objectives ?? []).map(objectiveText).filter(Boolean);
+    if (last?.action === 'turn_in' && last.npc === at(e)) {
+      // Same NPC: its objectives join the "complete" step before it.
+      last.quests.push(quest);
+      last.levelAfter = e.level ?? last.levelAfter;
+      const done = steps.at(-2);
+      if (objectives.length > 0 && done?.action === 'complete')
+        done.quests.push({ questId: e.questId, title: e.title, objectives });
+      continue;
+    }
+    if (objectives.length > 0)
+      steps.push({
+        step: 0,
+        action: 'complete',
+        npc: null,
+        zone: e.zone,
+        subzone: null,
+        coords: null,
+        quests: [{ questId: e.questId, title: e.title, objectives }],
+      });
+    steps.push({
+      step: 0,
+      action: 'turn_in',
+      npc: at(e),
+      zone: e.where?.zone ?? e.zone,
+      subzone: e.where?.subzone ?? null,
+      coords: coords(e.where),
+      quests: [quest],
+      levelAfter: e.level ?? null,
+    });
+  }
+  steps.forEach((x, i) => (x.step = i + 1));
+  return steps;
+}
+
+/** A run's pickups and turn-ins: the quests turned in from `start` to `end`, and their pickups, whenever they were. */
+async function guideEvents(
+  db: Db,
+  key: string,
+  start: Date,
+  end: Date | null,
+): Promise<GuideEvent[]> {
+  const found = await rows<{
+    kind: 'accept' | 'turn_in';
+    at: Date | string;
+    quest_id: number;
+    title: string | null;
+    quest_level: number | null;
+    zone: string | null;
+    objectives: string[] | null;
+    npc: string | null;
+    loc: Where | null;
+    level: number | null;
+    xp: number | null;
+  }>(
+    db,
+    sql`with run as (
+          select t.quest_id, t.turned_in_at, t.level, t.xp from turn_ins t
+           where t.char = ${key} and t.turned_in_at >= ${start}
+             and (${end}::timestamptz is null or t.turned_in_at <= ${end}))
+        select 'turn_in' as kind, r.turned_in_at as at, r.quest_id, r.level, r.xp,
+               c.npc_name as npc, coalesce(c.npc_loc, c.loc) as loc
+          from run r
+          left join lateral (select o.npc_name, o.npc_loc, o.loc from quest_observations o
+                              where o.char = ${key} and o.quest_id = r.quest_id and o.stage = 'complete'
+                              order by o.observed_at desc nulls last limit 1) c on true
+        union all
+        select 'accept', a.observed_at, a.quest_id, a.level, null, a.npc_name, coalesce(a.npc_loc, a.loc)
+          from (select distinct on (o.quest_id) o.quest_id, o.observed_at, o.level, o.npc_name, o.npc_loc, o.loc
+                  from quest_observations o
+                 where o.char = ${key} and o.stage = 'accept' and o.observed_at is not null
+                   and o.quest_id in (select quest_id from run)
+                 order by o.quest_id, o.observed_at desc) a`,
+  );
+  const ids = [...new Set(found.map((f) => f.quest_id))];
+  const quests =
+    ids.length === 0
+      ? []
+      : await rows<{
+          quest_id: number;
+          title: string | null;
+          level: number | null;
+          category: string | null;
+          objectives: string[] | null;
+        }>(
+          db,
+          sql`select quest_id, title, level, category, objectives from quests where quest_id in (${sql.join(
+            ids.map((i) => sql`${i}`),
+            sql`, `,
+          )})`,
+        );
+  const byId = new Map(quests.map((x) => [x.quest_id, x]));
+  return found.map((f) => {
+    const qq = byId.get(f.quest_id);
+    return {
+      kind: f.kind,
+      at: new Date(f.at),
+      questId: f.quest_id,
+      title: qq?.title ?? null,
+      questLevel: qq?.level ?? null,
+      zone: qq?.category ?? null,
+      objectives: Array.isArray(qq?.objectives) ? qq.objectives : null,
+      npc: f.npc,
+      where: f.loc && typeof f.loc === 'object' ? f.loc : null,
+      level: f.level,
+      xp: f.xp,
+    };
+  });
+}
+
+/** Quests our players turned in whose quest-log zone header is one of these zones. */
+export async function zoneQuests(db: Db, zones: string[], limit = 60) {
+  if (zones.length === 0) return [];
+  return rows<{
+    questId: number;
+    title: string | null;
+    zone: string;
+    level: number | null;
+    characters: number;
+    avgXp: number | null;
+    giver: string | null;
+  }>(
+    db,
+    sql`select q.quest_id as "questId", q.title, q.category as zone, q.level,
+               count(distinct t.char)::int as characters, round(avg(t.xp))::int as "avgXp",
+               (select mode() within group (order by o.npc_name) from quest_observations o
+                 where o.quest_id = q.quest_id and o.stage in ('accept', 'detail') and o.npc_name is not null) as giver
+          from quests q left join turn_ins t on t.quest_id = q.quest_id
+         where lower(q.category) in (${sql.join(
+           zones.map((z) => sql`${z.toLowerCase()}`),
+           sql`, `,
+         )})
+         group by q.quest_id
+         order by q.level nulls last, q.title
+         limit ${limit}`,
+  );
+}
+
+export interface LevelingQuery {
+  /** A race ("undead", "Tauren") or a zone ("Tirisfal Glades"). */
+  start?: string;
+  /** One of our players' characters, by name. */
+  character?: string;
+  toLevel: number;
+  fromLevel?: number;
+  /** The player asking: the guide starts at their level and leaves out the quests they already turned in. */
+  forCharacter?: string;
+}
+
+/**
+ * The quickest recorded route to a level: our characters of that race (or who quested in that zone) that reached it,
+ * the fastest by play time first, with its quests in order. Without anyone reaching it, the furthest one is shown.
+ */
+export async function levelingRoute(db: Db, q: LevelingQuery) {
+  const query = JSON.stringify(q);
+  const gaps: string[] = [];
+  const toLevel = q.toLevel;
+  // Personal: start where the asker is and skip what they've done.
+  let forCharacter: { name: string; level: number | null; questsAlreadyDone: number } | null = null;
+  let done = new Set<number>();
+  let fromLevel = q.fromLevel ?? 1;
+  if (q.forCharacter) {
+    const [me] = await findCharacters(db, q.forCharacter);
+    if (!me)
+      gaps.push(
+        `the ledger has no character named "${q.forCharacter}": the guide is not personalized`,
+      );
+    else {
+      const mine = await rows<{ quest_id: number }>(
+        db,
+        sql`select distinct quest_id from turn_ins where char = ${me.key}`,
+      );
+      done = new Set(mine.map((m) => m.quest_id));
+      if (q.fromLevel === undefined && me.level && me.level < toLevel) fromLevel = me.level;
+      forCharacter = { name: me.name, level: me.level, questsAlreadyDone: 0 };
+    }
+  }
+  const race = raceToken(q.start);
+  const zones = race ? (START_ZONES[race] ?? []) : q.start ? [q.start.trim()] : [];
+
+  type Who = {
+    key: string;
+    name: string;
+    race: string | null;
+    class: string | null;
+    level: number | null;
+  };
+  let who: Who[];
+  if (q.character) {
+    who = (await findCharacters(db, q.character)).slice(0, 1);
+    if (who.length === 0) gaps.push(`the ledger has no character named "${q.character}"`);
+  } else {
+    who = await rows<Who>(
+      db,
+      sql`select c.key, c.name, c.race, c.class, c.level from characters c
+           where exists (select 1 from turn_ins t where t.char = c.key)
+             and (${race}::text is null or c.race = ${race})
+             and (${race}::text is not null or ${zones.length === 0}
+                  or exists (select 1 from turn_ins t join quests qq on qq.quest_id = t.quest_id
+                              where t.char = c.key and qq.category ilike ${containsPattern(zones[0] ?? '')} escape '\\'))
+           order by c.level desc nulls last limit 50`,
+    );
+  }
+  if (who.length === 0 && !q.character) {
+    gaps.push(
+      race
+        ? `none of our players' ${q.start} characters has turned in a quest yet`
+        : `no character of ours turned in quests${zones.length > 0 ? ` in ${zones[0]}` : ''}`,
+    );
+  }
+
+  const progress = await Promise.all(who.map((c) => progressOf(db, c, fromLevel, toLevel)));
+  // Got there first; among those, the least play time; otherwise the furthest along.
+  progress.sort(
+    (a, b) =>
+      Number(b.reached !== null) - Number(a.reached !== null) ||
+      (a.reached && b.reached
+        ? (a.activeMinutes ?? 0) - (b.activeMinutes ?? 0)
+        : (b.level ?? 0) - (a.level ?? 0)),
+  );
+  const best = progress.find((p) => p.start !== null) ?? null;
+
+  let route = null;
+  if (best?.start) {
+    const events = await guideEvents(db, best.key, best.start, best.reached);
+    const guide = buildGuide(events, done);
+    if (forCharacter) {
+      const runQuests = new Set(events.filter((e) => e.kind === 'turn_in').map((e) => e.questId));
+      forCharacter.questsAlreadyDone = [...runQuests].filter((x) => done.has(x)).length;
+    }
+    if (!best.reached)
+      gaps.push(
+        `no character of ours has reached ${toLevel} this way yet: this is the furthest one`,
+      );
+    if (guide.length > ROUTE_STEPS_MAX)
+      gaps.push(`guide cut to its first ${ROUTE_STEPS_MAX} of ${guide.length} steps`);
+    if (events.some((e) => e.kind === 'turn_in' && !e.npc))
+      gaps.push('some turn-ins have no NPC or position recorded (older addon versions)');
+    const points = (await levelPoints(db, best.key)).filter(
+      (p) => p.at >= best.start! && (!best.reached || p.at <= best.reached),
+    );
+    const levelUps: { level: number; at: string; minutesIn: number }[] = [];
+    for (const p of points) {
+      if (levelUps.some((l) => l.level >= p.level)) continue;
+      levelUps.push({
+        level: p.level,
+        at: chicagoIso(p.at),
+        minutesIn: activeMinutes(points.filter((x) => x.at <= p.at).map((x) => x.at)),
+      });
+    }
+    route = {
+      ...progressView(best, toLevel),
+      levelUps,
+      guide: guide.slice(0, ROUTE_STEPS_MAX),
+    };
+  }
+  const zoneList = zones.length > 0 ? await zoneQuests(db, zones) : [];
+  gaps.push("where objectives are done isn't recorded (only pickups and turn-ins have positions)");
+  gaps.push(
+    'routes are what our players did, from their quest turn-ins: kill XP is not recorded, and play time includes the grinding between quests (an estimate: only quest events are timed, and pauses over an hour between them are left out)',
+  );
+  return {
+    query,
+    race,
+    zones,
+    fromLevel,
+    toLevel,
+    forCharacter,
+    route,
+    otherCharacters: progress
+      .filter((p) => p.key !== best?.key)
+      .slice(0, OTHERS_MAX)
+      .map((p) => progressView(p, toLevel)),
+    zoneQuests: zoneList,
+    gaps,
+  };
+}

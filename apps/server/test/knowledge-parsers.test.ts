@@ -79,7 +79,7 @@ describe('wowhead parser', () => {
       },
     ]);
     expect(r.problems).toEqual(['listview broken: data is not JSON']);
-    expect(r.parser).toBe('wowhead@3');
+    expect(r.parser).toBe('wowhead@4');
     expect(r.title).toBe('Big-mouth Clam - Item - World of Warcraft Forever');
     expect(r.pageUpdatedAt).toEqual(new Date('2026-10-01T12:00:00Z'));
   });
@@ -191,6 +191,22 @@ describe('wowhead parser on awkward pages', () => {
       ['dropped_by', { id: 1, type: 'npc', name: 'Old' }],
       ['sold_by', { id: 2, type: 'npc', name: 'New' }],
     ]);
+  });
+
+  it("keeps a created-by spell's profession (Wowhead writes it as an array)", () => {
+    const r = parseSnapshot(
+      page(
+        `new Listview({template: 'spell', id: 'created-by-spell', data: [{"id":3914,"name":"Brown Linen Pants","skill":[197],"reqlevel":1}]});`,
+      ),
+      ITEM_URL,
+    );
+    expect(r.claims.find((c) => c.attribute === 'created_by_spell')?.value).toEqual({
+      id: 3914,
+      type: 'spell',
+      name: 'Brown Linen Pants',
+      reqLevel: 1,
+      skills: [197],
+    });
   });
 
   it('ignores markers inside strings and comments, and reports Listviews without an id', () => {
