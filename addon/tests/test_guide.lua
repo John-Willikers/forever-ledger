@@ -1,8 +1,5 @@
 -- The guide viewer (GuideViewer.lua): guides the tray wrote into ForeverLedgerGuidesData, shown a step at a time and
 -- moved on as quests are accepted, finished and turned in.
-local ADDON = "../ForeverLedger/ForeverLedger.lua"
-local VIEWER = "../ForeverLedger/GuideViewer.lua"
-
 local RUDE, MINDLESS, DAMNED = 363, 364, 376
 local ME = "Thibodeaux Willikers-Bayou"
 
@@ -24,33 +21,97 @@ local function guide(id, char, title)
   }
 end
 
--- A Forever character with a surname, its quest log state in `q` (onQuest / done / ready / objectives).
+local ADDON = "../ForeverLedger/ForeverLedger.lua"
+local GUIDE_FILES = { "../ForeverLedger/GuideViewer.lua", "../ForeverLedger/GuideWatches.lua",
+                      "../ForeverLedger/GuideArrow.lua", "../ForeverLedger/GuideTracker.lua" }
+
+-- A fake retail 11.x tracker, shaped like Blizzard_ObjectiveTracker (probe 0.5.0 on build 70245).
+local function installTracker(c)
+  local t = { dirty = 0, blocks = {} }
+  t.container = { RemoveModule = function(_, m) t.removed = m end }
+  c.env.ObjectiveTrackerFrame = t.container
+  c.env.ObjectiveTrackerModuleMixin = {
+    SetHeader = function(self, text) self.header = text end,
+    MarkDirty = function() t.dirty = t.dirty + 1 end,
+    GetBlock = function(_, id)
+      if t.failBlock then error("GetBlock broke") end
+      local b = { id = id, lines = {} }
+      function b:SetHeader(text) self.header = text end
+      function b:AddObjective(_, text) self.lines[#self.lines + 1] = text end
+      t.blocks[#t.blocks + 1] = b
+      return b
+    end,
+    LayoutBlock = function(_, b) t.laidOut = b; return true end,
+  }
+  c.env.ObjectiveTrackerManager = {
+    SetModuleContainer = function(_, m, container) t.module, t.attachedTo = m, container end,
+    GetContainerForModule = function(_, m) return m == t.module and t.attachedTo or nil end,
+  }
+  -- What Blizzard's next tracker update draws for our module.
+  function t.draw()
+    t.laidOut = nil
+    t.module:LayoutContents()
+    return t.laidOut
+  end
+  return t
+end
+
+-- A Forever character with a surname, its quest log state in `q` (onQuest / done / ready / objectives / watches).
 local function viewer(H, opts)
   opts = opts or {}
   local c = H.new({ rejectTemplates = opts.rejectTemplates or {} })
   c.world.player.surname = "Willikers"
-  local q = { onQuest = {}, done = opts.done or {}, ready = {}, objectives = {}, pins = {} }
+  local q = { onQuest = opts.onQuest or {}, done = opts.done or {}, ready = {}, objectives = {}, pins = {},
+              watches = opts.watches or {}, calls = {} }
   c.q = q
+  local function watchIndex(id)
+    for i, w in ipairs(q.watches) do
+      if w == id then return i end
+    end
+  end
   c.env.C_QuestLog = {
     IsQuestFlaggedCompleted = function(id) return q.done[id] == true end,
     IsOnQuest = function(id) return q.onQuest[id] == true end,
     ReadyForTurnIn = function(id) return q.ready[id] == true end,
     IsComplete = function() return false end,
     GetQuestObjectives = function(id) return q.objectives[id] or {} end,
+    GetNumQuestWatches = function() return #q.watches end,
+    GetQuestIDForQuestWatchIndex = function(i) return q.watches[i] end,
+    GetQuestWatchType = function(id) return watchIndex(id) and 1 or nil end,
+    AddQuestWatch = function(id)
+      q.calls[#q.calls + 1] = "add " .. id
+      if not watchIndex(id) then q.watches[#q.watches + 1] = id end
+      return true
+    end,
+    RemoveQuestWatch = function(id)
+      q.calls[#q.calls + 1] = "remove " .. id
+      local i = watchIndex(id)
+      if i then table.remove(q.watches, i) end
+      return true
+    end,
   }
   c.env.C_Map = {
     CanSetUserWaypointOnMap = function() return true end,
     SetUserWaypoint = function(p) q.pins[#q.pins + 1] = p end,
   }
   c.env.UiMapPoint = { CreateFromCoordinates = function(m, x, y) return { map = m, x = x, y = y } end }
-  c.env.C_SuperTrack = { SetSuperTrackedUserWaypoint = function(v) q.tracked = v end }
+  c.env.C_SuperTrack = { SetSuperTrackedUserWaypoint = function(v) q.tracked = v end,
+                         SetSuperTrackedQuestID = function(id) q.super = id end }
   c.env.ForeverLedgerGuidesData = { version = 1, written = 1, guides = opts.guides or { guide(7, ME) } }
   c.env.ForeverLedgerGuideState = opts.state
+  if opts.tracker then c.tracker = installTracker(c) end
   c.load(ADDON)
-  c.load(VIEWER)
+  for _, f in ipairs(GUIDE_FILES) do c.load(f) end
   c.login("ForeverLedger")
   c.advance(4)
   return c
+end
+
+local function sortedWatches(c) -- luacheck: ignore 211 (the watch tests use it)
+  local w = {}
+  for i, id in ipairs(c.q.watches) do w[i] = id end
+  table.sort(w)
+  return table.concat(w, ",")
 end
 
 local function body(c) return c.env.ForeverLedgerGuideFrame.body.text or "" end
