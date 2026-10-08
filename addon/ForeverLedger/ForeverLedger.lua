@@ -2829,7 +2829,8 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     say("/fl scanlog  -  read rewards for quests already in your log")
     say("/fl done  -  close the current dungeon timer by hand")
     say("/fl nudge off|on  -  reminders to /reload after bosses, runs and turn-ins")
-    say("/fl guide  -  show the leveling guide sent to this character (list, use N, next, back, pin, hide)")
+    say("/fl guide  -  show the leveling guide sent to this character (list, use N, next, back, pin, hide, "
+      .. "tracker on/off)")
     say("/fl reset confirm  -  wipe everything")
     say("Type /reload after each dungeon so the data hits disk.")
   end

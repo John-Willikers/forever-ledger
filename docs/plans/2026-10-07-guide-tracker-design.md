@@ -41,8 +41,15 @@ Every step change (Next / Back, `QUEST_ACCEPTED`, `QUEST_TURNED_IN`, throttled `
 - In combat `G.sync()` only records that a sync is owed; `PLAYER_REGEN_ENABLED` runs it. Watch, super-track and
   `MarkDirty` calls happen out of combat only.
 - `LayoutContents` touches only our block and lines (never item buttons, other modules or Blizzard tables) and is
-  wrapped in `pcall` (an error shows as a grey line).
-- `ADDON_ACTION_BLOCKED` naming ForeverLedger: stop redrawing the module in combat for the session, one chat line.
+  wrapped in `pcall`: an error is printed once in chat.
+- `ADDON_ACTION_BLOCKED` naming ForeverLedger: the guide moves to its own window at once and the module is taken out
+  of the tracker (after combat), with one chat line. Our `AddModule` leaves the tracker's tables tainted, so quest
+  items may stay blocked until a `/reload`; the line says so. The block is remembered per client build
+  (`ForeverLedgerGuideState.trackerBlocked`): later sessions on that build use the window, a new build tries again.
+- `/fl guide tracker off` keeps the window for good (`trackerOff`; the module is taken out once out of combat);
+  `/fl guide tracker on` clears both flags and asks for a `/reload` (it never re-attaches live).
+- The manager's `Init` runs after `PLAYER_ENTERING_WORLD`; until then attaching waits (window meanwhile) and the next
+  sync retries.
 - The arrow is our own frame and reads only positions, so it keeps working in combat.
 
 ## Testing
@@ -55,4 +62,4 @@ arrival), fallbacks (no manager, `LayoutContents` error). Existing guide tests k
 ## Release
 
 Addon 0.6.1 → **0.7.0**; `ForeverLedgerDB` shape unchanged (no schema bump), `ForeverLedgerGuideState` gains
-`savedWatches` and `arrowPoint`. In-game check by Harlan before `addon-cli publish 0.7.0`.
+`savedWatches`, `arrowPoint`, `trackerBlocked` and `trackerOff`. In-game check by Harlan before `addon-cli publish 0.7.0`.

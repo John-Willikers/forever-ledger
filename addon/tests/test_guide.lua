@@ -26,27 +26,35 @@ local GUIDE_FILES = { "../ForeverLedger/GuideViewer.lua", "../ForeverLedger/Guid
                       "../ForeverLedger/GuideArrow.lua", "../ForeverLedger/GuideTracker.lua" }
 
 -- A fake retail 11.x tracker, shaped like Blizzard_ObjectiveTracker (probe 0.5.0 on build 70245).
-local function installTracker(c)
-  local t = { dirty = 0, blocks = {} }
+-- `notReady`: the manager hasn't run Init yet (before PLAYER_ENTERING_WORLD), so SetModuleContainer does nothing.
+local function installTracker(c, notReady)
+  local t = { dirty = 0, blocks = {}, setCalls = 0 }
   t.container = { RemoveModule = function(_, m) t.removed = m end }
   c.env.ObjectiveTrackerFrame = t.container
+  c.env.OBJECTIVE_DASH_STYLE_HIDE = 2
   c.env.ObjectiveTrackerModuleMixin = {
     SetHeader = function(self, text) self.header = text end,
     MarkDirty = function() t.dirty = t.dirty + 1 end,
     GetBlock = function(_, id)
       if t.failBlock then error("GetBlock broke") end
-      local b = { id = id, lines = {} }
+      local b = { id = id, lines = {}, full = {}, dash = {} }
       function b:SetHeader(text) self.header = text end
-      function b:AddObjective(_, text) self.lines[#self.lines + 1] = text end
+      function b:AddObjective(_, text, _, useFullHeight, dashStyle)
+        local n = #self.lines + 1
+        self.lines[n], self.full[n], self.dash[n] = text, useFullHeight, dashStyle
+      end
       t.blocks[#t.blocks + 1] = b
       return b
     end,
     LayoutBlock = function(_, b) t.laidOut = b; return true end,
   }
-  c.env.ObjectiveTrackerManager = {
-    SetModuleContainer = function(_, m, container) t.module, t.attachedTo = m, container end,
-    GetContainerForModule = function(_, m) return m == t.module and t.attachedTo or nil end,
-  }
+  t.manager = { containers = notReady and {} or { [t.container] = true } }
+  c.env.ObjectiveTrackerManager = t.manager
+  t.manager.SetModuleContainer = function(self, m, container)
+    t.setCalls = t.setCalls + 1
+    if self.containers[container] then t.module, t.attachedTo = m, container end
+  end
+  t.manager.GetContainerForModule = function(_, m) return m == t.module and t.attachedTo or nil end
   -- What Blizzard's next tracker update draws for our module.
   function t.draw()
     t.laidOut = nil
@@ -59,7 +67,7 @@ end
 -- A Forever character with a surname, its quest log state in `q` (onQuest / done / ready / objectives / watches).
 local function viewer(H, opts)
   opts = opts or {}
-  local c = H.new({ rejectTemplates = opts.rejectTemplates or {} })
+  local c = H.new({ rejectTemplates = opts.rejectTemplates or {}, buildInfo = opts.buildInfo })
   c.world.player.surname = "Willikers"
   local q = { onQuest = opts.onQuest or {}, done = opts.done or {}, ready = {}, objectives = {}, pins = {},
               watches = opts.watches or {}, calls = {}, types = {}, super = opts.super }
@@ -103,7 +111,7 @@ local function viewer(H, opts)
                          GetSuperTrackedQuestID = function() return q.super end }
   c.env.ForeverLedgerGuidesData = { version = 1, written = 1, guides = opts.guides or { guide(7, ME) } }
   c.env.ForeverLedgerGuideState = opts.state
-  if opts.tracker then c.tracker = installTracker(c) end
+  if opts.tracker then c.tracker = installTracker(c, opts.trackerNotReady) end
   c.load(ADDON)
   for _, f in ipairs(GUIDE_FILES) do c.load(f) end
   c.login("ForeverLedger")
@@ -529,7 +537,8 @@ return function(H)
     local c = viewer(H, { tracker = true })
     local t = c.tracker
     H.eq(t.attachedTo, c.env.ObjectiveTrackerFrame)
-    H.eq(t.module.uiOrder, 0, "above Blizzard's modules")
+    H.eq(t.module.uiOrder, 2.5, "after Scenario and widgets, above Campaign and Quests")
+    H.eq(type(rawget(t.module, "usedBlocks")), "table", "what the mixin's OnLoad sets up")
     H.eq(t.module.header, "Guide")
     H.eq(c.env.ForeverLedgerGuideFrame, nil, "no window")
     H.ok(t.dirty > 0, "asked the tracker to redraw")
@@ -537,6 +546,8 @@ return function(H)
     H.eq(b.header, "Undead 1-4 (Rot's run)")
     H.ok(b.lines[1]:find("Accept from Undertaker Mordo", 1, true), b.lines[1])
     H.ok(b.lines[#b.lines]:find("Step 1 of 5", 1, true), b.lines[#b.lines])
+    H.eq(b.full[1], true, "body lines aren't cut at two lines")
+    H.eq(b.dash[#b.lines], c.env.OBJECTIVE_DASH_STYLE_HIDE, "no dash on the counter")
   end)
 
   H.test("guide tracker: the header menu moves steps and hides; without a menu, left is Next and right Back", function()
@@ -565,7 +576,45 @@ return function(H)
     H.ok(printed(c, "moves to its own window"), "says so")
     H.eq(c.tracker.removed, c.tracker.module, "module taken out of the tracker")
     H.ok(body(c):find("Accept from Undertaker Mordo", 1, true), "window shows the step")
+    H.ok(printed(c, "/reload"), "says quest items may need a reload")
+    H.eq(c.env.ForeverLedgerGuideState.trackerBlocked, "61582", "remembered for this build")
     c.fire("ADDON_ACTION_BLOCKED", "SomeOtherAddon", "x")
+  end)
+
+  H.test("guide tracker: a block is remembered for the build; a new build tries the tracker again", function()
+    local c = viewer(H, { tracker = true, state = { trackerBlocked = "61582" } })
+    H.eq(c.tracker.setCalls, 0, "never put in the tracker")
+    H.ok(body(c):find("Accept from Undertaker Mordo", 1, true), "window")
+    local d = viewer(H, { tracker = true, state = { trackerBlocked = "61000" } })
+    H.eq(d.tracker.attachedTo, d.env.ObjectiveTrackerFrame, "new build: in the tracker")
+    H.eq(d.env.ForeverLedgerGuideFrame, nil, "no window")
+  end)
+
+  H.test("guide tracker: /fl guide tracker off uses the window and is kept; on clears it for a reload", function()
+    local c = viewer(H, { tracker = true })
+    c.slash("FOREVERLEDGER", "guide tracker off")
+    H.eq(c.tracker.removed, c.tracker.module, "module taken out")
+    H.ok(body(c):find("Accept from Undertaker Mordo", 1, true), "window")
+    H.eq(c.env.ForeverLedgerGuideState.trackerOff, true)
+    local d = viewer(H, { tracker = true, state = { trackerOff = true } })
+    H.eq(d.tracker.setCalls, 0, "off stays off after a reload")
+    d.env.ForeverLedgerGuideState.trackerBlocked = "61582"
+    d.slash("FOREVERLEDGER", "guide tracker on")
+    H.eq(d.env.ForeverLedgerGuideState.trackerOff, nil)
+    H.eq(d.env.ForeverLedgerGuideState.trackerBlocked, nil)
+    H.ok(printed(d, "/reload to put the guide back in the quest tracker"), "says to reload")
+    H.eq(d.tracker.setCalls, 0, "not put back live")
+  end)
+
+  H.test("guide tracker: before the tracker is set up the window shows; the next sync moves the guide in", function()
+    local c = viewer(H, { tracker = true, trackerNotReady = true })
+    H.eq(c.tracker.setCalls, 0, "waits for the tracker")
+    H.eq(c.env.ForeverLedgerGuideTracker, nil, "no module frame yet")
+    H.ok(body(c):find("Accept from Undertaker Mordo", 1, true), "window meanwhile")
+    c.tracker.manager.containers[c.tracker.container] = true
+    c.slash("FOREVERLEDGER", "guide next")
+    H.eq(c.tracker.attachedTo, c.env.ObjectiveTrackerFrame, "in the tracker")
+    H.eq(c.env.ForeverLedgerGuideFrame.shown, false, "window hidden")
   end)
 
   H.test("guide tracker: a broken template or a layout error falls back or is contained", function()

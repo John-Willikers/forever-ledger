@@ -2,7 +2,7 @@
 -- (ForeverLedgerGuidesData), one step at a time, like Zygor. It only reads the quest log and shows text; the arrow
 -- points to the step's spot; `/fl guide pin` still sets a map pin. Your place in each guide is kept per character in
 -- ForeverLedgerGuideState.
--- /fl guide  show | hide | list | use N | next | back | pin | reset
+-- /fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off
 
 local G = {}
 ForeverLedgerGuide = G
@@ -434,6 +434,19 @@ function G.slash(rest)
   if cmd == "next" then G.go(1); return G.show() end
   if cmd == "back" then G.go(-1); return G.show() end
   if cmd == "pin" then return G.pin() end
+  if cmd == "tracker" then
+    local s = state()
+    if arg == "off" then
+      s.trackerOff = true
+      say("the guide uses its own window. /fl guide tracker on puts it back in the quest tracker.")
+      return G.sync()
+    end
+    if arg == "on" then
+      s.trackerOff, s.trackerBlocked = nil, nil
+      return say("/reload to put the guide back in the quest tracker.")
+    end
+    return say("/fl guide tracker on | off")
+  end
   local mine = G.myGuides()
   if cmd == "list" then
     if #mine == 0 then return say("no guides for this character yet.") end
@@ -456,7 +469,7 @@ function G.slash(rest)
     G.advance(true)
     return G.show()
   end
-  say("/fl guide  show | hide | list | use N | next | back | pin | reset")
+  say("/fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off")
 end
 
 ---------------------------------------------------------------- events
