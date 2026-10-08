@@ -38,4 +38,5 @@ export { addManualClaim, ManualClaimError } from './knowledge/manual.js';
 export type { ManualClaim } from './knowledge/manual.js';
 export { importSeed } from './knowledge/seed.js';
 export { gearUpgrades, lookupCharacter } from './knowledge/upgrades.js';
+export { levelingRoute } from './knowledge/leveling.js';
 export { withWowheadLinks, wowheadUrl } from './knowledge/links.js';

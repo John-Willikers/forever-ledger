@@ -10,7 +10,7 @@ import type { ClaimDraft, CommentDraft, ParseResult } from './types.js';
  * is evaluated. Written before the first real Forever page was fetched: check it against `fixtures/real/web/` and bump
  * the version when the output changes.
  */
-export const WOWHEAD_PARSER = 'wowhead@3';
+export const WOWHEAD_PARSER = 'wowhead@4';
 
 /**
  * Loot and fishing lists (who drops it, where it is fished, what a container holds) are not client data: Wowhead
@@ -18,7 +18,8 @@ export const WOWHEAD_PARSER = 'wowhead@3';
  * catches in Azshara: checked on item 7973, 2026-10-06), so those claims are CLASSIC. Names are datamined from the
  * client and keep the source's label. v2: this label, `count: -1` (unknown) dropped, ISO comment dates. v3: quest and
  * NPC facts from `$.extend(g_quests[id], {...})` / `g_npcs`, an NPC's drops also claimed on each item (`dropped_by`,
- * so NPC pages stand in for item pages), media tabs (screenshots, videos) skipped.
+ * so NPC pages stand in for item pages), media tabs (screenshots, videos) skipped. v4: a spell row's profession
+ * (`skill: [197]`, an array, so it used to be dropped) is kept as `skills`: `created_by_spell` names the profession.
  */
 /** Listviews that are page media, not facts. */
 const MEDIA_LISTS = new Set(['screenshots', 'videos', 'videos-english', 'see-also']);
@@ -200,6 +201,11 @@ function rowValue(row: Record<string, unknown>, template: string | undefined) {
   ] as const) {
     const n = int(row[from]);
     if (n !== undefined && !(n < 0 && (from === 'count' || from === 'outof'))) v[to] = n;
+  }
+  // Spell rows name their profession as an array of skill lines (`skill: [197]` is Tailoring).
+  if (Array.isArray(row.skill)) {
+    const skills = row.skill.filter((x) => int(x) !== undefined);
+    if (skills.length > 0) v.skills = skills;
   }
   if (Array.isArray(row.location)) v.zones = row.location.filter((z) => int(z) !== undefined);
   if (typeof row.percent === 'number') v.percent = row.percent;

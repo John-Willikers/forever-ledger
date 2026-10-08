@@ -2,6 +2,7 @@
 // is what our uploads saw (class, race, level, professions, gear from addon 0.5.0 / schema 8). Upgrades compare each
 // worn item with the items the ledger has stats for, scored for a role by contracts' gear weights: an estimate
 // (Forever has no spec data), and every answer says so. Each suggestion says where to get it, from our own data first.
+// Crafted items need the profession: ones the character can't make are left out unless asked for.
 import {
   canEquip,
   CLASS_ROLES,
@@ -27,6 +28,18 @@ export const PER_SLOT = 3;
 const MIN_GAIN = 1;
 
 const CLASS_TOKENS = new Set(Object.keys(CLASS_ROLES));
+
+/** Classic profession skill lines, to name a profession no character in the ledger has. */
+const PROFESSION_NAMES: Record<number, string> = {
+  129: 'First Aid',
+  164: 'Blacksmithing',
+  165: 'Leatherworking',
+  171: 'Alchemy',
+  185: 'Cooking',
+  197: 'Tailoring',
+  202: 'Engineering',
+  333: 'Enchanting',
+};
 
 interface CharacterRow {
   key: string;
@@ -231,12 +244,98 @@ async function sourcesOf(db: Db, itemId: number) {
   };
 }
 
+interface Crafted {
+  /** Skill lines of the professions that make it; empty when a spell makes it but its profession is unknown. */
+  skillLineIds: number[];
+  recipeIds: number[];
+}
+
+/**
+ * Which of these items a profession makes: from recipes our players scanned (the recipe's output), then from Wowhead's
+ * "created by" spells, named through our recipes (a recipe id is its spell id) or the row's own skill line.
+ */
+async function craftedItems(db: Db, itemIds: number[]): Promise<Map<number, Crafted>> {
+  const out = new Map<number, Crafted>();
+  if (itemIds.length === 0) return out;
+  const ids = sql.join(
+    itemIds.map((i) => sql`${i}`),
+    sql`, `,
+  );
+  const found = await rows<{
+    item_id: number;
+    recipe_id: number | null;
+    skill_line_id: number | null;
+  }>(
+    db,
+    sql`select s.output_item_id as item_id, r.recipe_id, r.skill_line_id
+          from recipe_snapshots s join recipes r on r.recipe_id = s.recipe_id
+         where s.output_item_id in (${ids})
+        union
+        select c.entity_id, sp.id, coalesce(r.skill_line_id, sp.skill)
+          from claims c
+          cross join lateral (select case when jsonb_typeof(c.value->'id') = 'number' then (c.value->>'id')::int end as id,
+                                     case when jsonb_typeof(c.value->'skills'->0) = 'number'
+                                          then (c.value->'skills'->>0)::int end as skill) sp
+          left join recipes r on r.recipe_id = sp.id
+         where c.entity_type = 'item' and c.attribute = 'created_by_spell' and c.label <> 'FALSE'
+           and c.entity_id in (${ids})`,
+  );
+  for (const f of found) {
+    const e = out.get(f.item_id) ?? { skillLineIds: [], recipeIds: [] };
+    if (f.skill_line_id !== null && !e.skillLineIds.includes(f.skill_line_id))
+      e.skillLineIds.push(f.skill_line_id);
+    if (f.recipe_id !== null && !e.recipeIds.includes(f.recipe_id)) e.recipeIds.push(f.recipe_id);
+    out.set(f.item_id, e);
+  }
+  return out;
+}
+
+/** A character's professions (skill line → name) and the recipes they know. */
+async function craftingOf(db: Db, key: string) {
+  const skills = await rows<{ skill_line_id: number; name: string }>(
+    db,
+    sql`select skill_line_id, name from skills where char = ${key} order by rank desc, name`,
+  );
+  const known = await rows<{ recipe_id: number }>(
+    db,
+    sql`select recipe_id from recipes_learned where char = ${key}
+        union select recipe_id from recipe_status where char = ${key} and learned`,
+  );
+  return {
+    skills: new Map(skills.map((x) => [x.skill_line_id, x.name])),
+    recipes: new Set(known.map((x) => x.recipe_id)),
+  };
+}
+
+/** Names for skill lines: what our characters' skills call them, else the Classic name. */
+async function professionNames(db: Db, skillLineIds: number[]) {
+  const names = new Map<number, string>();
+  if (skillLineIds.length === 0) return names;
+  const found = await rows<{ skill_line_id: number; name: string }>(
+    db,
+    sql`select distinct on (skill_line_id) skill_line_id, name from skills
+         where skill_line_id in (${sql.join(
+           skillLineIds.map((i) => sql`${i}`),
+           sql`, `,
+         )}) order by skill_line_id, last_seen desc`,
+  );
+  for (const id of skillLineIds) names.set(id, PROFESSION_NAMES[id] ?? `skill line ${id}`);
+  for (const f of found) names.set(f.skill_line_id, f.name);
+  return names;
+}
+
 /**
  * Upgrades for a character: per slot, the best items the ledger knows that the class can wear at (or soon after)
  * its level and that score higher for the role than what's worn. Without recorded gear every slot counts as empty,
- * so the answer is "the best items we know for that slot".
+ * so the answer is "the best items we know for that slot". Crafted items need one of the character's professions;
+ * with `includeCrafted` the others are listed too, marked as made by someone else.
  */
-export async function gearUpgrades(db: Db, ref: string, askedRole?: Role) {
+export async function gearUpgrades(
+  db: Db,
+  ref: string,
+  askedRole?: Role,
+  opts: { includeCrafted?: boolean } = {},
+) {
   const r = await resolveCharacter(db, ref);
   if (!r.character) return { query: ref, character: null, matches: r.matches, gaps: r.gaps };
   const c = r.character;
@@ -337,6 +436,39 @@ export async function gearUpgrades(db: Db, ref: string, askedRole?: Role) {
     bySlot.set(target.slot, list);
   }
 
+  // Crafted upgrades: kept when the character has the profession (or crafted ones were asked for), else counted.
+  const crafted = await craftedItems(
+    db,
+    [...bySlot.values()].flat().map((p) => p.item.item_id),
+  );
+  const crafting = await craftingOf(db, c.key);
+  const names = await professionNames(db, [
+    ...new Set([...crafted.values()].flatMap((x) => x.skillLineIds)),
+  ]);
+  const hidden = new Map<string, number>();
+  const craftedView = (x: Crafted) => {
+    const own = x.skillLineIds.filter((id) => crafting.skills.has(id));
+    return {
+      professions: x.skillLineIds.map((id) => names.get(id)!),
+      byCharacter: own.length > 0,
+      knowsRecipe: x.recipeIds.some((id) => crafting.recipes.has(id)),
+    };
+  };
+  for (const [slot, list] of bySlot) {
+    bySlot.set(
+      slot,
+      list.filter((p) => {
+        const x = crafted.get(p.item.item_id);
+        if (!x || opts.includeCrafted || x.skillLineIds.some((id) => crafting.skills.has(id)))
+          return true;
+        const why =
+          x.skillLineIds.map((id) => names.get(id)!).join(' or ') || 'an unknown profession';
+        hidden.set(why, (hidden.get(why) ?? 0) + 1);
+        return false;
+      }),
+    );
+  }
+
   const slots = [];
   for (const slot of Object.keys(SLOT_NAMES).map(Number)) {
     if (slot === 4 || slot === 19) continue; // shirt and tabard carry no stats worth comparing
@@ -358,10 +490,25 @@ export async function gearUpgrades(db: Db, ref: string, askedRole?: Role) {
           soon: p.soon,
           score: p.score,
           gain: p.gain,
+          crafted: crafted.has(p.item.item_id) ? craftedView(crafted.get(p.item.item_id)!) : null,
           ...(await sourcesOf(db, p.item.item_id)),
         })),
       ),
     });
+  }
+  if (hidden.size > 0) {
+    const total = [...hidden.values()].reduce((a, b) => a + b, 0);
+    // Forever lists each profession twice (a base line and a "Classic" child line): name it once.
+    const own = [...new Set(crafting.skills.values())];
+    gaps.push(
+      `left out ${total} crafted upgrade${total === 1 ? '' : 's'} ${c.name} can't make (${[
+        ...hidden,
+      ]
+        .map(([p, n]) => `${p}: ${n}`)
+        .join(
+          ', ',
+        )}; their professions: ${own.length > 0 ? own.join(', ') : 'none recorded'}); ask with crafted items included to see them, made by another player`,
+    );
   }
   if (slots.every((s) => s.upgrades.length === 0)) {
     gaps.push('no upgrades among the items the ledger has stats for');
@@ -378,6 +525,7 @@ export async function gearUpgrades(db: Db, ref: string, askedRole?: Role) {
       note: 'scores are stats weighted by a Classic-era rule of thumb for the role: an estimate, Forever has no spec data',
     },
     gear: gear && { build: gear.build, seenAt: gear.seenAt },
+    professions: [...new Set(crafting.skills.values())],
     slots,
     otherMatches: r.others.map(characterView),
     gaps,

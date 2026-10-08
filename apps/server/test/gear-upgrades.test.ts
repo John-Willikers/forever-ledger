@@ -143,4 +143,72 @@ describe('character gear and upgrades (real Postgres)', () => {
       'Swamp Hatchet',
     );
   });
+
+  it("leaves out crafted items from professions the character doesn't have, unless asked", async () => {
+    await q(`insert into characters (key, name, realm, class, level) values
+      ('Stitch Less-Bayou', 'Stitch Less', 'Bayou', 'HUNTER', 20)`);
+    await q(`insert into skills (char, skill_line_id, name, rank, max_rank, last_seen) values
+      ('Stitch Less-Bayou', 165, 'Leatherworking', 90, 150, now()),
+      ('Stitch Less-Bayou', 2880, 'Leatherworking', 90, 150, now())`); // Forever's "Classic" child line
+    await q(`insert into items (item_id, name, quality, type, subtype, equip_loc) values
+      (90010, 'Bayou Leather Vest', 2, 'Armor', 'Leather', 'INVTYPE_CHEST'),
+      (90011, 'Swampweave Gloves', 2, 'Armor', 'Cloth', 'INVTYPE_HAND'),
+      (90012, 'Odd Bracers', 2, 'Armor', 'Leather', 'INVTYPE_WRIST'),
+      (90013, 'Dropped Gloves', 2, 'Armor', 'Leather', 'INVTYPE_HAND')`);
+    await q(`insert into item_snapshots (item_id, build, req_level, ilvl, stats, tooltip) values
+      (90010, 61582, 18, 22, '{"ITEM_MOD_AGILITY_SHORT": 30}', '[]'),
+      (90011, 61582, 18, 22, '{"ITEM_MOD_AGILITY_SHORT": 30}', '[]'),
+      (90012, 61582, 18, 22, '{"ITEM_MOD_AGILITY_SHORT": 30}', '[]'),
+      (90013, 61582, 18, 22, '{"ITEM_MOD_AGILITY_SHORT": 3}', '[]')`);
+    // Leatherworking makes the vest (a recipe our players scanned, learned by Stitch); Wowhead says a Tailoring spell
+    // makes the gloves and some spell of no known profession makes the bracers.
+    await q(
+      `insert into recipes (recipe_id, name, skill_line_id) values (92010, 'Bayou Leather Vest', 165)`,
+    );
+    await q(`insert into recipe_snapshots (recipe_id, build, output_item_id, reagents)
+             values (92010, 61582, 90010, '[]')`);
+    await q(`insert into recipes_learned (char, recipe_id, build, learned_at, via)
+             values ('Stitch Less-Bayou', 92010, 61582, now(), 'trainer')`);
+    const [src] = await q(
+      `insert into sources (key, kind, url, site, tier, game_version)
+       values ('wowhead:crafted-test', 'web', 'https://www.wowhead.com/forever/item=90011', 'wowhead.com', 2, 'forever')
+       returning id`,
+    );
+    await q(
+      `insert into claims (source_id, entity_type, entity_key, entity_id, attribute, value, value_hash, label, parser)
+       values ($1, 'item', '90011', 90011, 'created_by_spell', '{"id":93011,"type":"spell","skills":[197]}', 'c1', 'UNVERIFIED', 'wowhead@4'),
+              ($1, 'item', '90012', 90012, 'created_by_spell', '{"id":93012,"type":"spell"}', 'c2', 'UNVERIFIED', 'wowhead@4')`,
+      [src.id],
+    );
+
+    const a = await gearUpgrades(s.database.db, 'Stitch Less', 'ranged');
+    if (!('slots' in a) || !a.slots) throw new Error('no slots');
+    const names = a.slots.flatMap((x) => x.upgrades.map((u) => u.name));
+    // Their own profession's item stays, marked as theirs to make.
+    expect(a.slots.find((x) => x.slotName === 'Chest')!.upgrades[0]).toMatchObject({
+      name: 'Bayou Leather Vest',
+      crafted: { professions: ['Leatherworking'], byCharacter: true, knowsRecipe: true },
+    });
+    // The Tailoring gloves and the unknown-profession bracers are out; the weaker dropped gloves take the slot.
+    expect(names).not.toContain('Swampweave Gloves');
+    expect(names).not.toContain('Odd Bracers');
+    expect(a.slots.find((x) => x.slotName === 'Hands')!.upgrades[0]).toMatchObject({
+      name: 'Dropped Gloves',
+      crafted: null,
+    });
+    expect(a.professions).toEqual(['Leatherworking']);
+    expect(a.gaps.join('\n')).toContain(
+      "left out 2 crafted upgrades Stitch Less can't make (Tailoring: 1, an unknown profession: 1",
+    );
+
+    const all = await gearUpgrades(s.database.db, 'Stitch Less', 'ranged', {
+      includeCrafted: true,
+    });
+    if (!('slots' in all) || !all.slots) throw new Error('no slots');
+    expect(all.slots.find((x) => x.slotName === 'Hands')!.upgrades[0]).toMatchObject({
+      name: 'Swampweave Gloves',
+      crafted: { professions: ['Tailoring'], byCharacter: false, knowsRecipe: false },
+    });
+    expect(all.gaps.join('\n')).not.toContain('left out');
+  });
 });

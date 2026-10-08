@@ -7,6 +7,7 @@ import {
   fishingAnswer,
   gearUpgrades,
   importSeed,
+  levelingRoute,
   lookupCharacter,
   lookupItem,
   lookupNpc,
@@ -34,7 +35,7 @@ Every answer has:
 - facts: claims from sources, best first. Each has a label (VERIFIED = Forever data, CLASSIC = Classic-era data that Forever may change, ANECDOTE = a player's report, UNVERIFIED = unconfirmed), a tier (1 best … 7 worst), the source URL and the build.
 - gaps: what the ledger does not know.
 Items, NPCs, quests and objects carry their Wowhead Forever page as itemUrl / npcUrl / questUrl / containerUrl / objectUrl, or url on an { type, id } entity: link names with those, never with a URL you make up.
-Players' own characters (by full name, e.g. "Sam Willikers") are in lookup_character and gear_upgrades; gear upgrade scores are estimates (Forever has no spec data), and a role the asker didn't name is a guess: say so.
+Leveling questions ("quickest way to 13 as an undead") are answered by leveling_route: the quests our own players turned in, in order, with time taken. Players' own characters (by full name, e.g. "Sam Willikers") are in lookup_character and gear_upgrades; gear upgrade scores are estimates (Forever has no spec data), and a role the asker didn't name is a guess: say so.
 Answer from these only. Say which label each statement rests on, prefer first-party data and lower tiers, and say plainly when the ledger has a gap instead of filling it from memory. FALSE claims are never facts: check_claim lists them as refuted.`;
 
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
@@ -188,14 +189,62 @@ export function buildServer(deps: ToolDeps): McpServer {
   );
 
   server.registerTool(
+    'leveling_route',
+    {
+      title: 'Leveling route',
+      description:
+        'A step-by-step leveling guide built from how our own players leveled: the fastest recorded run of that race (or zone, or character) to the level, as steps in the order it was played: accept (NPC, subzone, coordinates, quests), complete (each quest\'s objectives) and turn in (NPC, coordinates, XP, level after). Pass forCharacter (the asker\'s character) to start at their level and leave out quests they already did. Also gives level-up times, play time, other characters\' progress and the quests seen in that zone. Use it for any "how do I level", "quickest way to N", "leveling guide" or "what quests are in <zone>" question.',
+      inputSchema: z.object({
+        start: z
+          .string()
+          .trim()
+          .min(1)
+          .max(64)
+          .optional()
+          .describe(
+            'A race (undead, orc, troll, tauren, human, dwarf, gnome, night elf) or a zone name',
+          ),
+        character: ref.optional().describe("One of our players' characters, to follow their route"),
+        forCharacter: ref
+          .optional()
+          .describe("The asker's own character: start at their level, skip quests they've done"),
+        toLevel: z.number().int().min(2).max(60).describe('The level to reach'),
+        fromLevel: z
+          .number()
+          .int()
+          .min(1)
+          .max(59)
+          .optional()
+          .describe('Where the route starts (default 1)'),
+      }),
+      annotations: READ_ONLY,
+    },
+    guarded(
+      deps,
+      'leveling_route',
+      async (args: {
+        start?: string;
+        character?: string;
+        forCharacter?: string;
+        toLevel: number;
+        fromLevel?: number;
+      }) => reply(await levelingRoute(db, args)),
+    ),
+  );
+
+  server.registerTool(
     'gear_upgrades',
     {
       title: "A character's gear upgrades",
       description:
-        'Gear upgrades for one of our players\' characters: per slot, items the ledger knows that their class can wear at (or up to 3 levels above) their level and that score higher for the role than what they wear, each with where to get it (our drops, quest rewards and vendors first, then source claims). Scores are an estimate. Pass the role when the asker names one ("as a tank"); otherwise it is guessed from their gear.',
+        'Gear upgrades for one of our players\' characters: per slot, items the ledger knows that their class can wear at (or up to 3 levels above) their level and that score higher for the role than what they wear, each with where to get it (our drops, quest rewards and vendors first, then source claims). Scores are an estimate. Pass the role when the asker names one ("as a tank"); otherwise it is guessed from their gear. Crafted items are listed only when the character has the profession; set includeCrafted when the asker wants crafted gear someone else could make.',
       inputSchema: z.object({
         character: ref.describe('Full name, first name, or Name-Realm'),
         role: z.enum(['tank', 'healer', 'caster', 'melee', 'ranged']).optional(),
+        includeCrafted: z
+          .boolean()
+          .optional()
+          .describe("Also list crafted items from professions the character doesn't have"),
       }),
       annotations: READ_ONLY,
     },
@@ -205,10 +254,12 @@ export function buildServer(deps: ToolDeps): McpServer {
       async ({
         character,
         role,
+        includeCrafted,
       }: {
         character: string;
         role?: 'tank' | 'healer' | 'caster' | 'melee' | 'ranged';
-      }) => reply(await gearUpgrades(db, character, role)),
+        includeCrafted?: boolean;
+      }) => reply(await gearUpgrades(db, character, role, { includeCrafted })),
     ),
   );
 

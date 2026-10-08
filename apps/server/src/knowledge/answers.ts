@@ -13,6 +13,7 @@ import { containsPattern } from '../routes/shared.js';
 import { UI_MAP_NAMES } from '../uiMapNames.js';
 import { findDisputes } from './disputes.js';
 import type { Dispute } from './disputes.js';
+import { zoneQuests } from './leveling.js';
 
 /** Longest quote an answer carries (enough to check the claim, never a page). */
 export const QUOTE_MAX = 240;
@@ -774,7 +775,9 @@ export async function lookupZone(db: Db, ref: string) {
     { type: 'zone', keys: keysOf({ ...entity, id: null }) },
     { type: 'dungeon', keys: keysOf({ ...entity, id: null }) },
   ]);
-  const firstParty = { fishing, nodesSeen };
+  // Quests by their quest-log zone header; leveling_route has the order players did them in.
+  const questsSeen = await zoneQuests(db, [entity.name], 40);
+  const firstParty = { fishing, nodesSeen, questsSeen };
   const gaps = commonGaps(facts, more, hasAny(firstParty));
   return { query, entity, firstParty, facts, gaps } satisfies Answer;
 }
