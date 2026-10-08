@@ -523,4 +523,75 @@ return function(H)
     local c = viewer(H, { guides = { g } })
     H.eq(c.env.ForeverLedgerGuideArrow.label.text, "Deathknell")
   end)
+
+  ---------------------------------------------------------------- tracker
+  H.test("guide tracker: the step shows in a Guide section of the quest tracker, not a window", function()
+    local c = viewer(H, { tracker = true })
+    local t = c.tracker
+    H.eq(t.attachedTo, c.env.ObjectiveTrackerFrame)
+    H.eq(t.module.uiOrder, 0, "above Blizzard's modules")
+    H.eq(t.module.header, "Guide")
+    H.eq(c.env.ForeverLedgerGuideFrame, nil, "no window")
+    H.ok(t.dirty > 0, "asked the tracker to redraw")
+    local b = t.draw()
+    H.eq(b.header, "Undead 1-4 (Rot's run)")
+    H.ok(b.lines[1]:find("Accept from Undertaker Mordo", 1, true), b.lines[1])
+    H.ok(b.lines[#b.lines]:find("Step 1 of 5", 1, true), b.lines[#b.lines])
+  end)
+
+  H.test("guide tracker: the header menu moves steps and hides; without a menu, left is Next and right Back", function()
+    local c = viewer(H, { tracker = true })
+    local t, buttons = c.tracker, {}
+    c.env.MenuUtil = { CreateContextMenu = function(_, gen)
+      local root = {}
+      function root:CreateTitle() end
+      function root:CreateButton(text, fn) buttons[text] = fn; return root end
+      gen(nil, root)
+    end }
+    t.module:OnBlockHeaderClick(nil, "LeftButton")
+    buttons["Next step"]()
+    H.ok(t.draw().lines[#t.laidOut.lines]:find("Step 2 of 5", 1, true), "next")
+    buttons["Hide guide"]()
+    H.eq(t.draw(), nil, "hidden: nothing drawn")
+    c.slash("FOREVERLEDGER", "guide")
+    c.env.MenuUtil = nil
+    t.module:OnBlockHeaderClick(nil, "RightButton")
+    H.ok(t.draw().lines[#t.laidOut.lines]:find("Step 1 of 5", 1, true), "right-click is Back")
+  end)
+
+  H.test("guide tracker: a blocked action moves the guide to its window", function()
+    local c = viewer(H, { tracker = true })
+    c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "UseQuestLogSpecialItem()")
+    H.ok(printed(c, "moves to its own window"), "says so")
+    H.eq(c.tracker.removed, c.tracker.module, "module taken out of the tracker")
+    H.ok(body(c):find("Accept from Undertaker Mordo", 1, true), "window shows the step")
+    c.fire("ADDON_ACTION_BLOCKED", "SomeOtherAddon", "x")
+  end)
+
+  H.test("guide tracker: a broken template or a layout error falls back or is contained", function()
+    local c = viewer(H, { tracker = true, rejectTemplates = { ObjectiveTrackerModuleTemplate = true } })
+    H.ok(body(c):find("Accept from Undertaker Mordo", 1, true), "window when the module can't be made")
+    local d = viewer(H, { tracker = true })
+    d.tracker.failBlock = true
+    d.tracker.module:LayoutContents()
+    d.tracker.module:LayoutContents()
+    local n = 0
+    for _, l in ipairs(d.world.printed) do
+      if l:find("guide tracker error", 1, true) then n = n + 1 end
+    end
+    H.eq(n, 1, "printed once")
+  end)
+
+  H.test("guide: in combat nothing touches watches or the tracker; one sync runs after combat", function()
+    local c = viewer(H, { tracker = true, done = { [RUDE] = true }, onQuest = { [MINDLESS] = true, [DAMNED] = true } })
+    local dirty, calls = c.tracker.dirty, #c.q.calls
+    c.world.inCombat = true
+    c.slash("FOREVERLEDGER", "guide back")
+    H.eq(#c.q.calls, calls, "no watch calls in combat")
+    H.eq(c.tracker.dirty, dirty, "no tracker redraw in combat")
+    c.world.inCombat = false
+    c.fire("PLAYER_REGEN_ENABLED")
+    H.ok(c.tracker.dirty > dirty, "redrawn after combat")
+    H.ok(#c.q.calls > calls, "watches synced after combat")
+  end)
 end

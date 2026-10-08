@@ -515,6 +515,13 @@ function handlers.QUEST_REMOVED() refresh(false) end
 function handlers.PLAYER_REGEN_ENABLED()
   if G.owed then G.sync(G.owedRewatch) end
 end
+-- The game blocked a protected action and blames us (taint from the tracker section): back to the window.
+function handlers.ADDON_ACTION_BLOCKED(addon, func)
+  if addon == "ForeverLedger" and G.tracker and G.tracker.onBlocked then
+    G.tracker.onBlocked(func)
+    G.sync()
+  end
+end
 function handlers.QUEST_LOG_UPDATE()
   if #G.myGuides() == 0 then return end
   local now = GetTime and GetTime() or time()
