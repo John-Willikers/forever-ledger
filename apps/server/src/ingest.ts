@@ -41,7 +41,14 @@ import {
   vendors,
   xpCurve,
 } from './db/schema.js';
-import { accountsOf, canonicalize, hasSurname, loadAliases, mergeCharacter } from './characters.js';
+import {
+  accountsOf,
+  canonicalize,
+  hasSurname,
+  loadAliases,
+  mergeCharacter,
+  stateSections,
+} from './characters.js';
 import { lockRunGroups, regroupRuns } from './runGroups.js';
 import type { RegroupLog } from './runGroups.js';
 import { fromEpoch } from './time.js';
@@ -531,7 +538,8 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
     );
 
     // Schema 10: where each character stands. One row per character: the newest observedAt wins, so an older queued
-    // batch never rolls state back. A section the newer state lacks (dropped by normalize) keeps the stored one. Two
+    // batch never rolls state back; sections merge with the stored ones (stateSections: each session uploads only what
+    // it saw). Two
     // records of one character (an alias and its full name) keep the newer.
     const states = new Map<string, (typeof w.charState)[number]>();
     for (const c of w.charState) {
@@ -549,6 +557,7 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
         xpMax: c.xpMax,
         completed: c.completed,
         completedAt: fromEpoch(c.completedAt),
+        completedTruncated: c.completedTruncated,
         log: c.log,
         pos: c.pos,
         bind: c.bind,
@@ -560,6 +569,12 @@ export async function ingestBatch(db: Db, batch: UploadBatch, ctx: IngestContext
       [characterState.char],
       {
         keepKnown: true,
+        set: Object.fromEntries(
+          Object.entries(getTableColumns(characterState)).flatMap(([prop, col]) => {
+            const merged = stateSections('excluded', '"character_state"')[col.name];
+            return merged ? [[prop, sql.raw(merged)]] : [];
+          }),
+        ),
         setWhere: sql`coalesce(excluded.observed_at, '-infinity') >= coalesce(${characterState.observedAt}, '-infinity')`,
       },
     );

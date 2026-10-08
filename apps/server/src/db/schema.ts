@@ -345,6 +345,8 @@ export const characterState = pgTable('character_state', {
   xpMax: integer('xp_max'),
   completed: integer('completed').array(),
   completedAt: tz('completed_at'),
+  /** Completed ids the addon cut by its cap, with the `completed` list it came with. */
+  completedTruncated: integer('completed_truncated'),
   log: jsonb('log'),
   pos: jsonb('pos'),
   bind: jsonb('bind'),

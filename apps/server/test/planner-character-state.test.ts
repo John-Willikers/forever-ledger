@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadCharacter } from '../src/knowledge/character-state.js';
 import { distance, toWorld } from '../src/planner/geo.js';
+import { plan } from '../src/planner/plan.js';
 import { TRANSPORTS } from '../src/planner/transports.js';
 import { FLIGHT_OVERHEAD, FLIGHT_SPEED } from '../src/planner/travel.js';
 import { batchFromFixture, startServer } from './helpers.js';
@@ -189,5 +190,94 @@ describe('loadCharacter (real Postgres)', () => {
     }
 
     expect(travel.flightDetour).toBeCloseTo(detour(80), 6);
+  });
+});
+
+// Forever loads SavedVariables empty at every login (bug #34): a later session uploads only what it saw.
+describe('loadCharacter after two sessions (real Postgres)', () => {
+  let s: Awaited<ReturnType<typeof startServer>>;
+  const ingest = async (batch: object) => {
+    const res = await s.app.inject({
+      method: 'POST',
+      url: '/v1/ingest',
+      headers: s.auth,
+      payload: batch,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+  };
+  beforeAll(async () => {
+    s = await startServer();
+  });
+  afterAll(() => s?.stop());
+
+  it('keeps the hearth spot and every map’s flight paths', async () => {
+    const b = batchFromFixture('session-v10.lua');
+    await ingest(b);
+    // Session 2: login reads the bind zone only; a Kalimdor flight map is opened.
+    const b2 = structuredClone(b);
+    const st = b2.records.charState[0]!;
+    const at = st.observedAt! + 3600;
+    b2.records.charState = [
+      {
+        char: st.char,
+        build: st.build,
+        observedAt: at,
+        bind: { zone: 'Goldshire', at },
+        taxi: [
+          {
+            taxiMapId: 1464,
+            at,
+            nodes: [{ nodeId: 26, name: 'Auberdine', x: 0.4, y: 0.3, state: 1 }],
+          },
+        ],
+      },
+    ];
+    b2.records.trips = [];
+    b2.records.xpCurve = [];
+    await ingest(b2);
+    const { ch } = (await loadCharacter(s.database.db, CHAR, NOW))!;
+    expect(ch.hearth?.spot).toEqual({ mapId: 1429, x: 50, y: 70 });
+    expect([...ch.flightPaths].sort((a, b) => a - b)).toEqual([2, 4, 26]);
+  });
+
+  it('says how many completed quests were not stored', async () => {
+    await s.database.pool.query(
+      `update character_state set completed_truncated = 2000 where char = $1`,
+      [CHAR],
+    );
+    const { gaps } = (await loadCharacter(s.database.db, CHAR, NOW))!;
+    expect(gaps).toContain('completed quests truncated: 2000 not stored');
+  });
+
+  it('no position and no bind spot: a gap, and plan() plans no travel from nowhere', async () => {
+    await s.database.pool.query(
+      `insert into character_state (char, build, level, observed_at) values ('Nowhere Man-Bayou', 70245, 5, now())`,
+    );
+    const r = (await loadCharacter(s.database.db, 'Nowhere Man-Bayou', NOW))!;
+    expect(r.gaps).toContain('position unknown: log in once with 0.8.0');
+    // A quest right where the plan would otherwise start (map 0 is no map).
+    const g = { id: 1, name: 'G', spots: [{ mapId: 1429, x: 42, y: 66 }] };
+    const atlas = {
+      quests: new Map([
+        [
+          9001,
+          {
+            ...{ id: 9001, title: 'T', level: 5, reqLevel: 1, side: 'both' as const },
+            ...{
+              classes: null,
+              races: null,
+              giver: g,
+              ender: g,
+              prereqs: [],
+              objectives: [],
+              xp: 500,
+            },
+          },
+        ],
+      ]),
+    };
+    const p = plan(atlas, r.ch, r.travel, { toLevel: 10 });
+    expect(p.steps).toEqual([]);
+    expect(p.seconds).toBe(0);
   });
 });

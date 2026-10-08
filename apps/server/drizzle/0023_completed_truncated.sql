@@ -1,0 +1,1 @@
+ALTER TABLE "character_state" ADD COLUMN "completed_truncated" integer;

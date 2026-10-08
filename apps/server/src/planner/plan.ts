@@ -6,6 +6,7 @@
 // behind earn a trip back only when it pays the run's XP per minute so far (then they compete in normal scoring),
 // else they are taken only if the plan is at their hub anyway (plan-gated.ts). Unreachable objectives or turn-ins are
 // never counted done: such quests are not taken, or abandoned. Deterministic (ties by hub id / quest id) and pure.
+import { toWorld } from './geo.js';
 import type { Hub } from './hubs.js';
 import { accept, HALT, runLoop, turnIn } from './plan-emit.js';
 import { estimate, type Estimate } from './plan-estimate.js';
@@ -109,6 +110,8 @@ export function plan(
     sim.gap(`already at level ${sim.level} (target ${sim.toLevel})`);
     return result();
   }
+  // No travel is planned from nowhere (the Sim already said where the start is).
+  if (!toWorld(ch.position)) return result();
 
   const cap = sim.maxSteps * 4 + 10;
   try {

@@ -1232,6 +1232,18 @@ describe('normalize — schema 10 character state, xp curve and trips (hand-made
     });
   });
 
+  it('keeps completedTruncated (ids the addon cut by its cap) and a full 10000-id list', () => {
+    const db = v10();
+    const s = db.charState[char] as Record<string, unknown>;
+    s.completed = Array.from({ length: 10_000 }, (_, i) => i + 1);
+    s.completedTruncated = 2000;
+    const { records, problems } = normalize(db);
+    expect(problems).toEqual([]);
+    const st = records.charState.find((c) => c.char === char)!;
+    expect(st.completed).toHaveLength(10_000);
+    expect(st.completedTruncated).toBe(2000);
+  });
+
   it('off-map coordinates drop the coordinate, not the record', () => {
     const db = v10();
     const s = db.charState[char] as { pos: Record<string, unknown> };

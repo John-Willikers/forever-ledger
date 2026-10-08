@@ -501,7 +501,10 @@ export const StateSpot = z.object({
 });
 export type StateSpot = z.infer<typeof StateSpot>;
 
-/** The addon caps (log 35, completed 5000, taxi 4 maps × 80 nodes), with headroom; longer lists are junk. */
+/**
+ * Longest lists accepted; longer ones are junk. `completed` is the addon's own cap (COMPLETED_CAP 10000, exactly);
+ * the rest leave headroom over the addon's caps (log 35, taxi 4 maps × 80 nodes).
+ */
 export const CHAR_STATE_LIMITS = {
   completed: 10_000,
   log: 50,
@@ -561,6 +564,8 @@ export const CharStateSections = {
   /** Every quest the character has completed (C_QuestLog.GetAllCompletedQuestIDs), sorted. */
   completed: z.array(nonNegInt).max(CHAR_STATE_LIMITS.completed),
   completedAt: epochSecs,
+  /** How many completed ids the addon cut by its cap (absent when none were). */
+  completedTruncated: nonNegInt,
   log: z.array(StateLogQuest).max(CHAR_STATE_LIMITS.log),
   /** Last position (written at logout / reload). */
   pos: StateSpot,
@@ -585,6 +590,7 @@ export const CharState = z.object({
   xpMax: CharStateSections.xpMax.optional(),
   completed: CharStateSections.completed.optional(),
   completedAt: CharStateSections.completedAt.optional(),
+  completedTruncated: CharStateSections.completedTruncated.optional(),
   log: CharStateSections.log.optional(),
   pos: CharStateSections.pos.optional(),
   bind: CharStateSections.bind.optional(),

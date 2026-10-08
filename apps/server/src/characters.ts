@@ -2,6 +2,7 @@
 // "Sam-Realm". Addon 0.4.0 keys by full name again and sends the GUID. Aliases map old keys to their character;
 // `mergeCharacter` moves an old key's rows onto the canonical key (characters-cli merge, or ingest when two keys
 // share a GUID).
+import { CHAR_STATE_LIMITS } from '@forever-ledger/contracts';
 import type { Records } from '@forever-ledger/contracts';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from './db/client.js';
@@ -9,6 +10,51 @@ import { characterAliases, characters } from './db/schema.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type Conn = Db | Tx;
+
+/** Server cap on a character's completed quest ids (the contracts limit); a longer union keeps the highest ids. */
+const COMPLETED_KEEP = CHAR_STATE_LIMITS.completed;
+
+/**
+ * How a character state row (`n`, the newer) takes in an older one (`o`), per column, as SQL over two row aliases
+ * (`excluded` and the table at ingest; the two copies in a merge). Forever loads SavedVariables empty at every login
+ * (bug #34), so each session uploads only what it saw:
+ * - a section the newer row lacks keeps the older one;
+ * - `completed` only grows: the union (highest ids kept past the cap); `completed_truncated` goes with the list;
+ * - `taxi` merges by taxiMapId, the newest `at` per map winning (the newer row on a tie);
+ * - `bind` without a spot keeps the older spot while the zone is the same (a login reads the zone only).
+ * Everything else (level, xp, log, pos, …) is newest-wins.
+ */
+export function stateSections(n: string, o: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const c of [
+    'level',
+    'xp',
+    'xp_max',
+    'completed_at',
+    'log',
+    'pos',
+    'hearth_ready_at',
+    'mount',
+  ])
+    out[c] = `coalesce(${n}."${c}", ${o}."${c}")`;
+  out.completed = `case when ${n}."completed" is null then ${o}."completed" else (
+      select array_agg(id order by id) from (
+        select distinct id from unnest(coalesce(${o}."completed", '{}'::int[]) || ${n}."completed") as u(id)
+         order by id desc limit ${COMPLETED_KEEP}) k) end`;
+  out.completed_truncated = `case when ${n}."completed" is null then ${o}."completed_truncated" else ${n}."completed_truncated" end`;
+  out.taxi = `case when ${n}."taxi" is null or ${o}."taxi" is null then coalesce(${n}."taxi", ${o}."taxi") else (
+      select jsonb_agg(m order by (m->>'taxiMapId')::bigint) from (
+        select distinct on (m->>'taxiMapId') m from (
+          select m, 1 as mine from jsonb_array_elements(${n}."taxi") m
+          union all select m, 0 from jsonb_array_elements(${o}."taxi") m) a
+         order by m->>'taxiMapId', coalesce((m->>'at')::float8, 0) desc, mine desc) b) end`;
+  out.bind = `case when ${n}."bind" is null then ${o}."bind"
+      when ${n}."bind"->'spot' is null and ${o}."bind"->'spot' is not null
+       and ${n}."bind"->>'zone' is not distinct from ${o}."bind"->>'zone'
+      then ${n}."bind" || jsonb_build_object('spot', ${o}."bind"->'spot')
+      else ${n}."bind" end`;
+  return out;
+}
 
 /**
  * Tables with a `char` column, their primary key, and the column that says which of two colliding rows is newer.
@@ -20,8 +66,8 @@ export const CHAR_TABLES: readonly {
   table: string;
   pk: readonly string[];
   newer?: string;
-  /** Columns the kept (newer) row takes from the other when its own is null, as ingest keeps stored sections. */
-  fill?: readonly string[];
+  /** How the kept (newer) row takes in the other's columns, as ingest does (see stateSections). */
+  fill?: (keep: string, other: string) => Record<string, string>;
 }[] = [
   { table: 'quest_observations', pk: ['quest_id', 'build', 'stage', 'char'], newer: 'observed_at' },
   { table: 'turn_ins', pk: ['id'] },
@@ -32,19 +78,7 @@ export const CHAR_TABLES: readonly {
     table: 'character_state',
     pk: ['char'],
     newer: 'observed_at',
-    fill: [
-      'level',
-      'xp',
-      'xp_max',
-      'completed',
-      'completed_at',
-      'log',
-      'pos',
-      'bind',
-      'hearth_ready_at',
-      'taxi',
-      'mount',
-    ],
+    fill: stateSections,
   },
   { table: 'trips', pk: ['char', 'kind', 'started_at'] },
   { table: 'skills', pk: ['char', 'skill_line_id'], newer: 'last_seen' },
@@ -188,9 +222,13 @@ export async function mergeCharacter(
       ? sql`coalesce(t.${sql.identifier(newer)}, '-infinity') > coalesce(x.${sql.identifier(newer)}, '-infinity')`
       : sql`false`;
     // The copy that stays keeps its own values and takes the other's where it has none.
-    if (fill?.length) {
+    if (fill) {
       const fillFrom = (keep: string, other: string) =>
-        sql.raw(fill.map((c) => `"${c}" = coalesce(${keep}."${c}", ${other}."${c}")`).join(', '));
+        sql.raw(
+          Object.entries(fill(keep, other))
+            .map(([c, v]) => `"${c}" = ${v}`)
+            .join(', '),
+        );
       await conn.execute(
         sql`update ${sql.identifier(table)} t set ${fillFrom('t', 'x')} from ${sql.identifier(table)} x
              where t.char = ${from} and x.char = ${into} and ${clash} and ${fromIsNewer}`,

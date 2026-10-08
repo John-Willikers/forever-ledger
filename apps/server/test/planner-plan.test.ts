@@ -450,10 +450,16 @@ describe('planner loop', () => {
   });
 
   it('says so when the start position is on an unknown map', () => {
-    const r = plan(atlas([]), character({ position: { mapId: 999999, x: 50, y: 50 } }), NO_TRAVEL, {
-      toLevel: 30,
-    });
+    const A = npc(1, 'Gruk', BASE);
+    const r = plan(
+      atlas([quest(100, { giver: A, ender: A })]),
+      character({ position: { mapId: 999999, x: 50, y: 50 } }),
+      NO_TRAVEL,
+      { toLevel: 30 },
+    );
     expect(r.gaps).toContain('start position is on an unknown map (999999)');
+    // No travel is planned from nowhere.
+    expect(r.steps).toEqual([]);
   });
 
   it('keeps objective progress already in the log', () => {

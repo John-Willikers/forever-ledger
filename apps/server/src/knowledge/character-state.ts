@@ -68,6 +68,7 @@ interface StateRow {
   level: number | null;
   xp: number | null;
   completed: number[] | null;
+  completedTruncated: number | null;
   log: unknown;
   pos: unknown;
   bind: unknown;
@@ -212,7 +213,7 @@ export async function loadCharacter(
   }>(db, sql`select class, race, faction, level from characters where key = ${charKey}`);
   const [st] = await rows<StateRow>(
     db,
-    sql`select build, level, xp, completed, log, pos, bind,
+    sql`select build, level, xp, completed, completed_truncated as "completedTruncated", log, pos, bind,
                extract(epoch from hearth_ready_at)::float8 as "hearthReadyAt", taxi, mount
           from character_state where char = ${charKey}`,
   );
@@ -230,6 +231,9 @@ export async function loadCharacter(
     faction = 'Alliance';
     gaps.push('faction unknown: planned as Alliance');
   }
+
+  if (st?.completedTruncated)
+    gaps.push(`completed quests truncated: ${st.completedTruncated} not stored`);
 
   const log = new Map<number, number[]>();
   for (const q of Array.isArray(st?.log) ? st.log : []) {
@@ -259,9 +263,13 @@ export async function loadCharacter(
     : null;
 
   let position = spotOf(st?.pos);
-  if (!position) {
+  if (!position && bindSpot) {
     gaps.push('position unknown: log out once with 0.8.0');
-    position = bindSpot ?? { mapId: 0, x: 0, y: 0 };
+    position = bindSpot;
+  } else if (!position) {
+    // Map 0 is no map: plan() stops at once instead of planning travel from nowhere.
+    gaps.push('position unknown: log in once with 0.8.0');
+    position = { mapId: 0, x: 0, y: 0 };
   }
 
   // Riding: seen mounted, or owns a mount (C_MountJournal count).
