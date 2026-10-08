@@ -547,7 +547,21 @@ return function(H)
     H.ok(b.lines[1]:find("Accept from Undertaker Mordo", 1, true), b.lines[1])
     H.ok(b.lines[#b.lines]:find("Step 1 of 5", 1, true), b.lines[#b.lines])
     H.eq(b.full[1], true, "body lines aren't cut at two lines")
-    H.eq(b.dash[#b.lines], c.env.OBJECTIVE_DASH_STYLE_HIDE, "no dash on the counter")
+    for i = 1, #b.lines do H.eq(b.dash[i], c.env.OBJECTIVE_DASH_STYLE_HIDE, "no dash on line " .. i) end
+    -- A Do step: its live objectives keep Blizzard's dash (like the Quests module) instead of the indent.
+    local d = viewer(H, atStep4({ tracker = true }))
+    d.q.objectives[MINDLESS] = { { text = "Mindless Zombie slain: 3/8", finished = false } }
+    local db, n = d.tracker.draw(), 0
+    for i, l in ipairs(db.lines) do
+      if l:find("Mindless Zombie slain: 3/8", 1, true) then
+        n = n + 1
+        H.eq(l:sub(1, 1), "|", "indent stripped: " .. l)
+        H.eq(db.dash[i], nil, "objective keeps the dash")
+      else
+        H.eq(db.dash[i], d.env.OBJECTIVE_DASH_STYLE_HIDE, "no dash on " .. l)
+      end
+    end
+    H.eq(n, 1, "the objective is drawn")
   end)
 
   H.test("guide tracker: the header menu moves steps and hides; without a menu, left is Next and right Back", function()

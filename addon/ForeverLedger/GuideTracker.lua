@@ -36,8 +36,16 @@ function T.layout(module)
   local v = G.view()
   local block = module:GetBlock("guide")
   block:SetHeader(v.title)
-  -- useFullHeight: Blizzard cuts an objective at two lines otherwise.
-  for i, line in ipairs(lines(v.body)) do block:AddObjective("line" .. i, line, nil, true) end
+  -- useFullHeight: Blizzard cuts an objective at two lines otherwise. Only live quest objectives (indented by
+  -- G.stepText) keep Blizzard's dash, like the Quests module; the dash replaces the indent.
+  for i, line in ipairs(lines(v.body)) do
+    local objective = line:match("^    (.*)$")
+    if objective then
+      block:AddObjective("line" .. i, objective, nil, true)
+    else
+      block:AddObjective("line" .. i, line, nil, true, OBJECTIVE_DASH_STYLE_HIDE)
+    end
+  end
   if v.counter ~= "" then
     block:AddObjective("counter", GREY .. v.counter .. "|r", nil, true, OBJECTIVE_DASH_STYLE_HIDE)
   end
