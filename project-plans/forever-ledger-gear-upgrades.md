@@ -91,6 +91,13 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   subzone, coordinates, quests), `complete` (objectives, "0/8" → "8") and `turn_in` (NPC, coordinates, XP, level
   after); same-NPC steps merge; abandoned quests are dropped. `forCharacter` starts at the asker's level and skips
   quests they've turned in. Objective locations aren't recorded (addon follow-up).
+  21:40 CDT, checked on production (read-only) before merge: the undead with quest data is **Timbo** (Scourge
+  Warlock 13, 63 turn-ins to level 12, 6.6 h of play); "Timmy" is a Human Rogue, no aliases involved. Fixed on real
+  data: pickups had no giver (Forever's `accept` event carries no NPC; the `detail` window before it does: now 46/46
+  pickups named with coordinates), Forever's objective form "0/8 Mindless Zombie slain" (count first), class quests'
+  "complete" steps placed in "Warlock" (now the turn-in's zone), and the start zone's own header (Deathknell, 12
+  quests) added to each race's zones. Crafted filter on Sam: 32 Tailoring / Leatherworking / Engineering upgrades
+  left out, professions named once (Forever has two skill lines per profession).
 
 ## ⚠️ Risks
 

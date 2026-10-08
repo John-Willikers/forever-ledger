@@ -498,7 +498,8 @@ export async function gearUpgrades(
   }
   if (hidden.size > 0) {
     const total = [...hidden.values()].reduce((a, b) => a + b, 0);
-    const own = [...crafting.skills.values()];
+    // Forever lists each profession twice (a base line and a "Classic" child line): name it once.
+    const own = [...new Set(crafting.skills.values())];
     gaps.push(
       `left out ${total} crafted upgrade${total === 1 ? '' : 's'} ${c.name} can't make (${[
         ...hidden,
@@ -524,7 +525,7 @@ export async function gearUpgrades(
       note: 'scores are stats weighted by a Classic-era rule of thumb for the role: an estimate, Forever has no spec data',
     },
     gear: gear && { build: gear.build, seenAt: gear.seenAt },
-    professions: [...crafting.skills.values()],
+    professions: [...new Set(crafting.skills.values())],
     slots,
     otherMatches: r.others.map(characterView),
     gaps,

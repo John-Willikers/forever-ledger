@@ -148,7 +148,8 @@ describe('character gear and upgrades (real Postgres)', () => {
     await q(`insert into characters (key, name, realm, class, level) values
       ('Stitch Less-Bayou', 'Stitch Less', 'Bayou', 'HUNTER', 20)`);
     await q(`insert into skills (char, skill_line_id, name, rank, max_rank, last_seen) values
-      ('Stitch Less-Bayou', 165, 'Leatherworking', 90, 150, now())`);
+      ('Stitch Less-Bayou', 165, 'Leatherworking', 90, 150, now()),
+      ('Stitch Less-Bayou', 2880, 'Leatherworking', 90, 150, now())`); // Forever's "Classic" child line
     await q(`insert into items (item_id, name, quality, type, subtype, equip_loc) values
       (90010, 'Bayou Leather Vest', 2, 'Armor', 'Leather', 'INVTYPE_CHEST'),
       (90011, 'Swampweave Gloves', 2, 'Armor', 'Cloth', 'INVTYPE_HAND'),

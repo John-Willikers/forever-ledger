@@ -35,16 +35,19 @@ const RACES: Record<string, string> = {
   nightelf: 'NightElf',
 };
 
-/** Classic starting zones per race token: where a route for that race begins. */
+/**
+ * Classic starting zones per race token, then the starting area's own quest-log header: Forever files the first
+ * quests under it (12 of an Undead's first quests are "Deathknell", not "Tirisfal Glades").
+ */
 export const START_ZONES: Record<string, string[]> = {
-  Scourge: ['Tirisfal Glades'],
-  Orc: ['Durotar'],
-  Troll: ['Durotar'],
-  Tauren: ['Mulgore'],
-  Human: ['Elwynn Forest'],
-  Dwarf: ['Dun Morogh'],
-  Gnome: ['Dun Morogh'],
-  NightElf: ['Teldrassil'],
+  Scourge: ['Tirisfal Glades', 'Deathknell'],
+  Orc: ['Durotar', 'Valley of Trials'],
+  Troll: ['Durotar', 'Valley of Trials'],
+  Tauren: ['Mulgore', 'Camp Narache'],
+  Human: ['Elwynn Forest', 'Northshire Valley'],
+  Dwarf: ['Dun Morogh', 'Coldridge Valley'],
+  Gnome: ['Dun Morogh', 'Coldridge Valley'],
+  NightElf: ['Teldrassil', 'Shadowglen'],
 };
 
 export function raceToken(ref: string | undefined): string | null {
@@ -160,9 +163,15 @@ export interface GuideEvent {
   xp?: number | null;
 }
 
-/** "Mindless Zombie slain: 0/8" → "Mindless Zombie slain: 8" (the guide shows what to do, not the progress). */
+/**
+ * "Mindless Zombie slain: 0/8" or Forever's "0/8 Mindless Zombie slain" → "Mindless Zombie slain: 8" (the guide shows
+ * what to do, not the progress).
+ */
 export function objectiveText(o: string): string {
-  return o.replace(/:?\s*\d+\s*\/\s*(\d+)\s*$/, ': $1').trim();
+  const s = o.trim();
+  const lead = /^\d+\s*\/\s*(\d+)\s+(.+)$/.exec(s);
+  if (lead) return `${lead[2]!.trim()}: ${lead[1]}`;
+  return s.replace(/:?\s*\d+\s*\/\s*(\d+)\s*$/, ': $1').trim();
 }
 
 const coords = (w: Where | null) =>
@@ -233,7 +242,9 @@ export function buildGuide(events: GuideEvent[], skip: Set<number> = new Set()) 
         step: 0,
         action: 'complete',
         npc: null,
-        zone: e.zone,
+        // Where objectives are done isn't recorded: the turn-in's zone is the best hint (a quest's log header can be
+        // a class or a profession, "Warlock", not a place).
+        zone: e.where?.zone ?? e.zone,
         subzone: null,
         coords: null,
         quests: [{ questId: e.questId, title: e.title, objectives }],
@@ -285,12 +296,18 @@ async function guideEvents(
                               where o.char = ${key} and o.quest_id = r.quest_id and o.stage = 'complete'
                               order by o.observed_at desc nulls last limit 1) c on true
         union all
-        select 'accept', a.observed_at, a.quest_id, a.level, null, a.npc_name, coalesce(a.npc_loc, a.loc)
+        select 'accept', a.observed_at, a.quest_id, a.level, null,
+               coalesce(a.npc_name, d.npc_name), coalesce(a.npc_loc, d.npc_loc, a.loc)
           from (select distinct on (o.quest_id) o.quest_id, o.observed_at, o.level, o.npc_name, o.npc_loc, o.loc
                   from quest_observations o
                  where o.char = ${key} and o.stage = 'accept' and o.observed_at is not null
                    and o.quest_id in (select quest_id from run)
-                 order by o.quest_id, o.observed_at desc) a`,
+                 order by o.quest_id, o.observed_at desc) a
+          -- The accept event carries no NPC on Forever builds; the quest window just before it (stage detail) does.
+          left join lateral (select o.npc_name, o.npc_loc from quest_observations o
+                              where o.char = ${key} and o.quest_id = a.quest_id and o.stage = 'detail'
+                                and o.npc_name is not null
+                              order by o.observed_at desc nulls last limit 1) d on true`,
   );
   const ids = [...new Set(found.map((f) => f.quest_id))];
   const quests =
