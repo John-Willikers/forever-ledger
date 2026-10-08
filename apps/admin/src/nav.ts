@@ -41,6 +41,12 @@ export const NAV: readonly NavItem[] = [
   { path: 'builds', label: 'Builds', phase: 6, summary: 'What changed between client builds.' },
   { path: 'maps', label: 'Maps', phase: 6, summary: 'Zone map art under the points.' },
   {
+    path: 'guides',
+    label: 'Guides',
+    phase: 7,
+    summary: 'Build in-game guides from real runs and send them to a tray.',
+  },
+  {
     path: 'knowledge',
     label: 'Knowledge',
     phase: 7,

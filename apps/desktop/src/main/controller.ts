@@ -47,6 +47,7 @@ export type UploaderApi = Pick<
   | 'rollbackAddonEverywhere'
   | 'readAddonSyncState'
   | 'summarizeRejected'
+  | 'syncGuides'
 >;
 
 export interface ControllerDeps {
@@ -58,6 +59,9 @@ export interface ControllerDeps {
   now?: () => number;
   /** Addon sync interval (default 30 min). */
   addonIntervalMs?: number;
+  /** Guide check interval (default 5 min) and the first check after start (default 1 min, after the addon sync). */
+  guidesIntervalMs?: number;
+  guidesFirstMs?: number;
   /** Lock contention with another process is shown as a warning once it has lasted this long (default 10 min). */
   lockWarnAfterMs?: number;
   /** A failing addon sync turns the tray red once it has failed for this long (default 15 min). */
@@ -165,6 +169,8 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
   private watch?: WatchHandle;
   private watchGen = 0;
   private addonTimer?: ReturnType<typeof setTimeout>;
+  private guidesTimer?: ReturnType<typeof setTimeout>;
+  private guidesRun?: Promise<void>;
   /** Consecutive addon sync cycles that failed or found the lock taken (drives the short retry schedule). */
   private addonFailures = 0;
   private addonRun?: Promise<void>;
@@ -238,6 +244,7 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       this.diagnostics.start();
       await this.startWatching();
       this.scheduleAddon(true);
+      this.scheduleGuides(this.deps.guidesFirstMs ?? 60_000);
       this.changed();
     });
   }
@@ -246,6 +253,8 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
   async stop(): Promise<void> {
     this.stopped = true;
     this.clearAddonTimer();
+    if (this.guidesTimer) clearTimeout(this.guidesTimer);
+    if (this.guidesRun) await Promise.race([this.guidesRun, delay(5_000)]);
     this.diagnostics.stop();
     await this.serial(() => this.stopWatching());
     if (this.addonRun) await Promise.race([this.addonRun, delay(5_000)]);
@@ -660,6 +669,43 @@ export class LedgerController extends EventEmitter<{ change: [Snapshot]; toast: 
       });
     } catch (err) {
       this.log.debug({ err: errorMessage(err) }, 'cannot read rejected/');
+    }
+  }
+
+  /**
+   * In-game guides (project-plans/forever-ledger-guides.md): asks the server for this tray's guides and writes them
+   * next to the addon. A new one is announced: it shows in game after a /reload.
+   */
+  private scheduleGuides(ms: number) {
+    if (this.guidesTimer) clearTimeout(this.guidesTimer);
+    if (this.stopped) return;
+    this.guidesTimer = setTimeout(() => void this.runGuidesSync(), ms);
+    (this.guidesTimer as { unref?: () => void }).unref?.();
+  }
+
+  private runGuidesSync(): Promise<void> {
+    this.guidesRun ??= this.doGuidesSync().finally(() => {
+      this.guidesRun = undefined;
+    });
+    return this.guidesRun;
+  }
+
+  private async doGuidesSync() {
+    const config = this.config;
+    try {
+      if (!config || this.setupNeeded || this.stopped) return;
+      const result = await this.deps.uploader.syncGuides({ config, logger: this.log });
+      for (const g of result.arrived) {
+        const who = g.char.replace(/-[^-]*$/, '');
+        this.log.info({ guide: g.id, char: g.char }, `guide ready for ${who}: ${g.title}`);
+        this.toast(`Guide ready for ${who}: ${g.title}. Type /reload in game, then /fl guide.`);
+      }
+      if (result.status === 'no-addon' && result.guides.length > 0)
+        this.log.warn('guides are waiting, but ForeverLedger is not installed in any WoW folder');
+    } catch (err) {
+      this.log.warn({ err: errorMessage(err) }, 'guide check failed; will retry');
+    } finally {
+      this.scheduleGuides(this.deps.guidesIntervalMs ?? 5 * 60_000);
     }
   }
 

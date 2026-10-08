@@ -4,7 +4,9 @@
 import {
   addManualClaim,
   checkClaim,
+  createGuide,
   fishingAnswer,
+  GuideError,
   gearUpgrades,
   importSeed,
   levelingRoute,
@@ -34,6 +36,7 @@ Every answer has:
 - firstParty: what our own players' addon uploads observed (tier 1, the strongest evidence; counts and rates are real).
 - facts: claims from sources, best first. Each has a label (VERIFIED = Forever data, CLASSIC = Classic-era data that Forever may change, ANECDOTE = a player's report, UNVERIFIED = unconfirmed), a tier (1 best … 7 worst), the source URL and the build.
 - gaps: what the ledger does not know.
+send_guide turns a leveling route into an in-game guide and sends it to the character's tray: use it when someone asks to send, push or load a guide to a character.
 Items, NPCs, quests and objects carry their Wowhead Forever page as itemUrl / npcUrl / questUrl / containerUrl / objectUrl, or url on an { type, id } entity: link names with those, never with a URL you make up.
 Leveling questions ("quickest way to 13 as an undead") are answered by leveling_route: the quests our own players turned in, in order, with time taken. Players' own characters (by full name, e.g. "Sam Willikers") are in lookup_character and gear_upgrades; gear upgrade scores are estimates (Forever has no spec data), and a role the asker didn't name is a guess: say so.
 Answer from these only. Say which label each statement rests on, prefer first-party data and lower tiers, and say plainly when the ledger has a gap instead of filling it from memory. FALSE claims are never facts: check_claim lists them as refuted.`;
@@ -316,6 +319,49 @@ export function buildServer(deps: ToolDeps): McpServer {
             entityType && entity ? { type: entityType, ref: entity } : undefined,
           ),
         ),
+    ),
+  );
+
+  server.registerTool(
+    'send_guide',
+    {
+      title: "Send an in-game guide to a player's character",
+      description:
+        'Build a Zygor-style in-game guide from one of our players\' real runs (the leveling_route data) for a character, and send it to the Forever Ledger tray that uploads that character. The player sees it after their tray picks it up (within about 5 minutes) and they /reload; /fl guide shows it. Give start (a race like "undead" or a zone) or basedOn (whose run to follow), and toLevel. Quests the character already turned in are left out.',
+      inputSchema: z.object({
+        character: ref.describe('The character it is for: full name, first name, or Name-Realm'),
+        start: z.string().trim().min(1).max(64).optional().describe('A race or a starting zone'),
+        basedOn: ref.optional().describe("Follow this character's run"),
+        toLevel: z.number().int().min(2).max(60),
+        fromLevel: z.number().int().min(1).max(60).optional(),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    guarded(
+      deps,
+      'send_guide',
+      async (args: {
+        character: string;
+        start?: string;
+        basedOn?: string;
+        toLevel: number;
+        fromLevel?: number;
+      }) => {
+        try {
+          const { doc: _doc, ...made } = await createGuide(db, {
+            ...args,
+            requestedBy: `mcp:${deps.caller}`,
+          });
+          return reply({
+            ...made,
+            delivery:
+              "the character's tray picks it up within about 5 minutes; then /reload in game and /fl guide shows it",
+          });
+        } catch (err) {
+          if (err instanceof GuideError) return failure(`no guide sent: ${err.message}`);
+          throw err;
+        }
+      },
     ),
   );
 

@@ -7,6 +7,15 @@ export const PACKAGE = 'uploader';
 // Only read-only helpers here: install/rollback/recover go through syncAddon and rollbackAddonEverywhere, which
 // serialize them.
 export { addonsDirFor, readInstalledVersion } from './addonInstall.js';
+export {
+  GUIDES_ADDON,
+  GuidesSyncError,
+  guidesLua,
+  luaString,
+  syncGuides,
+  toLua,
+} from './guides.js';
+export type { GuidesSyncResult } from './guides.js';
 export { AddonSyncError, fetchManifest } from './addonManifest.js';
 export type { ManifestOptions } from './addonManifest.js';
 export { readAddonSyncState, rollbackAddonEverywhere, syncAddon } from './addonSync.js';

@@ -30,6 +30,7 @@ import { recordIngestError, registerDiagnosticsRoutes } from './routes/diagnosti
 import { registerExportRoutes } from './routes/export.js';
 import { registerFetchRoutes } from './routes/fetch.js';
 import { registerFishingRoutes } from './routes/fishing.js';
+import { registerGuideRoutes } from './routes/guides.js';
 import { chicagoIso } from './time.js';
 
 export interface AppOptions {
@@ -185,6 +186,7 @@ export async function buildApp(opts: AppOptions) {
   registerAdminProfessionsRoutes(app, db, guards.requireAdmin);
   registerAdminBuildsRoutes(app, db, guards.requireAdmin);
   registerAdminKnowledgeRoutes(app, db, guards.requireAdmin);
+  registerGuideRoutes(app, db, guards.requireAdmin, guards.session);
   await registerAdminMapsRoutes(app, db, guards.requireAdmin, guards.session);
   await registerAdminStatic(app, opts.admin?.distDir);
 
