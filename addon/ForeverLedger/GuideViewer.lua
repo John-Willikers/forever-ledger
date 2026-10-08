@@ -1,7 +1,11 @@
--- Forever Ledger guide viewer: shows the leveling guides the tray app wrote into the ForeverLedger_Guides addon
--- (ForeverLedgerGuidesData), one step at a time, like Zygor. It only reads the quest log and shows text; the map pin
--- is set when you click Pin. Your place in each guide is kept per character in ForeverLedgerGuideState.
--- /fl guide  show | hide | list | use N | next | back | pin | reset
+-- Forever Ledger guide viewer: the step logic for the leveling guides the tray app wrote into the ForeverLedger_Guides
+-- addon (ForeverLedgerGuidesData), one step at a time, like Zygor. The step shows in a "Guide" section of Blizzard's
+-- quest tracker (GuideTracker.lua), which watches only the step's quests (GuideWatches.lua), and an arrow points to
+-- its spot (GuideArrow.lua); this file's own window is the fallback when the tracker can't be used. G.sync brings
+-- them in line with the step. It only reads the quest log and shows text; `/fl guide pin` still sets a map pin.
+-- Your place in each guide is kept per character in ForeverLedgerGuideState.
+-- GuideAutoQuest.lua accepts and turns in the step's quests at the NPC (never picks a reward).
+-- /fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off | auto on|off
 
 local G = {}
 ForeverLedgerGuide = G
@@ -50,6 +54,8 @@ local function state()
   s.steps = s.steps or {} -- [guideID] = step index
   return s
 end
+G.state = state
+G.esc = esc
 
 function G.current()
   local s, mine = state(), G.myGuides()
@@ -71,6 +77,7 @@ local function onQuest(id) return call(QuestLog.IsOnQuest, id) == true end
 local function readyToTurnIn(id)
   return call(QuestLog.ReadyForTurnIn, id) == true or (onQuest(id) and call(QuestLog.IsComplete, id) == true)
 end
+G.onQuest, G.completed = onQuest, completed
 
 local function myLevel() return G.level or (UnitLevel and UnitLevel("player")) or 1 end
 
@@ -250,6 +257,65 @@ function G.pin()
   say(string.format("go to %s.", place(step)))
 end
 
+---------------------------------------------------------------- sync (watches, tracker section, arrow)
+local function inCombat() return InCombatLockdown ~= nil and InCombatLockdown() == true end
+
+-- The step's quests that are in the log now: what the tracker watches.
+function G.stepQuests(step)
+  local ids = {}
+  for _, q in ipairs(step and step.quests or {}) do
+    if onQuest(q.questId) then ids[#ids + 1] = q.questId end
+  end
+  return ids
+end
+
+local function trackerActive() return G.tracker ~= nil and G.tracker.active ~= nil and G.tracker.active() == true end
+
+-- The fallback window: shown and drawn while the tracker section isn't, hidden while it is.
+function G.showWindow()
+  if trackerActive() then
+    if G.win then G.win:Hide() end
+    return
+  end
+  if G.shown then G.frame():Show() end
+  G.render()
+end
+
+-- Brings the arrow, the fallback window, the watch list and the tracker section in line with the step. The arrow and
+-- the window are our own frames and follow at once; the tracker (attach and refresh) and the watches only change out
+-- of combat (taint guard): in combat that part is owed and PLAYER_REGEN_ENABLED runs it. `rewatch` re-applies the
+-- watch list even when the step didn't change (after an accept, which the game auto-watches). The watches are left
+-- alone until the guide starts (G.shown nil before PLAYER_LOGIN's start): the quest log can still be half loaded then,
+-- and your saved list must not be given back early or lose quests the log doesn't show yet.
+function G.sync(rewatch)
+  local g = G.shown and G.current() or nil
+  local i = g and G.stepIndex()
+  local step = g and g.steps[i] or nil
+  if G.arrow then G.arrow.setTarget(step) end
+  if inCombat() then
+    G.owed = true
+    G.owedRewatch = G.owedRewatch or rewatch
+    if not trackerActive() then G.showWindow() end
+    return
+  end
+  local T = G.tracker
+  if G.shown and T and T.attach then T.attach() end
+  local W = G.watches
+  if W and G.shown ~= nil then
+    -- No step (no guide, or the guide is finished): the player's own watches come back.
+    if step then
+      W.take()
+      local ids = G.stepQuests(step)
+      W.apply(ids, g.id .. ":" .. i .. ":" .. table.concat(ids, ","), rewatch)
+    else
+      W.restore()
+    end
+  end
+  if T and T.refresh then T.refresh() end
+  G.owed, G.owedRewatch = false, nil
+  G.showWindow()
+end
+
 ---------------------------------------------------------------- window
 local function button(parent, label, width, onClick)
   local ok, b = pcall(CreateFrame, "Button", nil, parent, "UIPanelButtonTemplate")
@@ -308,12 +374,10 @@ function G.frame()
   f.body:SetWidth(WIDTH - 20)
   f.body:SetJustifyH("LEFT")
   f.body:SetJustifyV("TOP")
-  f.back = button(f, "Back", 56, function() G.go(-1); G.render() end)
+  f.back = button(f, "Back", 56, function() G.go(-1); G.sync() end)
   f.back:SetPoint("BOTTOMLEFT", 8, 8)
-  f.nextB = button(f, "Next", 56, function() G.go(1); G.render() end)
+  f.nextB = button(f, "Next", 56, function() G.go(1); G.sync() end)
   f.nextB:SetPoint("LEFT", f.back, "RIGHT", 4, 0)
-  f.pinB = button(f, "Pin", 46, function() G.pin() end)
-  f.pinB:SetPoint("LEFT", f.nextB, "RIGHT", 4, 0)
   f.close = button(f, "Hide", 50, function() G.hide() end)
   f.close:SetPoint("BOTTOMRIGHT", -8, 8)
   G.win = f
@@ -357,14 +421,14 @@ function G.show()
   G.shown = true
   state().hidden = nil
   G.advance(false)
-  G.frame():Show()
-  G.render()
+  G.sync()
 end
 
 function G.hide()
   G.shown = false
   state().hidden = true
   if G.win then G.win:Hide() end
+  G.sync()
 end
 
 ---------------------------------------------------------------- slash (/fl guide ...)
@@ -375,6 +439,32 @@ function G.slash(rest)
   if cmd == "next" then G.go(1); return G.show() end
   if cmd == "back" then G.go(-1); return G.show() end
   if cmd == "pin" then return G.pin() end
+  if cmd == "tracker" then
+    local s = state()
+    if arg == "off" then
+      s.trackerOff = true
+      say("the guide uses its own window. /fl guide tracker on puts it back in the quest tracker.")
+      return G.sync()
+    end
+    if arg == "on" then
+      s.trackerOff, s.trackerBlocked = nil, nil
+      return say("/reload to put the guide back in the quest tracker.")
+    end
+    return say("/fl guide tracker on | off")
+  end
+  if cmd == "auto" then
+    local s = state()
+    if arg == "off" then
+      s.autoQuest = false
+      return say("the guide no longer accepts or turns in quests. /fl guide auto on turns it back on.")
+    end
+    if arg == "on" then
+      s.autoQuest = nil
+      return say("the guide accepts and turns in the step's quests when you talk to the NPC (hold Shift to skip). "
+        .. "Reward choices are always yours.")
+    end
+    return say("auto quest is " .. (s.autoQuest == false and "off" or "on") .. ". /fl guide auto on | off")
+  end
   local mine = G.myGuides()
   if cmd == "list" then
     if #mine == 0 then return say("no guides for this character yet.") end
@@ -397,28 +487,58 @@ function G.slash(rest)
     G.advance(true)
     return G.show()
   end
-  say("/fl guide  show | hide | list | use N | next | back | pin | reset")
+  say("/fl guide  show | hide | list | use N | next | back | pin | reset | tracker on|off | auto on|off")
 end
 
 ---------------------------------------------------------------- events
 local events = CreateFrame("Frame")
+-- Runs fn protected: an error prints a line instead of breaking the caller (events and timers).
+local function safe(fn)
+  return function(...)
+    local ok, err = pcall(fn, ...)
+    if not ok then print("|cff33ff99Forever Ledger:|r guide viewer error: " .. tostring(err)) end
+  end
+end
 local lastRead, pending = -math.huge, false
-local function refresh(force)
+local function refresh(force, rewatch)
   G.advance(force)
-  G.render()
+  G.sync(rewatch)
 end
 local handlers = {}
 function handlers.PLAYER_LOGIN()
   -- The quest log is ready a moment after login.
   local function start()
-    if #G.myGuides() == 0 then return end
+    -- Started: from here on G.sync looks after the watches.
+    G.shown = G.shown or false
+    if #G.myGuides() == 0 then
+      -- The tray removed the guide that was running: your own watches come back.
+      if type(state().savedWatches) == "table" then G.sync() end
+      return
+    end
     G.advance(true)
-    if not state().hidden then G.show() end
-    say("guide loaded: " .. esc(G.current().title) .. ". /fl guide to show or hide it.")
+    if not state().hidden then
+      G.show()
+    elseif type(state().savedWatches) == "table" then
+      G.sync() -- hidden: your own watches come back
+    end
+    say("guide loaded: " .. esc(G.current().title) .. ". "
+      .. (state().hidden and "/fl guide to show it." or "/fl guide hide to hide it."))
   end
-  if C_Timer then C_Timer.After(3, start) else start() end
+  if C_Timer then C_Timer.After(3, safe(start)) else safe(start)() end
 end
-function handlers.QUEST_ACCEPTED() refresh(true) end
+function handlers.QUEST_ACCEPTED()
+  refresh(true, true)
+  -- Again a moment later: this sync undoes the game's auto-watch of the accepted quest if it lands after ours.
+  if C_Timer then C_Timer.After(0.5, safe(function() G.sync(true) end)) end
+end
+-- The game also auto-watches a quest when it progresses: undo it a moment later, as after an accept. A burst of
+-- progress (every kill fires one) gets one sync.
+local watchPending = false
+function handlers.QUEST_WATCH_UPDATE()
+  if watchPending or not C_Timer or #G.myGuides() == 0 then return end
+  watchPending = true
+  C_Timer.After(0.5, safe(function() watchPending = false; G.sync(true) end))
+end
 function handlers.PLAYER_LEVEL_UP(level)
   -- UnitLevel can still say the old level while this event runs.
   G.level = tonumber(level)
@@ -430,6 +550,21 @@ function handlers.QUEST_TURNED_IN(questID)
   refresh(true)
 end
 function handlers.QUEST_REMOVED() refresh(false) end
+function handlers.PLAYER_REGEN_ENABLED()
+  if G.owed then G.sync(G.owedRewatch) end
+end
+-- The game blocked a protected action and blames us (taint from the tracker section): back to the window.
+-- FORBIDDEN is the out-of-combat one (a quest item used from the tracker); same handling. A block on one of auto
+-- quest's calls (AcceptQuest, GetQuestReward, ...) is auto quest's alone: it stops for the session, the tracker stays.
+function handlers.ADDON_ACTION_BLOCKED(addon, func)
+  if addon ~= "ForeverLedger" then return end
+  if G.auto and G.auto.owns(func) then return G.auto.onBlocked(func) end
+  if G.tracker and G.tracker.onBlocked then
+    G.tracker.onBlocked(func)
+    G.sync()
+  end
+end
+handlers.ADDON_ACTION_FORBIDDEN = handlers.ADDON_ACTION_BLOCKED
 function handlers.QUEST_LOG_UPDATE()
   if #G.myGuides() == 0 then return end
   local now = GetTime and GetTime() or time()
@@ -438,11 +573,8 @@ function handlers.QUEST_LOG_UPDATE()
     refresh(false)
   elseif not pending and C_Timer then
     pending = true
-    C_Timer.After(READ_GAP, function() pending = false; refresh(false) end)
+    C_Timer.After(READ_GAP, safe(function() pending = false; refresh(false) end))
   end
 end
 for event in pairs(handlers) do pcall(events.RegisterEvent, events, event) end
-events:SetScript("OnEvent", function(_, event, ...)
-  local ok, err = pcall(handlers[event], ...)
-  if not ok then print("|cff33ff99Forever Ledger:|r guide viewer error: " .. tostring(err)) end
-end)
+events:SetScript("OnEvent", function(_, event, ...) safe(handlers[event])(...) end)

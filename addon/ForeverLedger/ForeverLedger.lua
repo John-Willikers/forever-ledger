@@ -1,8 +1,8 @@
--- Forever Ledger v0.6.1 (SavedVariables schema 9)
+-- Forever Ledger v0.7.0 (SavedVariables schema 9)
 -- Passive data collector. Reads what the game already shows you; automates nothing.
 -- Data is written to WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedger.lua on /reload or logout.
 
-local VERSION = "0.6.1"
+local VERSION = "0.7.0"
 -- 2 adds turnIns[].choice; 3 adds meta.session, dropQty, corpses and run lootMethod / bossLoot / groupLoot;
 -- 4 adds professions (skills, skillUps, recipes, recipeSeen, learned, crafts, nodes, nodeLoot, trainers, vendors),
 -- items[].classID/subclassID and apiSamples; 5 adds vendors[].title, vendors[].items[].costs (extended costs paid in
@@ -2829,7 +2829,9 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     say("/fl scanlog  -  read rewards for quests already in your log")
     say("/fl done  -  close the current dungeon timer by hand")
     say("/fl nudge off|on  -  reminders to /reload after bosses, runs and turn-ins")
-    say("/fl guide  -  show the leveling guide sent to this character (list, use N, next, back, pin, hide)")
+    say("/fl guide  -  the leveling guide sent to this character, in the quest tracker with an arrow (list, use N, "
+      .. "next, back, pin, hide, tracker on|off)")
+    say("/fl guide auto off|on  -  the guide accepts and turns in its step's quests (never picks a reward)")
     say("/fl reset confirm  -  wipe everything")
     say("Type /reload after each dungeon so the data hits disk.")
   end

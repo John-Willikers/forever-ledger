@@ -15,7 +15,9 @@ the step's spot.
    quests, remove guide-added watches when the step moves on). The native tracker does the drawing.
 2. **A TomTom-style arrow** for the step's coordinates (works for steps that aren't quests too: "go to X", "pick up
    from Y").
-3. **Probe first.** The API dump has the watch / super-track functions but not frames or templates, so
+3. **Takes over the watch list** (2026-10-07 23:58): your watches are saved once and restored on hide / finish.
+4. **A real "Guide" module in the tracker** for the step text, with Next / Back / Pick guide / Hide in its menu.
+5. **Probe first.** The API dump has the watch / super-track functions but not frames or templates, so
    `ForeverLedgerProbe` 0.5.0 asks the client before any design.
 
 ## 🔬 Probe 0.5.0 — what it asks
@@ -40,7 +42,27 @@ the step's spot.
   - **No quest waypoints:** `C_QuestLog.GetNextWaypoint` is empty, so the arrow uses the guide's own coordinates.
   - 🐞 Probe nit: `tracker watch` restores the super-tracked *quest* but not a super-tracked *user waypoint* (it
     was on before the test, off after). Harmless; the viewer rework must restore it properly.
-- 🟡 2½ 🤔 Design questions for Harlan (next): guide watches vs. the player's own watches; our arrow vs. the native
-  marker vs. both
-- ⏳ 3 🛠️ Viewer rework: guide drives quest watches + arrow (design after step 2)
-- ⏳ 4 🚀 Release a new addon version (`addon-vX` → `addon-cli publish X`)
+- ✅ 2½ 🤔 Design agreed with Harlan, section by section — 2026-10-07 23:58 CDT: guide **takes over** the watch list
+  (yours saved and restored), a real **"Guide" tracker module** above Quests (fallback: lookalike frame), **our own
+  TomTom arrow** (Pin and the old window go). Design: `docs/plans/2026-10-07-guide-tracker-design.md`
+- ✅ 3 🛠️ Viewer rework on `feat/guide-tracker`: implementation plan written (7 tasks, built on Blizzard's real 11.x
+  tracker source) — `docs/plans/2026-10-08-guide-tracker.md` — 2026-10-08 00:05 CDT. Run here, task by task.
+  - ✅ T1 test helpers (2026-10-08 00:08 CDT) · ✅ T2 `G.sync` + combat guard (2026-10-08 00:09 CDT) ·
+    ✅ T3 watches (2026-10-08 00:16 CDT) · ✅ T4 arrow (2026-10-08 00:25 CDT) ·
+    ✅ T5 tracker module (2026-10-08 00:32 CDT) · ✅ T6 wire-up + 0.7.0 (2026-10-08 00:43 CDT) ·
+    ✅ T7 final review passed after fixes (login watch race, ADDON_ACTION_FORBIDDEN, layout and arrow errors
+    contained) — draft PR #75 — 2026-10-08 00:52 CDT
+- ✅ 4 🎮 Harlan's in-game test passed (2026-10-08 07:51 CDT): tracker section, header clicks, watch takeover, arrow, auto quest. Earlier (pinged 2026-10-08 00:52 CDT): close the tray first (it would reinstall 0.6.1);
+  `/console taintLog 1`; Guide section + header menu; accept a quest (watch list changes), hide (yours come back),
+  `/reload` mid-guide; arrow walking/turning + Undercity ↔ Tirisfal; use a quest item in and out of combat; send
+  `Logs/taint.log` lines naming ForeverLedger (if any)
+  - 🐞 2026-10-08 02:11 CDT: clicking the Guide header **crashed the client** (Harlan, 01:48 CDT). Crash log: Blizzard's
+    `MenuUtil.CreateContextMenu` → `Menu.lua:2212 AcquireMenu` → C assertion in `ldebug.c(747)`; our menu code never
+    ran. Fix: no menu. Left-click Next, right-click Back, shift-click Hide. Recorded in `CLAUDE.md`. Re-test needed.
+- ✅ 4½ 🤝 T8 auto quest (Harlan, 2026-10-08): `GuideAutoQuest.lua` accepts and turns in the current step's quests at
+  the NPC, never picks a reward (prints "pick your reward" and waits); Shift skips, `/fl guide auto off` keeps it off;
+  hard rule reworded in `CLAUDE.md`; 8 harness tests — 2026-10-08 02:28 CDT. Review follow-ups:
+  rewards fail closed (only exactly 0 choices turns in), Shift skips the whole conversation — 02:32 CDT. Quality review fixes: a block on an auto-quest call stops auto
+  quest for the session (not the tracker), once-per-conversation selects, delayed re-check (chain follow-ups),
+  auto-accept acknowledge — 02:55 CDT. In-game check joins step 4's re-test.
+- 🟡 5 🚀 Addon 0.7.0 releasing (2026-10-08 07:51 CDT): PR #75 → tag (`addon-v0.7.0` → `addon-cli publish 0.7.0`)

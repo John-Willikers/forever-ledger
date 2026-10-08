@@ -21,7 +21,9 @@ read_globals = {
   -- namespaces
   "C_Item", "C_Map", "C_QuestLog", "C_AddOns", "C_Container", "C_Timer", "APIDocumentation",
   "C_ChatInfo", "C_CombatLog", "C_UI", "C_LootHistory", "C_PartyInfo", "Enum",
-  "C_SkillInfo", "C_TradeSkillUI", "C_MerchantFrame", "C_Spell", "C_SuperTrack", "UiMapPoint",
+  "C_SkillInfo", "C_TradeSkillUI", "C_MerchantFrame", "C_Spell", "C_SuperTrack", "UiMapPoint", "CreateVector2D",
+  "ObjectiveTrackerManager", "ObjectiveTrackerFrame", "ObjectiveTrackerModuleMixin", "IsShiftKeyDown",
+  "OBJECTIVE_DASH_STYLE_HIDE",
   -- written by the tray app into the generated ForeverLedger_Guides addon
   "ForeverLedgerGuidesData",
   -- client / addon
@@ -32,12 +34,16 @@ read_globals = {
   "UnitExists", "GetRealmName", "IsInRaid", "UnitFullName", "UnitPVPName", "GetUnitName", "GetPlayerInfoByGUID", "C_PlayerInfo",
   "PlayerLocation", "IsSwimming", "GetWeaponEnchantInfo", "ERR_FISH_ESCAPED", "ERR_FISH_NOT_HOOKED", "UnitAffectingCombat", "IsInGroup", "GetNumGroupMembers", "GetLootMethod",
   -- zone / instance
-  "GetRealZoneText", "GetSubZoneText", "IsInInstance", "GetInstanceInfo",
+  "GetRealZoneText", "GetSubZoneText", "IsInInstance", "GetInstanceInfo", "GetPlayerFacing",
   -- quests
   "GetQuestID", "GetTitleText", "GetRewardXP", "GetRewardMoney", "GetNumQuestChoices", "GetNumQuestRewards",
   "GetQuestItemLink", "GetQuestItemInfo", "GetNumQuestLogEntries", "GetQuestLogTitle", "GetQuestLogSelection",
   "SelectQuestLogEntry", "GetNumQuestLogChoices", "GetQuestLogItemLink", "GetQuestLogRewardMoney",
   "GetNumQuestLeaderBoards", "GetQuestLogLeaderBoard", "GetQuestReward",
+  -- NPC quest windows (GuideAutoQuest.lua)
+  "C_GossipInfo", "GetNumAvailableQuests", "GetAvailableQuestInfo", "SelectAvailableQuest", "GetNumActiveQuests",
+  "GetActiveQuestID", "GetActiveTitle", "SelectActiveQuest", "QuestGetAutoAccept", "AcceptQuest",
+  "AcknowledgeAutoAcceptQuest", "IsQuestCompletable", "CompleteQuest",
   -- items / loot
   "GetItemInfo", "GetItemStats", "GetInventoryItemLink", "GetNumLootItems", "GetLootSlotLink", "GetLootSourceInfo", "GetLootSlotType",
   "GetLootSlotInfo", "GetMoney", "LOOT_SLOT_MONEY", "random",
