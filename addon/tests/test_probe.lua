@@ -701,6 +701,16 @@ return function(H)
     H.ok(printedHas(c, "restored"), "says it put things back")
   end)
 
+  H.test("probe tracker: a non-number facing is kept as the call result, not rounded", function()
+    local c = trackerClient()
+    c.env.GetPlayerFacing = function() return nil end
+    c.slash("FOREVERLEDGERPROBE", "tracker")
+    local t = c.env.ForeverLedgerProbeDB.tracker[61582]
+    H.eq(t.nav.facing.ok, true)
+    H.eq(t.nav.facing.values[1], "<nil>")
+    H.ok(printedHas(c, "facing <nil>,"), "summary shows the nil, not an error")
+  end)
+
   H.test("probe tracker watch: refuses in combat", function()
     local c, q = trackerClient({ professionAPI = true, inCombat = true })
     c.slash("FOREVERLEDGERPROBE", "tracker watch")
@@ -789,7 +799,7 @@ return function(H)
     }
     return c, t
   end
-  local function travel(c) return c.env.ForeverLedgerProbeDB.travel[61582] end
+  local function travel(c) return c.env.ForeverLedgerProbeDB.travel.snapshots[61582] end
 
   H.test("probe travel: records taxi nodes, bind, hearth, mount, speed and APIs", function()
     local c, t = travelClient()
@@ -828,6 +838,16 @@ return function(H)
     H.eq(s.here.mapID, 1429)
     H.eq(s.here.zone, "Elwynn Forest")
     H.ok(printedHas(c, "map catalog 3"), "summary line")
+    H.eq(s.taxiOpen, false)
+    H.ok(printedHas(c, "taxi map closed: run /flprobe travel again"), "hint when the taxi map is closed")
+    H.eq(c.env.ForeverLedgerProbeDB.travel[61582], nil, "snapshots live under travel.snapshots")
+    t.open = true
+    local before = #c.world.printed
+    c.slash("FOREVERLEDGERPROBE", "travel")
+    H.eq(travel(c).taxiOpen, true)
+    for i = before + 1, #c.world.printed do
+      H.eq(c.world.printed[i]:find("taxi map closed", 1, true), nil, "no hint with the map open")
+    end
   end)
 
   H.test("probe travel: the map catalog is compact rows with size and world corners", function()
@@ -836,6 +856,7 @@ return function(H)
     local m = travel(c).maps
     H.eq(m.count, 3)
     H.eq(m.scanned, 3000)
+    H.eq(m.maxId, 1429)
     H.eq(m.vector, "CreateVector2D")
     H.eq(table.concat(m.fields, ","), "id,name,mapType,parentMapID,width,height,c0,x0,y0,c1,x1,y1")
     local byId = {}
@@ -853,6 +874,19 @@ return function(H)
     H.eq(k[12], 500 - 36800)
     H.eq(byId[1429][4], 1415)
     H.eq(byId[1429][7], 0)
+  end)
+
+  H.test("probe travel: a throwing GetWorldPosFromMapPos leaves false corners", function()
+    local c = travelClient()
+    c.env.C_Map.GetWorldPosFromMapPos = function() error("bad vector") end
+    c.slash("FOREVERLEDGERPROBE", "travel")
+    local m = travel(c).maps
+    H.eq(m.count, 3)
+    local k = m.rows[1]
+    H.eq(k[1], 1414)
+    H.eq(k[5], 36800, "size still read")
+    for i = 7, 12 do H.eq(k[i], false, "corner field " .. i) end
+    H.eq(#k, 12)
   end)
 
   H.test("probe travel: a bare client records gaps and doesn't throw", function()
@@ -961,7 +995,10 @@ return function(H)
     c.slash("FOREVERLEDGERPROBE", "trip on")
     for _ = 1, 950 do c.advance(2) end
     local pdb = c.env.ForeverLedgerProbeDB
-    H.eq(#pdb.travel.trips[61582][1].samples, 900)
+    local full = pdb.travel.trips[61582][1]
+    H.eq(#full.samples, 900)
+    H.eq(full.lastSampleAt, full.startedAt + 899 * 2)
+    H.eq(#c.world.timers, 0, "the sampler stops rescheduling at the cap")
     local back = freshProbe({ professionAPI = true }, pdb)
     back.fire("ZONE_CHANGED")
     H.eq(#pdb.travel.trips[61582][1].events, 0, "not recording after a reload")
@@ -971,6 +1008,28 @@ return function(H)
     H.ok(printedHas(back, "/flprobe trip on|off"), "help mentions trip")
     back.slash("FOREVERLEDGERPROBE", "reset confirm")
     H.eq(H.count(pdb.travel), 0)
+  end)
+
+  H.test("probe trip: keeps the last 6 trips and the full taxi window for the first 5 openings", function()
+    local c, t = travelClient()
+    t.open = true
+    for i = 1, 8 do
+      c.slash("FOREVERLEDGERPROBE", "trip on")
+      if i == 8 then
+        for _ = 1, 7 do c.fire("TAXIMAP_OPENED", 1) end
+      end
+      c.advance(1)
+      c.slash("FOREVERLEDGERPROBE", "trip off")
+    end
+    local trips = c.env.ForeverLedgerProbeDB.travel.trips[61582]
+    H.eq(#trips, 6, "the oldest trips are dropped")
+    H.eq(trips[1].startedAt, c.world.clock - 6, "trip 3 is now the oldest")
+    local last = trips[6]
+    H.eq(last.taxiWindows, 7)
+    H.eq(#last.events, 7)
+    H.ok(last.events[5].taxi, "fifth window captured")
+    H.eq(last.events[6].taxi, nil, "sixth window: event only")
+    H.eq(last.events[7].here.mapID, 1429)
   end)
 
   H.writeFile(FIXTURES .. "probe-dump.lua", H.serialize("ForeverLedgerProbeDB", db))

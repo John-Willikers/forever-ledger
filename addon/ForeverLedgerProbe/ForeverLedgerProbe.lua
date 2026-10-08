@@ -1047,13 +1047,22 @@ local function navSample()
   local x, y
   if type(pos) == "table" and type(pos.GetXY) == "function" then x, y = pos:GetXY() end
   local facing = call("GetPlayerFacing")
+  -- Rounded only when it is a number; otherwise the call result (missing / error / nil) is kept as is.
+  if facing.ok and type(facing.values[1]) == "number" then facing = round(facing.values[1]) end
   local s = { t = GetTime and round(GetTime(), 2) or 0, mapID = mapID, x = round(x), y = round(y),
-              facing = facing.ok and round(facing.values[1]) or facing, unitPosition = call("UnitPosition", "player"),
+              facing = facing, unitPosition = call("UnitPosition", "player"),
               navDistance = call("C_Navigation.GetDistance"), navState = call("C_Navigation.GetTargetState"),
               navOnScreen = call("C_Navigation.HasValidScreenPosition"),
               instance = try(IsInInstance) }
   if mapID and pos then s.world = call("C_Map.GetWorldPosFromMapPos", mapID, pos) end
   return s
+end
+
+-- A sample's facing for chat: the rounded number, or what the call returned.
+local function facingText(f)
+  if type(f) == "number" then return tostring(f) end
+  if type(f) == "table" then return show(f) end
+  return tostring(f)
 end
 
 local function dumpTracker()
@@ -1090,7 +1099,7 @@ local function dumpTracker()
     "%d in log | facing %s, nav %s", tf and (tf.objectType and show(tf.objectType) or tf.type) or "missing",
     out.objects.ObjectiveTrackerManager and "yes" or "no", out.objects.QuestWatchFrame and "yes" or "no",
     nTemplates, #TRACKER_TEMPLATES, nGlobals, #out.watches.ids, #out.quests,
-    tostring(type(out.nav.facing) == "number" and out.nav.facing or show(out.nav.facing)), show(out.nav.navDistance)))
+    facingText(out.nav.facing), show(out.nav.navDistance)))
   say("/flprobe tracker watch tries watching a quest (then puts it back); /flprobe arrow samples facing. /reload.")
 end
 
@@ -1142,7 +1151,7 @@ local function arrowTick()
     arrowRun = nil
     local first, last = list[1], list[#list]
     say(format("arrow: %d sample(s); facing %s -> %s, x/y %s,%s -> %s,%s. /reload to write the file.", #list,
-      tostring(first.facing), tostring(last.facing), tostring(first.x), tostring(first.y), tostring(last.x),
+      facingText(first.facing), facingText(last.facing), tostring(first.x), tostring(first.y), tostring(last.x),
       tostring(last.y)))
     return
   end
@@ -1179,7 +1188,8 @@ local MAP_FIELDS = { "id", "name", "mapType", "parentMapID", "width", "height", 
 local TRIP_EVERY = 2                -- seconds between trip samples
 local MAX_TRIP_SAMPLES = 900        -- 30 min
 local MAX_TRIP_EVENTS = 300
-local MAX_TRIPS = 20                -- per build
+local MAX_TRIPS = 6                 -- per build; the oldest is dropped
+local MAX_TAXI_WINDOWS = 5          -- TAXIMAP_OPENED per trip with the full node capture
 local TRIP_EVENTS = { "TAXIMAP_OPENED", "TAXIMAP_CLOSED", "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED",
   "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA", "PLAYER_ENTERING_WORLD", "LOADING_SCREEN_ENABLED",
   "LOADING_SCREEN_DISABLED" }
@@ -1273,7 +1283,7 @@ local function mapCatalog()
     if not xy then return false, false, false end
     return tonumber(continent) or false, xy[1], xy[2]
   end
-  local rows, errors = {}, 0
+  local rows, errors, maxId = {}, 0, 0
   for id = 1, MAP_SCAN do
     local ok, info = pcall(getInfo, id)
     if not ok then
@@ -1286,11 +1296,12 @@ local function mapCatalog()
       end
       local c0, x0, y0 = corner(id, 0, 0)
       local c1, x1, y1 = corner(id, 1, 1)
+      maxId = id
       rows[#rows + 1] = { id, clip(info.name), tonumber(info.mapType) or false, tonumber(info.parentMapID) or false,
                           w, h, c0, x0, y0, c1, x1, y1 }
     end
   end
-  return { fields = MAP_FIELDS, rows = rows, count = #rows, scanned = MAP_SCAN, errors = errors,
+  return { fields = MAP_FIELDS, rows = rows, count = #rows, scanned = MAP_SCAN, maxId = maxId, errors = errors,
            vector = type(makeVec) == "function" and "CreateVector2D" or "table" }
 end
 
@@ -1323,7 +1334,10 @@ local function dumpTravel()
                 NumTaxiNodes = call("NumTaxiNodes"), GetTaxiMapID = call("GetTaxiMapID") }
   out.mounts = mountInfo()
   out.maps = mapCatalog()
-  db.travel[build] = out
+  local numNodes = tonumber(first("NumTaxiNodes")) or 0
+  out.taxiOpen = numNodes > 0
+  db.travel.snapshots = db.travel.snapshots or {}
+  db.travel.snapshots[build] = out
   local function nodeCount(id)
     local t = out.taxi[id]
     if not t then return "-" end
@@ -1338,6 +1352,9 @@ local function dumpTravel()
     tostring(out.here.mapID), nodeCount(out.here.mapID), show(out.bind),
     show(out.hearth.count["C_Item.GetItemCount"]), show(cd), show(out.state.IsMounted), show(out.state.GetUnitSpeed),
     tostring(out.mounts.ids), out.maps.count))
+  if not out.taxiOpen then
+    say("taxi map closed: run /flprobe travel again with a flight master's map open for learned state")
+  end
   say("Open a flight master's map and run /flprobe trip on before flying or taking a boat. /reload to write the file.")
 end
 
@@ -1370,16 +1387,19 @@ local function tripEvent(event, extra)
   return e
 end
 
+-- Takes one sample; false once the trip is full (the sampler then stops).
 local function tripTick()
-  if not tripRun or #tripRun.samples >= MAX_TRIP_SAMPLES then return end
-  tripRun.samples[#tripRun.samples + 1] = travelSample()
+  if not tripRun or #tripRun.samples >= MAX_TRIP_SAMPLES then return false end
+  local s = travelSample()
+  tripRun.samples[#tripRun.samples + 1] = s
+  tripRun.lastSampleAt = time()
+  return #tripRun.samples < MAX_TRIP_SAMPLES
 end
 
 local function scheduleTick(gen)
   C_Timer.After(TRIP_EVERY, function()
     if gen ~= tripGen or not tripRun then return end
-    tripTick()
-    scheduleTick(gen)
+    if tripTick() then scheduleTick(gen) end
   end)
 end
 
@@ -1402,13 +1422,21 @@ local function onTakeTaxiNode(slot)
   end)
 end
 
-tripFrame:SetScript("OnEvent", function(_, event, ...)
-  if not tripRun then return end
+local function onTripEvent(event, ...)
   local args = {}
   for i = 1, select("#", ...) do args[i] = clip((select(i, ...))) end
   local e = { args = args, here = travelSample() }
-  if event == "TAXIMAP_OPENED" then e.taxi = taxiWindow() end
+  if event == "TAXIMAP_OPENED" then
+    tripRun.taxiWindows = (tripRun.taxiWindows or 0) + 1
+    -- The full node capture only for the first few windows: a flight master visited often would bloat the file.
+    if tripRun.taxiWindows <= MAX_TAXI_WINDOWS then e.taxi = taxiWindow() end
+  end
   tripEvent(event, e)
+end
+
+tripFrame:SetScript("OnEvent", function(_, event, ...)
+  if not tripRun then return end
+  pcall(onTripEvent, event, ...)
 end)
 
 local function startTrip()
@@ -1445,7 +1473,7 @@ local function startTrip()
       acc = acc + (tonumber(elapsed) or 0)
       if acc >= TRIP_EVERY then
         acc = 0
-        tripTick()
+        if not tripTick() then pcall(tripFrame.SetScript, tripFrame, "OnUpdate", nil) end
       end
     end)
   end
