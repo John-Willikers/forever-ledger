@@ -1,10 +1,13 @@
--- Forever Ledger Probe v0.4.0
+-- Forever Ledger Probe v0.5.0
 -- Read-only: records what this client supports so Forever Ledger can be built against the real API.
 -- Nothing is automated. Output lands in WTF/Account/<ACCOUNT>/SavedVariables/ForeverLedgerProbe.lua on /reload.
 --
 --   /flprobe             dump build info, API docs (same data as /api), globals and event support
 --   /flprobe specs       spec catalog per class and, for every bag/equipped item, which specs the client says want it
 --   /flprobe names       every way the client names you (and your target / party): looking for the surname
+--   /flprobe tracker     the quest tracker on the right: frames, templates, watched quests, waypoints, facing
+--   /flprobe tracker watch   watch + super-track one quest, read it back, then put both back (UI state only)
+--   /flprobe arrow       sample facing and position 20 times, 1 s apart (turn around and walk): for a waypoint arrow
 --   /flprobe fish on     record each fishing cast: events, lure, tooltip, loot sources, zone, skill (off after /reload)
 --   /flprobe fish off
 --   /flprobe sniff on    record the first few payloads of every event while you play (off after /reload unless on)
@@ -18,7 +21,7 @@
 --   /flprobe status
 --   /flprobe reset confirm
 
-local VERSION = "0.4.0"
+local VERSION = "0.5.0"
 local SAMPLE_LIMIT = 5     -- payloads kept per event
 local MAX_EVENTS = 1500    -- distinct events tracked per build while sniffing
 local MAX_STRING = 200
@@ -892,6 +895,265 @@ local function setFish(on)
   if not on then fishCast = nil end
 end
 
+---------------------------------------------------------------- tracker (guide in Blizzard's quest tracker) + arrow
+local MAX_TRACKER_GLOBALS = 400
+local MAX_METHODS = 120
+local ARROW_SAMPLES, ARROW_EVERY = 20, 1
+-- Lua patterns have no alternation: a global matches when any of these is in its name.
+local TRACKER_PATTERNS = { "ObjectiveTracker", "QuestWatch", "WatchFrame", "SuperTrack", "Navigation", "Waypoint",
+  "QUEST_TRACKER", "TRACKER_MODULE", "QuestPOI" }
+-- Retail 11.x (ObjectiveTrackerManager, modules), retail 10.x (ObjectiveTracker_*), Classic (QuestWatchFrame).
+local TRACKER_OBJECTS = { "ObjectiveTrackerFrame", "ObjectiveTrackerManager", "ObjectiveTrackerModuleMixin",
+  "ObjectiveTrackerContainerMixin", "ObjectiveTrackerBlockMixin", "QuestObjectiveTracker",
+  "CampaignQuestObjectiveTracker", "ScenarioObjectiveTracker", "ObjectiveTrackerBlocksFrame", "QuestWatchFrame",
+  "WatchFrame", "SuperTrackedFrame", "EditModeManagerFrame", "QuestPOI_Initialize" }
+local TRACKER_TEMPLATES = { "ObjectiveTrackerModuleTemplate", "ObjectiveTrackerContainerHeaderTemplate",
+  "ObjectiveTrackerModuleHeaderTemplate", "ObjectiveTrackerBlockTemplate", "ObjectiveTrackerLineTemplate",
+  "ObjectiveTrackerHeaderTemplate" }
+local TRACKER_ADDONS = { "Blizzard_ObjectiveTracker", "Blizzard_ObjectiveTrackerShared", "Blizzard_QuestNavigation",
+  "Blizzard_EditMode" }
+local TRACKER_CVARS = { "autoQuestWatch", "autoQuestProgress", "showInGameNavigation", "trackQuestSorting",
+  "showQuestTrackingTooltips" }
+local WATCH_APIS = { "C_QuestLog.AddQuestWatch", "C_QuestLog.RemoveQuestWatch", "C_QuestLog.GetNumQuestWatches",
+  "C_QuestLog.GetQuestIDForQuestWatchIndex", "C_QuestLog.GetQuestWatchType", "C_QuestLog.SortQuestWatches",
+  "C_QuestLog.GetNextWaypoint", "C_QuestLog.GetNextWaypointText", "C_QuestLog.GetQuestsOnMap",
+  "C_QuestLog.GetMaxNumQuestsCanAccept", "AddQuestWatch", "RemoveQuestWatch", "IsQuestWatched",
+  "GetNumQuestWatches", "GetQuestIndexForWatch", "QuestUtils_IsQuestWatched",
+  "C_SuperTrack.GetSuperTrackedQuestID", "C_SuperTrack.SetSuperTrackedQuestID",
+  "C_SuperTrack.IsSuperTrackingUserWaypoint", "C_SuperTrack.SetSuperTrackedUserWaypoint",
+  "C_Map.SetUserWaypoint", "C_Map.HasUserWaypoint", "C_Map.GetUserWaypoint", "C_Map.ClearUserWaypoint",
+  "C_Map.CanSetUserWaypointOnMap", "C_Map.GetWorldPosFromMapPos", "C_Map.GetMapWorldSize", "C_Map.GetMapInfo",
+  "C_Navigation.GetFrame", "C_Navigation.GetDistance", "C_Navigation.GetTargetState",
+  "C_Navigation.HasValidScreenPosition", "C_Navigation.WasClampedToScreen", "GetPlayerFacing", "UnitPosition",
+  "UiMapPoint.CreateFromCoordinates" }
+
+local function call(path, ...) return tryDeep(resolve(path), ...) end
+
+local function round(v, places)
+  if type(v) ~= "number" then return v end
+  local m = 10 ^ (places or 4)
+  return math.floor(v * m + 0.5) / m
+end
+
+-- Every global whose name has one of the patterns, with its type.
+local function trackerGlobals()
+  local found, n = {}, 0
+  for k, v in pairs(_G) do
+    if type(k) == "string" then
+      for _, p in ipairs(TRACKER_PATTERNS) do
+        if k:find(p, 1, true) then
+          n = n + 1
+          if n <= MAX_TRACKER_GLOBALS then found[k] = type(v) end
+          break
+        end
+      end
+    end
+  end
+  return found, n
+end
+
+-- What a frame or mixin is: object type, shown, anchor, child modules, and its method names.
+local function describe(path)
+  local o = resolve(path)
+  if o == nil then return nil end
+  if type(o) ~= "table" then return { type = type(o) } end
+  local d = { type = "table", methods = {}, fields = {} }
+  local keys = sortedKeys(o)
+  for _, k in ipairs(keys) do
+    local v = o[k]
+    if type(v) == "function" then
+      if #d.methods < MAX_METHODS then d.methods[#d.methods + 1] = tostring(k) end
+    elseif type(k) == "string" and #d.fields < MAX_METHODS then
+      d.fields[#d.fields + 1] = k .. ":" .. type(v)
+    end
+  end
+  if type(o.GetObjectType) == "function" then
+    d.objectType = try(o.GetObjectType, o)
+    d.shown = try(o.IsShown, o)
+    d.point = try(o.GetPoint, o)
+    d.size = try(o.GetSize, o)
+    d.children = try(o.GetNumChildren, o)
+  end
+  -- Its tracker modules, whichever field the client keeps them in.
+  for _, field in ipairs({ "modules", "MODULES", "MODULES_UI_ORDER" }) do
+    if type(o[field]) == "table" then
+      local list = {}
+      for i, m in ipairs(o[field]) do
+        if i > MAX_LIST then break end
+        local header = type(m) == "table" and (m.headerText or (m.Header and m.Header.Text)) or nil
+        if type(header) == "table" and type(header.GetText) == "function" then header = header:GetText() end
+        list[i] = { name = type(m) == "table" and type(m.GetName) == "function" and clip(m:GetName()) or nil,
+                    header = clip(header), uiOrder = type(m) == "table" and clip(m.uiOrder) or nil }
+      end
+      d[field] = list
+    end
+  end
+  return d
+end
+
+-- Can an addon build from the tracker's templates? (A hidden, unparented frame; dropped right after.)
+local function templateCheck(template)
+  local ok, f = pcall(CreateFrame, "Frame", nil, nil, template)
+  if not ok then return { ok = false, err = clip(tostring(f)) } end
+  if f and f.Hide then pcall(f.Hide, f) end
+  local methods = {}
+  for _, k in ipairs(sortedKeys(f or {})) do
+    if type(f[k]) == "function" and #methods < MAX_METHODS then methods[#methods + 1] = tostring(k) end
+  end
+  return { ok = true, methods = methods }
+end
+
+local function questLog()
+  local out = {}
+  local nr = call("C_QuestLog.GetNumQuestLogEntries")
+  local n = nr.ok and tonumber(nr.values[1]) or 0
+  for i = 1, math.min(n, MAX_LIST) do
+    local info = call("C_QuestLog.GetInfo", i)
+    local q = info.ok and type(info.values[1]) == "table" and info.values[1] or nil
+    local id = q and tonumber(q.questID)
+    if id and id > 0 and q.isHeader ~= true then
+      out[#out + 1] = { questID = id, title = q.title, isHidden = q.isHidden, isOnMap = q.isOnMap,
+                        hasLocalPOI = q.hasLocalPOI, watchType = call("C_QuestLog.GetQuestWatchType", id),
+                        isWatched = call("QuestUtils_IsQuestWatched", id),
+                        waypoint = call("C_QuestLog.GetNextWaypoint", id),
+                        waypointText = call("C_QuestLog.GetNextWaypointText", id) }
+    end
+  end
+  return out
+end
+
+local function watchList()
+  local nr = call("C_QuestLog.GetNumQuestWatches")
+  local n = nr.ok and tonumber(nr.values[1]) or 0
+  local ids = {}
+  for i = 1, math.min(n, MAX_LIST) do
+    local r = call("C_QuestLog.GetQuestIDForQuestWatchIndex", i)
+    ids[i] = r.ok and r.values[1] or "?"
+  end
+  return { count = nr, ids = ids }
+end
+
+-- Where the player is and which way they face: what a TomTom-style arrow needs.
+local function navSample()
+  local mr = call("C_Map.GetBestMapForUnit", "player")
+  local mapID = mr.ok and tonumber(mr.values[1]) or nil
+  local pos = mapID and resolve("C_Map.GetPlayerMapPosition") and C_Map.GetPlayerMapPosition(mapID, "player")
+  local x, y
+  if type(pos) == "table" and type(pos.GetXY) == "function" then x, y = pos:GetXY() end
+  local facing = call("GetPlayerFacing")
+  local s = { t = GetTime and round(GetTime(), 2) or 0, mapID = mapID, x = round(x), y = round(y),
+              facing = facing.ok and round(facing.values[1]) or facing, unitPosition = call("UnitPosition", "player"),
+              navDistance = call("C_Navigation.GetDistance"), navState = call("C_Navigation.GetTargetState"),
+              navOnScreen = call("C_Navigation.HasValidScreenPosition"),
+              instance = try(IsInInstance) }
+  if mapID and pos then s.world = call("C_Map.GetWorldPosFromMapPos", mapID, pos) end
+  return s
+end
+
+local function dumpTracker()
+  db.tracker = db.tracker or {}
+  local globals, nGlobals = trackerGlobals()
+  local out = { at = time(), probeVersion = VERSION, globals = globals, globalCount = nGlobals, objects = {},
+                templates = {}, addons = {}, cvars = {}, apis = {}, inCombat = inCombat() }
+  for _, path in ipairs(TRACKER_OBJECTS) do out.objects[path] = describe(path) end
+  if not out.inCombat then
+    for _, t in ipairs(TRACKER_TEMPLATES) do out.templates[t] = templateCheck(t) end
+  end
+  for _, a in ipairs(TRACKER_ADDONS) do out.addons[a] = call("C_AddOns.IsAddOnLoaded", a) end
+  for _, cv in ipairs(TRACKER_CVARS) do out.cvars[cv] = try(GetCVar, cv) end
+  for _, api in ipairs(WATCH_APIS) do out.apis[api] = type(resolve(api)) end
+  out.watchTypes = shallow(Enum and Enum.QuestWatchType)
+  out.maxWatchable = clip(rawget(_G, "MAX_WATCHABLE_QUESTS"))
+  out.watches = watchList()
+  out.quests = questLog()
+  out.superTrackedQuest = call("C_SuperTrack.GetSuperTrackedQuestID")
+  out.userWaypoint = { has = call("C_Map.HasUserWaypoint"), get = call("C_Map.GetUserWaypoint"),
+                       superTracked = call("C_SuperTrack.IsSuperTrackingUserWaypoint") }
+  out.nav = navSample()
+  local mapID = out.nav.mapID
+  if mapID then
+    out.map = { info = call("C_Map.GetMapInfo", mapID), worldSize = call("C_Map.GetMapWorldSize", mapID),
+                questsOnMap = call("C_QuestLog.GetQuestsOnMap", mapID),
+                canPin = call("C_Map.CanSetUserWaypointOnMap", mapID) }
+  end
+  db.tracker[build] = out
+  local tf = out.objects.ObjectiveTrackerFrame
+  local nTemplates = 0
+  for _, r in pairs(out.templates) do nTemplates = nTemplates + (r.ok and 1 or 0) end
+  say(format("tracker %s, manager %s, QuestWatchFrame %s | %d/%d templates | %d tracker globals | %d watched, " ..
+    "%d in log | facing %s, nav %s", tf and (tf.objectType and show(tf.objectType) or tf.type) or "missing",
+    out.objects.ObjectiveTrackerManager and "yes" or "no", out.objects.QuestWatchFrame and "yes" or "no",
+    nTemplates, #TRACKER_TEMPLATES, nGlobals, #out.watches.ids, #out.quests,
+    tostring(type(out.nav.facing) == "number" and out.nav.facing or show(out.nav.facing)), show(out.nav.navDistance)))
+  say("/flprobe tracker watch tries watching a quest (then puts it back); /flprobe arrow samples facing. /reload.")
+end
+
+-- Watch one quest and super-track it, read both back, then put everything back as it was. UI state only.
+local function watchTest()
+  if inCombat() then return say("out of combat only.") end
+  db.tracker = db.tracker or {}
+  local quests = questLog()
+  if #quests == 0 then return say("no quests in your log: pick one up first.") end
+  local pick
+  for _, q in ipairs(quests) do
+    local wt = q.watchType
+    if not pick and not (wt.ok and wt.values[1] ~= nil and wt.values[1] ~= "<nil>") then pick = q end
+  end
+  pick = pick or quests[1]
+  local id = pick.questID
+  local t = { at = time(), probeVersion = VERSION, questID = id, title = pick.title, steps = {} }
+  local function step(name, r)
+    t.steps[#t.steps + 1] = { name = name, result = r, watchType = call("C_QuestLog.GetQuestWatchType", id),
+                              watches = watchList().count, superTracked = call("C_SuperTrack.GetSuperTrackedQuestID") }
+  end
+  local before = call("C_QuestLog.GetQuestWatchType", id)
+  local wasWatched = before.ok and before.values[1] ~= nil and before.values[1] ~= "<nil>"
+  local superBefore = call("C_SuperTrack.GetSuperTrackedQuestID")
+  step("before", before)
+  if wasWatched then step("RemoveQuestWatch", call("C_QuestLog.RemoveQuestWatch", id)) end
+  step("AddQuestWatch", call("C_QuestLog.AddQuestWatch", id))
+  step("SetSuperTrackedQuestID", call("C_SuperTrack.SetSuperTrackedQuestID", id))
+  -- Put it back.
+  if not wasWatched then step("RemoveQuestWatch (restore)", call("C_QuestLog.RemoveQuestWatch", id)) end
+  local prev = superBefore.ok and tonumber(superBefore.values[1]) or 0
+  step("SetSuperTrackedQuestID (restore)", call("C_SuperTrack.SetSuperTrackedQuestID", prev))
+  db.tracker.watchTest = db.tracker.watchTest or {}
+  db.tracker.watchTest[build] = t
+  local byName = {}
+  for _, s in ipairs(t.steps) do byName[s.name] = s end
+  say(format("%q (%d): watch type after Add %s, super-tracked after Set %s; restored. /reload to write the file.",
+    tostring(pick.title), id, show(byName.AddQuestWatch.watchType), show(byName.SetSuperTrackedQuestID.superTracked)))
+end
+
+-- A TomTom-style arrow needs facing + position every frame: sample them while the player turns and walks.
+local arrowRun
+local function arrowTick()
+  if not arrowRun then return end
+  local list = db.tracker.arrow[build]
+  list[#list + 1] = navSample()
+  arrowRun.left = arrowRun.left - 1
+  if arrowRun.left <= 0 then
+    arrowRun = nil
+    local first, last = list[1], list[#list]
+    say(format("arrow: %d sample(s); facing %s -> %s, x/y %s,%s -> %s,%s. /reload to write the file.", #list,
+      tostring(first.facing), tostring(last.facing), tostring(first.x), tostring(first.y), tostring(last.x),
+      tostring(last.y)))
+    return
+  end
+  C_Timer.After(ARROW_EVERY, arrowTick)
+end
+
+local function arrowSample()
+  if not (C_Timer and C_Timer.After) then return say("C_Timer.After is missing: can't sample.") end
+  db.tracker = db.tracker or {}
+  db.tracker.arrow = db.tracker.arrow or {}
+  db.tracker.arrow[build] = {}
+  arrowRun = { left = ARROW_SAMPLES }
+  say(format("sampling facing and position %d times, every %d s: turn in a full circle, then walk a bit.",
+    ARROW_SAMPLES, ARROW_EVERY))
+  arrowTick()
+end
+
 ---------------------------------------------------------------- lifecycle
 local lifecycle = CreateFrame("Frame")
 lifecycle:RegisterEvent("ADDON_LOADED")
@@ -905,7 +1167,7 @@ lifecycle:SetScript("OnEvent", function(_, event, name, func)
     ForeverLedgerProbeDB = type(arrived) == "table" and arrived or {}
     db = ForeverLedgerProbeDB
     db.dumps, db.sniff, db.io, db.specs = db.dumps or {}, db.sniff or {}, db.io or {}, db.specs or {}
-    db.names, db.fish = db.names or {}, db.fish or {}
+    db.names, db.fish, db.tracker = db.names or {}, db.fish or {}, db.tracker or {}
     db.probeVersion = VERSION
     local _, buildStr = GetBuildInfo()
     build = tonumber(buildStr) or 0
@@ -945,6 +1207,12 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
     dumpSpecs()
   elseif msg == "names" then
     dumpNames()
+  elseif msg == "tracker" then
+    dumpTracker()
+  elseif msg == "tracker watch" then
+    watchTest()
+  elseif msg == "arrow" then
+    arrowSample()
   elseif msg == "fish on" then
     setFish(true)
     say("recording fishing casts (up to " .. MAX_FISH .. " this build). Fish a bit, then /flprobe fish off, /reload.")
@@ -952,7 +1220,7 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
     setFish(false)
     say(format("fishing recorder off; %d cast(s) recorded this build.", #(db.fish[build] or {})))
   elseif msg == "reset confirm" then
-    wipe(db.dumps); wipe(db.sniff); wipe(db.io); wipe(db.specs); wipe(db.names); wipe(db.fish)
+    wipe(db.dumps); wipe(db.sniff); wipe(db.io); wipe(db.specs); wipe(db.names); wipe(db.fish); wipe(db.tracker)
     db.sniffEventCount = 0
     say("probe data wiped.")
   else
@@ -963,7 +1231,8 @@ SlashCmdList.FOREVERLEDGERPROBE = function(msg)
     say(format("build %d: %d dump(s), specs %s, sniffer %s, %d events seen this build, %d io entries, load #%d.",
       build, ndumps, db.specs[build] and "recorded" or "not run", db.sniffing and "ON" or "off", nev,
       #(db.io[build] or {}), db.loadCount or 0))
-    say("/flprobe  |  /flprobe specs  |  /flprobe names  |  /flprobe fish on|off  |  /flprobe sniff on|off  |  " ..
+    say("/flprobe  |  /flprobe specs  |  /flprobe names  |  /flprobe tracker [watch]  |  /flprobe arrow  |  " ..
+      "/flprobe fish on|off  |  /flprobe sniff on|off  |  " ..
       "/flprobe io [on|toggle|off|reloadbtn]  |  /flprobe reset confirm")
   end
 end
