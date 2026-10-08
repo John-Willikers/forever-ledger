@@ -477,8 +477,10 @@ function G.view()
   local later = G.laterLines(g)
   local body = G.stepText(g.steps[i], g.steps[i - 1])
   if #later > 0 then body = table.concat(later, "\n") .. "\n\n" .. body end
+  -- A planned guide (the route planner built it for this character) is no one's run.
+  local from = g.planned == true and "planned route" or (esc(g.basedOn or "?") .. "'s run")
   return { title = esc(g.title),
-           counter = string.format("Step %d of %d  ·  %s's run", i, #g.steps, esc(g.basedOn or "?")),
+           counter = string.format("Step %d of %d  ·  %s", i, #g.steps, from),
            body = body }
 end
 

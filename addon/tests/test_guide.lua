@@ -1236,6 +1236,16 @@ return function(H)
     H.eq(did(c), "")
   end)
 
+  H.test("guide: the counter says 'planned route' for a planned guide, else whose run", function()
+    local g = travelGuide(9, ME)
+    g.planned = true
+    local c = travelViewer({ guides = { g } })
+    H.ok(counter(c):find("Step 1 of 8  ·  planned route", 1, true), counter(c))
+    H.ok(not counter(c):find("'s run", 1, true), counter(c))
+    local d = viewer(H)
+    H.ok(counter(d):find("Step 1 of 5  ·  Rot's run", 1, true), counter(d))
+  end)
+
   H.test("guide travel: the tracker section shows the travel step", function()
     local c = travelViewer({ onQuest = { [RUDE] = true }, tracker = true })
     local b = c.tracker.draw()
