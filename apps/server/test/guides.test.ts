@@ -92,6 +92,8 @@ describe('in-game guides (real Postgres)', () => {
     });
     expect(made).toMatchObject({ character: 'Thibodeaux Willikers', basedOn: 'Rot', tray: true });
     expect(made.title).toBe("Undead 1-4 (Rot's run)");
+    // No stored state (no addon 0.8.0 upload): the guide follows a run, as before planned guides.
+    expect(made.planned).toBe(false);
     const res = await tray('GET', '/v1/guides');
     expect(res.statusCode).toBe(200);
     const [g] = res.json().guides;

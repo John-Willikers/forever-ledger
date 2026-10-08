@@ -1,6 +1,9 @@
 /** A step of an in-game guide (contracts GuideStep). */
 export interface GuideStep {
-  action: 'accept' | 'complete' | 'turn_in';
+  action: 'accept' | 'complete' | 'turn_in' | 'travel';
+  /** Travel steps (guide format 2). */
+  how?: 'walk' | 'fly' | 'boat' | 'hearth';
+  note?: string;
   npc: string | null;
   zone: string | null;
   subzone: string | null;
@@ -18,6 +21,10 @@ export interface BuiltGuide {
   title: string;
   steps: number;
   basedOn: string;
+  /** Planned for the character by the route planner (else it follows basedOn's run). */
+  planned?: boolean;
+  /** Planned play time (planned guides). */
+  minutes?: number;
   reachedTarget: boolean;
   gaps: string[];
   tray: boolean;
@@ -30,6 +37,7 @@ export interface GuideRow {
   char: string;
   title: string;
   steps: number;
+  planned?: boolean;
   requestedBy: string;
   createdAt: string | null;
   deliveredAt: string | null;

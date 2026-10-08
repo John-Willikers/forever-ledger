@@ -18,6 +18,8 @@ export interface LoadedCharacter {
   gaps: string[];
   /** XP per level recorded for the state's build (empty when none). */
   xpCurve: XpCurve;
+  /** Where the hearthstone goes, as the game names it (GetBindLocation, e.g. "Razor Hill"); null when unknown. */
+  bindName: string | null;
 }
 
 /** GetAllTaxiNodes `state`: 0 current (the node the character stands at), 1 reachable (learned), 2 not learned. */
@@ -367,5 +369,7 @@ export async function loadCharacter(
     );
     for (const c of curve) xpCurve.set(c.level, c.xpMax);
   }
-  return { ch, travel, gaps, xpCurve };
+  const bindZone = obj(st?.bind)?.zone;
+  const bindName = typeof bindZone === 'string' && bindZone.trim() ? bindZone.trim() : null;
+  return { ch, travel, gaps, xpCurve, bindName };
 }

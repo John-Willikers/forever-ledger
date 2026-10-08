@@ -9,7 +9,7 @@ import {
   GuideError,
   gearUpgrades,
   importSeed,
-  levelingRoute,
+  levelingAnswer,
   lookupCharacter,
   lookupItem,
   lookupNpc,
@@ -36,9 +36,9 @@ Every answer has:
 - firstParty: what our own players' addon uploads observed (tier 1, the strongest evidence; counts and rates are real).
 - facts: claims from sources, best first. Each has a label (VERIFIED = Forever data, CLASSIC = Classic-era data that Forever may change, ANECDOTE = a player's report, UNVERIFIED = unconfirmed), a tier (1 best … 7 worst), the source URL and the build.
 - gaps: what the ledger does not know.
-send_guide turns a leveling route into an in-game guide and sends it to the character's tray: use it when someone asks to send, push or load a guide to a character.
+send_guide turns a leveling route into an in-game guide and sends it to the character's tray: use it when someone asks to send, push or load a guide to a character. A character with stored state (addon 0.8.0) gets a route planned for it, travel included; otherwise the guide follows one of our players' runs.
 Items, NPCs, quests and objects carry their Wowhead Forever page as itemUrl / npcUrl / questUrl / containerUrl / objectUrl, or url on an { type, id } entity: link names with those, never with a URL you make up.
-Leveling questions ("quickest way to 13 as an undead") are answered by leveling_route: the quests our own players turned in, in order, with time taken. Players' own characters (by full name, e.g. "Sam Willikers") are in lookup_character and gear_upgrades; gear upgrade scores are estimates (Forever has no spec data), and a role the asker didn't name is a guess: say so.
+Leveling questions ("quickest way to 13 as an undead") are answered by leveling_route: the quests our own players turned in, in order, with time taken, plus a route planned for the asker's character (planned) when it has stored state. Players' own characters (by full name, e.g. "Sam Willikers") are in lookup_character and gear_upgrades; gear upgrade scores are estimates (Forever has no spec data), and a role the asker didn't name is a guess: say so.
 Answer from these only. Say which label each statement rests on, prefer first-party data and lower tiers, and say plainly when the ledger has a gap instead of filling it from memory. FALSE claims are never facts: check_claim lists them as refuted.`;
 
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
@@ -196,7 +196,7 @@ export function buildServer(deps: ToolDeps): McpServer {
     {
       title: 'Leveling route',
       description:
-        'A step-by-step leveling guide built from how our own players leveled: the fastest recorded run of that race (or zone, or character) to the level, as steps in the order it was played: accept (NPC, subzone, coordinates, quests), complete (each quest\'s objectives) and turn in (NPC, coordinates, XP, level after). Pass forCharacter (the asker\'s character) to start at their level and leave out quests they already did. Also gives level-up times, play time, other characters\' progress and the quests seen in that zone. Use it for any "how do I level", "quickest way to N", "leveling guide" or "what quests are in <zone>" question.',
+        'A step-by-step leveling guide built from how our own players leveled: the fastest recorded run of that race (or zone, or character) to the level, as steps in the order it was played: accept (NPC, subzone, coordinates, quests), complete (each quest\'s objectives) and turn in (NPC, coordinates, XP, level after). Pass forCharacter (the asker\'s character) to start at their level and leave out quests they already did; when that character has stored state (addon 0.8.0), planned is a route the route planner built for it from where it stands (travel steps included: walk, fly, boat, hearth; estimated minutes; gaps): prefer it. Also gives level-up times, play time, other characters\' progress and the quests seen in that zone. Use it for any "how do I level", "quickest way to N", "leveling guide" or "what quests are in <zone>" question.',
       inputSchema: z.object({
         start: z
           .string()
@@ -231,7 +231,7 @@ export function buildServer(deps: ToolDeps): McpServer {
         forCharacter?: string;
         toLevel: number;
         fromLevel?: number;
-      }) => reply(await levelingRoute(db, args)),
+      }) => reply(await levelingAnswer(db, args)),
     ),
   );
 
@@ -327,7 +327,7 @@ export function buildServer(deps: ToolDeps): McpServer {
     {
       title: "Send an in-game guide to a player's character",
       description:
-        'Build a Zygor-style in-game guide from one of our players\' real runs (the leveling_route data) for a character, and send it to the Forever Ledger tray that uploads that character. The player sees it after their tray picks it up (within about 5 minutes) and they /reload; /fl guide shows it. Give start (a race like "undead" or a zone) or basedOn (whose run to follow), and toLevel. Quests the character already turned in are left out.',
+        'Build a Zygor-style in-game guide for a character and send it to the Forever Ledger tray that uploads that character. A character with stored state (addon 0.8.0) gets a route planned for it by the route planner (travel steps included; planned: true); otherwise it follows one of our players\' real runs (the leveling_route data): give start (a race like "undead" or a zone) or basedOn (whose run to follow; always used when given). The player sees it after their tray picks it up (within about 5 minutes) and they /reload; /fl guide shows it. Quests the character already turned in are left out.',
       inputSchema: z.object({
         character: ref.describe('The character it is for: full name, first name, or Name-Realm'),
         start: z.string().trim().min(1).max(64).optional().describe('A race or a starting zone'),

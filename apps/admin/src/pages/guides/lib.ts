@@ -4,7 +4,22 @@ export const ACTION_LABELS: Record<GuideStep['action'], string> = {
   accept: 'Accept',
   complete: 'Do',
   turn_in: 'Turn in',
+  travel: 'Travel',
 };
+
+const HOW_LABELS: Record<NonNullable<GuideStep['how']>, string> = {
+  walk: 'Go',
+  fly: 'Fly',
+  boat: 'Take the boat',
+  hearth: 'Hearth',
+};
+
+/** What a step does: "Turn in → 12", "Fly (Orgrimmar → Crossroads)", "Accept (class quest)". */
+export function stepDo(s: GuideStep): string {
+  const what = s.action === 'travel' && s.how ? HOW_LABELS[s.how] : ACTION_LABELS[s.action];
+  const after = s.levelAfter ? ` → ${s.levelAfter}` : '';
+  return `${what}${after}${s.note ? ` (${s.note})` : ''}`;
+}
 
 const level = (s: string) => {
   const n = Number(s.trim());
@@ -17,8 +32,6 @@ export function guideRequest(
 ): { ok: true; body: Record<string, unknown> } | { ok: false; problem: string } {
   const character = f.character.trim();
   if (!character) return { ok: false, problem: 'Name the character the guide is for.' };
-  if (!f.start.trim() && !f.basedOn.trim())
-    return { ok: false, problem: 'Give a race or zone to start from, or whose run to follow.' };
   const toLevel = level(f.toLevel);
   if (toLevel === null || toLevel < 2) return { ok: false, problem: 'To level must be 2-80.' };
   const fromLevel = f.fromLevel.trim() ? level(f.fromLevel) : undefined;

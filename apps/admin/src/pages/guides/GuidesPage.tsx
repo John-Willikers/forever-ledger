@@ -5,7 +5,7 @@ import { postJson, useAdminQuery, useCsrf } from '../../api';
 import { Card } from '../../components/Card';
 import { Empty, ErrorState, QueryState } from '../../components/State';
 import { formatChicagoShort } from '../../lib/time';
-import { ACTION_LABELS, charName, guideRequest, stepPlace } from './lib';
+import { charName, guideRequest, stepDo, stepPlace } from './lib';
 import type { BuiltGuide, GuideForm, GuideRow } from './types';
 import './guides.css';
 
@@ -13,8 +13,9 @@ const API = '/admin/api/guides';
 const LIST_KEY = ['guides'] as const;
 
 /**
- * In-game guides (project-plans/forever-ledger-guides.md): build one from a guildie's real run, preview it, send it to
- * the tray that uploads the character; the player /reloads and follows it with /fl guide.
+ * In-game guides (project-plans/forever-ledger-guides.md): planned for the character by the route planner (when it has
+ * stored state) or built from a guildie's real run; preview it, send it to the tray that uploads the character; the
+ * player /reloads and follows it with /fl guide.
  */
 export function GuidesPage() {
   const list = useAdminQuery<{ items: GuideRow[] }>(LIST_KEY, API);
@@ -23,9 +24,11 @@ export function GuidesPage() {
       <header className="page-head">
         <h1>Guides</h1>
         <p className="muted">
-          A guide is a guildie&apos;s real run (who quested where, in what order) turned into
-          Zygor-style steps. It goes to the tray that uploads the character; the player types
-          /reload in game, then /fl guide. Quests the character already turned in are left out.
+          A character whose addon stores its state (0.8.0) gets a guide planned for it by the route
+          planner, travel included; otherwise (or when you name a run to follow) a guildie&apos;s
+          real run is turned into Zygor-style steps. It goes to the tray that uploads the character;
+          the player types /reload in game, then /fl guide. Quests the character already turned in
+          are left out.
         </p>
       </header>
       <BuildCard />
@@ -98,11 +101,10 @@ function BuildCard() {
       {made && (
         <div className="guide-result">
           <p>
-            <strong>{made.title}</strong> for {made.character}: {made.steps} steps from{' '}
-            {made.basedOn}&apos;s run
-            {made.reachedTarget
-              ? ''
-              : ' (they never reached that level: the guide stops where they did)'}
+            <strong>{made.title}</strong> for {made.character}: {made.steps} steps{' '}
+            {made.planned
+              ? `planned by the route planner${made.minutes !== undefined ? ` (about ${made.minutes} min)` : ''}${made.reachedTarget ? '' : ' (it runs out of quests before that level)'}`
+              : `from ${made.basedOn}'s run${made.reachedTarget ? '' : ' (they never reached that level: the guide stops where they did)'}`}
             .{' '}
             {made.id
               ? 'Sent: their tray picks it up within about 5 minutes.'
@@ -110,6 +112,13 @@ function BuildCard() {
                 ? 'Preview only: nothing was sent.'
                 : 'Preview only: no tray uploads this character, so it could not be sent.'}
           </p>
+          {made.planned && made.gaps.length > 0 && (
+            <ul className="muted guide-gaps">
+              {made.gaps.map((g) => (
+                <li key={g}>{g}</li>
+              ))}
+            </ul>
+          )}
           <StepsTable steps={made.doc.steps} />
         </div>
       )}
@@ -132,10 +141,7 @@ function StepsTable({ steps }: { steps: BuiltGuide['doc']['steps'] }) {
         {steps.map((s, i) => (
           <tr key={i}>
             <td className="step-no">{i + 1}</td>
-            <td className="nowrap">
-              {ACTION_LABELS[s.action]}
-              {s.levelAfter ? ` → ${s.levelAfter}` : ''}
-            </td>
+            <td className="nowrap">{stepDo(s)}</td>
             <td>{stepPlace(s)}</td>
             <td>
               {s.quests.map((q) => (
@@ -184,7 +190,19 @@ function GuidesTable({ rows }: { rows: GuideRow[] }) {
           {rows.map((g) => (
             <tr key={g.id}>
               <td className="nowrap">{charName(g.char)}</td>
-              <td>{g.title}</td>
+              <td>
+                {g.title}
+                <span
+                  className={g.planned ? 'pill' : 'pill neutral'}
+                  title={
+                    g.planned
+                      ? 'Planned for the character by the route planner'
+                      : "Follows one of our players' runs"
+                  }
+                >
+                  {g.planned ? 'planned' : 'run'}
+                </span>
+              </td>
               <td>{g.steps}</td>
               <td className="muted">{g.requestedBy}</td>
               <td className="nowrap">{formatChicagoShort(g.createdAt)}</td>
