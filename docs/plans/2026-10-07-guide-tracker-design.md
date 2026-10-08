@@ -65,10 +65,20 @@ Harlan's call (2026-10-08): accepting and turning in quests is quality of life (
 gameplay automation. `GuideAutoQuest.lua` acts only on the **current step's** quests, when the player opens the NPC's
 window: an accept step accepts its quests not yet in the log or done, a turn-in step turns its quests in (gossip and
 greeting windows select them, `QUEST_DETAIL` accepts, `QUEST_PROGRESS` completes, `QUEST_COMPLETE` with no choices
-calls `GetQuestReward(0)`). **A reward choice is always the player's**: anything but exactly 0 choices (one or more,
-nil, an error) prints "pick your reward" once and waits. It acts 0.1 s later (the ledger's `QUEST_COMPLETE` capture runs first; its `GetQuestReward` hook still
-sees the turn-in) and only if the same window is still open. On while the guide is shown; Shift held as any NPC window opens
-skips the whole conversation (until no window has been open for a second); `/fl guide auto off` keeps it off (`ForeverLedgerGuideState.autoQuest = false`).
+calls `GetQuestReward(0)`).
+
+- **A reward choice is always the player's**: anything but exactly 0 choices (one or more, nil, an error) prints
+  "pick your reward" once and waits.
+- Every action runs 0.1 s later and re-checks the window and the step then: the ledger's `QUEST_COMPLETE` capture
+  runs first (its `GetQuestReward` hook still sees the turn-in), and a turn-in that just moved the step counts.
+- **It continues into the next step within the same conversation** (current step only, like Zygor): turning in A
+  moves the step, so the follow-up B the NPC offers next is accepted if it is the new step's.
+- A conversation lasts until no NPC window has been open for 1 s. Within it a quest is selected from gossip at most
+  once (a detail window closed without accepting doesn't loop). **Shift** held as any of its windows opens skips the
+  whole conversation, so a second NPC talked to within 1 s of closing is skipped too.
+- Auto-accept quests (already in the log when their window shows) are acknowledged if they are the step's.
+- `/fl guide auto off` keeps it off (`ForeverLedgerGuideState.autoQuest = false`). An `ADDON_ACTION_BLOCKED` /
+  `FORBIDDEN` naming one of its calls turns it off for the session only (one chat line); the tracker is untouched.
 
 ## Release
 

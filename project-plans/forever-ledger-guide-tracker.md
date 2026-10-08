@@ -62,5 +62,7 @@ the step's spot.
 - ✅ 4½ 🤝 T8 auto quest (Harlan, 2026-10-08): `GuideAutoQuest.lua` accepts and turns in the current step's quests at
   the NPC, never picks a reward (prints "pick your reward" and waits); Shift skips, `/fl guide auto off` keeps it off;
   hard rule reworded in `CLAUDE.md`; 8 harness tests — 2026-10-08 02:28 CDT. Review follow-ups:
-  rewards fail closed (only exactly 0 choices turns in), Shift skips the whole conversation — 02:32 CDT. In-game check joins step 4's re-test.
+  rewards fail closed (only exactly 0 choices turns in), Shift skips the whole conversation — 02:32 CDT. Quality review fixes: a block on an auto-quest call stops auto
+  quest for the session (not the tracker), once-per-conversation selects, delayed re-check (chain follow-ups),
+  auto-accept acknowledge — 02:55 CDT. In-game check joins step 4's re-test.
 - ⏳ 5 🚀 Addon 0.7.0 (`addon-v0.7.0` → `addon-cli publish 0.7.0`)

@@ -8,48 +8,70 @@
 local G = ForeverLedgerGuide
 if not G then return end
 
+local A = {}
+G.auto = A
+
 local told -- the quest whose "pick your reward" line was printed in this window
+local blocked = false -- the game blocked one of our calls: off for this session
 local NEW_TALK = 1 -- seconds with no NPC window open: the next window is a new conversation
 
+local function say(msg) print("|cff33ff99Forever Ledger:|r " .. msg) end
 local function shift() return IsShiftKeyDown ~= nil and IsShiftKeyDown() == true end
 local function clock() return GetTime and GetTime() or time() end
 
--- Shift skips the conversation: gossip → quest windows → gossip again, until no window has been open for a moment.
--- GOSSIP_CLOSED fires as gossip hands over to the quest frame, so a close alone doesn't end it.
-local skipping, closedAt = false, nil
+-- A conversation: gossip → quest windows → gossip again, until no window has been open for a moment (GOSSIP_CLOSED
+-- fires as gossip hands over to the quest frame, so a close alone doesn't end it). Shift skips it; a quest is
+-- selected from gossip at most once in it (a detail window closed without accepting doesn't loop).
+local skipping, closedAt, picked = false, nil, {}
 local function opened()
-  if skipping and closedAt and clock() - closedAt >= NEW_TALK then skipping = false end
+  if closedAt and clock() - closedAt >= NEW_TALK then skipping, picked = false, {} end
   closedAt = nil
   if shift() then skipping = true end
 end
 local function closed() closedAt = clock() end
 
-local function enabled() return G.shown == true and G.state().autoQuest ~= false and not skipping and not shift() end
+local function enabled()
+  return G.shown == true and not blocked and G.state().autoQuest ~= false and not skipping and not shift()
+end
 
--- The step's quests this window may act on, by questID, for `action` ("accept" or "turn_in").
-local function wanted(action)
+-- The step's quests this window may act on, by questID, for `action` ("accept" or "turn_in"). `taken`: accept ones
+-- already in the log too (an auto-accept quest is in it before its window shows).
+local function wanted(action, taken)
   local g = G.current()
   local step = g and g.steps[G.stepIndex()]
   if not step or step.action ~= action then return {} end
   local set = {}
   for _, q in ipairs(step.quests or {}) do
     local id = q.questId
-    if action == "turn_in" or not (G.onQuest(id) or G.completed(id)) then set[id] = q end
+    if action == "turn_in" or taken or not (G.onQuest(id) or G.completed(id)) then set[id] = q end
   end
   return set
 end
-local function want(action, id) return id ~= nil and enabled() and wanted(action)[id] ~= nil end
+local function want(action, id, taken) return id ~= nil and enabled() and wanted(action, taken)[id] ~= nil end
 
--- Runs act a beat later (the ledger's own QUEST_COMPLETE capture runs first and the frame shows), and only if
--- `still` says the same window is open and the quest is still the step's. Errors are swallowed: it just doesn't act.
-local function later(still, act)
-  local function run()
-    pcall(function() if still() then act() end end)
-  end
+-- Runs fn a beat later (the ledger's own QUEST_COMPLETE capture runs first, the frame shows, and a turn-in just
+-- before has moved the step); fn checks the window and the step itself then. Errors are swallowed: it doesn't act.
+local function later(fn)
+  local function run() pcall(fn) end
   if C_Timer and C_Timer.After then C_Timer.After(0.1, run) else run() end
 end
 
 local function questID() return GetQuestID and GetQuestID() or nil end
+
+-- Blizzard names the blocked function ("AcceptQuest()", "C_GossipInfo.SelectActiveQuest()"): ours?
+local CALLS = { "AcceptQuest", "AcknowledgeAutoAcceptQuest", "CompleteQuest", "GetQuestReward",
+                "SelectAvailableQuest", "SelectActiveQuest" }
+function A.owns(func)
+  for _, name in ipairs(CALLS) do
+    if tostring(func):find(name, 1, true) then return true end
+  end
+  return false
+end
+function A.onBlocked(func)
+  if blocked then return end
+  blocked = true
+  say("the game blocked auto quest (" .. G.esc(func) .. "): accept and turn in by hand this session.")
+end
 
 local handlers = {}
 
@@ -58,19 +80,24 @@ function handlers.GOSSIP_SHOW()
   if not gossip then return end
   local function find(list, action, complete)
     for _, q in ipairs(list or {}) do
-      if type(q) == "table" and (not complete or q.isComplete) and want(action, q.questID) then return q.questID end
+      if type(q) == "table" and (not complete or q.isComplete) and not picked[q.questID]
+         and want(action, q.questID) then
+        return q.questID
+      end
     end
   end
-  local id = find(gossip.GetAvailableQuests(), "accept")
-  if id then
-    return later(function() return find(gossip.GetAvailableQuests(), "accept") == id end,
-                 function() gossip.SelectAvailableQuest(id) end)
-  end
-  id = find(gossip.GetActiveQuests(), "turn_in", true)
-  if id then
-    later(function() return find(gossip.GetActiveQuests(), "turn_in", true) == id end,
-          function() gossip.SelectActiveQuest(id) end)
-  end
+  later(function()
+    local id = find(gossip.GetAvailableQuests(), "accept")
+    if id then
+      picked[id] = true
+      return gossip.SelectAvailableQuest(id)
+    end
+    id = find(gossip.GetActiveQuests(), "turn_in", true)
+    if id then
+      picked[id] = true
+      gossip.SelectActiveQuest(id)
+    end
+  end)
 end
 
 function handlers.QUEST_GREETING()
@@ -82,45 +109,53 @@ function handlers.QUEST_GREETING()
   local function find(count, idAt, action)
     for i = 1, count() or 0 do
       local id = idAt(i)
-      if want(action, id) then return i, id end
+      if id and not picked[id] and want(action, id) then return i, id end
     end
   end
-  local i, id = find(GetNumAvailableQuests, available, "accept")
-  if i then
-    return later(function() return available(i) == id and want("accept", id) end,
-                 function() SelectAvailableQuest(i) end)
-  end
-  i, id = find(GetNumActiveQuests, active, "turn_in")
-  if i then
-    later(function() return active(i) == id and want("turn_in", id) end, function() SelectActiveQuest(i) end)
-  end
+  later(function()
+    local i, id = find(GetNumAvailableQuests, available, "accept")
+    if i then
+      picked[id] = true
+      return SelectAvailableQuest(i)
+    end
+    i, id = find(GetNumActiveQuests, active, "turn_in")
+    if i then
+      picked[id] = true
+      SelectActiveQuest(i)
+    end
+  end)
 end
 
 function handlers.QUEST_DETAIL()
   local id = questID()
-  if not want("accept", id) then return end
-  later(function() return questID() == id and want("accept", id) end, function()
-    if QuestGetAutoAccept and QuestGetAutoAccept() then AcknowledgeAutoAcceptQuest() else AcceptQuest() end
+  later(function()
+    if questID() ~= id then return end
+    if QuestGetAutoAccept and QuestGetAutoAccept() then
+      if want("accept", id, true) then AcknowledgeAutoAcceptQuest() end
+    elseif want("accept", id) then
+      AcceptQuest()
+    end
   end)
 end
 
 function handlers.QUEST_PROGRESS()
   local id = questID()
-  if not want("turn_in", id) then return end
-  later(function() return questID() == id and want("turn_in", id) and IsQuestCompletable() end, CompleteQuest)
+  later(function()
+    if questID() == id and want("turn_in", id) and IsQuestCompletable() then CompleteQuest() end
+  end)
 end
 
 function handlers.QUEST_COMPLETE()
   local id = questID()
-  if not want("turn_in", id) then return end
-  later(function() return questID() == id and want("turn_in", id) end, function()
+  later(function()
+    if questID() ~= id or not want("turn_in", id) then return end
     -- The reward choice is always the player's: only exactly 0 choices turns it in (nil or an error means a choice).
     local ok, n = pcall(GetNumQuestChoices)
     if not ok or n ~= 0 then
       if told ~= id then
         told = id
-        local title = GetTitleText and GetTitleText() or wanted("turn_in")[id].title
-        print("|cff33ff99Forever Ledger:|r pick your reward for " .. G.esc(title) .. ".")
+        local title = GetTitleText and GetTitleText() or wanted("turn_in")[id].title or tostring(id)
+        say("pick your reward for " .. G.esc(title) .. ".")
       end
       return
     end

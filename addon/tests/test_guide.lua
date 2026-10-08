@@ -787,8 +787,10 @@ return function(H)
     H.eq(did(c), "", "not the guide's quest")
     questWindow(c, "QUEST_DETAIL", RUDE)
     H.eq(did(c), "accept " .. RUDE)
+    -- An auto-accept quest is already in the log when its window shows: it is still acknowledged.
     c.did = {}
     c.npc.autoAccept = true
+    c.q.onQuest[RUDE] = true
     questWindow(c, "QUEST_DETAIL", RUDE)
     H.eq(did(c), "acknowledge " .. RUDE)
     -- The turn-in step's quest isn't accepted from a detail window either: only the accept step's are.
@@ -880,6 +882,80 @@ return function(H)
     H.eq(did(c), "gossip accept " .. RUDE, "a new conversation")
     questWindow(c, "QUEST_DETAIL", RUDE)
     H.eq(did(c), "gossip accept " .. RUDE .. "; accept " .. RUDE)
+  end)
+
+  H.test("auto quest: a block on an auto-quest call stops auto quest for the session, not the tracker", function()
+    local c = viewer(H, { tracker = true, onQuest = { [RUDE] = true } })
+    npcWindows(c)
+    c.fire("ADDON_ACTION_BLOCKED", "ForeverLedger", "GetQuestReward()")
+    H.eq(c.env.ForeverLedgerGuideState.trackerBlocked, nil, "tracker not blocked")
+    H.ok(c.env.ForeverLedgerGuide.tracker.active(), "tracker still active")
+    H.ok(printed(c, "the game blocked auto quest %(GetQuestReward%(%)%): accept and turn in by hand this session"),
+         "one line")
+    questWindow(c, "QUEST_COMPLETE", RUDE)
+    H.eq(#c.world.questRewardCalls, 0, "auto quest stopped")
+    H.eq(c.env.ForeverLedgerGuideState.autoQuest, nil, "not persisted")
+    c.fire("ADDON_ACTION_FORBIDDEN", "ForeverLedger", "C_GossipInfo.SelectActiveQuest()")
+    H.eq(c.env.ForeverLedgerGuideState.trackerBlocked, nil, "FORBIDDEN too")
+  end)
+
+  H.test("auto quest: a quest is selected once per conversation", function()
+    local c = viewer(H)
+    npcWindows(c)
+    c.npc.available = { { questID = RUDE, title = "Rude Awakening" } }
+    c.fire("GOSSIP_SHOW")
+    H.eq(did(c), "gossip accept " .. RUDE)
+    -- The player closed the detail window without accepting; gossip comes back.
+    c.fire("QUEST_FINISHED")
+    c.fire("GOSSIP_SHOW")
+    H.eq(did(c), "gossip accept " .. RUDE, "not selected again")
+    c.fire("GOSSIP_CLOSED")
+    c.advance(5)
+    c.fire("GOSSIP_SHOW")
+    H.eq(did(c), "gossip accept " .. RUDE .. "; gossip accept " .. RUDE, "a new conversation selects it again")
+  end)
+
+  H.test("auto quest: a multi-quest accept step takes the second quest when gossip reopens", function()
+    local c = viewer(H, { done = { [RUDE] = true } })
+    npcWindows(c)
+    c.npc.available = { { questID = MINDLESS, title = "The Mindless Ones" },
+                        { questID = DAMNED, title = "The Damned" } }
+    c.fire("GOSSIP_SHOW")
+    questWindow(c, "QUEST_DETAIL", MINDLESS)
+    c.q.onQuest[MINDLESS] = true
+    c.fire("QUEST_ACCEPTED", MINDLESS)
+    c.fire("QUEST_FINISHED")
+    c.npc.available = { { questID = DAMNED, title = "The Damned" } }
+    c.fire("GOSSIP_SHOW")
+    questWindow(c, "QUEST_DETAIL", DAMNED)
+    H.eq(did(c), "gossip accept " .. MINDLESS .. "; accept " .. MINDLESS .. "; gossip accept " .. DAMNED
+         .. "; accept " .. DAMNED)
+  end)
+
+  H.test("auto quest: a chain follow-up offered before the turn-in lands is accepted", function()
+    local c = viewer(H, { onQuest = { [RUDE] = true } })
+    npcWindows(c)
+    c.world.timers = {}
+    c.env.C_Timer = { After = function(secs, fn) c.world.timers[#c.world.timers + 1] = { at = c.world.clock + secs,
+                                                                                         fn = fn } end }
+    questWindow(c, "QUEST_COMPLETE", RUDE)
+    c.advance(0.2)
+    H.eq(table.concat(c.world.questRewardCalls, ","), "0")
+    -- The NPC offers the next step's quest at once; QUEST_TURNED_IN moves the step before the beat runs.
+    questWindow(c, "QUEST_DETAIL", MINDLESS)
+    c.q.onQuest[RUDE], c.q.done[RUDE] = nil, true
+    c.fire("QUEST_TURNED_IN", RUDE, 40, 0)
+    c.advance(0.2)
+    H.eq(did(c), "accept " .. MINDLESS)
+  end)
+
+  H.test("auto quest: the reward line falls back to the quest ID", function()
+    local c = viewer(H, { guides = { { id = 9, char = ME, title = "T", steps = {
+      { action = "turn_in", quests = { { questId = RUDE } } } } } }, onQuest = { [RUDE] = true } })
+    npcWindows(c)
+    c.world.questFrame = { questID = RUDE, choices = { { id = 5555, count = 1 } } }
+    c.fire("QUEST_COMPLETE")
+    H.ok(printed(c, "pick your reward for " .. RUDE .. "%."), "quest ID")
   end)
 
   H.test("auto quest: the greeting window selects by index", function()

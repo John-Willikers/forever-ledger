@@ -554,9 +554,12 @@ function handlers.PLAYER_REGEN_ENABLED()
   if G.owed then G.sync(G.owedRewatch) end
 end
 -- The game blocked a protected action and blames us (taint from the tracker section): back to the window.
--- FORBIDDEN is the out-of-combat one (a quest item used from the tracker); same handling.
+-- FORBIDDEN is the out-of-combat one (a quest item used from the tracker); same handling. A block on one of auto
+-- quest's calls (AcceptQuest, GetQuestReward, ...) is auto quest's alone: it stops for the session, the tracker stays.
 function handlers.ADDON_ACTION_BLOCKED(addon, func)
-  if addon == "ForeverLedger" and G.tracker and G.tracker.onBlocked then
+  if addon ~= "ForeverLedger" then return end
+  if G.auto and G.auto.owns(func) then return G.auto.onBlocked(func) end
+  if G.tracker and G.tracker.onBlocked then
     G.tracker.onBlocked(func)
     G.sync()
   end
