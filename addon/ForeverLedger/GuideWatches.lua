@@ -27,22 +27,26 @@ end
 
 local function watched(id) return call(ql().GetQuestWatchType, id) ~= nil end
 
--- Makes the watch list exactly `ids`.
-local function setWatches(ids)
+-- Makes the watch list exactly `ids`; added watches get `watchType` (AddQuestWatch(questID[, watchType])).
+local function setWatches(ids, watchType)
   local want = {}
   for _, id in ipairs(ids) do want[id] = true end
   for _, id in ipairs(W.current()) do
     if not want[id] then call(ql().RemoveQuestWatch, id) end
   end
   for _, id in ipairs(ids) do
-    if not watched(id) then call(ql().AddQuestWatch, id) end
+    if not watched(id) then call(ql().AddQuestWatch, id, watchType) end
   end
 end
 
--- Saves your watch list, once: a reload while the guide runs must not save the guide's own list over it.
+-- Saves your watch list and super-tracked quest, once: a reload while the guide runs must not save the guide's own
+-- over them. A saved list that isn't a table (an old or hand-edited file) is replaced.
 function W.take()
   local s = G.state()
-  if s.savedWatches == nil then s.savedWatches = W.current() end
+  if type(s.savedWatches) ~= "table" then
+    s.savedWatches = W.current()
+    s.savedSuperTrack = C_SuperTrack and call(C_SuperTrack.GetSuperTrackedQuestID) or nil
+  end
 end
 
 -- The step's quests only, the first super-tracked. `key` names the step and its quests: the same key is not applied
@@ -54,15 +58,21 @@ function W.apply(ids, key, rewatch)
   if ids[1] and C_SuperTrack then call(C_SuperTrack.SetSuperTrackedQuestID, ids[1]) end
 end
 
--- Gives your watch list back, minus quests no longer in the log.
+-- Gives your watch list back as manual watches, minus quests no longer in the log, and your super-tracked quest.
 function W.restore()
+  W.lastKey = nil
   local s = G.state()
   local saved = s.savedWatches
-  if saved == nil then return end
-  s.savedWatches, W.lastKey = nil, nil
+  if type(saved) ~= "table" then
+    s.savedWatches = nil
+    return
+  end
+  local superID = s.savedSuperTrack
+  s.savedWatches, s.savedSuperTrack = nil, nil
   local keep = {}
   for _, id in ipairs(saved) do
     if G.onQuest(id) then keep[#keep + 1] = id end
   end
-  setWatches(keep)
+  setWatches(keep, Enum and Enum.QuestWatchType and Enum.QuestWatchType.Manual)
+  if C_SuperTrack then call(C_SuperTrack.SetSuperTrackedQuestID, tonumber(superID) or 0) end
 end

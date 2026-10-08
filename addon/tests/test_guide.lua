@@ -62,7 +62,7 @@ local function viewer(H, opts)
   local c = H.new({ rejectTemplates = opts.rejectTemplates or {} })
   c.world.player.surname = "Willikers"
   local q = { onQuest = opts.onQuest or {}, done = opts.done or {}, ready = {}, objectives = {}, pins = {},
-              watches = opts.watches or {}, calls = {} }
+              watches = opts.watches or {}, calls = {}, types = {}, super = opts.super }
   c.q = q
   local function watchIndex(id)
     for i, w in ipairs(q.watches) do
@@ -78,8 +78,9 @@ local function viewer(H, opts)
     GetNumQuestWatches = function() return #q.watches end,
     GetQuestIDForQuestWatchIndex = function(i) return q.watches[i] end,
     GetQuestWatchType = function(id) return watchIndex(id) and 1 or nil end,
-    AddQuestWatch = function(id)
+    AddQuestWatch = function(id, watchType)
       q.calls[#q.calls + 1] = "add " .. id
+      q.types[id] = watchType
       if not watchIndex(id) then q.watches[#q.watches + 1] = id end
       return true
     end,
@@ -96,7 +97,8 @@ local function viewer(H, opts)
   }
   c.env.UiMapPoint = { CreateFromCoordinates = function(m, x, y) return { map = m, x = x, y = y } end }
   c.env.C_SuperTrack = { SetSuperTrackedUserWaypoint = function(v) q.tracked = v end,
-                         SetSuperTrackedQuestID = function(id) q.super = id end }
+                         SetSuperTrackedQuestID = function(id) q.super = id end,
+                         GetSuperTrackedQuestID = function() return q.super end }
   c.env.ForeverLedgerGuidesData = { version = 1, written = 1, guides = opts.guides or { guide(7, ME) } }
   c.env.ForeverLedgerGuideState = opts.state
   if opts.tracker then c.tracker = installTracker(c) end
@@ -327,8 +329,8 @@ return function(H)
   H.test("guide watches: finishing the guide gives your watches back", function()
     local c = viewer(H, atStep4())
     H.eq(sortedWatches(c), tostring(MINDLESS))
-    -- Mindless turned in: it leaves the log (the fake keeps its watch, which the restore must drop), and steps 4 and 5
-    -- are both behind the player. Damned and 999 are still in the log, so both come back.
+    -- Mindless turned in (out of the log, done): steps 4 and 5 are behind the player, so the guide is finished. Damned
+    -- and 999 are still in the log, so your saved list comes back whole; Mindless was never in it.
     c.q.onQuest[MINDLESS], c.q.done[MINDLESS] = nil, true
     c.fire("QUEST_TURNED_IN", MINDLESS, 170, 0)
     H.ok(counter(c):find("Done: all 5 steps", 1, true), counter(c))
@@ -339,13 +341,58 @@ return function(H)
   H.test("guide watches: an accept during combat is re-watched after combat", function()
     local c = viewer(H, atStep4())
     c.world.inCombat = true
+    local calls = #c.q.calls
     c.q.onQuest[555] = true
     c.q.watches[#c.q.watches + 1] = 555 -- the game's auto-watch
     c.fire("QUEST_ACCEPTED", 555)
     c.advance(1)
     H.eq(sortedWatches(c), MINDLESS .. ",555", "nothing touched in combat")
+    H.eq(#c.q.calls, calls, "no watch calls in combat")
     c.world.inCombat = false
     c.fire("PLAYER_REGEN_ENABLED")
     H.eq(sortedWatches(c), tostring(MINDLESS), "auto-watch undone after combat")
+  end)
+
+  H.test("guide watches: a bad saved list from an old or hand-edited file is replaced, never breaks", function()
+    for _, bad in ipairs({ "x", true }) do
+      local c = viewer(H, atStep4({ state = { savedWatches = bad } }))
+      H.ok(not printed(c, "error"), table.concat(c.world.printed, "\n"))
+      H.eq(sortedWatches(c), tostring(MINDLESS), "the guide takes over")
+      c.slash("FOREVERLEDGER", "guide hide")
+      H.ok(not printed(c, "error"), table.concat(c.world.printed, "\n"))
+      H.eq(c.env.ForeverLedgerGuideState.savedWatches, nil)
+      H.eq(sortedWatches(c), DAMNED .. ",999", "your list is back")
+    end
+  end)
+
+  H.test("guide watches: your list comes back at login when the tray removed the running guide", function()
+    local c = viewer(H, { guides = {}, state = { savedWatches = { DAMNED } }, onQuest = { [DAMNED] = true } })
+    H.eq(sortedWatches(c), tostring(DAMNED))
+    H.eq(c.env.ForeverLedgerGuideState.savedWatches, nil)
+  end)
+
+  H.test("guide watches: the game's auto-watch on quest progress is undone", function()
+    local c = viewer(H, atStep4())
+    -- The harness has C_Timer only with professionAPI: this test needs the delayed sync.
+    local w = c.world
+    w.timers = {}
+    c.env.C_Timer = { After = function(secs, fn) w.timers[#w.timers + 1] = { at = w.clock + secs, fn = fn } end }
+    c.q.watches[#c.q.watches + 1] = 999
+    c.fire("QUEST_WATCH_UPDATE", 999)
+    H.eq(sortedWatches(c), MINDLESS .. ",999", "not at once")
+    c.advance(1)
+    H.eq(sortedWatches(c), tostring(MINDLESS))
+  end)
+
+  H.test("guide watches: your list comes back as manual watches, your super-tracked quest too", function()
+    local c = viewer(H, atStep4({ super = DAMNED }))
+    c.env.Enum.QuestWatchType = { Automatic = 0, Manual = 1 }
+    H.eq(c.q.super, MINDLESS)
+    c.slash("FOREVERLEDGER", "guide hide")
+    H.eq(sortedWatches(c), DAMNED .. ",999")
+    H.eq(c.q.types[DAMNED], 1, "manual")
+    H.eq(c.q.types[999], 1, "manual")
+    H.eq(c.q.super, DAMNED, "super-track back")
+    H.eq(c.env.ForeverLedgerGuideState.savedSuperTrack, nil)
   end)
 end

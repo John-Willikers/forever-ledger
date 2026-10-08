@@ -477,7 +477,11 @@ local handlers = {}
 function handlers.PLAYER_LOGIN()
   -- The quest log is ready a moment after login.
   local function start()
-    if #G.myGuides() == 0 then return end
+    if #G.myGuides() == 0 then
+      -- The tray removed the guide that was running: your own watches come back.
+      if type(state().savedWatches) == "table" then G.sync() end
+      return
+    end
     G.advance(true)
     if not state().hidden then G.show() end
     say("guide loaded: " .. esc(G.current().title) .. ". /fl guide to show or hide it.")
@@ -487,6 +491,11 @@ end
 function handlers.QUEST_ACCEPTED()
   refresh(true, true)
   -- Again a moment later: this sync undoes the game's auto-watch of the accepted quest if it lands after ours.
+  if C_Timer then C_Timer.After(0.5, safe(function() G.sync(true) end)) end
+end
+-- The game also auto-watches a quest when it progresses: undo it a moment later, as after an accept.
+function handlers.QUEST_WATCH_UPDATE()
+  if #G.myGuides() == 0 then return end
   if C_Timer then C_Timer.After(0.5, safe(function() G.sync(true) end)) end
 end
 function handlers.PLAYER_LEVEL_UP(level)
