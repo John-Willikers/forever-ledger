@@ -147,22 +147,50 @@ describe('character state ingest (real Postgres)', () => {
     ]);
   });
 
-  it('an older state of the alias does not replace the canonical one', async () => {
+  it('an older state of the alias does not replace the canonical one, but fills its missing sections', async () => {
     await q(
       `insert into characters (key, name, realm) values ('Ada-Bayou', 'Ada', 'Bayou'), ('Ada Smith-Bayou', 'Ada Smith', 'Bayou')`,
     );
     await q(
-      `insert into character_state (char, build, level, observed_at) values
-         ('Ada-Bayou', 70009, 10, '2026-09-24T12:00:00-05:00'),
-         ('Ada Smith-Bayou', 70245, 18, '2026-10-07T00:00:00-05:00')`,
+      `insert into character_state (char, build, level, completed, mount, observed_at) values
+         ('Ada-Bayou', 70009, 10, '{1,2,3}', '{"owned": 1}', '2026-09-24T12:00:00-05:00'),
+         ('Ada Smith-Bayou', 70245, 18, null, '{"owned": 2}', '2026-10-07T00:00:00-05:00')`,
     );
     const r = await s.database.db.transaction((tx) =>
       mergeCharacter(tx, 'Ada-Bayou', 'Ada Smith-Bayou', 'merge', ['ACCOUNT_A']),
     );
     expect(r.replaced.character_state).toBe(0);
     expect(r.dropped.character_state).toBe(1);
-    expect(await q(`select char, level from character_state where char like 'Ada%'`)).toEqual([
-      { char: 'Ada Smith-Bayou', level: 18 },
+    expect(
+      await q(
+        `select char, build, level, completed, mount from character_state where char like 'Ada%'`,
+      ),
+    ).toEqual([
+      {
+        char: 'Ada Smith-Bayou',
+        build: 70245,
+        level: 18,
+        completed: [1, 2, 3],
+        mount: { owned: 2 },
+      },
+    ]);
+  });
+
+  it('a state with no time is the older one in a merge', async () => {
+    await q(
+      `insert into characters (key, name, realm) values ('Eve-Bayou', 'Eve', 'Bayou'), ('Eve Smith-Bayou', 'Eve Smith', 'Bayou')`,
+    );
+    await q(
+      `insert into character_state (char, build, level, pos, observed_at) values
+         ('Eve-Bayou', 70245, 20, null, '2026-10-07T00:00:00-05:00'),
+         ('Eve Smith-Bayou', 70009, 12, '{"mapId": 1429}', null)`,
+    );
+    const r = await s.database.db.transaction((tx) =>
+      mergeCharacter(tx, 'Eve-Bayou', 'Eve Smith-Bayou', 'merge', ['ACCOUNT_E']),
+    );
+    expect(r.replaced.character_state).toBe(1);
+    expect(await q(`select char, level, pos from character_state where char like 'Eve%'`)).toEqual([
+      { char: 'Eve Smith-Bayou', level: 20, pos: { mapId: 1429 } },
     ]);
   });
 });

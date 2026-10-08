@@ -16,13 +16,36 @@ type Conn = Db | Tx;
  * rows are usually the newer ones (written after build 70009 dropped the surname). Without a `newer` column the
  * canonical row stays.
  */
-export const CHAR_TABLES: readonly { table: string; pk: readonly string[]; newer?: string }[] = [
+export const CHAR_TABLES: readonly {
+  table: string;
+  pk: readonly string[];
+  newer?: string;
+  /** Columns the kept (newer) row takes from the other when its own is null, as ingest keeps stored sections. */
+  fill?: readonly string[];
+}[] = [
   { table: 'quest_observations', pk: ['quest_id', 'build', 'stage', 'char'], newer: 'observed_at' },
   { table: 'turn_ins', pk: ['id'] },
   { table: 'fishing_casts', pk: ['id'] },
   { table: 'character_gear', pk: ['char', 'build'], newer: 'seen_at' },
   { table: 'quest_objective_progress', pk: ['char', 'quest_id', 'idx', 'have', 'at'] },
-  { table: 'character_state', pk: ['char'], newer: 'observed_at' },
+  {
+    table: 'character_state',
+    pk: ['char'],
+    newer: 'observed_at',
+    fill: [
+      'level',
+      'xp',
+      'xp_max',
+      'completed',
+      'completed_at',
+      'log',
+      'pos',
+      'bind',
+      'hearth_ready_at',
+      'taxi',
+      'mount',
+    ],
+  },
   { table: 'trips', pk: ['char', 'kind', 'started_at'] },
   { table: 'skills', pk: ['char', 'skill_line_id'], newer: 'last_seen' },
   { table: 'skill_ups', pk: ['char', 'skill_line_id', 'observed_at', 'to_rank'] },
@@ -154,19 +177,35 @@ export async function mergeCharacter(
       guid: null,
     });
   }
-  for (const { table, pk, newer } of CHAR_TABLES) {
+  for (const { table, pk, newer, fill } of CHAR_TABLES) {
     const others = pk.filter((c) => c !== 'char');
     // A table keyed by the character alone (character_state) clashes on any row of `into`.
     const clash = others.length
       ? sql.raw(others.map((c) => `x."${c}" = t."${c}"`).join(' and '))
       : sql.raw('true');
+    // A row without a time is the older one (as at ingest).
+    const fromIsNewer = newer
+      ? sql`coalesce(t.${sql.identifier(newer)}, '-infinity') > coalesce(x.${sql.identifier(newer)}, '-infinity')`
+      : sql`false`;
+    // The copy that stays keeps its own values and takes the other's where it has none.
+    if (fill?.length) {
+      const fillFrom = (keep: string, other: string) =>
+        sql.raw(fill.map((c) => `"${c}" = coalesce(${keep}."${c}", ${other}."${c}")`).join(', '));
+      await conn.execute(
+        sql`update ${sql.identifier(table)} t set ${fillFrom('t', 'x')} from ${sql.identifier(table)} x
+             where t.char = ${from} and x.char = ${into} and ${clash} and ${fromIsNewer}`,
+      );
+      await conn.execute(
+        sql`update ${sql.identifier(table)} x set ${fillFrom('x', 't')} from ${sql.identifier(table)} t
+             where t.char = ${from} and x.char = ${into} and ${clash} and not (${fromIsNewer})`,
+      );
+    }
     // Where `from` has the newer copy of a row, `into`'s older copy goes and `from`'s moves in its place.
     let replaced = 0;
     if (newer) {
       const res = await conn.execute(
         sql`delete from ${sql.identifier(table)} x using ${sql.identifier(table)} t
-             where t.char = ${from} and x.char = ${into} and ${clash}
-               and t.${sql.identifier(newer)} > x.${sql.identifier(newer)}`,
+             where t.char = ${from} and x.char = ${into} and ${clash} and ${fromIsNewer}`,
       );
       replaced = res.rowCount ?? 0;
     }
