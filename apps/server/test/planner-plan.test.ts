@@ -347,7 +347,7 @@ describe('planner loop', () => {
       expect(r.steps).toHaveLength(4);
       expect(r.gaps.some((g) => g.includes('maxSteps'))).toBe(true);
       // Cut after accepting 81: it is still in the log.
-      expect(r.gaps).toContain('left in the log: Quest 81 (not turned in)');
+      expect(r.gaps).toContain('left in the log at the end: 1 quest (Quest 81)');
     });
 
     it('plans nothing from an empty atlas, with a gap line', () => {
@@ -413,7 +413,7 @@ describe('planner loop', () => {
       { toLevel: 10 },
     );
     expect(brief(r.steps)).toEqual(['accept:1', 'turn_in:1']);
-    expect(r.gaps).toContain('left in the log: Quest 2 (not turned in)');
+    expect(r.gaps).toContain('left in the log at the end: 1 quest (Quest 2)');
   });
 
   it('keeps the hearth and stays on the continent for a slightly better hub across the water', () => {

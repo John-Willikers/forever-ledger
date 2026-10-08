@@ -40,7 +40,7 @@ const count = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const titles = (sim: Sim, ids: Iterable<number>) =>
   [...ids].sort((a, b) => a - b).map((id) => sim.quest(id).title);
 
-/** One grouped line per kind of shortcoming, then each quest still in the log. */
+/** One grouped line per kind of shortcoming, the quests still in the log included. */
 function closingGaps(sim: Sim): void {
   const spotless = titles(sim, sim.noSpots);
   if (spotless.length)
@@ -63,7 +63,9 @@ function closingGaps(sim: Sim): void {
   for (const id of [...sim.noTrip].sort((a, b) => a - b))
     if (!sim.completed.has(id) && !sim.log.has(id))
       sim.gap(`skipped ${sim.quest(id).title}: not worth the trip`);
-  for (const q of sim.logQuests()) sim.gap(`left in the log: ${q.title} (not turned in)`);
+  const open = titles(sim, sim.log.keys());
+  if (open.length)
+    sim.gap(`left in the log at the end: ${count(open.length, 'quest')} (${examples(open)})`);
 }
 
 /** Work `hub` until it has nothing left: turn in, accept, loop, repeat (follow-ups). True when anything happened. */
