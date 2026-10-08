@@ -15,7 +15,10 @@ export interface Estimate {
   hub: Hub;
   seconds: number;
   xp: number;
-  /** The hub has a class quest of the character's class to take or hand in: it goes first. */
+  /**
+   * The hub has a class quest of the character's class to take or hand in: it goes first (on another continent only
+   * when its races are known to include the character's).
+   */
   classWork: boolean;
 }
 
@@ -68,7 +71,12 @@ export function estimate(sim: Sim, hub: Hub): Estimate | null {
     xp += questXp(q.xp, q.level, sim.level);
   }
   for (const t of onward.values()) seconds += t ?? 0;
-  const classWork = [...take, ...endsHere].some((q) => sim.isMine(q));
+  // Across the water, a class quest pulls the plan only when its race limits are known to include the character's
+  // race (an unknown list might be another race's quest: "Simple Scroll" is the Undead warrior's).
+  const away = sim.here().continent !== hub.pos.continent;
+  const classWork =
+    endsHere.some((q) => sim.isMine(q)) ||
+    take.some((q) => sim.isMine(q) && (!away || (q.races?.includes(sim.ch.race) ?? false)));
   return { hub, seconds: trip + seconds, xp, classWork };
 }
 

@@ -29,7 +29,7 @@ hub batches, few run-backs, real travel (flights, boats, hearth). Runs become ti
 - ✅ 3 🧍 Addon 0.8.0 / schema 10 **released** 2026-10-08 09:09 CDT (tray v0.3.2 09:15; Harlan's test passed, bug #34 fixed on 70245; built + reviewed 2026-10-08 08:48 CDT; state, trips, contracts, migrations 0022/0023, sessions merged server-side because of bug #34, planner reads stored state) ): completed quests, last position, flight paths, bind + hearth, mount, recorded trips, **XP needed per level (`UnitXPMax`, so level math uses Forever's real curve; quest XP matches Wowhead (median 1.00 over 67 quests) except 15 Forever-only quests paying 2–3.4×)**,
   `travel` steps (after 0.7.0 merges)
 - ✅ 4 🧠 Planner + travel network (2026-10-08 07:31 CDT, PR to master): geo · xp · travel (flight estimate 92.6 s vs 89.7 s measured) · tour · available · hubs · loop · atlas builder (350 quests, sides inferred, 22 class quests from log headers). Real run (Undead warlock, Deathknell → 6): batches Deathknell, class quests, one turn-in pass, no needless hearth. Data gap: 353 objectives without spots (arriving with the fetch) (unit tests on hand-made atlases, golden undead 1–6 test)
-- ⏳ 5 🧾 Delivery: `createGuide` uses the planner, `leveling_route` planned mode, Discord / admin
+- 🟡 5 🧾 Delivery (built + reviewed 2026-10-08 18:46 CDT: guide format 2 + old-tray safety proven, planned createGuide, stay-on-continent, class-quest races from takers, hearth only if it saves 5 min, ASCII-safe text; plan `docs/plans/2026-10-08-planned-guides.md`; guide format 2, planned createGuide, tray v0.3.3, addon 0.9.0 travel steps): `createGuide` uses the planner, `leveling_route` planned mode, Discord / admin
 - ⏳ 6 🎮 Harlan follows a planned guide in-game
 
 ## 🔬 Probe 0.6.0 questions

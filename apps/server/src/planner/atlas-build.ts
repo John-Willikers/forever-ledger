@@ -75,17 +75,18 @@ export interface TickRow {
   have: number;
 }
 
-/** A quest one of our characters took or saw, and that character's faction. */
+/** A quest one of our characters took or saw, and that character's faction and race (UnitRace token). */
 export interface TakerRow {
   questId: number;
   faction: string | null;
+  race?: string | null;
 }
 
 export interface AtlasRows {
   claims: ClaimRow[];
   /** Objective increments, for seconds per unit; optional. */
   ticks?: TickRow[];
-  /** Our characters' factions per quest, for a side Wowhead does not give; optional. */
+  /** Our characters' factions and races per quest, for a side (or a class quest's races) Wowhead does not give. */
   takers?: TakerRow[];
   seen: SeenRow[];
   progress: ProgressRow[];
@@ -348,7 +349,7 @@ function wowheadObjectives(questId: number, v: unknown, zoneGaps: ZoneGaps): WhO
 
 function objectivesOf(
   questId: number,
-  texts: { index: number; name: string; count: number }[],
+  texts: { index: number; name: string; count: number; verb?: string }[],
   wh: WhObjective[],
   progress: ProgressRow[],
 ): AtlasObjective[] {
@@ -369,6 +370,9 @@ function objectivesOf(
         spots: mine.length > 0 ? mine : o.spots,
       };
     });
+  // Forever drops some objective targets ("0/8   slain"): a name that is only a verb or separators is no name.
+  const named = (name: string) => name.replace(/\b(slain|killed)\b|[\s:,.;\-–—]+/gi, '') !== '';
+  texts = texts.map((t) => (named(t.name) ? t : { ...t, name: '', verb: t.name.trim() }));
   const used = new Set<WhObjective>();
   const matched = texts.map((t) => {
     const n = ` ${norm(t.name)} `;
@@ -392,7 +396,13 @@ function objectivesOf(
         ? 'talk'
         : (m?.kind ?? (/\b(slain|killed)\b/i.test(t.name) ? 'kill' : 'other')),
       // Forever leaves some objective texts blank: name it after its Wowhead target, else by number.
-      text: t.name || (m ? `${t.count} × ${m.name}` : `Objective ${t.index + 1}`),
+      text:
+        t.name ||
+        (m
+          ? m.kind === 'kill' && t.verb
+            ? `${m.name} slain: ${t.count}`
+            : `${t.count} × ${m.name}`
+          : `Objective ${t.index + 1}`),
       count: t.count,
       spots: mine.length > 0 ? mine : (m?.spots ?? []),
     };
@@ -548,7 +558,15 @@ export function buildAtlas(rows: AtlasRows): AtlasBuild {
     const header = str(q?.category) ? norm(q!.category!) : '';
     const classes = names(c.get('classes')) ?? (CLASS_NAMES.has(header) ? [header] : null);
     if (!claims) lacks.push('restrictions unknown (no Wowhead data)');
-    const races = names(c.get('races'))?.map(raceToken) ?? null;
+    // Races: Wowhead's; for a class quest without them, the one race all our players who took it share ("Simple
+    // Scroll" is the Undead warrior's: an Orc warrior must not be sent for it).
+    let races = names(c.get('races'))?.map(raceToken) ?? null;
+    if (!races && classes && classes.length < CLASS_NAMES.size) {
+      const seenRaces = new Set((takers.get(id) ?? []).map((t) => t.race));
+      const [only] = seenRaces;
+      if (seenRaces.size === 1 && typeof only === 'string' && only) races = [only];
+      else lacks.push('class quest, races unknown');
+    }
     // Side: Wowhead's, else this quest's own series entry, else races of one faction, else our players' faction.
     const sideClaim = c.get('side');
     const side =

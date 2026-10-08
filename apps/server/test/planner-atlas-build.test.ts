@@ -9,6 +9,7 @@ import {
   zoneMapId,
 } from '../src/planner/atlas-build.js';
 import type { AtlasRows, ClaimRow } from '../src/planner/atlas-build.js';
+import { canTake } from '../src/planner/available.js';
 
 const claim = (
   questId: number,
@@ -460,6 +461,77 @@ describe('atlas builder', () => {
       ['object', '6 × Wayward Weapon', 6],
       ['other', 'Objective 2', 2],
     ]);
+  });
+
+  it("a class quest's races come from our players who took it, when they share one race", () => {
+    const scroll = (id: number) => ({
+      questId: id,
+      title: `Scroll ${id}`,
+      level: 1,
+      objectives: null,
+      category: 'Warrior',
+    });
+    const { atlas, gaps } = buildAtlas(
+      rows({
+        claims: [claim(3, 'races', ['Orc'])],
+        quests: [scroll(1), scroll(2), scroll(3), scroll(4)],
+        takers: [
+          // Only Undead warriors took 1: an Undead quest.
+          { questId: 1, faction: 'Horde', race: 'Scourge' },
+          { questId: 1, faction: 'Horde', race: 'Scourge' },
+          // Mixed: unknown.
+          { questId: 2, faction: 'Horde', race: 'Scourge' },
+          { questId: 2, faction: 'Horde', race: 'Orc' },
+          // Wowhead's races win.
+          { questId: 3, faction: 'Horde', race: 'Scourge' },
+          { questId: 4, faction: 'Horde', race: null },
+        ],
+      }),
+    );
+    const races = (id: number) => atlas.quests.get(id)!.races;
+    expect([1, 2, 3, 4].map(races)).toEqual([['Scourge'], null, ['Orc'], null]);
+    expect(gaps).toContain('class quest, races unknown: 2 quests (2, 4)');
+    const orc = {
+      level: 1,
+      className: 'WARRIOR',
+      race: 'Orc',
+      faction: 'Horde' as const,
+      completed: new Set<number>(),
+      log: new Map<number, number[]>(),
+    };
+    expect(canTake(atlas.quests.get(1)!, orc, 1, atlas)).toBe(false);
+    expect(canTake(atlas.quests.get(1)!, { ...orc, race: 'Scourge' }, 1, atlas)).toBe(true);
+  });
+
+  it('names an objective whose text lost its target after the Wowhead target', () => {
+    const spider = {
+      id: 1505,
+      kind: 'npc',
+      name: 'Night Web Spider',
+      role: 'target',
+      coords: [[28, 59]],
+      zoneName: 'Tirisfal Glades',
+      wowheadZone: 85,
+    };
+    const young = { ...spider, id: 1504, name: 'Young Night Web Spider' };
+    const { atlas } = buildAtlas(
+      rows({
+        claims: [claim(380, 'objective_spots', [young, spider])],
+        quests: [
+          {
+            questId: 380,
+            title: "Night Web's Hollow",
+            level: 3,
+            objectives: ['0/10 Young Night Web Spider slain', '0/8   slain'],
+          },
+        ],
+      }),
+    );
+    expect(atlas.quests.get(380)!.objectives.map((o) => [o.kind, o.text, o.count])).toEqual([
+      ['kill', 'Young Night Web Spider slain', 10],
+      ['kill', 'Night Web Spider slain: 8', 8],
+    ]);
+    expect(atlas.quests.get(380)!.objectives[1]!.spots).toEqual([{ mapId: 1420, x: 28, y: 59 }]);
   });
 
   it("takes a class quest's class from our quest log header; Wowhead's classes win", () => {

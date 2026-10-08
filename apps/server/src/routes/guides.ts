@@ -1,10 +1,12 @@
 // In-game guides over HTTP (project-plans/forever-ledger-guides.md).
-//   GET  /v1/guides          upload token → the guides for the characters this tray uploads (it writes them into the game)
+//   GET  /v1/guides          upload token → the guides for the characters this tray uploads (it writes them into the game);
+//                            ?format=2 → guide format 2 (travel steps), else format 1 (what trays up to v0.3.2 read)
 //   POST /v1/guides/ack      upload token → { ids } the tray wrote
 //   GET  /admin/api/guides   the admin page's list
 //   POST /admin/api/guides   { character, start?, basedOn?, toLevel, fromLevel?, preview? } → build (and send)
 //   POST /admin/api/guides/:id/delete
-import { GuidesAck } from '@forever-ledger/contracts';
+import { GUIDE_FORMAT, GuidesAck, toFormat1 } from '@forever-ledger/contracts';
+import type { GuideDoc } from '@forever-ledger/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { verifyBearer } from '../auth.js';
 import type { Db } from '../db/client.js';
@@ -37,7 +39,11 @@ export function registerGuideRoutes(
   app.get('/v1/guides', tray, async (req, reply) => {
     const tokenId = await verifyBearer(db, req.headers.authorization);
     if (tokenId === null) return reply.status(401).send({ error: 'invalid or revoked token' });
-    return { guides: await guidesForTray(db, tokenId) };
+    const docs = await guidesForTray(db, tokenId);
+    // An old tray rejects the whole response over one step it can't read: it gets format 1.
+    if ((req.query as Record<string, unknown>).format === String(GUIDE_FORMAT))
+      return { guides: docs };
+    return { guides: docs.map(toFormat1).filter((d): d is GuideDoc => d !== null) };
   });
 
   app.post('/v1/guides/ack', tray, async (req, reply) => {

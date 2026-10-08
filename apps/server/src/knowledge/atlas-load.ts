@@ -94,10 +94,11 @@ export async function loadAtlas(db: Db): Promise<AtlasBuild> {
     sql`select quest_id as "questId", idx, char, extract(epoch from at)::float8 as at, have
           from quest_objective_progress`,
   );
-  // The faction of each character that took or saw a quest, for quests Wowhead gives no side.
+  // The faction and race of each character that took or saw a quest, for quests Wowhead gives no side (or a class
+  // quest no races).
   const takers = await rows<TakerRow>(
     db,
-    sql`select distinct o.quest_id as "questId", c.faction
+    sql`select distinct o.quest_id as "questId", c.faction, c.race
           from quest_observations o left join characters c on c.key = o.char`,
   );
   return buildAtlas({ claims, ticks, takers, seen, progress, turnIns, quests });

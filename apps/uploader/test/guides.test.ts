@@ -61,6 +61,30 @@ describe('Lua data', () => {
     expect(() => toLua({ n: Number.NaN })).toThrow('not a finite number');
     expect(guidesLua([guide(1)], 1_800_000_000)).toContain('ForeverLedgerGuidesData = {');
   });
+
+  it('writes guide format 2: travel steps with how and note', () => {
+    const g = guide(1);
+    g.planned = true;
+    g.steps.unshift({
+      action: 'travel',
+      how: 'fly',
+      note: 'Orgrimmar → Crossroads',
+      npc: 'Crossroads, The Barrens',
+      zone: 'Kalimdor',
+      subzone: null,
+      mapId: 1414,
+      x: 51.5,
+      y: 30.3,
+      quests: [],
+    });
+    const lua = guidesLua([g], 1_800_000_000);
+    expect(lua).toContain('  version = 2,');
+    expect(lua).toContain('planned = true,');
+    expect(lua).toContain('action = "travel",');
+    expect(lua).toContain('how = "fly",');
+    expect(lua).toContain('note = "Orgrimmar \\226\\134\\146 Crossroads",');
+    expect(lua).toContain('quests = {},');
+  });
 });
 
 describe('syncGuides', () => {
@@ -68,10 +92,12 @@ describe('syncGuides', () => {
   let config: Config;
   let served: GuideDoc[];
   let acks: number[][];
+  let asked: string[];
   const addons = () => join(env.wowPath, '_classic_era_', 'Interface', 'AddOns');
   const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
-    if (u.endsWith('/v1/guides')) return Response.json({ guides: served });
+    asked.push(u);
+    if (u.endsWith('/v1/guides?format=2')) return Response.json({ guides: served });
     if (u.endsWith('/v1/guides/ack')) {
       acks.push(JSON.parse(String(init?.body)).ids);
       return Response.json({ acked: 1 });
@@ -88,6 +114,7 @@ describe('syncGuides', () => {
     config = env.config({ serverUrl: SERVER, token: 'flt_x' });
     served = [guide(7)];
     acks = [];
+    asked = [];
   });
   afterEach(() => env.cleanup());
 
@@ -107,6 +134,8 @@ describe('syncGuides', () => {
     expect(lua).toContain('npc = "Undertaker Mordo"');
     expect(lua).toContain('"Mindless Zombie slain: 8"');
     expect(acks).toEqual([[7]]);
+    // Guide format 2: planned guides' travel steps included.
+    expect(asked[0]).toBe(`${SERVER}/v1/guides?format=2`);
   });
 
   it('writes again only when the guides change; with none left, the addon goes', async () => {

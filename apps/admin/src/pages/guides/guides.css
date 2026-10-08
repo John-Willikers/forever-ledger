@@ -12,3 +12,8 @@
 .guide-result {
   margin: 0.75rem 0 0;
 }
+.guide-gaps {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}

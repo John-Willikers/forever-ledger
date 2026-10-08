@@ -29,12 +29,23 @@ const showLeg = (l: Leg) =>
   distance(toWorld(l.from)!, toWorld(l.to)!) > FOLD_WALK ||
   (l.from.mapId !== l.to.mapId && !isContinentMap(l.from.mapId) && !isContinentMap(l.to.mapId));
 
+/** The hearthstone is used on the way only when it saves at least this many seconds over the best route without it. */
+export const HEARTH_MIN_SAVING = 300;
+
+/** The route a step takes: with the hearth only when that saves HEARTH_MIN_SAVING (a short hop keeps it). */
+function bestRoute(sim: Sim, spot: MapSpot) {
+  const r = route(sim.pos, spot, sim.traveller(), sim.travel, sim.clock);
+  if (!r?.legs.some((l) => l.how === 'hearth')) return r;
+  const keep = route(sim.pos, spot, { ...sim.traveller(), hearth: null }, sim.travel, sim.clock);
+  return keep && keep.seconds - r.seconds < HEARTH_MIN_SAVING ? keep : r;
+}
+
 /** Travel to `spot`, one step per shown leg. False (and a gap line) when there is no route: the character skips it. */
 export function goTo(sim: Sim, spot: MapSpot): boolean {
   const from = toWorld(sim.pos);
   const to = toWorld(spot);
   if (from && to && distance(from, to) < 1) return true;
-  const r = route(sim.pos, spot, sim.traveller(), sim.travel, sim.clock);
+  const r = bestRoute(sim, spot);
   if (!r) {
     sim.gap(
       `no route from ${zoneOf(sim.pos) ?? `map ${sim.pos.mapId}`} to ${zoneOf(spot) ?? `map ${spot.mapId}`}`,
