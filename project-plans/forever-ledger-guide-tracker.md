@@ -45,7 +45,11 @@ the step's spot.
 - ✅ 2½ 🤔 Design agreed with Harlan, section by section — 2026-10-07 23:58 CDT: guide **takes over** the watch list
   (yours saved and restored), a real **"Guide" tracker module** above Quests (fallback: lookalike frame), **our own
   TomTom arrow** (Pin and the old window go). Design: `docs/plans/2026-10-07-guide-tracker-design.md`
-- 🟡 3 🛠️ Viewer rework on `feat/guide-tracker` (implementation plan next, then the tasks below)
+- 🟡 3 🛠️ Viewer rework on `feat/guide-tracker`: implementation plan written (7 tasks, built on Blizzard's real 11.x
+  tracker source) — `docs/plans/2026-10-08-guide-tracker.md` — 2026-10-08 00:20 CDT. Waiting on Harlan to pick how
+  it runs.
+  - ⏳ T1 test helpers · ⏳ T2 `G.sync` + combat guard · ⏳ T3 watches · ⏳ T4 arrow · ⏳ T5 tracker module ·
+    ⏳ T6 wire-up + 0.7.0 · ⏳ T7 review / PR
 - ⏳ 4 🎮 Harlan tests in-game: section, Next/Back, watch takeover + restore, arrow walking/turning, a fight with a
   quest item
 - ⏳ 5 🚀 Addon 0.7.0 (`addon-v0.7.0` → `addon-cli publish 0.7.0`)
