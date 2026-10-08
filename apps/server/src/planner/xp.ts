@@ -10,9 +10,17 @@ const XP_TO_NEXT = [
   17700, 19400, 21300, 23200, 25200, 27300, 29400, 31700, 34000, 36400, 38900, 41400, 44300,
 ];
 
-/** XP needed to leave `level`; 0 at (or past) the cap or beyond the table. */
-export function xpToNext(level: number, cap = LEVEL_CAP): number {
+/** XP to finish each level (UnitXPMax), recorded per build in `xp_curve`: level → XP. */
+export type XpCurve = ReadonlyMap<number, number>;
+
+/**
+ * XP needed to leave `level`: the build's recorded curve where it has the level, else the Classic table; 0 at (or
+ * past) the cap or beyond the table.
+ */
+export function xpToNext(level: number, cap = LEVEL_CAP, curve?: XpCurve): number {
   if (level >= cap) return 0;
+  const seen = curve?.get(level);
+  if (seen !== undefined && seen > 0) return seen;
   return XP_TO_NEXT[level - 1] ?? 0;
 }
 
@@ -47,11 +55,12 @@ export function gain(
   state: { level: number; xp: number },
   xp: number,
   cap = LEVEL_CAP,
+  curve?: XpCurve,
 ): { level: number; xp: number } {
   let { level } = state;
   let into = state.xp + xp;
   while (level < cap) {
-    const need = xpToNext(level, cap);
+    const need = xpToNext(level, cap, curve);
     if (need <= 0 || into < need) break;
     into -= need;
     level++;

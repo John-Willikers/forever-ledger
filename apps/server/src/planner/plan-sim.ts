@@ -16,12 +16,14 @@ import type {
   QuestPoint,
   WorldPos,
 } from './types.js';
-import { gain, isGrey, mobXp } from './xp.js';
+import { gain, isGrey, mobXp, type XpCurve } from './xp.js';
 
 export interface PlanOptions {
   toLevel: number;
   /** Stop after this many steps (default MAX_STEPS). */
   maxSteps?: number;
+  /** The build's recorded XP per level (`xp_curve`); the Classic table where it has no level. */
+  xpCurve?: XpCurve;
 }
 
 export const MAX_STEPS = 300;
@@ -69,6 +71,7 @@ export class Sim {
   readonly steps: PlanStep[] = [];
   readonly gaps: string[] = [];
   readonly maxSteps: number;
+  readonly xpCurve: XpCurve | undefined;
   readonly toLevel: number;
   readonly speed: number;
 
@@ -110,6 +113,7 @@ export class Sim {
     opts: PlanOptions,
   ) {
     this.maxSteps = opts.maxSteps ?? MAX_STEPS;
+    this.xpCurve = opts.xpCurve;
     this.toLevel = opts.toLevel;
     this.speed = ch.mounted ? MOUNT_SPEED : RUN_SPEED;
     this.pos = ch.position;
@@ -164,7 +168,7 @@ export class Sim {
 
   /** Gain XP (quest or kills), levelling up on the way. */
   addXp(xp: number): void {
-    const next = gain(this, xp);
+    const next = gain(this, xp, undefined, this.xpCurve);
     this.gained += xp;
     this.level = next.level;
     this.xp = next.xp;

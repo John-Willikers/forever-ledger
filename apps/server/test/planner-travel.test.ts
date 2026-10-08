@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { distance, toWorld } from '../src/planner/geo.js';
-import { route, type TravelData } from '../src/planner/travel.js';
+import { FLIGHT_SPEED, flightSeconds, route, type TravelData } from '../src/planner/travel.js';
 import { TRANSPORTS } from '../src/planner/transports.js';
 import type { CharacterState, MapSpot } from '../src/planner/types.js';
 
@@ -52,6 +52,18 @@ describe('planner travel', () => {
       r.legs.reduce((s, l) => s + l.seconds, 0),
       6,
     );
+  });
+
+  it('times flights with the travel data’s detour factor when it has one', () => {
+    const a = { mapId: 1411, x: 45, y: 10 };
+    const b = { mapId: 1446, x: 51, y: 28 };
+    const ch = horde({ flightPaths: new Set([23, 40]) });
+    const fly = (data: TravelData) =>
+      route(a, b, ch, data, 0)!.legs.find((l) => l.how === 'fly')!.seconds;
+    const d = yards(ORG, GADGETZAN);
+    expect(fly(DATA)).toBeCloseTo(flightSeconds(d), 6);
+    expect(fly({ ...DATA, flightDetour: 1.5 })).toBeCloseTo((d * 1.5) / FLIGHT_SPEED + 15, 6);
+    expect(flightSeconds(d, 1.5)).toBeCloseTo((d * 1.5) / FLIGHT_SPEED + 15, 6);
   });
 
   it('never uses an unlearned node', () => {
