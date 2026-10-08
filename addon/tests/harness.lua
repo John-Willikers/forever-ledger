@@ -115,7 +115,25 @@ function H.new(worldOverrides)
 
   -- frames
   env.WorldFrame, env.UIParent = {}, {}
-  env.CreateFrame = function(kind, name, _, template)
+  -- UI objects (the guide viewer's window): any method not written here does nothing, so the window code runs; text
+  -- set on a font string is kept for tests to read. Only frames made with a parent get this, so the addon's own event
+  -- frames behave exactly as before.
+  local function uiObject(o)
+    o.shown = o.shown ~= false
+    o.text = o.text
+    function o:SetText(t) self.text = t end
+    function o:GetText() return self.text end
+    function o:Show() self.shown = true end
+    function o:Hide() self.shown = false end
+    function o:IsShown() return self.shown end
+    function o:GetStringHeight() return 60 end
+    function o:GetPoint() return "CENTER", nil, "CENTER", 10, -20 end
+    function o:CreateFontString() return uiObject({}) end
+    function o:CreateTexture() return uiObject({}) end
+    return setmetatable(o, { __index = function() return function() end end })
+  end
+
+  env.CreateFrame = function(kind, name, parent, template)
     for t in pairs(world.rejectTemplates) do
       if template and template:find(t, 1, true) then error("Couldn't find inherited node \"" .. t .. "\"") end
     end
@@ -169,6 +187,7 @@ function H.new(worldOverrides)
         if self.scripts.OnClick then self.scripts.OnClick(self, button, false) end
       end
     end
+    if parent ~= nil then uiObject(f) end
     if name then env[name] = f end
     frames[#frames + 1] = f
     return f

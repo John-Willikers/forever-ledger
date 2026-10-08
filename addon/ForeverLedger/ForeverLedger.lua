@@ -2799,6 +2799,9 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     nudgeOn = msg == "nudge on"
     nudgeDeferred = false
     say(nudgeOn and "/reload reminders on." or "/reload reminders off until your next /reload or logout.")
+  elseif msg == "guide" or msg:sub(1, 6) == "guide " then
+    if ForeverLedgerGuide and ForeverLedgerGuide.slash then ForeverLedgerGuide.slash(msg:sub(7))
+    else say("the guide viewer didn't load.") end
   elseif msg == "reset confirm" then
     wipe(db.quests); wipe(db.items); wipe(db.runs); wipe(db.drops); wipe(db.turnIns)
     wipe(db.dropQty); wipe(db.corpses)
@@ -2826,6 +2829,7 @@ SlashCmdList.FOREVERLEDGER = function(msg)
     say("/fl scanlog  -  read rewards for quests already in your log")
     say("/fl done  -  close the current dungeon timer by hand")
     say("/fl nudge off|on  -  reminders to /reload after bosses, runs and turn-ins")
+    say("/fl guide  -  show the leveling guide sent to this character (list, use N, next, back, pin, hide)")
     say("/fl reset confirm  -  wipe everything")
     say("Type /reload after each dungeon so the data hits disk.")
   end

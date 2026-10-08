@@ -69,7 +69,14 @@ Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked. Times America/C
   ForeverLedger isn't installed) and acks; tray checks 1 min after start, then every 5 min, and toasts new guides.
   Fixed the uploader's flaky `renameDirWithRetry` test (its in-place delete raced the rename). `pnpm check` 1115
   tests — 22:14 CDT
-- ⬜ 3 🖥️ Viewer: `GuideViewer.lua` (state machine tested in the harness), UI frame, slash commands
+- ✅ 3 🖥️ Viewer: `GuideViewer.lua` in ForeverLedger (toc: `## SavedVariablesPerCharacter: ForeverLedgerGuideState`):
+  this character's newest guide (full-name key, else first name), steps already behind the player skipped
+  (`IsOnQuest` / `IsQuestFlaggedCompleted` / `ReadyForTurnIn`), advances on `QUEST_ACCEPTED` / `QUEST_TURNED_IN` and
+  throttled `QUEST_LOG_UPDATE`; Back holds the step until Next or real progress; live objective counts; Pin sets
+  `C_Map.SetUserWaypoint` + super-track (falls back to "go to …"); plain frames when BackdropTemplate /
+  UIPanelButtonTemplate are missing; `/fl guide show|hide|list|use N|next|back|pin|reset`. `test_guide.lua` (7 tests,
+  harness gains UI objects for parented frames); a 0.6.0 zip passes the release check; the uploader never reads the
+  per-character file — 22:20 CDT
 - ⬜ 4 🔍 Review → PRs → merge → deploy (backup first: migrations)
 - ⬜ 5 🚀 Tray v0.3.0, addon 0.6.0; Harlan sends Sam a guide, `/reload`s, and follows a few steps in game
 
