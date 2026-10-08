@@ -1,7 +1,7 @@
 {
   "probeVersion": "0.6.0",
   "build": 70245,
-  "note": "Probe 0.6.0 travel snapshot + one trip (Orgrimmar -> Splintertree Post flight, then hearth), 2026-10-08 09:53 CDT. Mount list trimmed.",
+  "note": "Probe 0.6.0 travel snapshot (after a hearth: 1 h cooldown) + trips: Orgrimmar -> Splintertree Post flight then hearth; Tirisfal -> Durotar zeppelin. 2026-10-08 04:53 / 05:04 CDT. Mount list trimmed.",
   "snapshot": {
     "maps": {
       "fields": [
@@ -867,7 +867,7 @@
       "scanned": 3000
     },
     "probeVersion": "0.6.0",
-    "taxiOpen": true,
+    "taxiOpen": false,
     "state": {
       "IsMounted": {
         "ok": true,
@@ -896,14 +896,12 @@
       "NumTaxiNodes": {
         "ok": true,
         "values": [
-          22
+          0
         ]
       },
       "GetTaxiMapID": {
         "ok": true,
-        "values": [
-          1464
-        ]
+        "values": {}
       },
       "GetUnitSpeed": {
         "ok": true,
@@ -998,15 +996,15 @@
         "Undercity"
       ]
     },
-    "at": 1791453051,
+    "at": 1791453664,
     "here": {
       "mounted": false,
-      "mapID": 1454,
-      "zone": "Orgrimmar",
-      "subzone": "Valley of Strength",
-      "t": 1770065.68,
-      "y": 0.6393,
-      "x": 0.4525,
+      "mapID": 1458,
+      "zone": "Undercity",
+      "subzone": "Trade Quarter",
+      "t": 1770678.68,
+      "y": 0.3785,
+      "x": 0.6759,
       "speed": 0,
       "onTaxi": false,
       "indoors": false
@@ -1472,273 +1470,8 @@
         },
         "all": {
           "ok": true,
-          "count": 22,
-          "nodes": [
-            {
-              "state": 1,
-              "name": "Thunder Bluff, Mulgore",
-              "position": [
-                0.463,
-                0.5705
-              ],
-              "nodeID": 22,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 1
-            },
-            {
-              "state": 0,
-              "name": "Orgrimmar, Durotar",
-              "position": [
-                0.581,
-                0.4534
-              ],
-              "nodeID": 23,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 2
-            },
-            {
-              "state": 1,
-              "name": "Crossroads, The Barrens",
-              "position": [
-                0.5343,
-                0.5397
-              ],
-              "nodeID": 25,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 3
-            },
-            {
-              "state": 2,
-              "name": "Sun Rock Retreat, Stonetalon Mountains",
-              "position": [
-                0.4355,
-                0.4823
-              ],
-              "nodeID": 29,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 4
-            },
-            {
-              "state": 1,
-              "name": "Freewind Post, Thousand Needles",
-              "position": [
-                0.5294,
-                0.7422
-              ],
-              "nodeID": 30,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 5
-            },
-            {
-              "state": 1,
-              "name": "Shadowprey Village, Desolace",
-              "position": [
-                0.3751,
-                0.5938
-              ],
-              "nodeID": 38,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 6
-            },
-            {
-              "state": 1,
-              "name": "Gadgetzan, Tanaris",
-              "position": [
-                0.5665,
-                0.8091
-              ],
-              "nodeID": 40,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 7
-            },
-            {
-              "state": 2,
-              "name": "Camp Mojache, Feralas",
-              "position": [
-                0.4584,
-                0.7019
-              ],
-              "nodeID": 42,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 8
-            },
-            {
-              "state": 2,
-              "name": "Valormok, Azshara",
-              "position": [
-                0.5831,
-                0.3725
-              ],
-              "nodeID": 44,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 9
-            },
-            {
-              "state": 2,
-              "name": "Bloodvenom Post, Felwood",
-              "position": [
-                0.4729,
-                0.3151
-              ],
-              "nodeID": 48,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 10
-            },
-            {
-              "state": 2,
-              "name": "Everlook, Winterspring",
-              "position": [
-                0.5891,
-                0.244
-              ],
-              "nodeID": 53,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 11
-            },
-            {
-              "state": 1,
-              "name": "Brackenwall Village, Dustwallow Marsh",
-              "position": [
-                0.541,
-                0.65
-              ],
-              "nodeID": 55,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 12
-            },
-            {
-              "state": 1,
-              "name": "Zoram'gar Outpost, Ashenvale",
-              "position": [
-                0.4367,
-                0.3842
-              ],
-              "nodeID": 58,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 13
-            },
-            {
-              "state": 1,
-              "name": "Splintertree Post, Ashenvale",
-              "position": [
-                0.5324,
-                0.4279
-              ],
-              "nodeID": 61,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 14
-            },
-            {
-              "state": 2,
-              "name": "Moonglade",
-              "position": [
-                0.5215,
-                0.2172
-              ],
-              "nodeID": 69,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 15
-            },
-            {
-              "state": 2,
-              "name": "Cenarion Hold, Silithus",
-              "position": [
-                0.441,
-                0.7994
-              ],
-              "nodeID": 72,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 16
-            },
-            {
-              "state": 1,
-              "name": "Camp Taurajo, The Barrens",
-              "position": [
-                0.5149,
-                0.6188
-              ],
-              "nodeID": 77,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 17
-            },
-            {
-              "state": 2,
-              "name": "Marshal's Refuge, Un'Goro Crater",
-              "position": [
-                0.4948,
-                0.7709
-              ],
-              "nodeID": 79,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 18
-            },
-            {
-              "state": 1,
-              "name": "Ratchet, The Barrens",
-              "position": [
-                0.5663,
-                0.5582
-              ],
-              "nodeID": 80,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 19
-            },
-            {
-              "state": 2,
-              "name": "Summit of Eternity, Mount Hyjal",
-              "position": [
-                0.5536,
-                0.3064
-              ],
-              "nodeID": 559,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 20
-            },
-            {
-              "state": 2,
-              "name": "zzOLDPowderfuse Port, Riverglades",
-              "position": [
-                0.5663,
-                0.5582
-              ],
-              "nodeID": 3208,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 21
-            },
-            {
-              "state": 2,
-              "name": "Tainted Foothills, Mount Hyjal",
-              "position": [
-                0.5408,
-                0.3427
-              ],
-              "nodeID": 3242,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 22
-            }
-          ]
+          "count": 0,
+          "nodes": {}
         }
       },
       "1415": {
@@ -2150,700 +1883,413 @@
           "nodes": {}
         }
       },
-      "1454": {
+      "1458": {
         "forMap": {
           "ok": true,
-          "count": 38,
+          "count": 36,
           "nodes": [
             {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Thunder Bluff, Mulgore",
-              "position": [
-                -2.6453,
-                3.7107
-              ],
-              "nodeID": 22,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Orgrimmar, Durotar",
-              "position": [
-                0.4528,
-                0.6375
-              ],
-              "nodeID": 23,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Crossroads, The Barrens",
-              "position": [
-                -0.7732,
-                2.9032
-              ],
-              "nodeID": 25,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Auberdine, Darkshore",
+              "name": "Stormwind, Elwynn",
               "position": [
-                -3.0217,
-                -4.3483
+                0.4113,
+                16.7328
               ],
-              "nodeID": 26,
+              "nodeID": 2,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Rut'theran Village, Teldrassil",
+              "name": "Sentinel Hill, Westfall",
               "position": [
-                -3.2238,
-                -6.8095
+                -0.1704,
+                19.5388
               ],
-              "nodeID": 27,
+              "nodeID": 4,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Astranaar, Ashenvale",
+              "name": "Lakeshire, Redridge",
               "position": [
-                -2.4179,
-                -0.5917
+                3.2361,
+                17.6644
               ],
-              "nodeID": 28,
-              "faction": 2,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Sun Rock Retreat, Stonetalon Mountains",
-              "position": [
-                -3.3658,
-                1.3976
-              ],
-              "nodeID": 29,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Freewind Post, Thousand Needles",
-              "position": [
-                -0.9028,
-                8.212
-              ],
-              "nodeID": 30,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Alliance",
-              "name": "Thalanaar, Feralas",
-              "position": [
-                -2.0709,
-                7.2329
-              ],
-              "nodeID": 31,
+              "nodeID": 5,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Theramore, Dustwallow Marsh",
+              "name": "Ironforge, Dun Morogh",
               "position": [
-                0.596,
-                6.5204
+                2.1145,
+                10.4666
               ],
-              "nodeID": 32,
+              "nodeID": 6,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Stonetalon Peak, Stonetalon Mountains",
+              "name": "Menethil Harbor, Wetlands",
               "position": [
-                -3.6662,
-                -0.4354
+                1.7266,
+                8.8583
               ],
-              "nodeID": 33,
+              "nodeID": 7,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Nijel's Point, Desolace",
+              "name": "Thelsamar, Loch Modan",
               "position": [
-                -3.5694,
-                2.282
+                3.9643,
+                11.4042
               ],
-              "nodeID": 37,
+              "nodeID": 8,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Horde",
-              "name": "Shadowprey Village, Desolace",
+              "name": "The Sepulcher, Silverpine Forest",
               "position": [
-                -4.9511,
-                4.3206
+                -0.6915,
+                2.1857
               ],
-              "nodeID": 38,
+              "nodeID": 10,
+              "faction": 1,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Horde",
+              "name": "Undercity, Tirisfal",
+              "position": [
+                0.6309,
+                0.4832
+              ],
+              "nodeID": 11,
               "faction": 1,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Gadgetzan, Tanaris",
+              "name": "Darkshire, Duskwood",
               "position": [
-                0.0385,
-                10.1536
+                2.2252,
+                19.3616
               ],
-              "nodeID": 39,
+              "nodeID": 12,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Horde",
-              "name": "Gadgetzan, Tanaris",
+              "name": "Tarren Mill, Hillsbrad",
               "position": [
-                0.0711,
-                9.9664
+                1.8065,
+                2.9339
               ],
-              "nodeID": 40,
+              "nodeID": 13,
               "faction": 1,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Feathermoon, Feralas",
+              "name": "Southshore, Hillsbrad",
               "position": [
-                -5.0044,
-                7.1067
+                1.4475,
+                4.0453
               ],
-              "nodeID": 41,
-              "faction": 2,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Camp Mojache, Feralas",
-              "position": [
-                -2.7662,
-                7.1559
-              ],
-              "nodeID": 42,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Valormok, Azshara",
-              "position": [
-                0.506,
-                -1.4835
-              ],
-              "nodeID": 44,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Bloodvenom Post, Felwood",
-              "position": [
-                -2.3837,
-                -2.9875
-              ],
-              "nodeID": 48,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Alliance",
-              "name": "Moonglade",
-              "position": [
-                -0.8508,
-                -5.5425
-              ],
-              "nodeID": 49,
+              "nodeID": 14,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Everlook, Winterspring",
+              "name": "Refuge Pointe, Arathi",
               "position": [
-                0.757,
-                -4.8378
+                3.5318,
+                4.8718
               ],
-              "nodeID": 52,
+              "nodeID": 16,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Horde",
-              "name": "Everlook, Winterspring",
+              "name": "Hammerfall, Arathi",
               "position": [
-                0.6634,
-                -4.8526
+                4.5551,
+                4.3653
               ],
-              "nodeID": 53,
+              "nodeID": 17,
               "faction": 1,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Horde",
-              "name": "Brackenwall Village, Dustwallow Marsh",
+              "name": "Booty Bay, Stranglethorn",
               "position": [
-                -0.5978,
-                5.7956
+                0.379,
+                25.4994
               ],
-              "nodeID": 55,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Zoram'gar Outpost, Ashenvale",
-              "position": [
-                -3.3349,
-                -1.1768
-              ],
-              "nodeID": 58,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Splintertree Post, Ashenvale",
-              "position": [
-                -0.8242,
-                -0.0305
-              ],
-              "nodeID": 61,
+              "nodeID": 18,
               "faction": 1,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Nighthaven, Moonglade",
+              "name": "Booty Bay, Stranglethorn",
               "position": [
-                -0.9105,
-                -5.9008
+                0.4264,
+                25.5443
               ],
-              "nodeID": 62,
+              "nodeID": 19,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Horde",
-              "name": "Nighthaven, Moonglade",
+              "name": "Grom'gol, Stranglethorn",
               "position": [
-                -0.9101,
-                -5.8945
+                0.7577,
+                22.3278
               ],
-              "nodeID": 63,
-              "faction": 1,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Alliance",
-              "name": "Talrendis Point, Azshara",
-              "position": [
-                0.1426,
-                -0.4791
-              ],
-              "nodeID": 64,
-              "faction": 2,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Alliance",
-              "name": "Talonbranch Glade, Felwood",
-              "position": [
-                -1.2341,
-                -4.2035
-              ],
-              "nodeID": 65,
-              "faction": 2,
-              "isUndiscovered": false
-            },
-            {
-              "atlasName": "TaxiNode_Horde",
-              "name": "Moonglade",
-              "position": [
-                -1.1102,
-                -5.5553
-              ],
-              "nodeID": 69,
+              "nodeID": 20,
               "faction": 1,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Horde",
-              "name": "Cenarion Hold, Silithus",
+              "name": "Kargath, Badlands",
               "position": [
-                -3.2207,
-                9.7125
+                3.1825,
+                13.2977
               ],
-              "nodeID": 72,
+              "nodeID": 21,
               "faction": 1,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Alliance",
-              "name": "Cenarion Hold, Silithus",
+              "name": "Aerie Peak, The Hinterlands",
               "position": [
-                -3.1745,
-                9.6596
+                2.9977,
+                2.4905
               ],
-              "nodeID": 73,
+              "nodeID": 43,
+              "faction": 2,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Alliance",
+              "name": "Nethergarde Keep, Blasted Lands",
+              "position": [
+                4.4914,
+                20.2939
+              ],
+              "nodeID": 45,
               "faction": 2,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Horde",
-              "name": "Camp Taurajo, The Barrens",
+              "name": "Stonard, Swamp of Sorrows",
               "position": [
-                -1.2819,
-                4.9759
+                4.3283,
+                19.2702
               ],
-              "nodeID": 77,
+              "nodeID": 56,
+              "faction": 1,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Alliance",
+              "name": "Chillwind Camp, Western Plaguelands",
+              "position": [
+                2.4008,
+                1.4789
+              ],
+              "nodeID": 66,
+              "faction": 2,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Alliance",
+              "name": "Light's Hope Chapel, Eastern Plaguelands",
+              "position": [
+                6.4771,
+                -0.6142
+              ],
+              "nodeID": 67,
+              "faction": 2,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Horde",
+              "name": "Light's Hope Chapel, Eastern Plaguelands",
+              "position": [
+                6.4209,
+                -0.7022
+              ],
+              "nodeID": 68,
+              "faction": 1,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Horde",
+              "name": "Flame Crest, Burning Steppes",
+              "position": [
+                3.1903,
+                14.657
+              ],
+              "nodeID": 70,
+              "faction": 1,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Alliance",
+              "name": "Morgan's Vigil, Burning Steppes",
+              "position": [
+                3.7645,
+                16.0014
+              ],
+              "nodeID": 71,
+              "faction": 2,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Alliance",
+              "name": "Thorium Point, Searing Gorge",
+              "position": [
+                2.1279,
+                13.1706
+              ],
+              "nodeID": 74,
+              "faction": 2,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Horde",
+              "name": "Thorium Point, Searing Gorge",
+              "position": [
+                2.0568,
+                13.1742
+              ],
+              "nodeID": 75,
+              "faction": 1,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Horde",
+              "name": "Revantusk Village, The Hinterlands",
+              "position": [
+                5.8306,
+                3.9262
+              ],
+              "nodeID": 76,
               "faction": 1,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Neutral",
-              "name": "Marshal's Refuge, Un'Goro Crater",
+              "name": "Plaguewood Tower, Eastern Plaguelands",
               "position": [
-                -1.8094,
-                8.9668
+                4.0894,
+                -1.7509
               ],
-              "nodeID": 79,
+              "nodeID": 84,
               "faction": 0,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Neutral",
-              "name": "Ratchet, The Barrens",
+              "name": "Northpass Tower, Eastern Plaguelands",
               "position": [
-                0.0659,
-                3.3872
+                5.3768,
+                -1.9237
               ],
-              "nodeID": 80,
+              "nodeID": 85,
               "faction": 0,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Neutral",
-              "name": "Summit of Eternity, Mount Hyjal",
+              "name": "Eastwall Tower, Eastern Plaguelands",
               "position": [
-                -0.2666,
-                -3.2171
+                5.8539,
+                -0.9706
               ],
-              "nodeID": 559,
+              "nodeID": 86,
               "faction": 0,
               "isUndiscovered": false
             },
             {
               "atlasName": "TaxiNode_Neutral",
-              "name": "zzOLDPowderfuse Port, Riverglades",
+              "name": "Crown Guard Tower, Eastern Plaguelands",
               "position": [
-                0.0659,
-                3.3872
+                4.7236,
+                0.0318
               ],
-              "nodeID": 3208,
+              "nodeID": 87,
               "faction": 0,
               "isUndiscovered": false
             },
             {
-              "atlasName": "TaxiNode_Neutral",
-              "name": "Tainted Foothills, Mount Hyjal",
+              "atlasName": "TaxiNode_Horde",
+              "name": "Rog'mar, Riverglades",
               "position": [
-                -0.6019,
-                -2.266
+                5.8957,
+                15.3127
               ],
-              "nodeID": 3242,
-              "faction": 0,
+              "nodeID": 3203,
+              "faction": 1,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Horde",
+              "name": "zzOLDBolder'ok, Riverglades",
+              "position": [
+                2.0568,
+                13.1742
+              ],
+              "nodeID": 3206,
+              "faction": 1,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Alliance",
+              "name": "zzOLDRiverglades, Farholde Keep",
+              "position": [
+                1.4475,
+                4.0453
+              ],
+              "nodeID": 3207,
+              "faction": 2,
+              "isUndiscovered": false
+            },
+            {
+              "atlasName": "TaxiNode_Alliance",
+              "name": "Farholde Keep, Riverglades",
+              "position": [
+                5.9452,
+                17.1567
+              ],
+              "nodeID": 3276,
+              "faction": 2,
               "isUndiscovered": false
             }
           ]
         },
         "all": {
           "ok": true,
-          "count": 22,
-          "nodes": [
-            {
-              "state": 1,
-              "name": "Thunder Bluff, Mulgore",
-              "position": [
-                -2.6453,
-                3.7107
-              ],
-              "nodeID": 22,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 1
-            },
-            {
-              "state": 0,
-              "name": "Orgrimmar, Durotar",
-              "position": [
-                0.4528,
-                0.6375
-              ],
-              "nodeID": 23,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 2
-            },
-            {
-              "state": 1,
-              "name": "Crossroads, The Barrens",
-              "position": [
-                -0.7732,
-                2.9032
-              ],
-              "nodeID": 25,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 3
-            },
-            {
-              "state": 2,
-              "name": "Sun Rock Retreat, Stonetalon Mountains",
-              "position": [
-                -3.3658,
-                1.3976
-              ],
-              "nodeID": 29,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 4
-            },
-            {
-              "state": 1,
-              "name": "Freewind Post, Thousand Needles",
-              "position": [
-                -0.9028,
-                8.212
-              ],
-              "nodeID": 30,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 5
-            },
-            {
-              "state": 1,
-              "name": "Shadowprey Village, Desolace",
-              "position": [
-                -4.9511,
-                4.3206
-              ],
-              "nodeID": 38,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 6
-            },
-            {
-              "state": 1,
-              "name": "Gadgetzan, Tanaris",
-              "position": [
-                0.0711,
-                9.9664
-              ],
-              "nodeID": 40,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 7
-            },
-            {
-              "state": 2,
-              "name": "Camp Mojache, Feralas",
-              "position": [
-                -2.7662,
-                7.1559
-              ],
-              "nodeID": 42,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 8
-            },
-            {
-              "state": 2,
-              "name": "Valormok, Azshara",
-              "position": [
-                0.506,
-                -1.4835
-              ],
-              "nodeID": 44,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 9
-            },
-            {
-              "state": 2,
-              "name": "Bloodvenom Post, Felwood",
-              "position": [
-                -2.3837,
-                -2.9875
-              ],
-              "nodeID": 48,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 10
-            },
-            {
-              "state": 2,
-              "name": "Everlook, Winterspring",
-              "position": [
-                0.6634,
-                -4.8526
-              ],
-              "nodeID": 53,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 11
-            },
-            {
-              "state": 1,
-              "name": "Brackenwall Village, Dustwallow Marsh",
-              "position": [
-                -0.5978,
-                5.7956
-              ],
-              "nodeID": 55,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 12
-            },
-            {
-              "state": 1,
-              "name": "Zoram'gar Outpost, Ashenvale",
-              "position": [
-                -3.3349,
-                -1.1768
-              ],
-              "nodeID": 58,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 13
-            },
-            {
-              "state": 1,
-              "name": "Splintertree Post, Ashenvale",
-              "position": [
-                -0.8242,
-                -0.0305
-              ],
-              "nodeID": 61,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 14
-            },
-            {
-              "state": 2,
-              "name": "Moonglade",
-              "position": [
-                -1.1102,
-                -5.5553
-              ],
-              "nodeID": 69,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 15
-            },
-            {
-              "state": 2,
-              "name": "Cenarion Hold, Silithus",
-              "position": [
-                -3.2207,
-                9.7125
-              ],
-              "nodeID": 72,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 16
-            },
-            {
-              "state": 1,
-              "name": "Camp Taurajo, The Barrens",
-              "position": [
-                -1.2819,
-                4.9759
-              ],
-              "nodeID": 77,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 17
-            },
-            {
-              "state": 2,
-              "name": "Marshal's Refuge, Un'Goro Crater",
-              "position": [
-                -1.8094,
-                8.9668
-              ],
-              "nodeID": 79,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 18
-            },
-            {
-              "state": 1,
-              "name": "Ratchet, The Barrens",
-              "position": [
-                0.0659,
-                3.3872
-              ],
-              "nodeID": 80,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 19
-            },
-            {
-              "state": 2,
-              "name": "Summit of Eternity, Mount Hyjal",
-              "position": [
-                -0.2666,
-                -3.2171
-              ],
-              "nodeID": 559,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 20
-            },
-            {
-              "state": 2,
-              "name": "zzOLDPowderfuse Port, Riverglades",
-              "position": [
-                0.0659,
-                3.3872
-              ],
-              "nodeID": 3208,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 21
-            },
-            {
-              "state": 2,
-              "name": "Tainted Foothills, Mount Hyjal",
-              "position": [
-                -0.6019,
-                -2.266
-              ],
-              "nodeID": 3242,
-              "isMapLayerTransition": false,
-              "useSpecialIcon": false,
-              "slotIndex": 22
-            }
-          ]
+          "count": 0,
+          "nodes": {}
         }
       }
     },
@@ -2867,16 +2313,16 @@
         "C_Container.GetItemCooldown": {
           "ok": true,
           "values": [
-            0,
-            0,
+            1770651.92,
+            3600,
             1
           ]
         },
         "C_Item.GetItemCooldown": {
           "ok": true,
           "values": [
-            0,
-            0,
+            1770651.92,
+            3600,
             true
           ]
         },
@@ -2889,11 +2335,14 @@
           "ok": true,
           "values": [
             {
+              "duration": 3600,
+              "isActive": true,
               "modRate": 1,
+              "activeCategory": 89,
               "isEnabled": true,
-              "startTime": 0,
-              "isActive": false,
-              "duration": 0
+              "startTime": 1770651.92,
+              "isOnGCD": false,
+              "timeUntilEndOfStartRecovery": 3573.24
             }
           ]
         },
@@ -2906,1641 +2355,2370 @@
       "now": {
         "ok": true,
         "values": [
-          1770065.675
+          1770678.68
         ]
       }
     }
   },
-  "trip": {
-    "hook": "TakeTaxiNode",
-    "probeVersion": "0.6.0",
-    "samples": [
-      {
-        "mounted": false,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Valley of Strength",
-        "t": 1770089.69,
-        "y": 0.6393,
-        "x": 0.4525,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Valley of Strength",
-        "t": 1770091.69,
-        "y": 0.6393,
-        "x": 0.4525,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Valley of Strength",
-        "t": 1770093.7,
-        "y": 0.6393,
-        "x": 0.4525,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Valley of Strength",
-        "t": 1770095.71,
-        "y": 0.6393,
-        "x": 0.4525,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Valley of Strength",
-        "t": 1770097.71,
-        "y": 0.6358,
-        "x": 0.4397,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Valley of Strength",
-        "t": 1770099.71,
-        "y": 0.6933,
-        "x": 0.4167,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Valley of Strength",
-        "t": 1770101.71,
-        "y": 0.7406,
-        "x": 0.3881,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Valley of Spirits",
-        "t": 1770103.72,
-        "y": 0.7441,
-        "x": 0.3442,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Orgrimmar",
-        "t": 1770105.73,
-        "y": 0.7044,
-        "x": 0.3159,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Orgrimmar",
-        "t": 1770107.73,
-        "y": 0.6342,
-        "x": 0.3009,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Orgrimmar",
-        "t": 1770109.74,
-        "y": 0.5796,
-        "x": 0.2801,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Orgrimmar",
-        "t": 1770111.74,
-        "y": 0.5704,
-        "x": 0.2404,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Orgrimmar",
-        "t": 1770113.74,
-        "y": 0.5956,
-        "x": 0.202,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1454,
-        "zone": "Orgrimmar",
-        "subzone": "Orgrimmar",
-        "t": 1770115.74,
-        "y": 0.6176,
-        "x": 0.1613,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1414,
-        "zone": "The Barrens",
-        "subzone": "Southfury River",
-        "t": 1770117.75,
-        "y": 0.4529,
-        "x": 0.5685,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1414,
-        "zone": "Azshara",
-        "subzone": "Southfury River",
-        "t": 1770119.75,
-        "y": 0.4516,
-        "x": 0.5672,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1414,
-        "zone": "Azshara",
-        "subzone": "Southfury River",
-        "t": 1770121.75,
-        "y": 0.45,
-        "x": 0.5662,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Southfury River",
-        "t": 1770123.76,
-        "y": 0.7446,
-        "x": 0.9419,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Southfury River",
-        "t": 1770125.77,
-        "y": 0.729,
-        "x": 0.9362,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1414,
-        "zone": "Azshara",
-        "subzone": "Southfury River",
-        "t": 1770127.77,
-        "y": 0.443,
-        "x": 0.5637,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1447,
-        "zone": "Azshara",
-        "subzone": "Southfury River",
-        "t": 1770129.78,
-        "y": 0.9915,
-        "x": 0.0773,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1447,
-        "zone": "Azshara",
-        "subzone": "Southfury River",
-        "t": 1770131.78,
-        "y": 0.9721,
-        "x": 0.0764,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1447,
-        "zone": "Azshara",
-        "subzone": "Southfury River",
-        "t": 1770133.78,
-        "y": 0.9522,
-        "x": 0.0759,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1447,
-        "zone": "Azshara",
-        "subzone": "Southfury River",
-        "t": 1770135.78,
-        "y": 0.9334,
-        "x": 0.0752,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1447,
-        "zone": "Azshara",
-        "subzone": "Southfury River",
-        "t": 1770137.8,
-        "y": 0.9173,
-        "x": 0.0738,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Southfury River",
-        "t": 1770139.8,
-        "y": 0.6169,
-        "x": 0.9244,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Southfury River",
-        "t": 1770141.8,
-        "y": 0.6043,
-        "x": 0.9188,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Warsong Lumber Camp",
-        "t": 1770143.8,
-        "y": 0.5961,
-        "x": 0.9115,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Kargathia Keep",
-        "t": 1770145.8,
-        "y": 0.5895,
-        "x": 0.9025,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Warsong Lumber Camp",
-        "t": 1770147.8,
-        "y": 0.5849,
-        "x": 0.8917,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Warsong Lumber Camp",
-        "t": 1770149.8,
-        "y": 0.5851,
-        "x": 0.8812,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Warsong Lumber Camp",
-        "t": 1770151.8,
-        "y": 0.5924,
-        "x": 0.8738,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Warsong Lumber Camp",
-        "t": 1770153.8,
-        "y": 0.6061,
-        "x": 0.8684,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Warsong Lumber Camp",
-        "t": 1770155.8,
-        "y": 0.6222,
-        "x": 0.8635,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Warsong Lumber Camp",
-        "t": 1770157.8,
-        "y": 0.6359,
-        "x": 0.8581,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Warsong Lumber Camp",
-        "t": 1770159.8,
-        "y": 0.6471,
-        "x": 0.8502,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Nightsong Woods",
-        "t": 1770161.8,
-        "y": 0.6554,
-        "x": 0.8414,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Felfire Hill",
-        "t": 1770163.8,
-        "y": 0.6616,
-        "x": 0.8323,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Felfire Hill",
-        "t": 1770165.8,
-        "y": 0.6664,
-        "x": 0.8218,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Felfire Hill",
-        "t": 1770167.8,
-        "y": 0.6687,
-        "x": 0.8111,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Felfire Hill",
-        "t": 1770169.8,
-        "y": 0.6678,
-        "x": 0.8011,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Felfire Hill",
-        "t": 1770171.8,
-        "y": 0.6612,
-        "x": 0.792,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Nightsong Woods",
-        "t": 1770173.82,
-        "y": 0.658,
-        "x": 0.7817,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Nightsong Woods",
-        "t": 1770175.82,
-        "y": 0.6595,
-        "x": 0.7704,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Nightsong Woods",
-        "t": 1770177.82,
-        "y": 0.6607,
-        "x": 0.7597,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Nightsong Woods",
-        "t": 1770179.82,
-        "y": 0.6564,
-        "x": 0.7494,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770181.82,
-        "y": 0.6463,
-        "x": 0.7424,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770183.82,
-        "y": 0.6312,
-        "x": 0.7386,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": true,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770185.82,
-        "y": 0.6172,
-        "x": 0.7338,
-        "speed": 30.52,
-        "onTaxi": true,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770187.82,
-        "y": 0.6167,
-        "x": 0.7326,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770189.82,
-        "y": 0.6167,
-        "x": 0.7326,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770191.82,
-        "y": 0.6167,
-        "x": 0.7326,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770193.82,
-        "y": 0.6167,
-        "x": 0.7326,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770195.82,
-        "y": 0.6167,
-        "x": 0.7326,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770197.82,
-        "y": 0.6167,
-        "x": 0.7326,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770199.82,
-        "y": 0.6167,
-        "x": 0.7326,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770201.82,
-        "y": 0.6167,
-        "x": 0.7326,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770203.82,
-        "y": 0.6167,
-        "x": 0.7326,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770205.82,
-        "y": 0.6158,
-        "x": 0.7331,
-        "speed": 7,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770207.83,
-        "y": 0.6131,
-        "x": 0.7322,
-        "speed": 7,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770209.84,
-        "y": 0.61,
-        "x": 0.7335,
-        "speed": 7,
-        "onTaxi": false,
-        "indoors": false
-      },
-      {
-        "mounted": false,
-        "mapID": 1440,
-        "zone": "Ashenvale",
-        "subzone": "Splintertree Post",
-        "t": 1770211.85,
-        "y": 0.6098,
-        "x": 0.7336,
-        "speed": 0,
-        "onTaxi": false,
-        "indoors": false
-      }
-    ],
-    "events": [
-      {
-        "at": 1791453079,
-        "args": [
-          1
-        ],
-        "taxi": {
-          "nodes": [
-            {
-              "y": 0.5615,
-              "type": "REACHABLE",
-              "name": "Thunder Bluff, Mulgore",
-              "x": 0.4495
-            },
-            {
-              "y": 0.4434,
-              "type": "CURRENT",
-              "name": "Orgrimmar, Durotar",
-              "x": 0.628
-            },
-            {
-              "y": 0.5305,
-              "type": "REACHABLE",
-              "name": "Crossroads, The Barrens",
-              "x": 0.5574
-            },
-            {
-              "y": 0.4726,
-              "type": "DISTANT",
-              "name": "Sun Rock Retreat, Stonetalon Mountains",
-              "x": 0.408
-            },
-            {
-              "y": 0.7345,
-              "type": "REACHABLE",
-              "name": "Freewind Post, Thousand Needles",
-              "x": 0.5499
-            },
-            {
-              "y": 0.5849,
-              "type": "REACHABLE",
-              "name": "Shadowprey Village, Desolace",
-              "x": 0.3166
-            },
-            {
-              "y": 0.8019,
-              "type": "REACHABLE",
-              "name": "Gadgetzan, Tanaris",
-              "x": 0.606
-            },
-            {
-              "y": 0.6939,
-              "type": "DISTANT",
-              "name": "Camp Mojache, Feralas",
-              "x": 0.4425
-            },
-            {
-              "y": 0.3619,
-              "type": "DISTANT",
-              "name": "Valormok, Azshara",
-              "x": 0.6311
-            },
-            {
-              "y": 0.3041,
-              "type": "DISTANT",
-              "name": "Bloodvenom Post, Felwood",
-              "x": 0.4646
-            },
-            {
-              "y": 0.2324,
-              "type": "DISTANT",
-              "name": "Everlook, Winterspring",
-              "x": 0.6401
-            },
-            {
-              "y": 0.6416,
-              "type": "REACHABLE",
-              "name": "Brackenwall Village, Dustwallow Marsh",
-              "x": 0.5675
-            },
-            {
-              "y": 0.3737,
-              "type": "REACHABLE",
-              "name": "Zoram'gar Outpost, Ashenvale",
-              "x": 0.4097
-            },
-            {
-              "y": 0.4177,
-              "type": "REACHABLE",
-              "name": "Splintertree Post, Ashenvale",
-              "x": 0.5544
-            },
-            {
-              "y": 0.2054,
-              "type": "DISTANT",
-              "name": "Moonglade",
-              "x": 0.5379
-            },
-            {
-              "y": 0.7922,
-              "type": "DISTANT",
-              "name": "Cenarion Hold, Silithus",
-              "x": 0.4163
-            },
-            {
-              "y": 0.6101,
-              "type": "REACHABLE",
-              "name": "Camp Taurajo, The Barrens",
-              "x": 0.528
-            },
-            {
-              "y": 0.7635,
-              "type": "DISTANT",
-              "name": "Marshal's Refuge, Un'Goro Crater",
-              "x": 0.4976
-            },
-            {
-              "y": 0.5491,
-              "type": "REACHABLE",
-              "name": "Ratchet, The Barrens",
-              "x": 0.6057
-            },
-            {
-              "y": 0.2953,
-              "type": "DISTANT",
-              "name": "Summit of Eternity, Mount Hyjal",
-              "x": 0.5866
-            },
-            {
-              "y": 0.5491,
-              "type": "DISTANT",
-              "name": "zzOLDPowderfuse Port, Riverglades",
-              "x": 0.6057
-            },
-            {
-              "y": 0.3318,
-              "type": "DISTANT",
-              "name": "Tainted Foothills, Mount Hyjal",
-              "x": 0.5672
-            }
-          ],
-          "numNodes": 22,
-          "all": {
-            "ok": true,
-            "count": 22,
-            "nodes": [
-              {
-                "state": 1,
-                "name": "Thunder Bluff, Mulgore",
-                "position": [
-                  0.4495,
-                  0.5615
-                ],
-                "nodeID": 22,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 1
-              },
-              {
-                "state": 0,
-                "name": "Orgrimmar, Durotar",
-                "position": [
-                  0.628,
-                  0.4434
-                ],
-                "nodeID": 23,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 2
-              },
-              {
-                "state": 1,
-                "name": "Crossroads, The Barrens",
-                "position": [
-                  0.5574,
-                  0.5305
-                ],
-                "nodeID": 25,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 3
-              },
-              {
-                "state": 2,
-                "name": "Sun Rock Retreat, Stonetalon Mountains",
-                "position": [
-                  0.408,
-                  0.4726
-                ],
-                "nodeID": 29,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 4
-              },
-              {
-                "state": 1,
-                "name": "Freewind Post, Thousand Needles",
-                "position": [
-                  0.5499,
-                  0.7345
-                ],
-                "nodeID": 30,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 5
-              },
-              {
-                "state": 1,
-                "name": "Shadowprey Village, Desolace",
-                "position": [
-                  0.3166,
-                  0.5849
-                ],
-                "nodeID": 38,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 6
-              },
-              {
-                "state": 1,
-                "name": "Gadgetzan, Tanaris",
-                "position": [
-                  0.606,
-                  0.8019
-                ],
-                "nodeID": 40,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 7
-              },
-              {
-                "state": 2,
-                "name": "Camp Mojache, Feralas",
-                "position": [
-                  0.4425,
-                  0.6939
-                ],
-                "nodeID": 42,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 8
-              },
-              {
-                "state": 2,
-                "name": "Valormok, Azshara",
-                "position": [
-                  0.6311,
-                  0.3619
-                ],
-                "nodeID": 44,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 9
-              },
-              {
-                "state": 2,
-                "name": "Bloodvenom Post, Felwood",
-                "position": [
-                  0.4646,
-                  0.3041
-                ],
-                "nodeID": 48,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 10
-              },
-              {
-                "state": 2,
-                "name": "Everlook, Winterspring",
-                "position": [
-                  0.6401,
-                  0.2324
-                ],
-                "nodeID": 53,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 11
-              },
-              {
-                "state": 1,
-                "name": "Brackenwall Village, Dustwallow Marsh",
-                "position": [
-                  0.5675,
-                  0.6416
-                ],
-                "nodeID": 55,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 12
-              },
-              {
-                "state": 1,
-                "name": "Zoram'gar Outpost, Ashenvale",
-                "position": [
-                  0.4097,
-                  0.3737
-                ],
-                "nodeID": 58,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 13
-              },
-              {
-                "state": 1,
-                "name": "Splintertree Post, Ashenvale",
-                "position": [
-                  0.5544,
-                  0.4177
-                ],
-                "nodeID": 61,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 14
-              },
-              {
-                "state": 2,
-                "name": "Moonglade",
-                "position": [
-                  0.5379,
-                  0.2054
-                ],
-                "nodeID": 69,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 15
-              },
-              {
-                "state": 2,
-                "name": "Cenarion Hold, Silithus",
-                "position": [
-                  0.4163,
-                  0.7922
-                ],
-                "nodeID": 72,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 16
-              },
-              {
-                "state": 1,
-                "name": "Camp Taurajo, The Barrens",
-                "position": [
-                  0.528,
-                  0.6101
-                ],
-                "nodeID": 77,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 17
-              },
-              {
-                "state": 2,
-                "name": "Marshal's Refuge, Un'Goro Crater",
-                "position": [
-                  0.4976,
-                  0.7635
-                ],
-                "nodeID": 79,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 18
-              },
-              {
-                "state": 1,
-                "name": "Ratchet, The Barrens",
-                "position": [
-                  0.6057,
-                  0.5491
-                ],
-                "nodeID": 80,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 19
-              },
-              {
-                "state": 2,
-                "name": "Summit of Eternity, Mount Hyjal",
-                "position": [
-                  0.5866,
-                  0.2953
-                ],
-                "nodeID": 559,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 20
-              },
-              {
-                "state": 2,
-                "name": "zzOLDPowderfuse Port, Riverglades",
-                "position": [
-                  0.6057,
-                  0.5491
-                ],
-                "nodeID": 3208,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 21
-              },
-              {
-                "state": 2,
-                "name": "Tainted Foothills, Mount Hyjal",
-                "position": [
-                  0.5672,
-                  0.3318
-                ],
-                "nodeID": 3242,
-                "isMapLayerTransition": false,
-                "useSpecialIcon": false,
-                "slotIndex": 22
-              }
-            ]
-          },
-          "mapID": 1464
-        },
-        "t": 1770093.75,
-        "event": "TAXIMAP_OPENED",
-        "here": {
+  "trips": [
+    {
+      "hook": "TakeTaxiNode",
+      "probeVersion": "0.6.0",
+      "samples": [
+        {
           "mounted": false,
           "mapID": 1454,
           "zone": "Orgrimmar",
           "subzone": "Valley of Strength",
-          "t": 1770093.75,
-          "y": 0.6393,
-          "x": 0.4525,
-          "speed": 0,
-          "onTaxi": false,
-          "indoors": false
-        }
-      },
-      {
-        "type": "REACHABLE",
-        "t": 1770096.76,
-        "event": "TakeTaxiNode",
-        "y": 0.4177,
-        "x": 0.5544,
-        "from": "Orgrimmar, Durotar",
-        "here": {
-          "mounted": false,
-          "mapID": 1454,
-          "zone": "Orgrimmar",
-          "subzone": "Valley of Strength",
-          "t": 1770096.76,
+          "t": 1770089.69,
           "y": 0.6393,
           "x": 0.4525,
           "speed": 0,
           "onTaxi": false,
           "indoors": false
         },
-        "destination": "Splintertree Post, Ashenvale",
-        "node": 14,
-        "at": 1791453082
-      },
-      {
-        "at": 1791453082,
-        "args": {},
-        "here": {
+        {
           "mounted": false,
           "mapID": 1454,
           "zone": "Orgrimmar",
           "subzone": "Valley of Strength",
-          "t": 1770096.91,
+          "t": 1770091.69,
           "y": 0.6393,
           "x": 0.4525,
           "speed": 0,
           "onTaxi": false,
           "indoors": false
         },
-        "t": 1770096.91,
-        "event": "TAXIMAP_CLOSED"
-      },
-      {
-        "at": 1791453082,
-        "args": {},
-        "here": {
+        {
           "mounted": false,
           "mapID": 1454,
           "zone": "Orgrimmar",
           "subzone": "Valley of Strength",
-          "t": 1770096.91,
+          "t": 1770093.7,
           "y": 0.6393,
           "x": 0.4525,
           "speed": 0,
           "onTaxi": false,
           "indoors": false
         },
-        "t": 1770096.91,
-        "event": "PLAYER_CONTROL_LOST"
-      },
-      {
-        "at": 1791453082,
-        "args": {},
-        "here": {
+        {
           "mounted": false,
           "mapID": 1454,
           "zone": "Orgrimmar",
           "subzone": "Valley of Strength",
-          "t": 1770096.91,
+          "t": 1770095.71,
           "y": 0.6393,
           "x": 0.4525,
-          "speed": 30.52,
+          "speed": 0,
           "onTaxi": false,
           "indoors": false
         },
-        "t": 1770096.91,
-        "event": "TAXIMAP_CLOSED"
-      },
-      {
-        "at": 1791453102,
-        "args": {},
-        "here": {
+        {
           "mounted": true,
-          "mapID": 1411,
-          "zone": "Durotar",
-          "subzone": "Southfury River",
-          "t": 1770116.55,
-          "y": 0.0335,
-          "x": 0.3637,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Valley of Strength",
+          "t": 1770097.71,
+          "y": 0.6358,
+          "x": 0.4397,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770116.55,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453103,
-        "args": {},
-        "here": {
+        {
+          "mounted": true,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Valley of Strength",
+          "t": 1770099.71,
+          "y": 0.6933,
+          "x": 0.4167,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Valley of Strength",
+          "t": 1770101.71,
+          "y": 0.7406,
+          "x": 0.3881,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Valley of Spirits",
+          "t": 1770103.72,
+          "y": 0.7441,
+          "x": 0.3442,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Orgrimmar",
+          "t": 1770105.73,
+          "y": 0.7044,
+          "x": 0.3159,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Orgrimmar",
+          "t": 1770107.73,
+          "y": 0.6342,
+          "x": 0.3009,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Orgrimmar",
+          "t": 1770109.74,
+          "y": 0.5796,
+          "x": 0.2801,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Orgrimmar",
+          "t": 1770111.74,
+          "y": 0.5704,
+          "x": 0.2404,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Orgrimmar",
+          "t": 1770113.74,
+          "y": 0.5956,
+          "x": 0.202,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1454,
+          "zone": "Orgrimmar",
+          "subzone": "Orgrimmar",
+          "t": 1770115.74,
+          "y": 0.6176,
+          "x": 0.1613,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
           "mounted": true,
           "mapID": 1414,
           "zone": "The Barrens",
           "subzone": "Southfury River",
-          "t": 1770117.32,
-          "y": 0.453,
-          "x": 0.5688,
+          "t": 1770117.75,
+          "y": 0.4529,
+          "x": 0.5685,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770117.32,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453104,
-        "args": {},
-        "here": {
+        {
           "mounted": true,
           "mapID": 1414,
           "zone": "Azshara",
           "subzone": "Southfury River",
-          "t": 1770118.58,
-          "y": 0.4524,
-          "x": 0.5678,
+          "t": 1770119.75,
+          "y": 0.4516,
+          "x": 0.5672,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770118.58,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453107,
-        "args": {},
-        "here": {
-          "mounted": true,
-          "mapID": 1440,
-          "zone": "Ashenvale",
-          "subzone": "Southfury River",
-          "t": 1770121.93,
-          "y": 0.7569,
-          "x": 0.9479,
-          "speed": 30.52,
-          "onTaxi": true,
-          "indoors": false
-        },
-        "t": 1770121.93,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453109,
-        "args": {},
-        "here": {
+        {
           "mounted": true,
           "mapID": 1414,
           "zone": "Azshara",
           "subzone": "Southfury River",
-          "t": 1770123.4,
-          "y": 0.4483,
-          "x": 0.5654,
+          "t": 1770121.75,
+          "y": 0.45,
+          "x": 0.5662,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770123.4,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453109,
-        "args": {},
-        "here": {
+        {
           "mounted": true,
           "mapID": 1440,
           "zone": "Ashenvale",
           "subzone": "Southfury River",
           "t": 1770123.76,
-          "y": 0.7447,
-          "x": 0.942,
+          "y": 0.7446,
+          "x": 0.9419,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770123.76,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453110,
-        "args": {},
-        "here": {
-          "mounted": true,
-          "mapID": 1414,
-          "zone": "Azshara",
-          "subzone": "Southfury River",
-          "t": 1770124.57,
-          "y": 0.447,
-          "x": 0.5648,
-          "speed": 30.52,
-          "onTaxi": true,
-          "indoors": false
-        },
-        "t": 1770124.57,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453111,
-        "args": {},
-        "here": {
+        {
           "mounted": true,
           "mapID": 1440,
           "zone": "Ashenvale",
           "subzone": "Southfury River",
-          "t": 1770125.73,
-          "y": 0.7294,
-          "x": 0.9363,
+          "t": 1770125.77,
+          "y": 0.729,
+          "x": 0.9362,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770125.73,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453112,
-        "args": {},
-        "here": {
+        {
           "mounted": true,
           "mapID": 1414,
           "zone": "Azshara",
           "subzone": "Southfury River",
-          "t": 1770126.69,
-          "y": 0.4443,
-          "x": 0.564,
+          "t": 1770127.77,
+          "y": 0.443,
+          "x": 0.5637,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770126.69,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453125,
-        "args": {},
-        "here": {
+        {
+          "mounted": true,
+          "mapID": 1447,
+          "zone": "Azshara",
+          "subzone": "Southfury River",
+          "t": 1770129.78,
+          "y": 0.9915,
+          "x": 0.0773,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1447,
+          "zone": "Azshara",
+          "subzone": "Southfury River",
+          "t": 1770131.78,
+          "y": 0.9721,
+          "x": 0.0764,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1447,
+          "zone": "Azshara",
+          "subzone": "Southfury River",
+          "t": 1770133.78,
+          "y": 0.9522,
+          "x": 0.0759,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1447,
+          "zone": "Azshara",
+          "subzone": "Southfury River",
+          "t": 1770135.78,
+          "y": 0.9334,
+          "x": 0.0752,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1447,
+          "zone": "Azshara",
+          "subzone": "Southfury River",
+          "t": 1770137.8,
+          "y": 0.9173,
+          "x": 0.0738,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
           "mounted": true,
           "mapID": 1440,
           "zone": "Ashenvale",
           "subzone": "Southfury River",
-          "t": 1770139.76,
-          "y": 0.6174,
-          "x": 0.9246,
+          "t": 1770139.8,
+          "y": 0.6169,
+          "x": 0.9244,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770139.76,
-        "event": "ZONE_CHANGED_NEW_AREA"
-      },
-      {
-        "at": 1791453128,
-        "args": {},
-        "here": {
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Southfury River",
+          "t": 1770141.8,
+          "y": 0.6043,
+          "x": 0.9188,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
           "mounted": true,
           "mapID": 1440,
           "zone": "Ashenvale",
           "subzone": "Warsong Lumber Camp",
-          "t": 1770143.1,
-          "y": 0.5988,
-          "x": 0.9144,
+          "t": 1770143.8,
+          "y": 0.5961,
+          "x": 0.9115,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770143.1,
-        "event": "ZONE_CHANGED"
-      },
-      {
-        "at": 1791453130,
-        "args": {},
-        "here": {
+        {
           "mounted": true,
           "mapID": 1440,
           "zone": "Ashenvale",
           "subzone": "Kargathia Keep",
-          "t": 1770144.43,
-          "y": 0.5939,
-          "x": 0.909,
+          "t": 1770145.8,
+          "y": 0.5895,
+          "x": 0.9025,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770144.43,
-        "event": "ZONE_CHANGED"
-      },
-      {
-        "at": 1791453131,
-        "args": {},
-        "here": {
+        {
           "mounted": true,
           "mapID": 1440,
           "zone": "Ashenvale",
           "subzone": "Warsong Lumber Camp",
-          "t": 1770146.1,
-          "y": 0.5887,
-          "x": 0.9012,
+          "t": 1770147.8,
+          "y": 0.5849,
+          "x": 0.8917,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770146.1,
-        "event": "ZONE_CHANGED"
-      },
-      {
-        "at": 1791453146,
-        "args": {},
-        "here": {
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Warsong Lumber Camp",
+          "t": 1770149.8,
+          "y": 0.5851,
+          "x": 0.8812,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Warsong Lumber Camp",
+          "t": 1770151.8,
+          "y": 0.5924,
+          "x": 0.8738,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Warsong Lumber Camp",
+          "t": 1770153.8,
+          "y": 0.6061,
+          "x": 0.8684,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Warsong Lumber Camp",
+          "t": 1770155.8,
+          "y": 0.6222,
+          "x": 0.8635,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Warsong Lumber Camp",
+          "t": 1770157.8,
+          "y": 0.6359,
+          "x": 0.8581,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Warsong Lumber Camp",
+          "t": 1770159.8,
+          "y": 0.6471,
+          "x": 0.8502,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
           "mounted": true,
           "mapID": 1440,
           "zone": "Ashenvale",
           "subzone": "Nightsong Woods",
-          "t": 1770161.1,
-          "y": 0.6527,
-          "x": 0.8447,
+          "t": 1770161.8,
+          "y": 0.6554,
+          "x": 0.8414,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770161.1,
-        "event": "ZONE_CHANGED"
-      },
-      {
-        "at": 1791453148,
-        "args": {},
-        "here": {
+        {
           "mounted": true,
           "mapID": 1440,
           "zone": "Ashenvale",
           "subzone": "Felfire Hill",
-          "t": 1770162.76,
-          "y": 0.6585,
-          "x": 0.8372,
+          "t": 1770163.8,
+          "y": 0.6616,
+          "x": 0.8323,
           "speed": 30.52,
           "onTaxi": true,
           "indoors": false
         },
-        "t": 1770162.76,
-        "event": "ZONE_CHANGED"
-      },
-      {
-        "at": 1791453157,
-        "args": {},
-        "here": {
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Felfire Hill",
+          "t": 1770165.8,
+          "y": 0.6664,
+          "x": 0.8218,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Felfire Hill",
+          "t": 1770167.8,
+          "y": 0.6687,
+          "x": 0.8111,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Felfire Hill",
+          "t": 1770169.8,
+          "y": 0.6678,
+          "x": 0.8011,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Felfire Hill",
+          "t": 1770171.8,
+          "y": 0.6612,
+          "x": 0.792,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
           "mounted": true,
           "mapID": 1440,
           "zone": "Ashenvale",
           "subzone": "Nightsong Woods",
+          "t": 1770173.82,
+          "y": 0.658,
+          "x": 0.7817,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Nightsong Woods",
+          "t": 1770175.82,
+          "y": 0.6595,
+          "x": 0.7704,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Nightsong Woods",
+          "t": 1770177.82,
+          "y": 0.6607,
+          "x": 0.7597,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Nightsong Woods",
+          "t": 1770179.82,
+          "y": 0.6564,
+          "x": 0.7494,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770181.82,
+          "y": 0.6463,
+          "x": 0.7424,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770183.82,
+          "y": 0.6312,
+          "x": 0.7386,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": true,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770185.82,
+          "y": 0.6172,
+          "x": 0.7338,
+          "speed": 30.52,
+          "onTaxi": true,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770187.82,
+          "y": 0.6167,
+          "x": 0.7326,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770189.82,
+          "y": 0.6167,
+          "x": 0.7326,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770191.82,
+          "y": 0.6167,
+          "x": 0.7326,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770193.82,
+          "y": 0.6167,
+          "x": 0.7326,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770195.82,
+          "y": 0.6167,
+          "x": 0.7326,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770197.82,
+          "y": 0.6167,
+          "x": 0.7326,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770199.82,
+          "y": 0.6167,
+          "x": 0.7326,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770201.82,
+          "y": 0.6167,
+          "x": 0.7326,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770203.82,
+          "y": 0.6167,
+          "x": 0.7326,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770205.82,
+          "y": 0.6158,
+          "x": 0.7331,
+          "speed": 7,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770207.83,
+          "y": 0.6131,
+          "x": 0.7322,
+          "speed": 7,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770209.84,
+          "y": 0.61,
+          "x": 0.7335,
+          "speed": 7,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1440,
+          "zone": "Ashenvale",
+          "subzone": "Splintertree Post",
+          "t": 1770211.85,
+          "y": 0.6098,
+          "x": 0.7336,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        }
+      ],
+      "events": [
+        {
+          "at": 1791453079,
+          "args": [
+            1
+          ],
+          "taxi": {
+            "nodes": [
+              {
+                "y": 0.5615,
+                "type": "REACHABLE",
+                "name": "Thunder Bluff, Mulgore",
+                "x": 0.4495
+              },
+              {
+                "y": 0.4434,
+                "type": "CURRENT",
+                "name": "Orgrimmar, Durotar",
+                "x": 0.628
+              },
+              {
+                "y": 0.5305,
+                "type": "REACHABLE",
+                "name": "Crossroads, The Barrens",
+                "x": 0.5574
+              },
+              {
+                "y": 0.4726,
+                "type": "DISTANT",
+                "name": "Sun Rock Retreat, Stonetalon Mountains",
+                "x": 0.408
+              },
+              {
+                "y": 0.7345,
+                "type": "REACHABLE",
+                "name": "Freewind Post, Thousand Needles",
+                "x": 0.5499
+              },
+              {
+                "y": 0.5849,
+                "type": "REACHABLE",
+                "name": "Shadowprey Village, Desolace",
+                "x": 0.3166
+              },
+              {
+                "y": 0.8019,
+                "type": "REACHABLE",
+                "name": "Gadgetzan, Tanaris",
+                "x": 0.606
+              },
+              {
+                "y": 0.6939,
+                "type": "DISTANT",
+                "name": "Camp Mojache, Feralas",
+                "x": 0.4425
+              },
+              {
+                "y": 0.3619,
+                "type": "DISTANT",
+                "name": "Valormok, Azshara",
+                "x": 0.6311
+              },
+              {
+                "y": 0.3041,
+                "type": "DISTANT",
+                "name": "Bloodvenom Post, Felwood",
+                "x": 0.4646
+              },
+              {
+                "y": 0.2324,
+                "type": "DISTANT",
+                "name": "Everlook, Winterspring",
+                "x": 0.6401
+              },
+              {
+                "y": 0.6416,
+                "type": "REACHABLE",
+                "name": "Brackenwall Village, Dustwallow Marsh",
+                "x": 0.5675
+              },
+              {
+                "y": 0.3737,
+                "type": "REACHABLE",
+                "name": "Zoram'gar Outpost, Ashenvale",
+                "x": 0.4097
+              },
+              {
+                "y": 0.4177,
+                "type": "REACHABLE",
+                "name": "Splintertree Post, Ashenvale",
+                "x": 0.5544
+              },
+              {
+                "y": 0.2054,
+                "type": "DISTANT",
+                "name": "Moonglade",
+                "x": 0.5379
+              },
+              {
+                "y": 0.7922,
+                "type": "DISTANT",
+                "name": "Cenarion Hold, Silithus",
+                "x": 0.4163
+              },
+              {
+                "y": 0.6101,
+                "type": "REACHABLE",
+                "name": "Camp Taurajo, The Barrens",
+                "x": 0.528
+              },
+              {
+                "y": 0.7635,
+                "type": "DISTANT",
+                "name": "Marshal's Refuge, Un'Goro Crater",
+                "x": 0.4976
+              },
+              {
+                "y": 0.5491,
+                "type": "REACHABLE",
+                "name": "Ratchet, The Barrens",
+                "x": 0.6057
+              },
+              {
+                "y": 0.2953,
+                "type": "DISTANT",
+                "name": "Summit of Eternity, Mount Hyjal",
+                "x": 0.5866
+              },
+              {
+                "y": 0.5491,
+                "type": "DISTANT",
+                "name": "zzOLDPowderfuse Port, Riverglades",
+                "x": 0.6057
+              },
+              {
+                "y": 0.3318,
+                "type": "DISTANT",
+                "name": "Tainted Foothills, Mount Hyjal",
+                "x": 0.5672
+              }
+            ],
+            "numNodes": 22,
+            "mapID": 1464,
+            "all": {
+              "ok": true,
+              "count": 22,
+              "nodes": [
+                {
+                  "state": 1,
+                  "name": "Thunder Bluff, Mulgore",
+                  "position": [
+                    0.4495,
+                    0.5615
+                  ],
+                  "nodeID": 22,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 1
+                },
+                {
+                  "state": 0,
+                  "name": "Orgrimmar, Durotar",
+                  "position": [
+                    0.628,
+                    0.4434
+                  ],
+                  "nodeID": 23,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 2
+                },
+                {
+                  "state": 1,
+                  "name": "Crossroads, The Barrens",
+                  "position": [
+                    0.5574,
+                    0.5305
+                  ],
+                  "nodeID": 25,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 3
+                },
+                {
+                  "state": 2,
+                  "name": "Sun Rock Retreat, Stonetalon Mountains",
+                  "position": [
+                    0.408,
+                    0.4726
+                  ],
+                  "nodeID": 29,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 4
+                },
+                {
+                  "state": 1,
+                  "name": "Freewind Post, Thousand Needles",
+                  "position": [
+                    0.5499,
+                    0.7345
+                  ],
+                  "nodeID": 30,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 5
+                },
+                {
+                  "state": 1,
+                  "name": "Shadowprey Village, Desolace",
+                  "position": [
+                    0.3166,
+                    0.5849
+                  ],
+                  "nodeID": 38,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 6
+                },
+                {
+                  "state": 1,
+                  "name": "Gadgetzan, Tanaris",
+                  "position": [
+                    0.606,
+                    0.8019
+                  ],
+                  "nodeID": 40,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 7
+                },
+                {
+                  "state": 2,
+                  "name": "Camp Mojache, Feralas",
+                  "position": [
+                    0.4425,
+                    0.6939
+                  ],
+                  "nodeID": 42,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 8
+                },
+                {
+                  "state": 2,
+                  "name": "Valormok, Azshara",
+                  "position": [
+                    0.6311,
+                    0.3619
+                  ],
+                  "nodeID": 44,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 9
+                },
+                {
+                  "state": 2,
+                  "name": "Bloodvenom Post, Felwood",
+                  "position": [
+                    0.4646,
+                    0.3041
+                  ],
+                  "nodeID": 48,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 10
+                },
+                {
+                  "state": 2,
+                  "name": "Everlook, Winterspring",
+                  "position": [
+                    0.6401,
+                    0.2324
+                  ],
+                  "nodeID": 53,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 11
+                },
+                {
+                  "state": 1,
+                  "name": "Brackenwall Village, Dustwallow Marsh",
+                  "position": [
+                    0.5675,
+                    0.6416
+                  ],
+                  "nodeID": 55,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 12
+                },
+                {
+                  "state": 1,
+                  "name": "Zoram'gar Outpost, Ashenvale",
+                  "position": [
+                    0.4097,
+                    0.3737
+                  ],
+                  "nodeID": 58,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 13
+                },
+                {
+                  "state": 1,
+                  "name": "Splintertree Post, Ashenvale",
+                  "position": [
+                    0.5544,
+                    0.4177
+                  ],
+                  "nodeID": 61,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 14
+                },
+                {
+                  "state": 2,
+                  "name": "Moonglade",
+                  "position": [
+                    0.5379,
+                    0.2054
+                  ],
+                  "nodeID": 69,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 15
+                },
+                {
+                  "state": 2,
+                  "name": "Cenarion Hold, Silithus",
+                  "position": [
+                    0.4163,
+                    0.7922
+                  ],
+                  "nodeID": 72,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 16
+                },
+                {
+                  "state": 1,
+                  "name": "Camp Taurajo, The Barrens",
+                  "position": [
+                    0.528,
+                    0.6101
+                  ],
+                  "nodeID": 77,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 17
+                },
+                {
+                  "state": 2,
+                  "name": "Marshal's Refuge, Un'Goro Crater",
+                  "position": [
+                    0.4976,
+                    0.7635
+                  ],
+                  "nodeID": 79,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 18
+                },
+                {
+                  "state": 1,
+                  "name": "Ratchet, The Barrens",
+                  "position": [
+                    0.6057,
+                    0.5491
+                  ],
+                  "nodeID": 80,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 19
+                },
+                {
+                  "state": 2,
+                  "name": "Summit of Eternity, Mount Hyjal",
+                  "position": [
+                    0.5866,
+                    0.2953
+                  ],
+                  "nodeID": 559,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 20
+                },
+                {
+                  "state": 2,
+                  "name": "zzOLDPowderfuse Port, Riverglades",
+                  "position": [
+                    0.6057,
+                    0.5491
+                  ],
+                  "nodeID": 3208,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 21
+                },
+                {
+                  "state": 2,
+                  "name": "Tainted Foothills, Mount Hyjal",
+                  "position": [
+                    0.5672,
+                    0.3318
+                  ],
+                  "nodeID": 3242,
+                  "isMapLayerTransition": false,
+                  "useSpecialIcon": false,
+                  "slotIndex": 22
+                }
+              ]
+            }
+          },
+          "t": 1770093.75,
+          "event": "TAXIMAP_OPENED",
+          "here": {
+            "mounted": false,
+            "mapID": 1454,
+            "zone": "Orgrimmar",
+            "subzone": "Valley of Strength",
+            "t": 1770093.75,
+            "y": 0.6393,
+            "x": 0.4525,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          }
+        },
+        {
+          "type": "REACHABLE",
+          "t": 1770096.76,
+          "event": "TakeTaxiNode",
+          "y": 0.4177,
+          "x": 0.5544,
+          "from": "Orgrimmar, Durotar",
+          "here": {
+            "mounted": false,
+            "mapID": 1454,
+            "zone": "Orgrimmar",
+            "subzone": "Valley of Strength",
+            "t": 1770096.76,
+            "y": 0.6393,
+            "x": 0.4525,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "destination": "Splintertree Post, Ashenvale",
+          "node": 14,
+          "at": 1791453082
+        },
+        {
+          "at": 1791453082,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1454,
+            "zone": "Orgrimmar",
+            "subzone": "Valley of Strength",
+            "t": 1770096.91,
+            "y": 0.6393,
+            "x": 0.4525,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770096.91,
+          "event": "TAXIMAP_CLOSED"
+        },
+        {
+          "at": 1791453082,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1454,
+            "zone": "Orgrimmar",
+            "subzone": "Valley of Strength",
+            "t": 1770096.91,
+            "y": 0.6393,
+            "x": 0.4525,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770096.91,
+          "event": "PLAYER_CONTROL_LOST"
+        },
+        {
+          "at": 1791453082,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1454,
+            "zone": "Orgrimmar",
+            "subzone": "Valley of Strength",
+            "t": 1770096.91,
+            "y": 0.6393,
+            "x": 0.4525,
+            "speed": 30.52,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770096.91,
+          "event": "TAXIMAP_CLOSED"
+        },
+        {
+          "at": 1791453102,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1411,
+            "zone": "Durotar",
+            "subzone": "Southfury River",
+            "t": 1770116.55,
+            "y": 0.0335,
+            "x": 0.3637,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770116.55,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453103,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1414,
+            "zone": "The Barrens",
+            "subzone": "Southfury River",
+            "t": 1770117.32,
+            "y": 0.453,
+            "x": 0.5688,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770117.32,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453104,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1414,
+            "zone": "Azshara",
+            "subzone": "Southfury River",
+            "t": 1770118.58,
+            "y": 0.4524,
+            "x": 0.5678,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770118.58,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453107,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Southfury River",
+            "t": 1770121.93,
+            "y": 0.7569,
+            "x": 0.9479,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770121.93,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453109,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1414,
+            "zone": "Azshara",
+            "subzone": "Southfury River",
+            "t": 1770123.4,
+            "y": 0.4483,
+            "x": 0.5654,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770123.4,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453109,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Southfury River",
+            "t": 1770123.76,
+            "y": 0.7447,
+            "x": 0.942,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770123.76,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453110,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1414,
+            "zone": "Azshara",
+            "subzone": "Southfury River",
+            "t": 1770124.57,
+            "y": 0.447,
+            "x": 0.5648,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770124.57,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453111,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Southfury River",
+            "t": 1770125.73,
+            "y": 0.7294,
+            "x": 0.9363,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770125.73,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453112,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1414,
+            "zone": "Azshara",
+            "subzone": "Southfury River",
+            "t": 1770126.69,
+            "y": 0.4443,
+            "x": 0.564,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770126.69,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453125,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Southfury River",
+            "t": 1770139.76,
+            "y": 0.6174,
+            "x": 0.9246,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770139.76,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453128,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Warsong Lumber Camp",
+            "t": 1770143.1,
+            "y": 0.5988,
+            "x": 0.9144,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770143.1,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453130,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Kargathia Keep",
+            "t": 1770144.43,
+            "y": 0.5939,
+            "x": 0.909,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770144.43,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453131,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Warsong Lumber Camp",
+            "t": 1770146.1,
+            "y": 0.5887,
+            "x": 0.9012,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770146.1,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453146,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Nightsong Woods",
+            "t": 1770161.1,
+            "y": 0.6527,
+            "x": 0.8447,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770161.1,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453148,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Felfire Hill",
+            "t": 1770162.76,
+            "y": 0.6585,
+            "x": 0.8372,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
+          "t": 1770162.76,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453157,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Nightsong Woods",
+            "t": 1770172.1,
+            "y": 0.6604,
+            "x": 0.7907,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
           "t": 1770172.1,
-          "y": 0.6604,
-          "x": 0.7907,
-          "speed": 30.52,
-          "onTaxi": true,
-          "indoors": false
+          "event": "ZONE_CHANGED"
         },
-        "t": 1770172.1,
-        "event": "ZONE_CHANGED"
-      },
-      {
-        "at": 1791453167,
-        "args": {},
-        "here": {
-          "mounted": true,
-          "mapID": 1440,
-          "zone": "Ashenvale",
-          "subzone": "Splintertree Post",
+        {
+          "at": 1791453167,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Splintertree Post",
+            "t": 1770181.12,
+            "y": 0.6506,
+            "x": 0.7448,
+            "speed": 30.52,
+            "onTaxi": true,
+            "indoors": false
+          },
           "t": 1770181.12,
-          "y": 0.6506,
-          "x": 0.7448,
-          "speed": 30.52,
-          "onTaxi": true,
-          "indoors": false
+          "event": "ZONE_CHANGED"
         },
-        "t": 1770181.12,
-        "event": "ZONE_CHANGED"
-      },
-      {
-        "at": 1791453172,
-        "args": {},
-        "here": {
-          "mounted": true,
-          "mapID": 1440,
-          "zone": "Ashenvale",
-          "subzone": "Splintertree Post",
+        {
+          "at": 1791453172,
+          "args": {},
+          "here": {
+            "mounted": true,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Splintertree Post",
+            "t": 1770186.49,
+            "y": 0.6155,
+            "x": 0.7327,
+            "speed": 0,
+            "onTaxi": true,
+            "indoors": false
+          },
           "t": 1770186.49,
-          "y": 0.6155,
-          "x": 0.7327,
-          "speed": 0,
-          "onTaxi": true,
-          "indoors": false
+          "event": "PLAYER_CONTROL_GAINED"
         },
-        "t": 1770186.49,
-        "event": "PLAYER_CONTROL_GAINED"
-      },
-      {
-        "at": 1791453198,
-        "args": {},
-        "here": {
-          "mounted": false,
-          "mapID": 1440,
-          "zone": "Ashenvale",
-          "subzone": "Splintertree Post",
+        {
+          "at": 1791453198,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Splintertree Post",
+            "t": 1770212.34,
+            "y": 0.6098,
+            "x": 0.7336,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
           "t": 1770212.34,
-          "y": 0.6098,
-          "x": 0.7336,
-          "speed": 0,
-          "onTaxi": false,
-          "indoors": false
+          "event": "LOADING_SCREEN_ENABLED"
         },
-        "t": 1770212.34,
-        "event": "LOADING_SCREEN_ENABLED"
-      },
-      {
-        "at": 1791453198,
-        "args": {},
-        "here": {
-          "mounted": false,
-          "mapID": 1440,
-          "zone": "Ashenvale",
-          "subzone": "Splintertree Post",
+        {
+          "at": 1791453198,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1440,
+            "zone": "Ashenvale",
+            "subzone": "Splintertree Post",
+            "t": 1770212.34,
+            "y": 0.6098,
+            "x": 0.7336,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
           "t": 1770212.34,
-          "y": 0.6098,
-          "x": 0.7336,
-          "speed": 0,
-          "onTaxi": false,
-          "indoors": false
-        },
-        "t": 1770212.34,
-        "event": "TAXIMAP_CLOSED"
-      }
-    ],
-    "registered": {
-      "ZONE_CHANGED_NEW_AREA": true,
-      "TAXIMAP_OPENED": true,
-      "TAXIMAP_CLOSED": true,
-      "PLAYER_CONTROL_GAINED": true,
-      "LOADING_SCREEN_DISABLED": true,
-      "ZONE_CHANGED": true,
-      "PLAYER_ENTERING_WORLD": true,
-      "LOADING_SCREEN_ENABLED": true,
-      "PLAYER_CONTROL_LOST": true
+          "event": "TAXIMAP_CLOSED"
+        }
+      ],
+      "registered": {
+        "ZONE_CHANGED_NEW_AREA": true,
+        "TAXIMAP_OPENED": true,
+        "TAXIMAP_CLOSED": true,
+        "PLAYER_CONTROL_GAINED": true,
+        "LOADING_SCREEN_DISABLED": true,
+        "PLAYER_CONTROL_LOST": true,
+        "PLAYER_ENTERING_WORLD": true,
+        "LOADING_SCREEN_ENABLED": true,
+        "ZONE_CHANGED": true
+      },
+      "timer": "C_Timer",
+      "startedAt": 1791453075,
+      "lastSampleAt": 1791453197,
+      "taxiWindows": 1
     },
-    "timer": "C_Timer",
-    "taxiWindows": 1,
-    "lastSampleAt": 1791453197,
-    "startedAt": 1791453075
-  }
+    {
+      "timer": "C_Timer",
+      "hook": "TakeTaxiNode",
+      "startedAt": 1791453785,
+      "registered": {
+        "ZONE_CHANGED_NEW_AREA": true,
+        "TAXIMAP_OPENED": true,
+        "TAXIMAP_CLOSED": true,
+        "PLAYER_CONTROL_GAINED": true,
+        "LOADING_SCREEN_DISABLED": true,
+        "ZONE_CHANGED": true,
+        "PLAYER_ENTERING_WORLD": true,
+        "LOADING_SCREEN_ENABLED": true,
+        "PLAYER_CONTROL_LOST": true
+      },
+      "probeVersion": "0.6.0",
+      "samples": [
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770799.77,
+          "y": 0.5878,
+          "x": 0.6072,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770801.77,
+          "y": 0.5879,
+          "x": 0.6056,
+          "speed": 9.8,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770803.79,
+          "y": 0.5896,
+          "x": 0.6049,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770805.79,
+          "y": 0.5896,
+          "x": 0.6049,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770807.79,
+          "y": 0.589,
+          "x": 0.605,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770809.79,
+          "y": 0.5873,
+          "x": 0.6053,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770811.79,
+          "y": 0.5847,
+          "x": 0.6057,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770813.79,
+          "y": 0.5808,
+          "x": 0.606,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770815.79,
+          "y": 0.5755,
+          "x": 0.6064,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770817.79,
+          "y": 0.5684,
+          "x": 0.6065,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770819.79,
+          "y": 0.5591,
+          "x": 0.6067,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770821.79,
+          "y": 0.5468,
+          "x": 0.6069,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "Brill",
+          "t": 1770823.79,
+          "y": 0.5362,
+          "x": 0.6073,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "Brill",
+          "t": 1770825.79,
+          "y": 0.5245,
+          "x": 0.6078,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "Brill Town Hall",
+          "t": 1770827.79,
+          "y": 0.5106,
+          "x": 0.6084,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "Brill",
+          "t": 1770829.79,
+          "y": 0.4945,
+          "x": 0.609,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "Brill",
+          "t": 1770831.79,
+          "y": 0.4765,
+          "x": 0.6096,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770833.79,
+          "y": 0.458,
+          "x": 0.61,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770835.79,
+          "y": 0.4384,
+          "x": 0.61,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770837.79,
+          "y": 0.4174,
+          "x": 0.6099,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770839.79,
+          "y": 0.3969,
+          "x": 0.6101,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "Garren's Haunt",
+          "t": 1770841.79,
+          "y": 0.3778,
+          "x": 0.6109,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770843.79,
+          "y": 0.357,
+          "x": 0.6139,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770845.79,
+          "y": 0.3383,
+          "x": 0.619,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "",
+          "t": 1770847.79,
+          "y": 0.321,
+          "x": 0.6231,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "The North Coast",
+          "t": 1770849.79,
+          "y": 0.3028,
+          "x": 0.6238,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "The North Coast",
+          "t": 1770851.79,
+          "y": 0.2829,
+          "x": 0.6213,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "The North Coast",
+          "t": 1770853.79,
+          "y": 0.2629,
+          "x": 0.617,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "The North Coast",
+          "t": 1770855.79,
+          "y": 0.2453,
+          "x": 0.6121,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "The North Coast",
+          "t": 1770857.79,
+          "y": 0.2277,
+          "x": 0.6051,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "The North Coast",
+          "t": 1770859.79,
+          "y": 0.2141,
+          "x": 0.5958,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1420,
+          "zone": "Tirisfal Glades",
+          "subzone": "The North Coast",
+          "t": 1770861.79,
+          "y": 0.2077,
+          "x": 0.5907,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "indoors": false,
+          "zone": "Tirisfal Glades",
+          "subzone": "The North Coast",
+          "t": 1770867.34,
+          "speed": 0,
+          "onTaxi": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1414,
+          "zone": "Tirisfal Glades",
+          "subzone": "The North Coast",
+          "t": 1770870.44,
+          "y": 0.4665,
+          "x": 0.6104,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1411,
+          "zone": "Durotar",
+          "subzone": "Bladefist Bay",
+          "t": 1770872.46,
+          "y": 0.1294,
+          "x": 0.6418,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1411,
+          "zone": "Durotar",
+          "subzone": "Bladefist Bay",
+          "t": 1770874.47,
+          "y": 0.1306,
+          "x": 0.6287,
+          "speed": 9.8,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1411,
+          "zone": "Durotar",
+          "subzone": "Bladefist Bay",
+          "t": 1770876.47,
+          "y": 0.1341,
+          "x": 0.614,
+          "speed": 9.8,
+          "onTaxi": false,
+          "indoors": false
+        },
+        {
+          "mounted": false,
+          "mapID": 1411,
+          "zone": "Durotar",
+          "subzone": "Bladefist Bay",
+          "t": 1770878.48,
+          "y": 0.1367,
+          "x": 0.603,
+          "speed": 0,
+          "onTaxi": false,
+          "indoors": false
+        }
+      ],
+      "lastSampleAt": 1791453864,
+      "events": [
+        {
+          "at": 1791453808,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1420,
+            "zone": "Tirisfal Glades",
+            "subzone": "Brill",
+            "t": 1770822.52,
+            "y": 0.5426,
+            "x": 0.6071,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770822.52,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453812,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1420,
+            "zone": "Tirisfal Glades",
+            "subzone": "Brill Town Hall",
+            "t": 1770826.86,
+            "y": 0.5176,
+            "x": 0.6081,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770826.86,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453815,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1420,
+            "zone": "Tirisfal Glades",
+            "subzone": "Brill",
+            "t": 1770829.19,
+            "y": 0.4998,
+            "x": 0.6088,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770829.19,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453817,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1420,
+            "zone": "Tirisfal Glades",
+            "subzone": "",
+            "t": 1770831.86,
+            "y": 0.4762,
+            "x": 0.6096,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770831.86,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453825,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1420,
+            "zone": "Tirisfal Glades",
+            "subzone": "Garren's Haunt",
+            "t": 1770839.86,
+            "y": 0.3965,
+            "x": 0.6101,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770839.86,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453829,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1420,
+            "zone": "Tirisfal Glades",
+            "subzone": "",
+            "t": 1770843.19,
+            "y": 0.3635,
+            "x": 0.6126,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770843.19,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453833,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1420,
+            "zone": "Tirisfal Glades",
+            "subzone": "The North Coast",
+            "t": 1770847.86,
+            "y": 0.3207,
+            "x": 0.6232,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770847.86,
+          "event": "ZONE_CHANGED"
+        },
+        {
+          "at": 1791453847,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1420,
+            "zone": "Tirisfal Glades",
+            "subzone": "The North Coast",
+            "t": 1770861.52,
+            "y": 0.2077,
+            "x": 0.5907,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770861.52,
+          "event": "LOADING_SCREEN_ENABLED"
+        },
+        {
+          "at": 1791453848,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "indoors": false,
+            "zone": "Tirisfal Glades",
+            "subzone": "The North Coast",
+            "t": 1770862.62,
+            "speed": 0,
+            "onTaxi": false
+          },
+          "t": 1770862.62,
+          "event": "TAXIMAP_CLOSED"
+        },
+        {
+          "at": 1791453853,
+          "args": [
+            false,
+            false
+          ],
+          "here": {
+            "mounted": false,
+            "mapID": 1414,
+            "zone": "Tirisfal Glades",
+            "subzone": "The North Coast",
+            "t": 1770867.84,
+            "y": 0.522,
+            "x": 0.4638,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770867.84,
+          "event": "PLAYER_ENTERING_WORLD"
+        },
+        {
+          "at": 1791453856,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1414,
+            "zone": "Tirisfal Glades",
+            "subzone": "The North Coast",
+            "t": 1770870.44,
+            "y": 0.4665,
+            "x": 0.6127,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770870.44,
+          "event": "LOADING_SCREEN_DISABLED"
+        },
+        {
+          "at": 1791453857,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1411,
+            "zone": "Durotar",
+            "subzone": "Bladefist Bay",
+            "t": 1770871.93,
+            "y": 0.1291,
+            "x": 0.645,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770871.93,
+          "event": "ZONE_CHANGED_NEW_AREA"
+        },
+        {
+          "at": 1791453865,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1411,
+            "zone": "Durotar",
+            "subzone": "Bladefist Bay",
+            "t": 1770879.49,
+            "y": 0.1389,
+            "x": 0.5969,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770879.49,
+          "event": "LOADING_SCREEN_ENABLED"
+        },
+        {
+          "at": 1791453865,
+          "args": {},
+          "here": {
+            "mounted": false,
+            "mapID": 1411,
+            "zone": "Durotar",
+            "subzone": "Bladefist Bay",
+            "t": 1770879.49,
+            "y": 0.1389,
+            "x": 0.5969,
+            "speed": 0,
+            "onTaxi": false,
+            "indoors": false
+          },
+          "t": 1770879.49,
+          "event": "TAXIMAP_CLOSED"
+        }
+      ]
+    }
+  ]
 }
