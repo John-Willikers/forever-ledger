@@ -157,4 +157,31 @@ return function(H)
     none.slash("FOREVERLEDGER", "guide hide")
     H.eq(none.env.ForeverLedgerGuideFrame.shown, false)
   end)
+
+  H.test("guide: WoW escape codes in guide text are shown as text, never as colors or links", function()
+    local g = guide(7, ME, "Run |cffff0000[GM]|r |Hurl:x|hclick|h")
+    g.steps[1].npc = "Mordo|TInterface\\Icons\\x:4000|t\nfake line"
+    local c = viewer(H, { guides = { g } })
+    local f = c.env.ForeverLedgerGuideFrame
+    H.eq(f.title.text, "Run ||cffff0000[GM]||r ||Hurl:x||hclick||h")
+    H.ok(body(c):find("Mordo||TInterface", 1, true), body(c))
+    H.ok(not body(c):find("\n", 1, true) or not body(c):find("fake line\n", 1, true), "no injected line break")
+    H.ok(body(c):find("Mordo||TInterface\\Icons\\x:4000||t fake line", 1, true), body(c))
+  end)
+
+  H.test("guide: a turn-in counts at once, before the quest log says it is completed", function()
+    local c = viewer(H)
+    c.q.onQuest[RUDE] = true
+    c.fire("QUEST_ACCEPTED", RUDE)
+    c.q.onQuest[RUDE] = nil -- IsQuestFlaggedCompleted still false, as the client often is at QUEST_TURNED_IN
+    c.fire("QUEST_TURNED_IN", RUDE, 40, 0)
+    H.ok(counter(c):find("Step 3 of 5", 1, true), counter(c))
+  end)
+
+  H.test("guide: steps say how to skip what this character can't do", function()
+    local c = viewer(H)
+    H.ok(body(c):find("Press Next to skip it", 1, true), "accept steps")
+    c.slash("FOREVERLEDGER", "guide next")
+    H.ok(body(c):find("Not in your quest log", 1, true), "a turn-in for a quest not in the log")
+  end)
 end

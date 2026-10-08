@@ -114,6 +114,8 @@ function setup(opts: { file?: ConfigFile; prefs?: Partial<Prefs> } = {}) {
       guides: [] as { id: number; char: string; title: string; steps: number }[],
       arrived: [] as { id: number; char: string; title: string }[],
       addonsDirs: ['/wow/_classic_era_/Interface/AddOns'],
+      newFolder: false,
+      failed: [] as string[],
     })),
   };
 
@@ -885,6 +887,8 @@ describe('in-game guides', () => {
       guides: [{ id: 7, char: 'Sam Willikers-Classic Beta PvE', title: 'Undead 1-13', steps: 40 }],
       arrived: [{ id: 7, char: 'Sam Willikers-Classic Beta PvE', title: 'Undead 1-13' }],
       addonsDirs: ['/wow/_classic_era_/Interface/AddOns'],
+      newFolder: true,
+      failed: [],
     });
     await t.controller.start();
     await flush();
@@ -893,7 +897,7 @@ describe('in-game guides', () => {
     await flush();
     expect(t.uploader.syncGuides).toHaveBeenCalledTimes(1);
     expect(t.toasts).toContain(
-      'Guide ready for Sam Willikers: Undead 1-13. Type /reload in game, then /fl guide.',
+      'Guide ready for Sam Willikers: Undead 1-13. Restart WoW (first guide only), then /fl guide.',
     );
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     await flush();

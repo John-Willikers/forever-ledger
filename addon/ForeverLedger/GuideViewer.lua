@@ -12,6 +12,15 @@ local WIDTH = 330
 
 local function say(msg) print("|cff33ff99Forever Ledger:|r " .. msg) end
 
+-- Guide text comes from other players' uploads: "|" is WoW's escape character (colors, links, textures), so it is
+-- shown as a plain "|", and line breaks become spaces. The server strips them too; this is the second lock.
+local function esc(v)
+  if v == nil then return "" end
+  return (tostring(v):gsub("[\r\n]", " "):gsub("|", "||"))
+end
+
+local turnedIn = {} -- quests turned in this session (IsQuestFlaggedCompleted can lag behind QUEST_TURNED_IN)
+
 ---------------------------------------------------------------- data
 -- This character's keys, as the ledger names characters: full name (first + Forever surname) and first name, -Realm.
 function G.myKeys()
@@ -57,7 +66,7 @@ local function call(fn, ...)
   if ok then return v end
 end
 
-local function completed(id) return call(QuestLog.IsQuestFlaggedCompleted, id) == true end
+local function completed(id) return turnedIn[id] == true or call(QuestLog.IsQuestFlaggedCompleted, id) == true end
 local function onQuest(id) return call(QuestLog.IsOnQuest, id) == true end
 local function readyToTurnIn(id)
   return call(QuestLog.ReadyForTurnIn, id) == true or (onQuest(id) and call(QuestLog.IsComplete, id) == true)
@@ -84,7 +93,7 @@ function G.advance(force)
   local g = G.current()
   if not g then return false end
   local s = state()
-  if s.hold and not force then return false end
+  if s.hold == g.id and not force then return false end
   if force then s.hold = nil end
   local i = s.steps[g.id] or 1
   local start = i
@@ -104,7 +113,7 @@ function G.go(delta)
   local s = state()
   local i = math.max(1, math.min(#g.steps + 1, (s.steps[g.id] or 1) + delta))
   s.steps[g.id], s.guide = i, g.id
-  s.hold = delta < 0 or nil
+  s.hold = delta < 0 and g.id or nil
 end
 
 ---------------------------------------------------------------- text
@@ -116,7 +125,8 @@ local function place(step)
   if step.subzone and step.subzone ~= "" then parts[#parts + 1] = step.subzone end
   if step.zone and step.zone ~= step.subzone then parts[#parts + 1] = step.zone end
   local at = ""
-  if step.x and step.y then at = string.format(" (%.1f, %.1f)", step.x, step.y) end
+  if tonumber(step.x) and tonumber(step.y) then at = string.format(" (%.1f, %.1f)", step.x, step.y) end
+  for i, v in ipairs(parts) do parts[i] = esc(v) end
   return table.concat(parts, ", ") .. at
 end
 
@@ -127,12 +137,12 @@ local function objectiveLines(q)
   if type(live) == "table" and #live > 0 then
     for _, o in ipairs(live) do
       if type(o) == "table" and type(o.text) == "string" and o.text ~= "" then
-        lines[#lines + 1] = (o.finished and GREEN or WHITE) .. o.text .. "|r"
+        lines[#lines + 1] = (o.finished and GREEN or WHITE) .. esc(o.text) .. "|r"
       end
     end
   end
   if #lines == 0 then
-    for _, t in ipairs(q.objectives or {}) do lines[#lines + 1] = WHITE .. t .. "|r" end
+    for _, t in ipairs(q.objectives or {}) do lines[#lines + 1] = WHITE .. esc(t) .. "|r" end
   end
   return lines
 end
@@ -142,15 +152,23 @@ function G.stepText(step)
   local lines = {}
   local verb = VERB[step.action] or step.action
   local who = step.npc and (step.action == "accept" and " from " or step.action == "turn_in" and " to " or " ") or ""
-  lines[#lines + 1] = GOLD .. verb .. (step.npc and (who .. step.npc) or "") .. "|r"
+  lines[#lines + 1] = GOLD .. verb .. (step.npc and (who .. esc(step.npc)) or "") .. "|r"
   local where = place(step)
   if where ~= "" then lines[#lines + 1] = GREY .. where .. "|r" end
+  local missing = false
   for _, q in ipairs(step.quests or {}) do
     local mark = completed(q.questId) and (GREEN .. "done: ") or "- "
-    lines[#lines + 1] = mark .. (q.title or ("Quest " .. q.questId)) .. "|r"
+    lines[#lines + 1] = mark .. esc(q.title or ("Quest " .. tostring(q.questId))) .. "|r"
     if step.action == "complete" then
       for _, o in ipairs(objectiveLines(q)) do lines[#lines + 1] = "    " .. o end
     end
+    if step.action ~= "accept" and not completed(q.questId) and not onQuest(q.questId) then missing = true end
+  end
+  -- Guides follow another player's run: a quest can be theirs only (a class quest, one of two choices) or gone.
+  if step.action == "accept" then
+    lines[#lines + 1] = GREY .. "Can't get one of these? Press Next to skip it.|r"
+  elseif missing then
+    lines[#lines + 1] = GREY .. "Not in your quest log: pick it up first, or press Next to skip it.|r"
   end
   if step.levelAfter then lines[#lines + 1] = GREY .. "Level " .. step.levelAfter .. " after this|r" end
   return table.concat(lines, "\n")
@@ -256,11 +274,12 @@ function G.view()
   end
   local i = G.stepIndex()
   if i > #g.steps then
-    return { title = g.title, counter = string.format("Done: all %d steps", #g.steps),
+    return { title = esc(g.title), counter = string.format("Done: all %d steps", #g.steps),
              body = GREEN .. "Guide finished. " .. (g.toLevel and ("You should be level " .. g.toLevel .. ".") or "")
                     .. "|r" }
   end
-  return { title = g.title, counter = string.format("Step %d of %d  ·  %s's run", i, #g.steps, g.basedOn or "?"),
+  return { title = esc(g.title),
+           counter = string.format("Step %d of %d  ·  %s's run", i, #g.steps, esc(g.basedOn or "?")),
            body = G.stepText(g.steps[i]) }
 end
 
@@ -272,7 +291,7 @@ function G.render()
   f.counter:SetText(v.counter)
   f.body:SetText(v.body)
   local h = tonumber(f.body.GetStringHeight and f.body:GetStringHeight()) or 80
-  f:SetHeight(math.max(120, math.min(400, h + 72)))
+  f:SetHeight(math.max(120, math.min(600, h + 72)))
 end
 
 function G.show()
@@ -302,7 +321,7 @@ function G.slash(rest)
     if #mine == 0 then return say("no guides for this character yet.") end
     local cur = G.current()
     for i, g in ipairs(mine) do
-      say(string.format("%d. %s (%d steps)%s", i, g.title, #g.steps, g == cur and "  <- current" or ""))
+      say(string.format("%d. %s (%d steps)%s", i, esc(g.title), #g.steps, g == cur and "  <- current" or ""))
     end
     return say("/fl guide use N switches.")
   end
@@ -336,15 +355,18 @@ function handlers.PLAYER_LOGIN()
     if #G.myGuides() == 0 then return end
     G.advance(true)
     if not state().hidden then G.show() end
-    say("guide loaded: " .. G.current().title .. ". /fl guide to show or hide it.")
+    say("guide loaded: " .. esc(G.current().title) .. ". /fl guide to show or hide it.")
   end
   if C_Timer then C_Timer.After(3, start) else start() end
 end
 function handlers.QUEST_ACCEPTED() refresh(true) end
-function handlers.QUEST_TURNED_IN() refresh(true) end
+function handlers.QUEST_TURNED_IN(questID)
+  if questID then turnedIn[questID] = true end
+  refresh(true)
+end
 function handlers.QUEST_REMOVED() refresh(false) end
 function handlers.QUEST_LOG_UPDATE()
-  if not G.shown then return end
+  if #G.myGuides() == 0 then return end
   local now = GetTime and GetTime() or time()
   if now - lastRead >= READ_GAP then
     lastRead = now

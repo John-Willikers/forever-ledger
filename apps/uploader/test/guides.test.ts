@@ -93,7 +93,11 @@ describe('syncGuides', () => {
 
   it('writes the guides addon next to ForeverLedger and acks the new guide', async () => {
     const r = await sync();
-    expect(r).toMatchObject({ status: 'written', arrived: [{ id: 7, title: 'Undead 1-13' }] });
+    expect(r).toMatchObject({
+      status: 'written',
+      arrived: [{ id: 7, title: 'Undead 1-13' }],
+      newFolder: true,
+    });
     const folder = join(addons(), GUIDES_ADDON);
     expect((await readdir(folder)).sort()).toEqual(['ForeverLedger_Guides.toc', 'Guides.lua']);
     expect(await readFile(join(folder, 'ForeverLedger_Guides.toc'), 'utf8')).toContain(
@@ -111,10 +115,30 @@ describe('syncGuides', () => {
     expect(acks).toEqual([[7]]); // acked once
     served = [guide(8, 'Undead 5-13'), guide(7)];
     const r = await sync();
-    expect(r).toMatchObject({ status: 'written', arrived: [{ id: 8 }] });
+    expect(r).toMatchObject({ status: 'written', arrived: [{ id: 8 }], newFolder: false });
     served = [];
     expect((await sync()).status).toBe('removed');
     expect(await readdir(addons())).toEqual(['ForeverLedger']);
+  });
+
+  it('announces a guide once even while the ack keeps failing, and acks it later', async () => {
+    let ackOk = false;
+    const flaky = async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith('/v1/guides/ack') && !ackOk)
+        return new Response('down', { status: 503 });
+      return fetchImpl(url, init);
+    };
+    const run = () => syncGuides({ config, fetchImpl: flaky });
+    expect((await run()).arrived).toHaveLength(1);
+    expect((await run()).arrived).toHaveLength(0);
+    expect(acks).toEqual([]);
+    ackOk = true;
+    await run();
+    expect(acks).toEqual([[7]]);
+  });
+
+  it('rejects Lua keywords as field names', () => {
+    expect(() => toLua({ end: 1 })).toThrow('not a Lua field name');
   });
 
   it('writes and acks nothing where ForeverLedger is not installed', async () => {

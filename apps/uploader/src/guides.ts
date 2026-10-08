@@ -26,6 +26,11 @@ const FALLBACK_INTERFACE = 16001;
 export class GuidesSyncError extends Error {}
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const LUA_KEYWORDS = new Set(
+  'and break do else elseif end false for function if in local nil not or repeat return then true until while'.split(
+    ' ',
+  ),
+);
 
 /** A Lua string literal: printable ASCII as is, quotes and backslashes escaped, everything else as \ddd bytes. */
 export function luaString(s: string): string {
@@ -58,7 +63,8 @@ export function toLua(value: unknown, indent = ''): string {
     const fields = Object.entries(value)
       .filter(([, v]) => v !== null && v !== undefined)
       .map(([k, v]) => {
-        if (!IDENT.test(k)) throw new GuidesSyncError(`not a Lua field name: ${k}`);
+        if (!IDENT.test(k) || LUA_KEYWORDS.has(k))
+          throw new GuidesSyncError(`not a Lua field name: ${k}`);
         return `${inner}${k} = ${toLua(v, inner)},`;
       });
     return fields.length === 0 ? '{}' : `{\n${fields.join('\n')}\n${indent}}`;
@@ -108,10 +114,14 @@ export interface GuidesSyncOptions {
 
 export interface GuidesSyncResult {
   /** `no-addon`: ForeverLedger isn't installed anywhere under wowPath, so nothing was written or acked. */
-  status: 'written' | 'unchanged' | 'removed' | 'none' | 'no-addon';
+  status: 'written' | 'unchanged' | 'removed' | 'none' | 'no-addon' | 'error';
   guides: { id: number; char: string; title: string; steps: number }[];
   /** Guides written for the first time (the window says "/reload to load"). */
   arrived: { id: number; char: string; title: string }[];
+  /** The guides addon folder was just created somewhere: WoW only sees a new addon after a restart, not a /reload. */
+  newFolder: boolean;
+  /** AddOns folders that could not be written this time (the error is logged). */
+  failed: string[];
   addonsDirs: string[];
 }
 
@@ -119,6 +129,8 @@ export interface GuidesSyncResult {
 interface GuidesState {
   hash?: string;
   acked?: number[];
+  /** Guides already announced in the window (announced once, even while the ack keeps failing). */
+  announced?: number[];
 }
 
 const statePath = (config: Config) => join(config.stateDir, 'guides-sync.json');
@@ -189,6 +201,8 @@ export async function syncGuides(opts: GuidesSyncOptions): Promise<GuidesSyncRes
       })),
       arrived: [],
       addonsDirs: [],
+      newFolder: false,
+      failed: [],
     };
   }
   const state = await readState(config);
@@ -200,17 +214,20 @@ export async function syncGuides(opts: GuidesSyncOptions): Promise<GuidesSyncRes
     title: g.title,
     steps: g.steps.length,
   }));
-  const arrived = guides
-    .filter((g) => !acked.has(g.id))
-    .map((g) => ({ id: g.id, char: g.char, title: g.title }));
+  const announced = new Set(state.announced ?? []);
 
   let status: GuidesSyncResult['status'];
-  const present = async (dir: string) =>
-    readFile(join(dir, GUIDES_ADDON, GUIDES_FILE)).then(
+  const exists = (path: string) =>
+    readFile(path).then(
       () => true,
       () => false,
     );
-  const allPresent = (await Promise.all(dirs.map(present))).every(Boolean);
+  const complete = async (dir: string) =>
+    (await exists(join(dir, GUIDES_ADDON, GUIDES_FILE))) &&
+    (await exists(join(dir, GUIDES_ADDON, `${GUIDES_ADDON}.toc`)));
+  const allPresent = (await Promise.all(dirs.map(complete))).every(Boolean);
+  let newFolder = false;
+  const failed: string[] = [];
   if (guides.length === 0) {
     for (const dir of dirs) await rm(join(dir, GUIDES_ADDON), RM_DIR);
     status = state.hash === undefined ? 'none' : 'removed';
@@ -219,34 +236,50 @@ export async function syncGuides(opts: GuidesSyncOptions): Promise<GuidesSyncRes
   } else {
     const writtenAt = Math.floor((opts.now ?? Date.now)() / 1000);
     const lua = guidesLua(guides, writtenAt);
+    // Each WoW folder on its own: one that can't be written doesn't stop the others.
     for (const dir of dirs) {
       const folder = join(dir, GUIDES_ADDON);
-      await mkdir(folder, { recursive: true });
-      await writeFileAtomic(
-        join(folder, `${GUIDES_ADDON}.toc`),
-        guidesToc(await interfaceOf(dir), String(writtenAt)),
-      );
-      await writeFileAtomic(join(folder, GUIDES_FILE), lua);
+      try {
+        const existed = await exists(join(folder, `${GUIDES_ADDON}.toc`));
+        await mkdir(folder, { recursive: true });
+        await writeFileAtomic(
+          join(folder, `${GUIDES_ADDON}.toc`),
+          guidesToc(await interfaceOf(dir), String(writtenAt)),
+        );
+        await writeFileAtomic(join(folder, GUIDES_FILE), lua);
+        if (!existed) newFolder = true;
+      } catch (err) {
+        failed.push(dir);
+        logger.warn({ dir, err: errorMessage(err) }, 'could not write guides into this WoW folder');
+      }
     }
-    status = 'written';
-    logger.info({ guides: guides.length, dirs }, 'guides written');
+    status = failed.length === dirs.length ? 'error' : 'written';
+    if (status === 'written') logger.info({ guides: guides.length, dirs }, 'guides written');
   }
 
-  if (arrived.length > 0 && dirs.length > 0) {
+  // The server learns the guides are in the game once at least one folder has them.
+  const delivered = status === 'written' || status === 'unchanged';
+  const toAck = delivered ? guides.filter((g) => !acked.has(g.id)).map((g) => g.id) : [];
+  if (toAck.length > 0) {
     try {
-      await call(opts, '/v1/guides/ack', {
-        method: 'POST',
-        body: { ids: arrived.map((a) => a.id) },
-      });
-      for (const a of arrived) acked.add(a.id);
+      await call(opts, '/v1/guides/ack', { method: 'POST', body: { ids: toAck } });
+      for (const id of toAck) acked.add(id);
     } catch (err) {
       logger.warn({ err: errorMessage(err) }, 'guides ack failed; will retry');
     }
   }
+  const arrived = delivered
+    ? guides
+        .filter((g) => !announced.has(g.id))
+        .map((g) => ({ id: g.id, char: g.char, title: g.title }))
+    : [];
+  for (const a of arrived) announced.add(a.id);
   const keep = new Set(guides.map((g) => g.id));
   await writeJsonAtomic(statePath(config), {
-    hash: guides.length === 0 ? undefined : hash,
+    // A failed write is tried again next time.
+    hash: guides.length === 0 || status === 'error' ? undefined : hash,
     acked: [...acked].filter((id) => keep.has(id)),
+    announced: [...announced].filter((id) => keep.has(id)),
   } satisfies GuidesState);
-  return { status, guides: summary, arrived: dirs.length > 0 ? arrived : [], addonsDirs: dirs };
+  return { status, guides: summary, arrived, addonsDirs: dirs, newFolder, failed };
 }

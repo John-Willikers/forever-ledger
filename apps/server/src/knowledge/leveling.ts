@@ -15,6 +15,19 @@ import { findCharacters } from './upgrades.js';
  * counted per session, not per character and time), so play time is an estimate: grinding between quests counts.
  */
 export const BREAK_MINUTES = 60;
+/** Quest-log headers that are a class: those quests are that class's own. */
+const CLASS_HEADERS = new Set([
+  'warrior',
+  'paladin',
+  'hunter',
+  'rogue',
+  'priest',
+  'shaman',
+  'mage',
+  'warlock',
+  'druid',
+]);
+
 /** Steps of a route listed in full; longer routes are cut and say so. */
 export const ROUTE_STEPS_MAX = 120;
 /** Other characters listed next to the chosen route. */
@@ -498,6 +511,7 @@ export async function levelingRoute(db: Db, q: LevelingQuery) {
   let forCharacter: { name: string; level: number | null; questsAlreadyDone: number } | null = null;
   let done = new Set<number>();
   let fromLevel = q.fromLevel ?? 1;
+  let myClass: string | null = null;
   if (q.forCharacter) {
     const [me] = await findCharacters(db, q.forCharacter);
     if (!me)
@@ -512,6 +526,7 @@ export async function levelingRoute(db: Db, q: LevelingQuery) {
       done = new Set(mine.map((m) => m.quest_id));
       if (q.fromLevel === undefined && me.level && me.level < toLevel) fromLevel = me.level;
       forCharacter = { name: me.name, level: me.level, questsAlreadyDone: 0 };
+      myClass = me.class;
     }
   }
   const race = raceToken(q.start);
@@ -562,7 +577,19 @@ export async function levelingRoute(db: Db, q: LevelingQuery) {
   let route = null;
   if (best?.start) {
     const events = await guideEvents(db, best.key, best.start, best.reached);
-    const guide = buildGuide(events, done);
+    // Another class's quests (filed under a class header, "Warlock") can't be done by the asker: leave them out.
+    const skip = new Set(done);
+    if (myClass) {
+      for (const e of events) {
+        if (
+          e.zone &&
+          CLASS_HEADERS.has(e.zone.toLowerCase()) &&
+          e.zone.toLowerCase() !== myClass.toLowerCase()
+        )
+          skip.add(e.questId);
+      }
+    }
+    const guide = buildGuide(events, skip);
     if (forCharacter) {
       const runQuests = new Set(events.filter((e) => e.kind === 'turn_in').map((e) => e.questId));
       forCharacter.questsAlreadyDone = [...runQuests].filter((x) => done.has(x)).length;
