@@ -1,0 +1,128 @@
+// Planner availability (planner/available.ts): which quests a character can take at a level.
+import { describe, expect, it } from 'vitest';
+import { canTake, isClassQuest, type Taker } from '../src/planner/available.js';
+import type { Atlas, AtlasQuest } from '../src/planner/types.js';
+
+const quest = (over: Partial<AtlasQuest> = {}): AtlasQuest => ({
+  id: 100,
+  title: 'Test Quest',
+  level: 5,
+  reqLevel: 3,
+  side: 'both',
+  classes: null,
+  races: null,
+  giver: null,
+  ender: null,
+  prereqs: [],
+  objectives: [],
+  xp: 300,
+  ...over,
+});
+/** No other quests known: no prerequisite is the other faction's. */
+const NONE: Atlas = { quests: new Map() };
+const ch = (over: Partial<Taker> = {}): Taker => ({
+  level: 5,
+  className: 'WARLOCK',
+  race: 'Scourge',
+  faction: 'Horde',
+  completed: new Set(),
+  log: new Map(),
+  ...over,
+});
+const ALL_CLASSES = [
+  'WARRIOR',
+  'PALADIN',
+  'HUNTER',
+  'ROGUE',
+  'PRIEST',
+  'SHAMAN',
+  'MAGE',
+  'WARLOCK',
+  'DRUID',
+];
+
+describe('planner availability', () => {
+  it('takes a plain quest at its level', () => {
+    expect(canTake(quest(), ch(), 5, NONE)).toBe(true);
+  });
+
+  it('checks the side', () => {
+    expect(canTake(quest({ side: 'Horde' }), ch(), 5, NONE)).toBe(true);
+    expect(canTake(quest({ side: 'Alliance' }), ch(), 5, NONE)).toBe(false);
+  });
+
+  it('takes a class quest for the right class only', () => {
+    const q = quest({ classes: ['WARLOCK'] });
+    expect(canTake(q, ch(), 5, NONE)).toBe(true);
+    expect(canTake(q, ch({ className: 'MAGE' }), 5, NONE)).toBe(false);
+  });
+
+  it('checks the race', () => {
+    const q = quest({ races: ['Scourge'] });
+    expect(canTake(q, ch(), 5, NONE)).toBe(true);
+    expect(canTake(q, ch({ race: 'Orc' }), 5, NONE)).toBe(false);
+  });
+
+  it('skips completed quests and quests in the log', () => {
+    expect(canTake(quest(), ch({ completed: new Set([100]) }), 5, NONE)).toBe(false);
+    expect(canTake(quest(), ch({ log: new Map([[100, [0]]]) }), 5, NONE)).toBe(false);
+  });
+
+  it('needs every prerequisite turned in (a chain: B needs A)', () => {
+    const b = quest({ id: 101, prereqs: [100, 99] });
+    expect(canTake(b, ch(), 5, NONE)).toBe(false);
+    expect(canTake(b, ch({ completed: new Set([100]) }), 5, NONE)).toBe(false);
+    expect(canTake(b, ch({ completed: new Set([100, 99]) }), 5, NONE)).toBe(true);
+  });
+
+  it("ignores a prerequisite that is the other faction's quest (a both-side step after a split step)", () => {
+    const alliance = quest({ id: 60, side: 'Alliance' });
+    const horde = quest({ id: 61, side: 'Horde' });
+    const next = quest({ id: 62, prereqs: [60, 61] });
+    const atlas = { quests: new Map([alliance, horde, next].map((q) => [q.id, q])) };
+    expect(canTake(next, ch(), 5, atlas)).toBe(false);
+    expect(canTake(next, ch({ completed: new Set([61]) }), 5, atlas)).toBe(true);
+    expect(canTake(next, ch({ faction: 'Alliance', completed: new Set([61]) }), 5, atlas)).toBe(
+      false,
+    );
+    // A prerequisite the atlas doesn't know counts.
+    expect(canTake(next, ch({ completed: new Set([61]) }), 5, NONE)).toBe(false);
+  });
+
+  it('needs the required level', () => {
+    expect(canTake(quest({ reqLevel: 6 }), ch(), 5, NONE)).toBe(false);
+    expect(canTake(quest({ reqLevel: 6 }), ch(), 6, NONE)).toBe(true);
+  });
+
+  it('waits for a quest more than 3 levels up', () => {
+    const q = quest({ level: 9, reqLevel: 1 });
+    expect(canTake(q, ch(), 5, NONE)).toBe(false);
+    expect(canTake(q, ch(), 6, NONE)).toBe(true);
+  });
+
+  it('skips grey quests', () => {
+    // Level 12: the grey gap is 6, so a level 5 quest is grey and a level 6 quest is not.
+    expect(canTake(quest({ level: 5, reqLevel: 1 }), ch(), 12, NONE)).toBe(false);
+    expect(canTake(quest({ level: 6, reqLevel: 1 }), ch(), 12, NONE)).toBe(true);
+  });
+
+  it('takes class quests at any level from their required level (never grey, never too high)', () => {
+    // Harlan: class quests always.
+    const q = quest({ classes: ['WARLOCK'], level: 10, reqLevel: 10 });
+    expect(canTake(q, ch(), 20, NONE)).toBe(true);
+    expect(canTake(q, ch(), 9, NONE)).toBe(false);
+    expect(canTake(quest({ classes: ['WARLOCK'], level: 14, reqLevel: 10 }), ch(), 10, NONE)).toBe(
+      true,
+    );
+    // A quest for all nine classes is no class quest: grey still applies.
+    expect(canTake(quest({ classes: ALL_CLASSES, level: 10, reqLevel: 10 }), ch(), 20, NONE)).toBe(
+      false,
+    );
+  });
+
+  it('tells class quests apart', () => {
+    expect(isClassQuest(quest())).toBe(false);
+    expect(isClassQuest(quest({ classes: ['WARLOCK'] }))).toBe(true);
+    expect(isClassQuest(quest({ classes: ALL_CLASSES }))).toBe(false);
+  });
+});
