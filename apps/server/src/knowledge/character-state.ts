@@ -10,6 +10,7 @@ import { DOCK_RADIUS, FLIGHT_OVERHEAD, FLIGHT_SPEED, type TravelData } from '../
 import type { CharacterState, MapSpot, WorldPos } from '../planner/types.js';
 import type { XpCurve } from '../planner/xp.js';
 import { rows } from '../routes/adminData.js';
+import { START_ZONES } from './leveling.js';
 
 export interface LoadedCharacter {
   ch: CharacterState;
@@ -37,6 +38,20 @@ const RACE_SIDE: Record<string, 'Alliance' | 'Horde'> = {
   Tauren: 'Horde',
   Troll: 'Horde',
 };
+/**
+ * Where each race starts (its first quest giver, percent on the zone map), for a character with no usable position
+ * and no located observation. The area name is START_ZONES' second entry.
+ */
+const START_SPOTS: Record<string, MapSpot> = {
+  Scourge: { mapId: 1420, x: 30.8, y: 66.2 }, // Deathknell
+  Orc: { mapId: 1411, x: 43.3, y: 68.5 }, // Valley of Trials
+  Troll: { mapId: 1411, x: 43.3, y: 68.5 },
+  Tauren: { mapId: 1412, x: 44.7, y: 77.0 }, // Camp Narache
+  Human: { mapId: 1429, x: 48.2, y: 42.9 }, // Northshire Valley
+  Dwarf: { mapId: 1426, x: 29.9, y: 71.2 }, // Coldridge Valley
+  Gnome: { mapId: 1426, x: 29.9, y: 71.2 },
+  NightElf: { mapId: 1438, x: 58.6, y: 44.2 }, // Shadowglen
+};
 /** A fitted flight detour outside this range is a bad trip (wrong nodes, a long wait on the ground): ignored. */
 const DETOUR_RANGE = [0.5, 4] as const;
 
@@ -56,6 +71,39 @@ function spotOf(v: unknown): MapSpot | null {
   const y = num(o?.y);
   if (mapId === null || x === null || y === null) return null;
   return { mapId, x: x * 100, y: y * 100 };
+}
+
+/**
+ * The character's newest located observation: a quest window's player spot (`loc`), the NPC it was with (`npc_loc`,
+ * both `{ mapID, x, y, zone }` in percent) or an objective going up (`quest_objective_progress`, percent). Rows on no
+ * known map are skipped; at one instant `loc` beats `npc_loc` beats progress.
+ */
+async function lastSeenSpot(
+  db: Db,
+  charKey: string,
+): Promise<{ spot: MapSpot; zone: string | null } | null> {
+  const seen = await rows<{ mapId: unknown; x: unknown; y: unknown; zone: unknown }>(
+    db,
+    sql`select * from (
+          select loc->'mapID' as "mapId", loc->'x' as x, loc->'y' as y, loc->'zone' as zone, observed_at as at, 0 as pri
+            from quest_observations where char = ${charKey} and loc is not null and observed_at is not null
+          union all
+          select npc_loc->'mapID', npc_loc->'x', npc_loc->'y', npc_loc->'zone', observed_at, 1
+            from quest_observations where char = ${charKey} and npc_loc is not null and observed_at is not null
+          union all
+          select to_jsonb(map_id), to_jsonb(x::float8), to_jsonb(y::float8), to_jsonb(zone), at, 2
+            from quest_objective_progress where char = ${charKey} and map_id is not null and x is not null and y is not null
+        ) s order by at desc, pri limit 50`,
+  );
+  for (const r of seen) {
+    const mapId = int(r.mapId);
+    const x = num(r.x);
+    const y = num(r.y);
+    if (mapId === null || x === null || y === null || !mapInfo(mapId)) continue;
+    const zone = typeof r.zone === 'string' && r.zone.trim() ? r.zone.trim() : null;
+    return { spot: { mapId, x, y }, zone: zone ?? mapInfo(mapId)!.name };
+  }
+  return null;
 }
 
 export function median(xs: number[]): number | null {
@@ -313,11 +361,24 @@ export async function loadCharacter(
     ? { spot: bindSpot, readyAt: Math.max(0, (st?.hearthReadyAt ?? 0) - now) }
     : null;
 
+  // No position, or one on no known map: the last place we saw the character, its race's start area, the bind spot.
   let position = spotOf(st?.pos);
-  if (!position && bindSpot) {
+  if (position && !mapInfo(position.mapId)) position = null;
+  const seen = position ? null : await lastSeenSpot(db, charKey);
+  const startSpot = START_SPOTS[race];
+  if (position) {
+    // Stored, on a known map: used as is.
+  } else if (seen) {
+    gaps.push(`position from the last quest seen: ${seen.zone}`);
+    position = seen.spot;
+  } else if (startSpot) {
+    const area = START_ZONES[race]?.[1] ?? START_ZONES[race]?.[0];
+    gaps.push(`position: ${race} start area${area ? ` (${area})` : ''}`);
+    position = { ...startSpot };
+  } else if (bindSpot) {
     gaps.push('position unknown: log out once with 0.8.0');
     position = bindSpot;
-  } else if (!position) {
+  } else {
     // Map 0 is no map: plan() stops at once instead of planning travel from nowhere.
     gaps.push('position unknown: log in once with 0.8.0');
     position = { mapId: 0, x: 0, y: 0 };
