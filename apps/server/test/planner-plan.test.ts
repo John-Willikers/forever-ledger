@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { distance, toWorld } from '../src/planner/geo.js';
 import { plan } from '../src/planner/plan.js';
+import { estimate } from '../src/planner/plan-estimate.js';
+import { Sim } from '../src/planner/plan-sim.js';
 import { HEARTH_SECONDS, type TravelData } from '../src/planner/travel.js';
 import { TRANSPORTS } from '../src/planner/transports.js';
 import type { AtlasQuest, MapSpot, PlanStep } from '../src/planner/types.js';
@@ -433,6 +435,70 @@ describe('planner loop', () => {
     expect(r.gaps).toContain(
       'estimates are optimistic for 3 quests with missing objective data: Quest 91, Quest 92, Quest 93',
     );
+  });
+
+  describe('delivery quests (no objective spots, turned in elsewhere)', () => {
+    // "The Prodigal Lich" (405): Magistrate Sevren in Brill → Bethor Iceshard in the Undercity, no objective spots.
+    const A = npc(1, 'Sevren', BASE);
+    const FAR = offset(BASE, 2000);
+    const B = npc(2, 'Bethor', FAR);
+    const talk = { kind: 'talk' as const, text: 'Speak to Bethor', count: 1, spots: [] };
+    const other = { kind: 'other' as const, text: 'Deliver the letter', count: 3, spots: [] };
+
+    it('accepts at the giver and turns in at the ender, with no complete step', () => {
+      const qs = [
+        quest(95, { giver: A, ender: B, objectives: [talk] }),
+        quest(96, { giver: A, ender: B }),
+      ];
+      const r = plan(atlas(qs), character(), NO_TRAVEL, { toLevel: 30 });
+      expect(brief(r.steps)).toEqual(['accept:95,96', 'turn_in:95,96']);
+      const turnIn = work(r.steps)[1]!;
+      expect(turnIn.npc).toBe('Bethor');
+      expect(yards(turnIn.spot!, FAR)).toBeLessThan(1);
+      expect(r.gaps).toContain(
+        'treated as deliveries (turned in at the ender): 2 quests (Quest 95, Quest 96)',
+      );
+      expect(r.gaps.some((g) => g.startsWith('no objective spots'))).toBe(false);
+      expect(r.gaps.some((g) => g.startsWith('estimates are optimistic'))).toBe(false);
+    });
+
+    it('is a delivery for a different NPC next door, or the same NPC far away', () => {
+      const NEXT = npc(3, 'Clerk', offset(BASE, 0, 10));
+      const MOVED = { ...A, spots: [offset(BASE, 500)] };
+      const qs = [
+        quest(97, { giver: A, ender: NEXT, objectives: [talk] }),
+        quest(98, { giver: A, ender: MOVED, objectives: [talk] }),
+      ];
+      const r = plan(atlas(qs), character(), NO_TRAVEL, { toLevel: 30 });
+      expect(r.steps.some((s) => s.action === 'complete')).toBe(false);
+      expect(indexOf(r.steps, 'turn_in', 97)).toBeGreaterThan(0);
+      expect(indexOf(r.steps, 'turn_in', 98)).toBeGreaterThan(0);
+    });
+
+    it('keeps the complete-near-the-giver step when giver and ender are the same NPC', () => {
+      const r = plan(
+        atlas([quest(99, { giver: A, ender: A, objectives: [talk] })]),
+        character(),
+        NO_TRAVEL,
+        { toLevel: 30 },
+      );
+      expect(brief(r.steps)).toEqual(['accept:99', 'complete:99', 'turn_in:99']);
+      expect(r.gaps.some((g) => g.startsWith('treated as deliveries'))).toBe(false);
+    });
+
+    it('costs only the trip to the ender: no objective padding in the plan or the hub estimate', () => {
+      const qs = [quest(95, { giver: A, ender: B, objectives: [other] })];
+      const r = plan(atlas(qs), character(), NO_TRAVEL, { toLevel: 30 });
+      const walk = r.steps.filter((s) => s.action === 'travel');
+      expect(walk.length).toBeGreaterThan(0);
+      // The clock is the walk to Bethor and nothing else (3 × 30 s × 2 would be padding).
+      const sim = new Sim(atlas(qs), character(), NO_TRAVEL, { toLevel: 30 });
+      const trip = sim.travelSeconds(BASE, FAR)!;
+      expect(r.seconds).toBeCloseTo(trip, 6);
+      const e = estimate(sim, sim.giverHub.get(95)!)!;
+      expect(e.seconds).toBeCloseTo(trip, 6);
+      expect(e.xp).toBeGreaterThan(0);
+    });
   });
 
   it('does not crash on a quest whose own giver copy has no spots', () => {

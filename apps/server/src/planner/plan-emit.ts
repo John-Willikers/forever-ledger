@@ -130,6 +130,7 @@ export function accept(sim: Sim, qs: AtlasQuest[]): void {
           q.objectives.map(() => 0),
         );
         sim.taken.add(q.id);
+        if (sim.isDelivery(q)) sim.deliveries.add(q.id);
       }
       push(sim, {
         action: 'accept',

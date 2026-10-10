@@ -5,16 +5,17 @@ import { canTake, isClassQuest, type Taker } from './available.js';
 import { distance, mapInfo, toWorld } from './geo.js';
 import { buildHubs, type Hub } from './hubs.js';
 import { groundTravel, route, type TravelData } from './travel.js';
-import type {
-  Atlas,
-  AtlasObjective,
-  AtlasQuest,
-  CharacterState,
-  MapSpot,
-  ObjectiveKind,
-  PlanStep,
-  QuestPoint,
-  WorldPos,
+import {
+  pointKey,
+  type Atlas,
+  type AtlasObjective,
+  type AtlasQuest,
+  type CharacterState,
+  type MapSpot,
+  type ObjectiveKind,
+  type PlanStep,
+  type QuestPoint,
+  type WorldPos,
 } from './types.js';
 import { gain, isGrey, mobXp, type XpCurve } from './xp.js';
 
@@ -42,6 +43,8 @@ export const LOOP_RADIUS = 600;
 export const FOLD_WALK = 200;
 /** Objective spots this close (yards) are one stop. */
 const STOP_MERGE = 40;
+/** A giver and ender of one NPC further apart than this (yards) are two places: the quest is a delivery. */
+export const DELIVERY_YARDS = 40;
 /** Within this many yards of a hub the character is there, not "elsewhere" (level-gated pickups). */
 export const AT_HUB = 300;
 
@@ -99,11 +102,16 @@ export class Sim {
 
   private readonly placed = new Map<string, Placed | null>();
   private readonly routes = new Map<string, Trip | null>();
-  /** For the grouped gap lines: quests done near the giver for want of spots, quests the plan took, hubs to bind at. */
+  /**
+   * For the grouped gap lines: quests done near the giver for want of spots, deliveries, quests the plan took, hubs
+   * to bind at.
+   */
   readonly noSpots = new Set<number>();
+  readonly deliveries = new Set<number>();
   readonly taken = new Set<number>();
   readonly hearthHubs = new Set<Hub>();
   private readonly reach = new Map<number, boolean>();
+  private readonly delivery = new Map<number, boolean>();
 
   constructor(
     readonly atlas: Atlas,
@@ -189,6 +197,29 @@ export class Sim {
     return q.ender && spot && toWorld(spot) ? q.ender : q.giver;
   }
 
+  /**
+   * A delivery or talk-to quest: no objective has a known spot and someone else takes it back (another NPC, or the
+   * giver more than DELIVERY_YARDS away). It is done by turning it in at the ender: no objective stop of its own.
+   */
+  isDelivery(q: AtlasQuest): boolean {
+    let yes = this.delivery.get(q.id);
+    if (yes === undefined) {
+      const giver = q.giver?.spots[0];
+      const g = giver ? toWorld(giver) : null;
+      const ender = this.enderOf(q);
+      const e = ender && ender !== q.giver ? toWorld(ender.spots[0]!) : null;
+      yes =
+        g !== null &&
+        e !== null &&
+        q.objectives.every((o) => !o.spots.some((s) => toWorld(s))) &&
+        (pointKey(q.giver!) !== pointKey(ender!) ||
+          g.continent !== e.continent ||
+          distance(g, e) > DELIVERY_YARDS);
+      this.delivery.set(q.id, yes);
+    }
+    return yes;
+  }
+
   /** A class quest for this character's class. */
   isMine(q: AtlasQuest): boolean {
     return isClassQuest(q) && q.classes!.includes(this.ch.className);
@@ -226,7 +257,9 @@ export class Sim {
   left(q: AtlasQuest, o: AtlasObjective): number {
     return Math.max(0, this.need(o) - (this.log.get(q.id)?.[o.index] ?? 0));
   }
+  /** Objectives still to do; none for a delivery (handing it in does it). */
   open(q: AtlasQuest): AtlasObjective[] {
+    if (this.isDelivery(q)) return [];
     return q.objectives.filter((o) => this.left(q, o) > 0);
   }
   finished(q: AtlasQuest): boolean {
@@ -243,6 +276,7 @@ export class Sim {
   }
   /** No objectives, or an objective without a known spot: the plan's estimate for it is a guess. */
   dataPoor(q: AtlasQuest): boolean {
+    if (this.isDelivery(q)) return false;
     return !q.objectives.length || q.objectives.some((o) => !o.spots.some((s) => toWorld(s)));
   }
   killXp(q: AtlasQuest, o: AtlasObjective): number {
@@ -276,10 +310,11 @@ export class Sim {
       ok =
         ender !== undefined &&
         this.travelSeconds(from, ender) !== null &&
-        q.objectives.every((o) => {
-          const p = this.place(q, o);
-          return p !== null && this.travelSeconds(from, p.spot) !== null;
-        });
+        (this.isDelivery(q) ||
+          q.objectives.every((o) => {
+            const p = this.place(q, o);
+            return p !== null && this.travelSeconds(from, p.spot) !== null;
+          }));
       this.reach.set(q.id, ok);
     }
     return ok;
@@ -301,7 +336,7 @@ export class Sim {
   loopQuests(hub: Hub, extra: AtlasQuest[]): AtlasQuest[] {
     const pool = [...this.logQuests(), ...extra].sort(byId);
     return pool.filter((q) => {
-      const todo = this.log.has(q.id) ? this.open(q) : q.objectives;
+      const todo = this.log.has(q.id) || this.isDelivery(q) ? this.open(q) : q.objectives;
       if (!todo.length) return false;
       if (this.enderHub.get(q.id) === hub) return true;
       return todo.every((o) => {
@@ -315,7 +350,7 @@ export class Sim {
   stopsOf(qs: AtlasQuest[], fresh: Set<number>): Stop[] {
     const stops: Stop[] = [];
     for (const q of qs)
-      for (const o of q.objectives) {
+      for (const o of this.isDelivery(q) ? [] : q.objectives) {
         if (!fresh.has(q.id) && this.left(q, o) === 0) continue;
         const p = this.place(q, o);
         if (!p) continue;
