@@ -48,15 +48,19 @@ export function estimate(sim: Sim, hub: Hub): Estimate | null {
       seconds += n * sim.unitSeconds(o);
       if (o.kind === 'kill' && !isGrey(q.level, sim.level)) xp += n * mobXp(q.level);
     }
-  // Quests this visit finishes: the loop's, fresh ones with nothing to do, finished ones ending here. Those ending at
-  // another hub pay only with the trip there (once per hub) added, unless that hub has work of its own.
+  // Quests this visit finishes: the loop's, fresh ones with nothing to do (deliveries included), finished ones ending
+  // here. Those ending at another hub pay only with the trip there (once per hub) added, unless that hub has work of
+  // its own: a delivery costs that trip and nothing else.
   const done = new Set([
     ...doable,
-    ...take.filter((q) => !q.objectives.length),
+    ...take.filter((q) => !q.objectives.length || sim.isDelivery(q)),
     ...endsHere.filter((q) => sim.finished(q) && sim.reachable(q)),
   ]);
   // Quests without objectives: some time all the same (a guess, doubled like spotless objectives).
-  seconds += take.filter((q) => !q.objectives.length).length * 2 * DEFAULT_SECONDS.other;
+  seconds +=
+    take.filter((q) => !q.objectives.length && !sim.isDelivery(q)).length *
+    2 *
+    DEFAULT_SECONDS.other;
   const onward = new Map<Hub, number | null>();
   for (const q of done) {
     const end = sim.enderHub.get(q.id);

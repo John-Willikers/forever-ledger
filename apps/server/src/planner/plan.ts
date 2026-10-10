@@ -6,7 +6,8 @@
 // quests for the character's class go first wherever they are (across the water only when their races are known to
 // fit); level-gated pickups left behind earn a trip back only when it pays the run's XP per minute so far (then they
 // compete in normal scoring), else they are taken only if the plan is at their hub anyway (plan-gated.ts).
-// Unreachable objectives or turn-ins are never counted done: such quests are not taken, or abandoned. Deterministic
+// Delivery / talk-to quests (no objective spots, someone else takes them back) have no objective stop: turning them in
+// at the ender does them. Unreachable objectives or turn-ins are never counted done: such quests are not taken, or abandoned. Deterministic
 // (ties by hub id / quest id) and pure.
 import { toWorld } from './geo.js';
 import type { Hub } from './hubs.js';
@@ -49,6 +50,11 @@ function closingGaps(sim: Sim): void {
   if (spotless.length)
     sim.gap(
       `no objective spots for ${count(spotless.length, 'quest')}, done near the giver: ${examples(spotless)}`,
+    );
+  const deliveries = titles(sim, sim.deliveries);
+  if (deliveries.length)
+    sim.gap(
+      `treated as deliveries (turned in at the ender): ${count(deliveries.length, 'quest')} (${examples(deliveries)})`,
     );
   const poor = titles(
     sim,
