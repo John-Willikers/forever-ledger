@@ -4,13 +4,13 @@
 import { sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { distance, mapInfo, toWorld, fromWorld } from '../planner/geo.js';
+import { raceStartArea } from '../planner/start-areas.js';
 import { TAXI_NODE_FACTIONS } from '../planner/taxi-nodes.js';
 import { TRANSPORTS, type Transport } from '../planner/transports.js';
 import { DOCK_RADIUS, FLIGHT_OVERHEAD, FLIGHT_SPEED, type TravelData } from '../planner/travel.js';
 import type { CharacterState, MapSpot, WorldPos } from '../planner/types.js';
 import type { XpCurve } from '../planner/xp.js';
 import { rows } from '../routes/adminData.js';
-import { START_ZONES } from './leveling.js';
 
 export interface LoadedCharacter {
   ch: CharacterState;
@@ -37,20 +37,6 @@ const RACE_SIDE: Record<string, 'Alliance' | 'Horde'> = {
   Scourge: 'Horde',
   Tauren: 'Horde',
   Troll: 'Horde',
-};
-/**
- * Where each race starts (its first quest giver, percent on the zone map), for a character with no usable position
- * and no located observation. The area name is START_ZONES' second entry.
- */
-const START_SPOTS: Record<string, MapSpot> = {
-  Scourge: { mapId: 1420, x: 30.8, y: 66.2 }, // Deathknell
-  Orc: { mapId: 1411, x: 43.3, y: 68.5 }, // Valley of Trials
-  Troll: { mapId: 1411, x: 43.3, y: 68.5 },
-  Tauren: { mapId: 1412, x: 44.7, y: 77.0 }, // Camp Narache
-  Human: { mapId: 1429, x: 48.2, y: 42.9 }, // Northshire Valley
-  Dwarf: { mapId: 1426, x: 29.9, y: 71.2 }, // Coldridge Valley
-  Gnome: { mapId: 1426, x: 29.9, y: 71.2 },
-  NightElf: { mapId: 1438, x: 58.6, y: 44.2 }, // Shadowglen
 };
 /** A fitted flight detour outside this range is a bad trip (wrong nodes, a long wait on the ground): ignored. */
 const DETOUR_RANGE = [0.5, 4] as const;
@@ -365,16 +351,15 @@ export async function loadCharacter(
   let position = spotOf(st?.pos);
   if (position && !mapInfo(position.mapId)) position = null;
   const seen = position ? null : await lastSeenSpot(db, charKey);
-  const startSpot = START_SPOTS[race];
+  const start = raceStartArea(race);
   if (position) {
     // Stored, on a known map: used as is.
   } else if (seen) {
     gaps.push(`position from the last quest seen: ${seen.zone}`);
     position = seen.spot;
-  } else if (startSpot) {
-    const area = START_ZONES[race]?.[1] ?? START_ZONES[race]?.[0];
-    gaps.push(`position: ${race} start area${area ? ` (${area})` : ''}`);
-    position = { ...startSpot };
+  } else if (start) {
+    gaps.push(`position: ${race} start area (${start.name})`);
+    position = { ...start.spot };
   } else if (bindSpot) {
     gaps.push('position unknown: log out once with 0.8.0');
     position = bindSpot;

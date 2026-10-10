@@ -512,9 +512,10 @@ describe('planner loop', () => {
 
   it('a class quest on another continent goes first only when the race is known to take it', () => {
     const VOT: MapSpot = { mapId: 1411, x: 43.3, y: 68.5 };
-    const DK: MapSpot = { mapId: 1420, x: 30.8, y: 66.2 };
+    // Brill, not Deathknell: a class quest in another race's start area is not taken at all.
+    const BRILL: MapSpot = { mapId: 1420, x: 61, y: 52 };
     const gornek = npc(1, 'Gornek', { mapId: 1411, x: 42.1, y: 68.3 });
-    const trainer = npc(2, 'Trainer', DK);
+    const trainer = npc(2, 'Trainer', BRILL);
     const home = quest(210, {
       level: 1,
       giver: gornek,
@@ -553,6 +554,65 @@ describe('planner loop', () => {
     expect(indexOf(unknown.steps, 'turn_in', 210)).toBeLessThan(
       indexOf(unknown.steps, 'accept', 211),
     );
+  });
+
+  it("a class quest in another race's start area pulls no one across the water (Lee, 2026-10-09)", () => {
+    const DK: MapSpot = { mapId: 1420, x: 30.8, y: 66.2 };
+    const VOT: MapSpot = { mapId: 1411, x: 43.3, y: 68.5 };
+    const venya = npc(1, 'Venya Marthand', { mapId: 1420, x: 31.0, y: 66.3 });
+    const ruzan = npc(2, 'Ruzan', { mapId: 1411, x: 42.4, y: 69.0 });
+    const arren = npc(3, 'Executor Arren', { mapId: 1420, x: 32.1, y: 66.0 });
+    const thrall = npc(4, 'Orgrimmar Trainer', { mapId: 1454, x: 48.2, y: 45.6 });
+    const imp = (id: number, giver: typeof venya, races: string[]) =>
+      quest(id, {
+        level: 4,
+        xp: 2000,
+        side: 'Horde',
+        classes: ['WARLOCK'],
+        races,
+        giver,
+        ender: giver,
+        objectives: [collect([offset(giver.spots[0]!, 80)], 3)],
+      });
+    const piercing = imp(1470, venya, ['Orc', 'Scourge']);
+    const vile = imp(1485, ruzan, ['Orc', 'Scourge', 'Troll']);
+    const home = quest(380, {
+      level: 4,
+      xp: 200,
+      giver: arren,
+      ender: arren,
+      objectives: [kill([offset(DK, 200)], 5)],
+    });
+    const travel: TravelData = {
+      flightNodes: [],
+      transports: TRANSPORTS.filter((t) => t.name === 'Tirisfal Glades ↔ Durotar'),
+    };
+    const lee = character({
+      level: 5,
+      className: 'WARLOCK',
+      race: 'Scourge',
+      completed: new Set([1470]),
+      position: DK,
+    });
+    const r = plan(atlas([piercing, vile, home]), lee, travel, { toLevel: 30 });
+    expect(r.steps.some((s) => ids(s).includes(1485))).toBe(false);
+    expect(r.steps.some((s) => s.how === 'boat')).toBe(false);
+    expect(indexOf(r.steps, 'turn_in', 380)).toBeGreaterThan(0);
+
+    // The Orc warlock in the Valley: Ruzan's, never Venya's.
+    const orc = character({ level: 1, className: 'WARLOCK', race: 'Orc', position: VOT });
+    const o = plan(atlas([piercing, vile]), orc, travel, { toLevel: 30 });
+    expect(indexOf(o.steps, 'turn_in', 1485)).toBeGreaterThan(0);
+    expect(o.steps.some((s) => ids(s).includes(1470))).toBe(false);
+    expect(o.steps.some((s) => s.how === 'boat')).toBe(false);
+
+    // A class quest in Orgrimmar (a city, not a start area) still takes the Undead across the water.
+    const city = imp(1506, thrall, ['Orc', 'Scourge']);
+    const c = plan(atlas([vile, home, city]), lee, travel, { toLevel: 30 });
+    expect(indexOf(c.steps, 'accept', 1506)).toBeGreaterThanOrEqual(0);
+    expect(indexOf(c.steps, 'accept', 1506)).toBeLessThan(indexOf(c.steps, 'accept', 380));
+    expect(c.steps.some((s) => s.how === 'boat')).toBe(true);
+    expect(c.steps.some((s) => ids(s).includes(1485))).toBe(false);
   });
 
   it('keeps the hearth and stays on the continent for a slightly better hub across the water', () => {
