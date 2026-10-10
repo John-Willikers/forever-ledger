@@ -393,3 +393,108 @@ describe('loadCharacter: split rides and travel forms (real Postgres)', () => {
     expect(groundTravel(shaman)).toEqual({ speed: 7 });
   });
 });
+
+// Lee Willikers (Undead warlock 5, build 70291, 2026-10-09): logged out where the client gave no map position, bind
+// zone only ("Shadow Grave"): the planner starts from his last located observation, else his race's start area.
+describe('loadCharacter: position fallbacks (real Postgres)', () => {
+  let s: Awaited<ReturnType<typeof startServer>>;
+  const q = async (text: string, values: unknown[] = []) =>
+    (await s.database.pool.query(text, values)).rows;
+  const load = (key: string) => loadCharacter(s.database.db, key, NOW);
+  const addChar = async (key: string, race: string, pos: object | null, bind: object | null) => {
+    await q(
+      `insert into characters (key, name, realm, class, race, faction, level)
+       values ($1, $2, 'Bayou', 'WARLOCK', $3, null, 5)`,
+      [key, key.split('-')[0], race],
+    );
+    await q(
+      `insert into character_state (char, build, level, observed_at, pos, bind) values
+         ($1, 70291, 5, to_timestamp($2), $3::jsonb, $4::jsonb)`,
+      [key, NOW, pos && JSON.stringify(pos), bind && JSON.stringify(bind)],
+    );
+  };
+  const observe = (
+    char: string,
+    questId: number,
+    stage: string,
+    at: number,
+    cols: { loc?: object; npcLoc?: object },
+  ) =>
+    q(
+      `insert into quest_observations (quest_id, build, stage, char, observed_at, loc, npc_loc)
+       values ($1, 70291, $2, $3, to_timestamp($4), $5::jsonb, $6::jsonb)`,
+      [
+        questId,
+        stage,
+        char,
+        at,
+        cols.loc ? JSON.stringify(cols.loc) : null,
+        cols.npcLoc ? JSON.stringify(cols.npcLoc) : null,
+      ],
+    );
+  const progress = (char: string, at: number, mapId: number, x: number, y: number) =>
+    q(
+      `insert into quest_objective_progress (char, quest_id, idx, have, at, build, map_id, zone, x, y, uploader_id, account)
+       values ($1, 381, 1, 1, to_timestamp($2), 70291, $3, 'Tirisfal Glades', $4, $5, 'u', 'a')`,
+      [char, at, mapId, x, y],
+    );
+  const tirisfal = (x: number, y: number) => ({
+    x,
+    y,
+    zone: 'Tirisfal Glades',
+    mapID: 1420,
+    subzone: '',
+  });
+
+  beforeAll(async () => {
+    s = await startServer();
+  });
+  afterAll(() => s?.stop());
+
+  it('no position: the newest located observation (loc, npc_loc or objective progress), in percent', async () => {
+    const LEE = 'Lee Willikers-Bayou';
+    await addChar(LEE, 'Scourge', null, { zone: 'Shadow Grave', at: NOW });
+    await progress(LEE, NOW - 900, 1420, 36, 69.1);
+    await observe(LEE, 5481, 'accept', NOW - 600, { loc: tirisfal(46.2, 56.6) });
+    // Newest: the quest giver Lee talked to (npc_loc only).
+    await observe(LEE, 96656, 'complete', NOW - 60, { npcLoc: tirisfal(57.2, 55.3) });
+    // A newer row on no known map is skipped.
+    await observe(LEE, 96607, 'accept', NOW - 30, {
+      loc: { x: 50, y: 50, zone: 'Nowhere', mapID: 99999 },
+    });
+    const { ch, gaps } = (await load(LEE))!;
+    expect(ch.position).toEqual({ mapId: 1420, x: 57.2, y: 55.3 });
+    expect(gaps).toContain('position from the last quest seen: Tirisfal Glades');
+    expect(gaps.filter((g) => g.startsWith('position'))).toHaveLength(1);
+  });
+
+  it('no position and no observations: the race’s start area', async () => {
+    const KEY = 'Landry Willikers-Bayou';
+    await addChar(KEY, 'Scourge', null, { zone: 'Shadow Grave', at: NOW });
+    const { ch, gaps } = (await load(KEY))!;
+    expect(ch.position).toEqual({ mapId: 1420, x: 30.8, y: 66.2 });
+    expect(gaps).toContain('position: Scourge start area (Deathknell)');
+  });
+
+  it('a position on no known map falls back too; no race and no observations: the bind spot', async () => {
+    const KEY = 'Hebert Willikers-Bayou';
+    await addChar(
+      KEY,
+      'Mechagnome',
+      { mapId: 99999, x: 0.5, y: 0.5 },
+      { zone: 'Razor Hill', spot: { mapId: 1411, x: 0.52, y: 0.43 }, at: NOW },
+    );
+    const { ch, gaps } = (await load(KEY))!;
+    expect(ch.position).toEqual({ mapId: 1411, x: 52, y: 43 });
+    expect(gaps).toContain('position unknown: log out once with 0.8.0');
+  });
+
+  it('a stored position on a known map is used as is', async () => {
+    const KEY = 'Arceneaux Willikers-Bayou';
+    await addChar(KEY, 'Scourge', { mapId: 1420, x: 0.6, y: 0.5 }, { zone: 'Brill', at: NOW });
+    await observe(KEY, 5481, 'accept', NOW + 60, { loc: tirisfal(46.2, 56.6) });
+    const { ch, gaps } = (await load(KEY))!;
+    expect(ch.position).toEqual({ mapId: 1420, x: 60, y: 50 });
+    expect(gaps.filter((g) => g.startsWith('position'))).toEqual([]);
+  });
+});
