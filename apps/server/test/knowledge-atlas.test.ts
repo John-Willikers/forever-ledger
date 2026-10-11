@@ -289,7 +289,7 @@ describe('wowhead@5 quest list pages', () => {
 });
 
 describe('enqueue-atlas', () => {
-  it('dry run lists the 9 class lists and the 1-30 zone lists without a database', async () => {
+  it('dry run lists the 9 class lists and the 1-60 zone lists without a database', async () => {
     const { urls, queued } = await enqueueAtlas(null, { dryRun: true });
     expect(queued).toBe(0);
     expect(urls).toEqual(atlasListUrls());
@@ -312,7 +312,11 @@ describe('enqueue-atlas', () => {
         (c) => `https://www.wowhead.com/forever/quests=${c}`,
       ),
     );
-    expect(urls).toHaveLength(9 + 28 + 7);
+    expect(urls).toContain('https://www.wowhead.com/forever/quests/kalimdor/ungoro-crater');
+    expect(urls).toContain(
+      'https://www.wowhead.com/forever/quests/eastern-kingdoms/eastern-plaguelands',
+    );
+    expect(urls).toHaveLength(9 + 28 + 18 + 7);
   });
 
   it('builds list URLs in one place', () => {

@@ -44,9 +44,9 @@ export interface AtlasZone {
 }
 
 /**
- * Zones with quests in levels 1–30 for either faction, Classic's map. Not here: Eversong Woods / Ghostlands (TBC, not
- * in Forever's 1.60.1 client), Forever's own zones (ATLAS_FOREVER_ZONES, listed by id; Gilneas is not seen yet),
- * dungeons.
+ * Zones with quests in levels 1–60 for either faction, Classic's map (1–30 first; 31–60 added 2026-10-11). Not
+ * here: Eversong Woods / Ghostlands (TBC, not in Forever's 1.60.1 client), Forever's own zones (ATLAS_FOREVER_ZONES,
+ * listed by id; Gilneas is not seen yet), dungeons.
  */
 export const ATLAS_ZONES: AtlasZone[] = [
   // Eastern Kingdoms
@@ -143,6 +143,50 @@ export const ATLAS_ZONES: AtlasZone[] = [
     levels: [1, 60],
     city: true,
   },
+  // Levels 31–60 (Harlan 2026-10-11: plan past the beta cap of 30 before launch on Nov 4).
+  { continent: 'eastern-kingdoms', slug: 'badlands', name: 'Badlands', levels: [35, 45] },
+  {
+    continent: 'eastern-kingdoms',
+    slug: 'swamp-of-sorrows',
+    name: 'Swamp of Sorrows',
+    levels: [35, 45],
+  },
+  {
+    continent: 'eastern-kingdoms',
+    slug: 'the-hinterlands',
+    name: 'The Hinterlands',
+    levels: [40, 50],
+  },
+  { continent: 'eastern-kingdoms', slug: 'searing-gorge', name: 'Searing Gorge', levels: [43, 50] },
+  { continent: 'eastern-kingdoms', slug: 'blasted-lands', name: 'Blasted Lands', levels: [45, 55] },
+  {
+    continent: 'eastern-kingdoms',
+    slug: 'burning-steppes',
+    name: 'Burning Steppes',
+    levels: [50, 58],
+  },
+  {
+    continent: 'eastern-kingdoms',
+    slug: 'western-plaguelands',
+    name: 'Western Plaguelands',
+    levels: [51, 58],
+  },
+  {
+    continent: 'eastern-kingdoms',
+    slug: 'eastern-plaguelands',
+    name: 'Eastern Plaguelands',
+    levels: [53, 60],
+  },
+  { continent: 'eastern-kingdoms', slug: 'deadwind-pass', name: 'Deadwind Pass', levels: [55, 60] },
+  { continent: 'kalimdor', slug: 'dustwallow-marsh', name: 'Dustwallow Marsh', levels: [35, 45] },
+  { continent: 'kalimdor', slug: 'feralas', name: 'Feralas', levels: [40, 50] },
+  { continent: 'kalimdor', slug: 'tanaris', name: 'Tanaris', levels: [40, 50] },
+  { continent: 'kalimdor', slug: 'azshara', name: 'Azshara', levels: [45, 55] },
+  { continent: 'kalimdor', slug: 'felwood', name: 'Felwood', levels: [48, 55] },
+  { continent: 'kalimdor', slug: 'ungoro-crater', name: "Un'Goro Crater", levels: [48, 55] },
+  { continent: 'kalimdor', slug: 'moonglade', name: 'Moonglade', levels: [1, 60] },
+  { continent: 'kalimdor', slug: 'winterspring', name: 'Winterspring', levels: [53, 60] },
+  { continent: 'kalimdor', slug: 'silithus', name: 'Silithus', levels: [55, 60] },
 ];
 
 /** The 9 Classic classes, by Wowhead slug. */
